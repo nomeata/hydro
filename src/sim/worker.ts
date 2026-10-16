@@ -53,7 +53,7 @@ function init(seed: number, size: number): void {
   const t0 = performance.now();
   const gen = generateWorld({ seed, size });
   const t1 = performance.now();
-  const fresh = new Simulation(gen.world, seed);
+  const fresh = new Simulation(gen.world, seed, { people: { startX: gen.startX, startY: gen.startY } });
   fresh.run(SPINUP_STEPS);
   fresh.step = 0;
   const t2 = performance.now();
@@ -183,6 +183,30 @@ function sendSnapshot(): boolean {
     snap.look = look;
     sim.lookDirty = false;
     transfer.push(look.buffer);
+  }
+  if (sim.people) {
+    const ent = sim.people.entities(speed);
+    snap.entities = ent;
+    transfer.push(ent.id.buffer, ent.info.buffer, ent.pos.buffer);
+    if (sim.people.buildingsDirty) {
+      snap.buildings = sim.people.buildings.map(({ id, kind, x, y, rot, progress }) => ({ id, kind, x, y, rot, progress }));
+      sim.people.buildingsDirty = false;
+    }
+    const v = sim.people.settlements[0];
+    if (v) {
+      snap.stats.village = {
+        population: sim.people.population,
+        houses: v.state.houses,
+        food: v.state.food,
+        wellbeing: v.state.wellbeing,
+      };
+    }
+    if (sim.takeFieldsDirty()) {
+      const f = new Uint8Array(w.size * 2);
+      sim.packFields(f);
+      snap.fields = f;
+      transfer.push(f.buffer);
+    }
   }
   if (sim.planDirty) {
     snap.plan = w.plan.slice();

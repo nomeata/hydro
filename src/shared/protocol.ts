@@ -57,6 +57,7 @@ export interface SimStats {
   surfaceWater: number;
   /** Outflow through outlets in the last game day (m³). */
   outflowPerDay: number;
+  village?: VillageStats;
 }
 
 /** Static information sent once when the world is ready. */
@@ -140,6 +141,27 @@ export interface EntityFrame {
   pos: Float32Array;
 }
 
+/** A building (rarely changes; sent when the set changes). */
+export interface BuildingInfo {
+  id: number;
+  kind: 'house' | 'store';
+  /** Cell coordinates of the footprint centre. */
+  x: number;
+  y: number;
+  /** Rotation in radians (multiples of π/2). */
+  rot: number;
+  /** Construction progress 0..1. */
+  progress: number;
+}
+
+/** Village statistics (hidden from players; shown with ?stats=1). */
+export interface VillageStats {
+  population: number;
+  houses: number;
+  food: number;
+  wellbeing: number;
+}
+
 export interface Snapshot {
   time: SimTime;
   climate: ClimateState;
@@ -158,6 +180,10 @@ export interface Snapshot {
   plan?: Float32Array;
   /** People and animals. Not pooled (small). */
   entities?: EntityFrame;
+  /** All buildings, when changed. */
+  buildings?: BuildingInfo[];
+  /** Land use and crop stage per cell (2 bytes each: LandUse, crop 0..255), when changed. */
+  fields?: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------

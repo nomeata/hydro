@@ -11,7 +11,13 @@ import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } 
 import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { PARAMS } from './params';
 import { SpiritCrew, cancelPlans, planDike, planLevel, planTrench } from './plans/plans';
+import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
 import { SOIL_PROPS, type World } from './world';
+
+export interface SimOptions {
+  /** Enable villages; founding happens near the start point. */
+  people?: { startX: number; startY: number };
+}
 
 export interface SimState {
   step: number;
@@ -23,6 +29,7 @@ export interface SimState {
   outflowLastDay: number;
   crewQueue: number[];
   tileElevation: number[];
+  people?: PeopleState;
 }
 
 /** Steps between soil-water/weather updates. */
@@ -51,12 +58,31 @@ export class Simulation {
   private outflowToday = 0;
   outflowLastDay = 0;
 
-  constructor(world: World, seed: number) {
+  /** Villages and their people (absent in pure-physics tests). */
+  people: PeopleSystem | null = null;
+  private fieldsDirty = true;
+
+  constructor(world: World, seed: number, opts: SimOptions = {}) {
     this.world = world;
+    this.seed = seed;
     this.rng = new Rng(seed ^ 0x5eed);
     this.scratch = new FlowScratch(world.size);
     this.weather = new Weather(world, this.rng);
+    if (opts.people) this.people = new PeopleSystem(world, seed, opts.people.startX, opts.people.startY);
   }
+
+  readonly seed: number;
+
+  private readonly peopleHost: PeopleHost = {
+    terrainChanged: (i) => this.markTerrainDirty(i),
+    planChanged: () => {
+      this.planDirty = true;
+    },
+    planCells: () => this.crew.cells,
+    waterUsed: (m3) => {
+      this.ledger.evaporation += m3;
+    },
+  };
 
   get time(): SimTime {
     return timeAt(this.step);
@@ -92,12 +118,26 @@ export class Simulation {
     this.ledger.outflow += out;
     this.outflowToday += out;
 
+    const people = this.people;
+    if (people && this.step % PEOPLE_TICK === 0) {
+      people.tick(this.step, this.time, this.peopleHost);
+      if (this.step % 60 === 0) this.fieldsDirty = true;
+    }
+
     if (this.step % BUILD_EVERY === 0 && this.crew.pending > 0) {
       const rate = (PARAMS.builderRatePerDay * BUILD_EVERY) / STEPS_PER_DAY;
-      this.crew.work(w, rate, PARAMS.builderCells, (i) => {
-        this.markTerrainDirty(i);
-        this.planDirty = true;
-      });
+      // The spirit crew leaves plans within reach of a village to its builders.
+      const skip = people ? (i: number) => people.settlementNear(i) !== null : undefined;
+      this.crew.work(
+        w,
+        rate,
+        PARAMS.builderCells,
+        (i) => {
+          this.markTerrainDirty(i);
+          this.planDirty = true;
+        },
+        skip,
+      );
     }
 
     this.step++;
@@ -200,6 +240,7 @@ export class Simulation {
       outflowToday: this.outflowToday,
       outflowLastDay: this.outflowLastDay,
       crewQueue: this.crew.getQueue(),
+      people: this.people?.getState(),
       tileElevation: Array.from(this.weather.tileElevation),
     };
   }
@@ -214,8 +255,29 @@ export class Simulation {
     this.outflowToday = st.outflowToday;
     this.outflowLastDay = st.outflowLastDay;
     this.crew.setQueue(st.crewQueue);
+    if (st.people) {
+      this.people ??= new PeopleSystem(this.world, this.seed, st.people.startX, st.people.startY);
+      this.people.setState(st.people);
+    }
+    this.fieldsDirty = true;
     this.lookDirty = true;
     this.planDirty = true;
+  }
+
+  /** Returns and clears whether land use/crops changed. */
+  takeFieldsDirty(): boolean {
+    const d = this.fieldsDirty;
+    this.fieldsDirty = false;
+    return d;
+  }
+
+  /** Pack land use and crop stage (2 bytes per cell). */
+  packFields(out: Uint8Array): void {
+    const { landuse, crop, size } = this.world;
+    for (let i = 0; i < size; i++) {
+      out[2 * i] = landuse[i]!;
+      out[2 * i + 1] = crop[i]!;
+    }
   }
 
   /** Hash of the persistent state, for determinism tests. */
@@ -232,6 +294,12 @@ export class Simulation {
     mix(w.ground);
     mix(w.snow);
     mix(w.sediment);
+    mix(w.landuse);
+    mix(w.crop);
+    if (this.people) {
+      const json = JSON.stringify(this.people.getState());
+      for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
+    }
     return `${this.step}:${(h >>> 0).toString(16)}`;
   }
 }

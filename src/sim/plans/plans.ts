@@ -227,7 +227,22 @@ export class SpiritCrew {
     this.queue = q.slice();
   }
 
-  work(world: World, rate: number, maxCells: number, onChange: (i: number, planDone: boolean) => void): void {
+  /** The queued plan cells, in placement order (may include finished ones). */
+  get cells(): readonly number[] {
+    return this.queue;
+  }
+
+  /**
+   * Work on up to `maxCells` cells; cells for which `skip` returns true are
+   * left to others (e.g. village builders) but stay queued.
+   */
+  work(
+    world: World,
+    rate: number,
+    maxCells: number,
+    onChange: (i: number, planDone: boolean) => void,
+    skip?: (i: number) => boolean,
+  ): void {
     let worked = 0;
     let write = 0;
     const q = this.queue;
@@ -237,7 +252,7 @@ export class SpiritCrew {
       const target = world.plan[i]!;
       if (Number.isNaN(target) || seen.has(i)) continue; // drop finished/cancelled/duplicate cells
       seen.add(i);
-      if (worked < maxCells) {
+      if (worked < maxCells && !skip?.(i)) {
         worked++;
         const diff = target - world.terrain(i);
         const step = Math.max(-rate, Math.min(rate, diff));
