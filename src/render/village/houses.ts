@@ -46,6 +46,8 @@ export interface Part {
   readonly s?: readonly [number, number, number];
   /** Bit mask of stages (1 << Stage) in which the part is present. */
   readonly stages: number;
+  /** Repaint blue-grey as stone instead of the design's plaster colour. */
+  readonly stone?: boolean;
 }
 
 export interface Design {
@@ -54,8 +56,21 @@ export interface Design {
   readonly scale: number;
   /** Vertical tile → world scale. */
   readonly vscale: number;
+  /** Repaint colours (sRGB) for the kit's teal roof tiles and blue-grey plaster/stone. */
+  readonly roof?: number;
+  readonly plaster?: number;
   readonly parts: readonly Part[];
 }
+
+/** Roof colours: terracotta, thatch, dark red-brown shingles. */
+export const ROOF_TERRACOTTA = 0xc0583a;
+export const ROOF_THATCH = 0xc99a4e;
+export const ROOF_SHINGLE = 0x8a4a3a;
+export const PLASTER_CREAM = 0xf0e2c4;
+/** Chimneys and plinths: warm grey stone. */
+export const STONE = 0xd8d0c4;
+/** Gable triangles on timber houses. */
+export const GABLE_WOOD = 0xa0704a;
 
 const F = 1 << Stage.Foundation;
 const W = 1 << Stage.Walls;
@@ -208,16 +223,19 @@ const LONG_PLASTER: Shell = {
 
 const COTTAGE_WOOD: Shell = { ...COTTAGE, wall: 'town_wall_wood', door: 'town_wall_wood_door', window: 'town_wall_wood_window' };
 
+/** Gable roof tiles; the ridge runs along the longer side. */
 function gableRoof(sh: Shell): Part[] {
-  return tiles(sh.nx, sh.nz).map(([x, z]) => ({ m: 'town_roof_gable' as const, x, y: 1.07, z, stages: TOPPED }));
+  const rot = sh.nz > sh.nx ? 1 : 0;
+  return tiles(sh.nx, sh.nz).map(([x, z]) => ({ m: 'town_roof_gable' as const, x, y: 1.07, z, rot, stages: TOPPED }));
 }
 
 function pointRoof(): Part[] {
   return [{ m: 'town_roof_point', x: 0, y: 1.07, z: 0, stages: TOPPED }];
 }
 
-function chimney(x: number, z: number, rot: Dir = 0): Part {
-  return { m: 'town_chimney', x, y: 0.75, z, rot, stages: D };
+/** Chimney whose stack is centred at (x, z) (the model sits at +0.21..+0.43 in x). */
+function chimney(x: number, z: number): Part {
+  return { m: 'town_chimney', x: x - 0.32, y: 0.75, z, stages: D, stone: true };
 }
 
 /** House designs; the variant is chosen by a hash of the building id. */
@@ -226,25 +244,33 @@ export const HOUSE_DESIGNS: readonly Design[] = [
     name: 'cottage',
     scale: 1.25,
     vscale: 0.92,
-    parts: [...shellParts(COTTAGE), ...pointRoof(), chimney(-0.05, 0.1, 2), doorProp(COTTAGE, 'survival_barrel')],
+    roof: ROOF_TERRACOTTA,
+    plaster: PLASTER_CREAM,
+    parts: [...shellParts(COTTAGE), ...pointRoof(), chimney(-0.22, 0.18), doorProp(COTTAGE, 'survival_barrel')],
   },
   {
     name: 'longhouse-wood',
     scale: 0.88,
     vscale: 0.95,
-    parts: [...shellParts(LONG_WOOD), ...gableRoof(LONG_WOOD), chimney(-0.1, -0.55, 2), doorProp(LONG_WOOD, 'survival_box')],
+    roof: ROOF_THATCH,
+    plaster: GABLE_WOOD,
+    parts: [...shellParts(LONG_WOOD), ...gableRoof(LONG_WOOD), chimney(-0.24, -0.6), doorProp(LONG_WOOD, 'survival_box')],
   },
   {
     name: 'longhouse',
     scale: 0.88,
     vscale: 0.95,
-    parts: [...shellParts(LONG_PLASTER), ...gableRoof(LONG_PLASTER), chimney(-0.1, 0.55, 2), doorProp(LONG_PLASTER, 'survival_barrel')],
+    roof: ROOF_SHINGLE,
+    plaster: PLASTER_CREAM,
+    parts: [...shellParts(LONG_PLASTER), ...gableRoof(LONG_PLASTER), chimney(-0.24, 0.6), doorProp(LONG_PLASTER, 'survival_barrel')],
   },
   {
     name: 'cottage-wood',
     scale: 1.2,
     vscale: 0.95,
-    parts: [...shellParts(COTTAGE_WOOD), ...gableRoof(COTTAGE_WOOD), chimney(0, 0.25, 2), doorProp(COTTAGE_WOOD, 'survival_box')],
+    roof: ROOF_TERRACOTTA,
+    plaster: GABLE_WOOD,
+    parts: [...shellParts(COTTAGE_WOOD), ...gableRoof(COTTAGE_WOOD), chimney(-0.24, 0.22), doorProp(COTTAGE_WOOD, 'survival_box')],
   },
 ];
 
@@ -300,7 +326,7 @@ export function storeDesign(level: number): Design {
     const [x, y, z] = SACK_SPOTS[k]!;
     parts.push({ m: 'sack', x, y, z, rot: k % 4, s: [0.24, 0.26, 0.22], stages: ALL });
   }
-  return { name: `store-${n}`, scale: 1.3, vscale: 1.0, parts };
+  return { name: `store-${n}`, scale: 1.3, vscale: 1.0, roof: ROOF_THATCH, plaster: GABLE_WOOD, parts };
 }
 
 /** Parts of a design present at a stage. */

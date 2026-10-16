@@ -23,6 +23,8 @@ import {
 import { WaterLayer, createWaterUniforms } from './water';
 import { FlowParticles } from './flow';
 import { WeatherLayer, createFrontUniforms } from './weather';
+import { BuildingsLayer } from './village/buildings';
+import { CropLayer } from './village/crops';
 
 /** Fixed time of day used for lighting: a pleasant early afternoon. */
 const DAY_TIME = 0.56;
@@ -65,6 +67,10 @@ export class GameRenderer {
   readonly flow: FlowParticles;
   /** Clouds, cloud shadows, rain and snow following the rain fronts. */
   readonly weather: WeatherLayer;
+  /** Houses and the store from the snapshot's building list. */
+  readonly buildings: BuildingsLayer;
+  /** Crop models on fields when zoomed in (the terrain shader paints the fields). */
+  readonly crops: CropLayer;
   private season = 1;
   private readonly tex: {
     terrain: THREE.DataTexture;
@@ -75,6 +81,7 @@ export class GameRenderer {
     depthB: THREE.DataTexture;
     vel: THREE.DataTexture;
     noise: THREE.DataTexture;
+    fields: THREE.DataTexture;
   };
   /** CPU buffers for the two depth textures; `depthCur` is the newer one. */
   private depthPrevIsA = true;
@@ -127,6 +134,7 @@ export class GameRenderer {
       depthB: makeFloatTexture(W, H),
       vel: makeByteTexture(W, H, 2),
       noise: makeNoiseTexture(),
+      fields: makeByteTexture(W, H, 2),
     };
 
     // Layers.
@@ -161,6 +169,9 @@ export class GameRenderer {
     this.scene.add(this.flow.mesh);
     this.weather = new WeatherLayer(fronts, this.tex.terrain, W, H, HEIGHT_SCALE);
     this.scene.add(this.weather.group);
+    this.buildings = new BuildingsLayer(this.scene, this.heights);
+    this.buildings.setShadows(this.shadows);
+    this.crops = new CropLayer(this.scene, this.heights);
     this.updateBounds();
 
     this.sky = new SkyLighting(this.scene);
@@ -231,6 +242,8 @@ export class GameRenderer {
       (this.tex.terrain.image.data as Float32Array).set(data.subarray(0, (y1 - y0) * W), y0 * W);
       uploadFloatRows(this.gl, this.tex.terrain, y0, y1);
       this.updateBounds();
+      this.buildings.refreshHeights();
+      this.crops.invalidate();
     }
     if (s.look) {
       (this.tex.look.image.data as Uint8Array).set(s.look.subarray(0, n * 4));
@@ -240,6 +253,15 @@ export class GameRenderer {
       const any = packPlan(s.plan, this.tex.plan.image.data as Float32Array);
       this.terrain.uniforms.uPlanOn.value = any ? 1 : 0;
       this.tex.plan.needsUpdate = true;
+    }
+    if (s.buildings) this.buildings.setBuildings(s.buildings);
+    const v = s.stats.village;
+    if (v) this.buildings.setFood(v.food, v.population);
+    if (s.fields) {
+      (this.tex.fields.image.data as Uint8Array).set(s.fields.subarray(0, n * 2));
+      this.tex.fields.needsUpdate = true;
+      this.terrain.uniforms.uFieldsOn.value = 1;
+      this.crops.setFields(this.tex.fields.image.data as Uint8Array);
     }
     // Always daytime (a day/night cycle is distracting); the season drifts smoothly.
     if (this.followSimTime) this.setSun(DAY_TIME, s.time.yearFrac * 4);
@@ -321,6 +343,8 @@ export class GameRenderer {
     else this.sky.placeSun(this.camera.targetWorld(this.tmpV), Math.max(this.info.width, this.info.height));
     this.flow.update(dt, this.camera);
     this.weather.update(dt, t, this.camera);
+    const cs = this.camera.getCurrentState();
+    this.crops.update(nowMs, cs.x, cs.y, cs.viewHeight);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;
     this.gl.render(this.scene, this.camera.camera);
@@ -367,6 +391,8 @@ export class GameRenderer {
     this.water.dispose();
     this.flow.dispose();
     this.weather.dispose();
+    this.buildings.dispose();
+    this.crops.dispose();
     this.sky.dispose();
     this.geometry.dispose();
     for (const t of Object.values(this.tex)) t.dispose();

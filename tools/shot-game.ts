@@ -3,6 +3,7 @@
  *   npx tsx tools/shot-game.ts [name] [--query "seed=3"] [--days 1] [--cam '{"viewHeight":20}'] [--phone]
  *     [--eval "js run in the page after setup (window.__hydro is `h`)"] [--speed 1]
  *     [--shots 2 --interval 1000]   (several shots: out/<name>-0.png, …)
+ *     [--focus-village]   (centre the camera on the buildings, after --cam)
  * Assumes `npx vite preview --port 4173` (or dev server via --url) is running.
  */
 import { chromium, devices } from '@playwright/test';
@@ -41,6 +42,17 @@ await page.waitForFunction(() => (window as any).__hydro, null, { timeout: 120_0
 console.log(`ready after ${Date.now() - t0} ms`);
 if (days > 0) await page.evaluate((d) => (window as any).__hydro.client.runDays(d), days);
 if (cam) await page.evaluate((c) => (window as any).__hydro.renderer.camera.setState(JSON.parse(c), true), cam);
+if (args.includes('--focus-village')) {
+  const r = await page.evaluate(() => {
+    const bs = (window as any).__hydro.renderer.buildings.buildings as { x: number; y: number }[];
+    if (!bs.length) return null;
+    const x = bs.reduce((a, b) => a + b.x, 0) / bs.length;
+    const y = bs.reduce((a, b) => a + b.y, 0) / bs.length;
+    (window as any).__hydro.renderer.camera.setState({ x, y }, true);
+    return { buildings: bs.length, x, y };
+  });
+  console.log('focus village', JSON.stringify(r));
+}
 if (evalJs) {
   const r = await page.evaluate((js) => new Function('h', js)((window as any).__hydro), evalJs);
   if (r !== undefined) console.log('eval:', JSON.stringify(r));
@@ -50,7 +62,7 @@ await page.waitForTimeout(1500);
 const stats = await page.evaluate(() => {
   const r = (window as any).__hydro.renderer;
   const i = r.gl.info.render;
-  return { calls: i.calls, triangles: i.triangles, flow: r.flow.count, flowTarget: r.flow.target, cand: r.flow.candCount, box: r.flow.box, puffs: r.weather.puffCount };
+  return { calls: i.calls, triangles: i.triangles, buildingMeshes: r.buildings?.meshCount, crops: r.crops?.instanceCount, flow: r.flow.count, flowTarget: r.flow.target, cand: r.flow.candCount, box: r.flow.box, puffs: r.weather.puffCount };
 });
 console.log('render stats', JSON.stringify(stats));
 for (let k = 0; k < shots; k++) {

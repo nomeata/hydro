@@ -86,6 +86,7 @@ async function main(): Promise<void> {
     hud.update(s);
     if (s.plan) tools.planUpdated();
     if (s.terrain) vegetation.invalidate(0, s.terrain.y0, data.info.width, s.terrain.y1);
+    if (s.fields) vegetation.setFields(s.fields);
     if (s.time.season !== season) {
       season = s.time.season;
       vegetation.setSeason(season);

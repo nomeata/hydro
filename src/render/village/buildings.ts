@@ -25,6 +25,7 @@ import {
   storeDesign,
   villageModels,
   Stage,
+  STONE,
   type Design,
   type ProcKind,
 } from './houses';
@@ -80,11 +81,42 @@ function procGeometry(kind: ProcKind): THREE.BufferGeometry {
   return ng;
 }
 
+const KIT_TEAL_G = 0.45;
+const KIT_PLASTER_B = 0.694;
+
+/**
+ * Repaint the kit's teal roof tiles and blue-grey plaster (vertex colours,
+ * linear), keeping the baked shading by scaling with the source brightness.
+ */
+export function repaint(col: Float32Array, roof: THREE.Color | null, plaster: THREE.Color | null): void {
+  for (let i = 0; i < col.length; i += 3) {
+    const r = col[i]!;
+    const g = col[i + 1]!;
+    const b = col[i + 2]!;
+    let to: THREE.Color | null = null;
+    let k = 1;
+    if (roof && g > r * 2.5 && g > b) {
+      to = roof;
+      k = g / KIT_TEAL_G;
+    } else if (plaster && b > r * 1.4 && b > g * 1.3 && r > 0.1) {
+      to = plaster;
+      k = b / KIT_PLASTER_B;
+    }
+    if (!to) continue;
+    col[i] = to.r * k;
+    col[i + 1] = to.g * k;
+    col[i + 2] = to.b * k;
+  }
+}
+
 /** Merge a design's parts at a stage into one non-indexed geometry (position, normal, color). */
 export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap<ModelName, StaticModel>): THREE.BufferGeometry {
   const geos: THREE.BufferGeometry[] = [];
   const m = new THREE.Matrix4();
   const tmp = new THREE.Matrix4();
+  const roof = d.roof !== undefined ? new THREE.Color(d.roof) : null;
+  const plaster = d.plaster !== undefined ? new THREE.Color(d.plaster) : null;
+  const stone = new THREE.Color(STONE);
   for (const p of partsAt(d, stage)) {
     let g: THREE.BufferGeometry;
     m.makeTranslation(p.x * d.scale, p.y * d.vscale, p.z * d.scale);
@@ -99,6 +131,17 @@ export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap
       const src = model.geometry;
       g = (src.index ? src.toNonIndexed() : src.clone()) as THREE.BufferGeometry;
       for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'color') g.deleteAttribute(name);
+      const col = g.getAttribute('color') as THREE.BufferAttribute | undefined;
+      if (col) {
+        const arr = new Float32Array(col.count * 3);
+        for (let i = 0; i < col.count; i++) {
+          arr[i * 3] = col.getX(i);
+          arr[i * 3 + 1] = col.getY(i);
+          arr[i * 3 + 2] = col.getZ(i);
+        }
+        repaint(arr, roof, p.stone ? stone : plaster);
+        g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      }
       const s = p.s ?? [1, 1, 1];
       m.multiply(tmp.makeScale(s[0], s[1], s[2]));
       // Town parts are authored in tiles: undo the manifest scale, apply the design's.

@@ -8,6 +8,7 @@ import { HEIGHT_SCALE } from './coords';
 import { CHUNK, GRID_VERTEX_GLSL, chunkOrigins } from './grid';
 import { PLAN_GLSL } from './planOverlay';
 import { CLOUD_SHADOW_GLSL, type FrontUniforms } from './weather';
+import { FIELDS_GLSL } from './village/fields';
 
 /** Soil base colours (sRGB), indexed by SoilType. */
 export const SOIL_COLOURS: readonly number[] = [
@@ -25,6 +26,8 @@ export interface TerrainTextures {
   look: THREE.DataTexture;
   plan: THREE.DataTexture;
   preview: THREE.DataTexture;
+  /** Land use and crop stage (RG8), see village/fields.ts. */
+  fields: THREE.DataTexture;
 }
 
 export interface TerrainUniforms extends FrontUniforms {
@@ -43,6 +46,13 @@ export interface TerrainUniforms extends FrontUniforms {
   uGrassLush: { value: THREE.Color };
   uForest: { value: THREE.Color };
   uSnow: { value: THREE.Color };
+  uFields: { value: THREE.Texture };
+  uFieldsOn: { value: number };
+  uFieldSoil: { value: THREE.Color };
+  uCropYoung: { value: THREE.Color };
+  uCropGreen: { value: THREE.Color };
+  uCropRipe: { value: THREE.Color };
+  uYard: { value: THREE.Color };
 }
 
 const COMMON_GLSL = /* glsl */ `
@@ -102,6 +112,7 @@ vec3 soilBase(vec4 l) {
 
 ${PLAN_GLSL}
 ${CLOUD_SHADOW_GLSL}
+${FIELDS_GLSL}
 `;
 
 const FRAGMENT_COLOUR = /* glsl */ `
@@ -137,6 +148,8 @@ const FRAGMENT_COLOUR = /* glsl */ `
       vec3 grass = mix(uGrassDry, uGrassLush, smoothstep(0.1, 0.6, moist));
       grass = mix(grass, uForest, smoothstep(0.62, 0.9, veg));
       vec3 c = mix(base, grass, smoothstep(0.04, 0.26, veg));
+      // Fields (furrows, crops) and trampled earth around buildings.
+      c = fieldColour(c, vTerrWorld);
       // Moisture darkens (wet soil), a little less under vegetation.
       c *= mix(1.0, 0.68, moist * mix(1.0, 0.45, veg));
       // Steep slopes show rock / bare earth.
@@ -193,6 +206,13 @@ export function createTerrainUniforms(
     uGrassLush: { value: new THREE.Color(0x62b44a) },
     uForest: { value: new THREE.Color(0x3c8640) },
     uSnow: { value: new THREE.Color(0xf3f6fb) },
+    uFields: { value: tex.fields },
+    uFieldsOn: { value: 0 },
+    uFieldSoil: { value: new THREE.Color(0x8a5d3b) },
+    uCropYoung: { value: new THREE.Color(0x7fb04a) },
+    uCropGreen: { value: new THREE.Color(0x5e9e3a) },
+    uCropRipe: { value: new THREE.Color(0xe8c050) },
+    uYard: { value: new THREE.Color(0xa08060) },
   };
 }
 
@@ -208,7 +228,7 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAGMENT_COLOUR}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += planGlow;');
   };
-  mat.customProgramCacheKey = () => 'hydro-terrain-v2';
+  mat.customProgramCacheKey = () => 'hydro-terrain-v3';
   return mat;
 }
 
