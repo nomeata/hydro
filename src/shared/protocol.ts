@@ -83,6 +83,63 @@ export const LOOK_CHANNELS = 4;
 /** Velocity packed as two signed bytes per cell; 127 ≙ VEL_SCALE m/s. */
 export const VEL_SCALE = 4;
 
+// ---------------------------------------------------------------------------
+// Entities (people and animals), sent with every snapshot.
+
+/** What an entity is. Appearance variants are chosen by `variant`. */
+export const enum EntityKind {
+  Person = 0,
+  Child = 1,
+  Cow = 2,
+  Pig = 3,
+  Chick = 4,
+  Dog = 5,
+  Sheep = 6,
+}
+
+/** What an entity is doing (drives the animation clip). */
+export const enum EntityAnim {
+  Idle = 0,
+  Walk = 1,
+  Run = 2,
+  /** Walking with a load (see `carry`). */
+  Carry = 3,
+  /** Digging / hoeing / chopping: a repeated swing. */
+  Work = 4,
+  /** Hammering / interacting with something at hand height. */
+  Build = 5,
+  Sit = 6,
+  /** Sitting at the shore with a rod. */
+  Fish = 7,
+  /** Animals: grazing / pecking. */
+  Eat = 8,
+}
+
+/** What a person carries (rendered as a small prop). */
+export const enum CarryKind {
+  None = 0,
+  Earth = 1,
+  Sack = 2,
+  Fish = 3,
+  Log = 4,
+  Bundle = 5,
+  Bucket = 6,
+}
+
+/**
+ * All entities, structure-of-arrays. Positions in fractional cell coords;
+ * velocity in cells per real second at the current speed (for
+ * extrapolation between snapshots).
+ */
+export interface EntityFrame {
+  count: number;
+  id: Uint16Array;
+  /** kind, variant, anim, carry per entity (4 bytes each). */
+  info: Uint8Array;
+  /** x, y, vx, vy, heading (radians) per entity (5 floats each). */
+  pos: Float32Array;
+}
+
 export interface Snapshot {
   time: SimTime;
   climate: ClimateState;
@@ -99,6 +156,8 @@ export interface Snapshot {
   look?: Uint8Array;
   /** Full plan target heights (NaN = none), when changed. Not pooled. */
   plan?: Float32Array;
+  /** People and animals. Not pooled (small). */
+  entities?: EntityFrame;
 }
 
 // ---------------------------------------------------------------------------
