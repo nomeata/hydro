@@ -144,7 +144,8 @@ export class PeopleSystem {
     const W = this.world.width;
     const sx = site % W;
     const sy = (site / W) | 0;
-    const s = new Settlement(this.settlements.length, sx, sy, 0, 140);
+    // The founders bring enough food to last until the first harvest.
+    const s = new Settlement(this.settlements.length, sx, sy, 0, 400);
     this.settlements.push(s);
     this.addBuilding('store', s.state.id, sx, sy);
     this.buildings[this.buildings.length - 1]!.progress = 1;
@@ -163,7 +164,9 @@ export class PeopleSystem {
         if (!this.buildable(i)) continue;
         const d = this.waterDist[i]!;
         const nearWater = d >= 3 && d <= 14 ? 1 : d < 3 ? 0.2 : Math.max(0, 1 - (d - 14) / 20);
-        const score = nearWater * 2 + w.fertility[i]! - this.slope(i) * 3 - Math.hypot(x - cx, y - cy) / radius;
+        // Open meadow is far more attractive than forest that must be cleared.
+        const forest = Math.max(0, w.vegetation[i]! - 0.45) * 4;
+        const score = nearWater * 2 + w.fertility[i]! - this.slope(i) * 3 - forest - Math.hypot(x - cx, y - cy) / radius;
         if (score > bestScore) {
           bestScore = score;
           best = i;
@@ -201,7 +204,9 @@ export class PeopleSystem {
   private addBuilding(kind: Building['kind'], settlement: number, x: number, y: number): Building {
     const b: Building = { id: this.nextId++, kind, settlement, x, y, rot: this.rng.int(0, 4) * (Math.PI / 2), progress: 0 };
     this.buildings.push(b);
-    this.world.landuse[this.world.idx(x, y)] = LandUse.Building;
+    const i = this.world.idx(x, y);
+    this.world.landuse[i] = LandUse.Building;
+    this.world.vegetation[i] = Math.min(this.world.vegetation[i]!, 0.1);
     this.buildingsDirty = true;
     return b;
   }
@@ -415,7 +420,7 @@ export class PeopleSystem {
         if (!w.inBounds(x, y)) continue;
         const i = w.idx(x, y);
         if (!this.buildable(i) || !this.spacious(x, y)) continue;
-        const score = -r - this.slope(i) * 4 - w.floodMemory[i]! / 50 + this.rng.next() * 0.5;
+        const score = -r - this.slope(i) * 4 - w.floodMemory[i]! / 50 - w.vegetation[i]! * 3 + this.rng.next() * 0.5;
         if (score > bestScore) {
           bestScore = score;
           best = i;
@@ -474,13 +479,16 @@ export class PeopleSystem {
         if (!this.buildable(i) || !this.spacious(x, y)) continue;
         const m = this.fieldMoisture[i]!;
         const wet = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
-        const suit = w.fertility[i]! * wet - r / (FIELD_RADIUS * 4);
+        const forest = Math.max(0, w.vegetation[i]! - 0.45);
+        const suit = w.fertility[i]! * wet - r / (FIELD_RADIUS * 4) - forest;
         if (suit > 0.12) cands.push([suit, i]);
       }
     cands.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
     for (let k = 0; k < Math.min(10, want - fields.length, cands.length); k++) {
-      w.landuse[cands[k]![1]] = LandUse.Field;
-      w.crop[cands[k]![1]] = 0;
+      const i = cands[k]![1];
+      w.landuse[i] = LandUse.Field;
+      w.crop[i] = 0;
+      w.vegetation[i] = Math.min(w.vegetation[i]!, 0.15); // cleared
     }
   }
 
@@ -593,7 +601,8 @@ export class PeopleSystem {
         if (w.landuse[a.site] === LandUse.Field && w.crop[a.site] === 0) w.crop[a.site] = 8;
         break;
       case SiteKind.Tend:
-        if (w.landuse[a.site] === LandUse.Field) w.crop[a.site] = Math.min(255, w.crop[a.site]! + 4);
+        // Tending helps a little (weeding); growth itself comes from the land.
+        if (w.landuse[a.site] === LandUse.Field && w.crop[a.site]! > 0) w.crop[a.site] = Math.min(255, w.crop[a.site]! + 1);
         break;
       case SiteKind.Harvest: {
         const i = a.site;

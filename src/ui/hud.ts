@@ -85,7 +85,11 @@ export class Hud {
         `speed ${ach.toFixed(2)}× / ${req}×\n` +
         `water ${(s.stats.surfaceWater / 1e6).toFixed(3)} Mm³\n` +
         `outflow ${(s.stats.outflowPerDay / 1e3).toFixed(0)} k m³/day\n` +
-        `fronts ${s.climate.fronts.length}`;
+        `fronts ${s.climate.fronts.length}` +
+        (s.stats.village
+          ? `\nvillage ${s.stats.village.population} ppl, ${s.stats.village.houses} houses\n` +
+            `food ${s.stats.village.food.toFixed(0)}, w ${s.stats.village.wellbeing.toFixed(2)}`
+          : '');
     }
   }
 

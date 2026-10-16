@@ -18,7 +18,7 @@ export const ECONOMY = {
   /** People per house. */
   houseCapacity: 4,
   /** Expected arriving families per day at w = 1 with one free house. */
-  arrivalRate: 0.25,
+  arrivalRate: 0.6,
   /** Expected leaving families per day per household at w = 0. */
   departureRate: 0.02,
   /** Arrivals need w above this; departures happen below the second. */

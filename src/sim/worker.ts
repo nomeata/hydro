@@ -195,6 +195,8 @@ function sendSnapshot(): boolean {
     const v = sim.people.settlements[0];
     if (v) {
       snap.stats.village = {
+        x: v.state.x,
+        y: v.state.y,
         population: sim.people.population,
         houses: v.state.houses,
         food: v.state.food,

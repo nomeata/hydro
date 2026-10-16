@@ -137,7 +137,10 @@ export interface EntityFrame {
   id: Uint16Array;
   /** kind, variant, anim, carry per entity (4 bytes each). */
   info: Uint8Array;
-  /** x, y, vx, vy, heading (radians) per entity (5 floats each). */
+  /**
+   * x, y, vx, vy, heading per entity (5 floats each). Heading is in radians
+   * in cell coordinates: direction (cos h, sin h), i.e. atan2(vy, vx).
+   */
   pos: Float32Array;
 }
 
@@ -156,6 +159,9 @@ export interface BuildingInfo {
 
 /** Village statistics (hidden from players; shown with ?stats=1). */
 export interface VillageStats {
+  /** Centre of the (first) village in cell coordinates. */
+  x: number;
+  y: number;
   population: number;
   houses: number;
   food: number;

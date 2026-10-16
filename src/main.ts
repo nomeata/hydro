@@ -12,6 +12,7 @@ import { attachCameraInput } from './render/camera';
 import { VegetationLayer } from './render/objects/vegetation';
 import { CrowdLayer } from './render/crowd/crowd';
 import { FakeCrowd } from './render/crowd/fakeCrowd';
+import type { EntityFrame } from './shared/protocol';
 import { Hud } from './ui/hud';
 import { ToolPalette } from './ui/tools';
 
@@ -59,13 +60,14 @@ async function main(): Promise<void> {
   const cameraInput = attachCameraInput(canvas, renderer.camera);
 
   const vegetation = new VegetationLayer(renderer.scene, renderer.heights, data.look, data.info.width, data.info.height, seed);
-  // People and animals. Until the sim has agents (M3-α), a main-thread fake
-  // crowd feeds the renderer; real snapshot entities take over when present.
+  // People come from the sim. Until herders exist (M3-δ), a main-thread
+  // "fake crowd" of grazing animals adds ambient life; its latest frame is
+  // merged into every snapshot's entities.
   const crowd = new CrowdLayer(renderer.scene, renderer.heights, { camera: renderer.camera.camera });
   // Created on the first snapshot, once water depths are known.
-  let fakeCrowd: FakeCrowd | null | undefined;
+  let fakeCrowd: FakeCrowd | null = null;
   renderer.addFrameListener((dt, now) => {
-    if (fakeCrowd?.advance(dt)) crowd.setFrame(fakeCrowd.frame(), now);
+    fakeCrowd?.advance(dt);
     crowd.update(dt, now);
   });
 
@@ -84,12 +86,15 @@ async function main(): Promise<void> {
   client.onSnapshot((s) => {
     mirror.apply(s);
     renderer.applySnapshot(s);
-    if (s.entities) {
-      fakeCrowd = null;
-      crowd.setFrame(s.entities, performance.now());
-    } else if (fakeCrowd === undefined) {
-      fakeCrowd = new FakeCrowd(renderer.heights, { seed, centerX: data.info.startX, centerY: data.info.startY, look: data.look });
-    }
+    fakeCrowd ??= new FakeCrowd(renderer.heights, {
+      seed,
+      centerX: data.info.startX,
+      centerY: data.info.startY,
+      look: data.look,
+      people: 0,
+      dogs: 0,
+    });
+    crowd.setFrame(mergeFrames(s.entities, fakeCrowd.frame()), performance.now());
     hud.update(s);
     if (s.plan) tools.planUpdated();
     if (s.terrain) vegetation.invalidate(0, s.terrain.y0, data.info.width, s.terrain.y1);
@@ -162,6 +167,22 @@ if (params.has('bench')) {
   void import('./benchPage').then((m) => m.runBenchPage());
 } else {
   main().catch(fail);
+}
+
+/** Concatenate two entity frames; ids of the second are offset to stay distinct. */
+function mergeFrames(a: EntityFrame | undefined, b: EntityFrame): EntityFrame {
+  if (!a || a.count === 0) return b;
+  const n = a.count + b.count;
+  const id = new Uint16Array(n);
+  const info = new Uint8Array(n * 4);
+  const pos = new Float32Array(n * 5);
+  id.set(a.id.subarray(0, a.count));
+  info.set(a.info.subarray(0, a.count * 4));
+  pos.set(a.pos.subarray(0, a.count * 5));
+  for (let k = 0; k < b.count; k++) id[a.count + k] = (b.id[k]! + 40000) & 0xffff;
+  info.set(b.info.subarray(0, b.count * 4), a.count * 4);
+  pos.set(b.pos.subarray(0, b.count * 5), a.count * 5);
+  return { count: n, id, info, pos };
 }
 
 function fail(e: unknown): void {
