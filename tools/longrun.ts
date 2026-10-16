@@ -9,7 +9,9 @@
  * (hillshaded relief with water), <tag>-diff.png (red = raised, blue =
  * lowered, full colour at ±2 m), <tag>-rivers.png (water before only = cyan,
  * after only = orange, both = blue), <tag>-strip.png (all four side by side),
- * with --snap-every N snapshots every N years <tag>-yN.png, and with
+ * <tag>-lastyear.png (the final year's change, full colour at ±0.5 m),
+ * with --snap-every N snapshots every N years <tag>-yN.png (relief and
+ * change since the previous snapshot), and with
  * --crop x,y,n a magnified n×n crop of the four images, <tag>-crop.png.
  * `--set morfac=200` overrides a geomorphology parameter (see GeoParams).
  * `--valley` runs a synthetic sinuous sand valley instead of a generated world.
@@ -310,6 +312,8 @@ function main(): void {
     'year     meanZ   relief  river    wet  mean|dz|  max|dz| spikes  maxBump  sedIn/yr sedOut/yr  eroded  deposit    bank   talus   suspended  outflow/d   s',
   );
   const t0 = performance.now();
+  let zSnap = heights(world);
+  let zPrevYear = zSnap;
   const s0 = stats(world, z0, 0.5);
   console.log(
     `${fmt(0)}${fmt(s0.meanZ, 2)}${fmt(s0.relief, 1)}${fmt(s0.river)}${fmt(s0.wet)}${fmt(s0.meanAbsDz, 4)}${fmt(s0.maxAbsDz, 2)}${fmt(s0.spikes)}${fmt(s0.maxBump, 2)}`,
@@ -323,12 +327,18 @@ function main(): void {
         `${fmt(d('inflow'))}  ${fmt(d('outflow'))}${fmt(d('eroded'))}${fmt(d('deposited'))}${fmt(d('bank'))}${fmt(d('talus'))}${fmt(s.sediment, 1)}   ${fmt(sim.outflowLastDay)}${fmt((performance.now() - t0) / 1000)}`,
     );
     Object.assign(prev, L);
-    if (snapEvery > 0 && y % snapEvery === 0) writePng(join(out, `${tag}-y${y}.png`), relief(world, zmin, zmax), scale);
+    if (snapEvery > 0 && y % snapEvery === 0) {
+      writePng(join(out, `${tag}-y${y}.png`), tile([relief(world, zmin, zmax), diffImg(world, zSnap, 0.5)]), scale);
+      zSnap = heights(world);
+    }
+    if (y === years - 1) zPrevYear = heights(world);
   }
   const after = relief(world, zmin, zmax);
   const diff = diffImg(world, z0);
   writePng(join(out, `${tag}-after.png`), after, scale);
   writePng(join(out, `${tag}-diff.png`), diff, scale);
+  // The last year's change alone (±0.5 m): ongoing activity versus a trend.
+  writePng(join(out, `${tag}-lastyear.png`), diffImg(world, zPrevYear, 0.5), scale);
   console.log(`net terrain change ${(sumDz(world, z0) * CELL_AREA).toFixed(0)} m³; ledger`, JSON.stringify(roundAll(L)));
   const rivers = riversImg(world, wet0);
   writePng(join(out, `${tag}-rivers.png`), rivers, scale);

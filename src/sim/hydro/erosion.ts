@@ -105,6 +105,17 @@ export interface RowRange {
   y1: number;
 }
 
+/** One river entering the map: a connected group of inflow cells and the reach below it. */
+interface InflowSource {
+  cells: number[];
+  /** Water discharge (m³/s). */
+  q: number;
+  /** Sediment concentration (m³ per m³ of water) carried by the inflow. */
+  conc: number;
+  /** Net volume eroded (+) or deposited (−) in the reach during the current pass (m³). */
+  net: number;
+}
+
 /** Per-cell erosion state (saved sparsely via Simulation.getState). */
 export class ErosionScratch {
   /** Slow-water deposit accumulated per cell (m), drives conversion to silt. */
@@ -112,17 +123,22 @@ export class ErosionScratch {
   /** Sediment transport rate per unit width (capacity × speed, m²/s) of the last pass. */
   readonly transport: Float32Array;
   /**
-   * Sediment concentration carried by each inflow cell's water: a slow
-   * moving average of the flux-weighted capacity concentration of the flow
-   * just downstream, so the reach below an inflow neither starves nor chokes.
+   * Sediment concentration carried by each inflow cell's water (the same
+   * value for all cells of one source). It is what the river can carry:
+   * a slow controller adjusts it so that the reach just below the inflow
+   * neither degrades nor aggrades on average (see updateInflows).
    */
   readonly inflowConc: Float32Array;
+  /** Index of the inflow source whose reach a cell belongs to, or -1. */
+  readonly reach: Int16Array;
+  sources: InflowSource[] | null = null;
   /** Hydraulic seconds seen so far. */
   time = 0;
   constructor(size: number) {
     this.siltAcc = new Float32Array(size);
     this.inflowConc = new Float32Array(size);
     this.transport = new Float32Array(size);
+    this.reach = new Int16Array(size).fill(-1);
   }
 }
 
@@ -149,28 +165,102 @@ function lowerBedrock(bedrock: Float32Array, i: number, dz: number): number {
   return b - nb;
 }
 
-/** Radius (cells) searched for the equilibrium concentration of an inflow. */
-const INFLOW_REACH = 4;
-/** Inflow concentrations start learning after a game day of spin-up (hydraulic s)... */
+/** Radius (cells) of the reach below an inflow whose bed the inflow's sediment load holds steady. */
+const REACH_RADIUS = 8;
+/** Inflow concentrations start from an estimate after a game day of spin-up (hydraulic s)... */
 const INFLOW_SPINUP = 300;
-/** ...and then follow the flow with this time constant (hydraulic s, 10 game days). */
-const INFLOW_TAU = 3000;
+/** ...and then follow the reach's sediment budget with this time constant (hydraulic s). */
+const INFLOW_TAU = 600;
+/** Upper bound on an inflow's sediment concentration (×MORFAC). */
+const INFLOW_MAX_CONC = 0.05;
 
-/** Flux-weighted capacity concentration of the flow near an inflow cell. */
-function inflowConcentration(world: World, x: number, y: number, p: GeoParams): number {
-  const { width: W, height: H, water, velX, velY } = world;
+/** Group inflow cells into sources (8-connected) and label the reach around each. */
+function buildSources(world: World, scratch: ErosionScratch): InflowSource[] {
+  const { width: W, height: H, inflow } = world;
+  const seen = new Uint8Array(world.size);
+  const sources: InflowSource[] = [];
+  const reach = scratch.reach;
+  reach.fill(-1);
+  for (let i0 = 0; i0 < world.size; i0++) {
+    if (inflow[i0]! <= 0 || seen[i0]) continue;
+    const cells: number[] = [];
+    const stack = [i0];
+    seen[i0] = 1;
+    while (stack.length) {
+      const i = stack.pop()!;
+      cells.push(i);
+      const x = i % W;
+      const y = (i - x) / W;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx;
+          const yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+          const j = yy * W + xx;
+          if (inflow[j]! > 0 && !seen[j]) {
+            seen[j] = 1;
+            stack.push(j);
+          }
+        }
+    }
+    cells.sort((a, b) => a - b);
+    let q = 0;
+    for (const c of cells) q += inflow[c]!;
+    sources.push({ cells, q, conc: scratch.inflowConc[cells[0]!]!, net: 0 });
+  }
+  // Reaches: cells within REACH_RADIUS of a source (the first source wins).
+  sources.forEach((src, k) => {
+    for (const c of src.cells) {
+      const x = c % W;
+      const y = (c - x) / W;
+      for (let yy = Math.max(0, y - REACH_RADIUS); yy <= Math.min(H - 1, y + REACH_RADIUS); yy++)
+        for (let xx = Math.max(0, x - REACH_RADIUS); xx <= Math.min(W - 1, x + REACH_RADIUS); xx++) {
+          const j = yy * W + xx;
+          if (reach[j] === -1 && inflow[j]! <= 0) reach[j] = k;
+        }
+    }
+  });
+  return sources;
+}
+
+/** Flux-weighted capacity concentration of the flow in a source's reach (the initial estimate). */
+function reachCapacity(world: World, scratch: ErosionScratch, k: number, p: GeoParams): number {
+  const { water, velX, velY } = world;
   let sed = 0;
   let flux = 0;
-  for (let yy = Math.max(0, y - INFLOW_REACH); yy <= Math.min(H - 1, y + INFLOW_REACH); yy++)
-    for (let xx = Math.max(0, x - INFLOW_REACH); xx <= Math.min(W - 1, x + INFLOW_REACH); xx++) {
-      const j = yy * W + xx;
-      const h = water[j]!;
-      if (h <= p.erosionMinDepth) continue;
-      const v = Math.hypot(velX[j]!, velY[j]!);
-      sed += capacity(h, v, p) * v;
-      flux += h * v;
-    }
+  for (let j = 0; j < world.size; j++) {
+    if (scratch.reach[j] !== k) continue;
+    const h = water[j]!;
+    if (h <= p.erosionMinDepth) continue;
+    const v = Math.hypot(velX[j]!, velY[j]!);
+    sed += capacity(h, v, p) * v;
+    flux += h * v;
+  }
   return flux > 0 ? sed / flux : 0;
+}
+
+/**
+ * Inflow sediment controller: an inflow carries what its river can
+ * transport. The reach below each inflow keeps a sediment budget; when it
+ * erodes on balance the inflow brings more, when it silts up, less. In
+ * equilibrium the bed just inside the map is held, the upstream analogue of
+ * the outlets' pinned base level.
+ */
+function updateInflows(world: World, scratch: ErosionScratch, dt: number, p: GeoParams, t0: number): void {
+  const sources = scratch.sources!;
+  const conc = scratch.inflowConc;
+  const start = t0 < INFLOW_SPINUP && t0 + dt >= INFLOW_SPINUP;
+  for (let k = 0; k < sources.length; k++) {
+    const src = sources[k]!;
+    let c = src.conc;
+    if (start) c = reachCapacity(world, scratch, k, p);
+    else if (t0 >= INFLOW_SPINUP && src.q > 0) c += ((dt / INFLOW_TAU) * src.net) / (src.q * dt);
+    if (!(c > 0)) c = 0;
+    else if (c > INFLOW_MAX_CONC) c = INFLOW_MAX_CONC;
+    src.conc = c;
+    src.net = 0;
+    for (const i of src.cells) conc[i] = c;
+  }
 }
 
 /** Remove `dz` metres of soil from a cell, squeezing out groundwater that no longer fits. */
@@ -198,11 +288,11 @@ export function erosionStep(
   dirty: RowRange,
 ): void {
   const { width: W, height: H, bedrock, soil, soilType, water, sediment, velX, velY, flags, inflow, fertility } = world;
-  const { siltAcc, transport, inflowConc } = scratch;
+  const { siltAcc, transport, inflowConc, reach } = scratch;
   const t0 = scratch.time;
   scratch.time = t0 + dt;
-  // Inflow concentration: a running mean at first, then an exponential average.
-  const learn = t0 < INFLOW_SPINUP ? 0 : Math.max(dt / (t0 - INFLOW_SPINUP + dt), dt / INFLOW_TAU);
+  if (!scratch.sources) scratch.sources = buildSources(world, scratch);
+  const sources = scratch.sources;
   const A = CELL_AREA;
   const hMin = p.erosionMinDepth;
   const pickup = Math.min(1, p.pickupRate * dt);
@@ -241,7 +331,6 @@ export function erosionStep(
       // Inflow cells: water arrives carrying sediment at the equilibrium
       // concentration of the river just downstream. Their bed is pinned.
       if (inflow[i]! > 0) {
-        if (learn > 0) inflowConc[i]! += learn * (inflowConcentration(world, x, y, p) - inflowConc[i]!);
         const want = inflowConc[i]! * h * A;
         if (s < want) {
           sedIn += want - s;
@@ -310,6 +399,8 @@ export function erosionStep(
           if (tot > 0) {
             s += tot * A;
             eroded += tot * A;
+            const r = reach[i]!;
+            if (r >= 0) sources[r]!.net += tot * A;
             siltAcc[i] = Math.max(0, siltAcc[i]! - tot);
             changed = true;
           }
@@ -325,6 +416,8 @@ export function erosionStep(
           s -= d * A;
           if (s < 0) s = 0;
           deposited += d * A;
+          const r = reach[i]!;
+          if (r >= 0) sources[r]!.net -= d * A;
           if (speed < vSilt) {
             const acc = siltAcc[i]! + d;
             siltAcc[i] = acc;
@@ -353,6 +446,8 @@ export function erosionStep(
         if (b > 0) {
           s += b;
           bank += b;
+          const r = reach[i]!;
+          if (r >= 0) sources[r]!.net += b;
           if (y - 1 < y0) y0 = Math.max(0, y - 1);
           if (y + 1 > y1) y1 = Math.min(H - 1, y + 1);
         }
@@ -366,6 +461,7 @@ export function erosionStep(
   }
   dirty.y0 = y0;
   dirty.y1 = y1;
+  updateInflows(world, scratch, dt, p, t0);
   if (p.bedSlopeK > 0) bedSlope(world, transport, dt, p, dirty);
   ledger.eroded += eroded + bank;
   ledger.bank += bank;
