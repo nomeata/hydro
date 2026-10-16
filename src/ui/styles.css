@@ -1,0 +1,186 @@
+:root {
+  --ink: #3b3328;
+  --paper: #fbf5e6;
+  --paper-2: #f1e6c9;
+  --wood: #b98a52;
+  --wood-dark: #8a6236;
+  --accent: #3d9bd6;
+  --accent-2: #e8873a;
+  --shadow: 0 2px 0 rgba(90, 60, 30, 0.35), 0 6px 14px rgba(40, 30, 10, 0.18);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  color: var(--ink);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #a9d4e8;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#view {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#ui { position: fixed; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }
+
+.panel {
+  background: var(--paper);
+  border: 2px solid var(--wood);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+/* --- top bar --------------------------------------------------------- */
+.topbar {
+  position: absolute;
+  top: calc(8px + var(--safe-top));
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.topbar > * { pointer-events: auto; }
+
+.date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.date .icon { width: 28px; height: 28px; }
+.date small { display: block; font-weight: 400; font-size: 12px; opacity: 0.75; }
+
+.speed { display: flex; padding: 3px; gap: 2px; }
+.speed button, .tools button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.speed button {
+  min-width: 40px;
+  height: 36px;
+  font-weight: 700;
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+}
+.speed button svg { width: 18px; height: 18px; }
+.speed button[aria-pressed='true'] { background: var(--accent); color: white; }
+.speed .slow { color: #c0392b; font-size: 11px; padding: 0 6px; align-self: center; }
+
+/* --- tool palette ---------------------------------------------------- */
+.tools {
+  position: absolute;
+  bottom: calc(10px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.tools > * { pointer-events: auto; }
+.toolrow { display: flex; padding: 4px; gap: 4px; }
+.toolrow button {
+  width: 58px;
+  height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.toolrow button svg { width: 28px; height: 28px; }
+.toolrow button[aria-pressed='true'] { background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--wood); }
+
+.options {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  font-size: 13px;
+  align-items: center;
+}
+.options[hidden] { display: none; }
+.options label { display: flex; flex-direction: column; gap: 2px; min-width: 110px; }
+.options output { font-weight: 700; }
+.options input[type='range'] { width: 120px; accent-color: var(--accent-2); }
+
+.hint {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(251, 245, 230, 0.85);
+}
+.hint:empty { display: none; }
+
+/* --- stats ----------------------------------------------------------- */
+.stats {
+  position: absolute;
+  left: 8px;
+  bottom: calc(90px + var(--safe-bottom));
+  font: 11px/1.35 ui-monospace, monospace;
+  background: rgba(0, 0, 0, 0.55);
+  color: #dff;
+  padding: 6px 8px;
+  border-radius: 8px;
+  white-space: pre;
+  pointer-events: none;
+}
+
+/* --- loading --------------------------------------------------------- */
+#loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  background: linear-gradient(#bfe3f2, #e9f3dc);
+  transition: opacity 0.8s;
+  z-index: 10;
+}
+#loading.done { opacity: 0; pointer-events: none; }
+#loading p { font-size: 18px; margin-top: 18px; }
+#loading .drop {
+  width: 34px;
+  height: 34px;
+  background: var(--accent);
+  border-radius: 0 50% 50% 50%;
+  transform: rotate(45deg);
+  animation: bob 1.2s ease-in-out infinite;
+}
+@keyframes bob { 50% { transform: rotate(45deg) translate(-8px, -8px); } }
+
+@media (max-width: 480px) {
+  .toolrow button { width: 52px; height: 52px; }
+  .options label { min-width: 92px; }
+  .options input[type='range'] { width: 96px; }
+  .date { font-size: 13px; }
+}
