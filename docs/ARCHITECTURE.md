@@ -1,0 +1,249 @@
+# Hydro — Architecture
+
+*(Revised after internal review #1.)*
+
+## 1. Overview
+
+```
+ ┌──────────────── main thread ────────────────┐      ┌────────── sim worker ──────────┐
+ │ ui/      HUD, tool palette, input gestures  │      │ sim/  authoritative world state│
+ │ render/  three.js scene: terrain, water,    │ ◀─── │   worldgen, climate, hydro,    │
+ │          objects, NPC puppets, fog, camera  │ snap │   groundwater, erosion, soil,  │
+ │ client/  SimClient: protocol, interpolation │ ───▶ │   plans, (later) NPCs, power   │
+ │ persist/ IndexedDB save slots               │ cmds │                                │
+ └─────────────────────────────────────────────┘      └────────────────────────────────┘
+                     shared/: types, protocol, rng, noise
+```
+
+- **TypeScript + Vite**, **three.js** (WebGL2), **vitest**, **Playwright**.
+- `sim/` has **no DOM and no three.js dependency**. It runs in a Web Worker in
+  the browser and directly in Node for tests, benchmarks and tools
+  (worldgen preview PNGs).
+- Static deploy to GitHub Pages via GitHub Actions.
+
+### Why TypeScript and not Rust/WASM?
+The kernels are allocation-free loops over typed arrays, written as plain
+functions (arrays in, arrays out). Measured: ~3 ms/step for a 256² flux
+kernel in Node on desktop. Porting a hot kernel to WASM SIMD (~2–3×) or to a
+WebGL2 GPU pass (>10×) stays a local change if the phone bench demands it.
+
+## 2. World model
+
+### 2.1 Units and grid
+- The sim works in **SI units**: metres, seconds, g = 9.81. Cell size
+  `CELL = 5 m`. Vertical exaggeration is a renderer setting only.
+- Grid `W × H`: **256² default** on all devices, 512² as a desktop quality
+  tier once benchmarks allow.
+- Structure-of-arrays fields in `sim/world.ts`, declared in one field table
+  that drives serialisation and snapshots.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `bedrock` | f32 | bedrock elevation (m) |
+| `soil` | f32 | soil thickness (m); terrain = bedrock + soil |
+| `soilType` | u8 | rock / gravel / sand / loam / clay / silt / peat |
+| `water` | f32 | surface water depth (m) |
+| `sediment` | f32 | suspended sediment volume (m³) |
+| `qx`, `qy` | f32 | face discharges (m³/s) to the +x / +y neighbour |
+| `velX`, `velY` | f32 | cell velocity (m/s, derived) |
+| `ground` | f32 | groundwater stored in soil (m water column) |
+| `snow` | f32 | snow water equivalent (m) |
+| `fertility`, `vegetation` | f32 | 0..1 |
+| `flags` | u8 | lined / outlet / structure / inflow |
+| `plan` | f32 | target terrain height for pending earthworks (NaN = none) |
+| `inflow` | f32 | prescribed inflow (m³/s), boundary rivers and springs |
+| `flowAvg` | f32 | slow moving average of discharge (river detection) |
+| `revealed` | u8 | fog of war (used from M3) |
+
+### 2.2 Bounded active window and the endless world
+Simulating an ever-growing grid is not affordable. The design is:
+- **Global integer cell coordinates.** `World.originX/Y` places the grid in
+  the infinite world. Terrain generation is a pure function of seed + global
+  coordinates.
+- A **macro river network** is computed at coarse resolution (1/16) over an
+  area much larger than the active window: flow accumulation over the
+  macro heightfield gives river paths and discharges. Worldgen **carves those
+  rivers** into the fine terrain (3–8 cells wide, banks, graded profile).
+  Rivers crossing the window boundary become **inflow cells** carrying their
+  macro discharge (and sediment at capacity) or **outlets** with a pinned
+  base level.
+- The **active window** is simulated in full. Its size is capped (≤ 512²).
+  Outside it, the land is dormant: terrain is frozen and hydrology is the
+  steady macro routing.
+- Expanding or shifting the window generates new margins from the same
+  functions, blends them into the edited edge over ~16 cells, and runs a
+  short local spin-up. Because rivers come from the global macro network, a
+  former boundary inflow continues seamlessly as an interior river.
+- Saves store fields per 64×64 chunk (from M7 on; M1 saves the whole window).
+
+## 3. Simulation
+
+### 3.1 Two clocks
+- **Hydraulic time:** `DT = 0.5 s` per step, with a CFL check and sub-stepping
+  for deep water (dt ≤ 0.7·dx/(√(g·h_max)+|u|max)).
+- **Calendar time:** `STEPS_PER_DAY = 600`, so a game day is 300 hydraulic
+  seconds. Compression factor `K = 86400/300 ≈ 290`.
+- **Every slow rate** (rain, evaporation, infiltration, melt, groundwater,
+  growth) is expressed per game day in `sim/params.ts` and converted per
+  step. Because of K, a small catchment yields visible rivers, so K is in
+  effect the "how wet is the game" knob.
+- At 1× the target is 20 steps/s, so a day is 30 s and a year 24 min. Water
+  moves at ~3 cells per real second, which reads as flowing.
+- The game slows down rather than going unstable when the CPU can't keep up.
+  The HUD shows the achieved speed.
+- **Geomorphology speed (MORFAC)** is a separate multiplier on
+  erosion/deposition/talus. Target: an unlined trench visibly slumps within
+  about 1 game year, and a river channel migrates noticeably over about 10
+  game years.
+
+### 3.2 Surface water: local inertial model (Bates et al. 2010)
+For each face between cells i and j (x-faces and y-faces):
+```
+h_f   = max(η_i, η_j) − max(z_i, z_j)            (flow depth at face)
+q    ← (q − g·h_f·dt·(η_j − η_i)/dx) / (1 + g·dt·n²·|q| / h_f^(7/3))
+```
+`q` is discharge per unit width. Manning `n` comes from the surface type
+(water ≈ 0.03, vegetation higher). Then:
+1. Outflow limiting: for each cell, the total outgoing volume this step is
+   capped at the stored volume, and the outgoing faces are scaled.
+2. Depth update from the flux divergence.
+3. Sediment moves with the same face fluxes (upwind concentration), so it is
+   conserved exactly.
+4. Cell velocity = average face discharge / depth (used for erosion,
+   rendering foam, NPCs).
+5. Outlets drain at critical flow `q = h·√(g·h)`, with their bed height pinned.
+
+**Tile sleeping.** Only enabled once the bench shows it is needed. A tile
+sleeps when max depth < 2 mm, its fluxes are ~0 and its neighbours sleep.
+Rain on sleeping tiles goes into a soil bucket and wakes the tile when
+ponding exceeds the threshold. Thin films below ε are removed into
+ground/evaporation with exact accounting. The worst case (rain over the
+whole window) must still fit the budget.
+
+### 3.3 Erosion, deposition, talus (M1b)
+- Transport capacity `C = Kc · |v| · max(slope, s_min) · min(h, h_cap)`, applied
+  only when `|v| > v_c` (≈0.4 m/s) and `h > 1 cm`.
+- Erode `Ks·(C − s)·MORFAC·erodibility`. Per-step limits: at most 10% of
+  local soil, and never below the lowest neighbour's surface. Deposit
+  `Kd·(s − C)·MORFAC`, never above the highest neighbour's surface.
+- Exposed bedrock erodes ~1000× slower. Weathering turns bedrock into soil
+  at a few cm/year, so soil depth reaches an equilibrium.
+- Inflow cells carry sediment at capacity. Outlets have a pinned base level.
+- Deposited sediment becomes silt and adds fertility.
+- Talus: repose angle per soil type, lower when wet. Lined cells are exempt.
+- **Long-horizon test:** 50 game years at 256²; hypsometry drift stays
+  bounded, no spikes or pits, rivers persist.
+
+### 3.4 Groundwater (M1a: bucket; M1c: lateral flow)
+- M1a: each cell's soil is a bucket of capacity `soil × porosity`.
+  Infiltration from surface water at a soil-dependent rate; excess emerges.
+- M1c: lateral Darcy flow on a half-resolution grid, once per game hour,
+  with the conductivity contrast clamped to ≤ 100×. Springs and bogs form
+  where the table meets the surface.
+- Evaporation from open water and topsoil, depending on temperature.
+
+### 3.5 Climate & weather
+- Calendar, seasonal temperature, lapse rate. Rain fronts are drifting
+  ellipses with orographic enhancement. Snow below 0 °C with degree-day
+  melt (M1c). AR(1) climate anomaly for wet and dry years (M1c).
+- Rain is evaluated per tile. The renderer receives the fronts (for clouds
+  and rain particles) and the sun/season state.
+
+### 3.6 Plans and builders
+- Plans are target terrain heights per cell, written by tool commands
+  (polyline trench with a graded floor, polyline dike with a level crest,
+  level area, cancel).
+- Builders move terrain towards the target at a bounded rate. M1 uses a
+  "spirit crew" stand-in. In M3, NPC builders replace it, using the same
+  `applyEarthwork` API.
+- The main thread renders plans **optimistically** for immediate feedback.
+
+### 3.7 Determinism & accounting
+- Seeded `sfc32` RNG owned by the sim. No `Math.random` or wall clock in `sim/`.
+- Determinism is promised within one engine (Node/Chromium). Saves and the
+  command log are the source of truth across engines.
+- Mass ledgers (rain, inflow, outflow, evaporation, infiltration, thin-film
+  removal) are accumulated in f64 and checked in tests.
+
+### 3.8 Performance budget (estimated, verify with `?bench=1`)
+| | 256² | 512² |
+|---|---|---|
+| desktop Node, flux kernel only | 3 ms/step | 14 ms/step |
+| Pixel 9a full step (est.) | ~4–6 ms | ~10–13 ms |
+| steps/s at ≤ 50% of one core, phone | ~100–150 | ~40–50 |
+
+1× (20 steps/s) and 3× (60) fit at 256² on the phone. 10× is desktop only.
+The worker caps its CPU share on mobile and pauses when the tab is hidden.
+
+## 4. Worker protocol (`shared/protocol.ts`)
+Main → worker: `init`, `load`, `setSpeed`, `command`, `ack` (returns
+buffers), `requestSave`. Worker → main: `ready`, `snapshot`, `saved`, `log`.
+
+**Snapshots** (~10 Hz), using transferable buffers from a 3-set ping-pong
+pool. When no set is free, the worker **skips** the snapshot and never
+queues or allocates.
+- `time`, climate, fronts, stats (achieved speed, ledger).
+- `depth`: f32 water depth (256² → 256 KB).
+- `vel`: RG8 signed velocity (±4 m/s).
+- `terrain`: f32 terrain height, **only dirty row bands**.
+- `look`: RGBA8 ground look (soil type, moisture, fertility, snow), at ~1 Hz or
+  dirty bands.
+- `plan`: changed plan cells.
+
+The worker loop runs work slices of ≤ 4 ms and yields through a
+MessageChannel, so commands and acks are handled promptly. It paces
+itself with its own clock.
+
+## 5. Rendering (`render/`)
+- `OrthographicCamera` at ~35° pitch with free yaw. Mouse: drag pans, wheel
+  zooms, right-drag rotates. Touch: one-finger pan, pinch, twist. **Tool
+  mode:** one finger draws, two fingers pan/zoom, explicit exit button.
+- **Terrain:** one shared indexed grid geometry (64×64 cells) drawn per
+  chunk with an offset uniform. Heights come from a terrain height texture
+  (R32F, `texelFetch`, NEAREST, so no float-linear extension is needed).
+  Edits are `texSubImage2D` row uploads. Flat shading from `dFdx/dFdy`
+  normals. Colour from the per-cell ground-look RGBA8 texture.
+- **Water:** the same grid approach with the depth texture. Two depth
+  textures (previous/current snapshot) are mixed for smooth interpolation.
+  At dry vertices next to wet ones, the water height is set to the highest
+  wet neighbour's surface so the depth test cuts a smooth waterline. Shore
+  fade by depth, foam by |v|, animated normals.
+- **Objects:** each Kenney model merged into one geometry with the shared
+  colormap, one `InstancedMesh` per model, bucketed per chunk. Small props
+  are hidden when zoomed out. Target < 150 draw calls on the phone.
+- **Characters:** cloned `SkinnedMesh` + `AnimationMixer` up to ~60. From M3
+  on, baked animation textures. Cube pets are animated procedurally (hop and
+  squash in the vertex shader).
+- **Picking:** ray-march against the CPU copy of the heightfield.
+- **Mobile:** pixel ratio ≤ 1.5, a 1024² shadow map fitted to the view
+  frustum (off on the low tier), LOD by chunk stride when zoomed out,
+  `webglcontextlost`/`restored` handling. Feature checks are logged at
+  startup.
+- **Fog of war (M3):** hidden chunks are not drawn, with a soft cloud band at
+  the edge.
+
+## 6. Persistence (M1b)
+Header JSON + binary fields, gzip via `CompressionStream`, stored in
+IndexedDB. Autosave every few game days and on `visibilitychange`. Versioned
+with migrations and golden save files per version. Export/import comes later.
+
+## 7. Code layout
+```
+src/
+  main.ts                bootstrap
+  shared/                protocol.ts, rng.ts, noise.ts
+  sim/                   world.ts, constants.ts, params.ts, sim.ts, worker.ts
+    worldgen/            terrain.ts, macro.ts (river network), carve.ts, soils.ts
+    hydro/               inertial.ts, erosion.ts, groundwater.ts, talus.ts
+    climate/             calendar.ts, weather.ts
+    plans/               plans.ts, builders.ts
+  client/                simClient.ts
+  render/                renderer.ts, camera.ts, terrain.ts, water.ts, sky.ts,
+                         objects.ts, characters.ts, picking.ts
+  ui/                    hud.ts, tools.ts, input.ts, styles.css
+  persist/               idb.ts
+tools/                   bench.ts, preview.ts
+tests/                   vitest (sim/, scenarios/)
+e2e/                     Playwright specs
+public/assets/           curated Kenney GLBs + CREDITS
+```
