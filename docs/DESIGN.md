@@ -20,7 +20,14 @@
    slow and subtle; an attentive player learns to read the colours of the land.
 5. **Slow and cozy.** Make a change, then lean back. No failure state, but
    setbacks: floods wash away fields, droughts empty villages, and they recover.
-6. **Cute and bustling.** Low-poly, flat-shaded, toy-like look (Kenney CC0
+6. **Stationary, not static.** Left alone, the world should neither freeze
+   nor drift into a dull or broken state. It should settle into a lively
+   dynamic equilibrium: rivers that erode at the sea also bring sediment in,
+   meandering rivers keep meandering, forests grow and burn back, settlements
+   and their economy level off (perhaps at a different level after a
+   disturbance). This is a design guideline for every subsystem and its
+   tuning, checked by long-horizon tests, not a formal requirement.
+7. **Cute and bustling.** Low-poly, flat-shaded, toy-like look (Kenney CC0
    assets), lots of tiny moving things, day/night, seasons.
 
 ## 2. The world
@@ -55,8 +62,8 @@
 ### 2.3 Climate, weather, seasons
 - A year has four seasons. Default pacing: ~25 real minutes per year at 1×
   (configurable), speeds pause / 1× / 3× / 10×.
-- Day/night cycle (a game day is ~30 s at 1×). Lights in houses at night once
-  electricity exists.
+- Always daytime. A day/night cycle turned out to be distracting; the
+  seasons alone shift light, hue and colours.
 - Weather: rain fronts drift across the map with the wind; orographic
   enhancement makes mountains wetter. Winter precipitation falls as snow above
   the snow line and melts in spring ⇒ spring floods.
@@ -126,6 +133,10 @@ Unlocks are driven by population/prosperity milestones, not by purchase.
 - Demand varies over day and season; pumped storage balances it.
 
 ## 6. Presentation
+- Tools apply once and then return to the Look tool, so stray touches never
+  place unintended plans.
+- Flow direction of water must be readable at a glance (drifting foam,
+  flow-aligned ripples). Plans stay visible under water.
 - 3D, WebGL, orthographic camera at an isometric-like angle; freely rotatable
   and zoomable; works with mouse and touch (Pixel 9a is a target device).
 - Flat-shaded low-poly terrain matching the Kenney style; water as a

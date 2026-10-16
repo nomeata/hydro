@@ -66,8 +66,7 @@ export class Hud {
     const t = s.time;
     const raining = s.climate.fronts.some((f) => f.intensity > 0.3);
     const snowing = raining && s.climate.fronts.some((f) => f.snow);
-    const night = t.timeOfDay < 0.22 || t.timeOfDay > 0.82;
-    const icon = snowing ? 'snow' : raining ? 'rain' : night ? 'moon' : s.climate.fronts.length ? 'cloud' : 'sun';
+    const icon = snowing ? 'snow' : raining ? 'rain' : s.climate.fronts.length ? 'cloud' : 'sun';
     const text = `${SEASONS[t.season]}, day ${t.dayOfSeason + 1}`;
     const sub = `Year ${t.year + 1} · ${Math.round(s.climate.temperature)}°C`;
     const html = `<span class="icon">${ICONS[icon]}</span><span>${text}<small>${sub}</small></span>`;

@@ -178,6 +178,9 @@ export class ToolPalette {
       this.host.command({ type: 'planDike', points: simplify(d.points), width: this.width, height: this.height });
       this.awaitingPlan = true;
     }
+    // One stroke per tool use: go back to looking around, so a stray touch
+    // never places a second plan.
+    this.select('look');
   }
 
   private onCancel(e: PointerEvent): void {

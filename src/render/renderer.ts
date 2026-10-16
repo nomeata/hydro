@@ -22,6 +22,9 @@ import {
 } from './textures';
 import { WaterLayer, createWaterUniforms } from './water';
 
+/** Fixed time of day used for lighting: a pleasant early afternoon. */
+const DAY_TIME = 0.56;
+
 export interface InitialData {
   info: WorldInfo;
   terrain: Float32Array;
@@ -209,7 +212,8 @@ export class GameRenderer {
       this.terrain.uniforms.uPlanOn.value = any ? 1 : 0;
       this.tex.plan.needsUpdate = true;
     }
-    if (this.followSimTime) this.sky.setSun(s.time.timeOfDay, s.time.season + s.time.dayOfSeason / 30);
+    // Always daytime (a day/night cycle is distracting); the season drifts smoothly.
+    if (this.followSimTime) this.sky.setSun(DAY_TIME, s.time.yearFrac * 4);
     this.snapPending = true;
   }
 
