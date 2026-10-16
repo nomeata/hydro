@@ -9,6 +9,8 @@ import { Weather } from './climate/weather';
 import { CELL_AREA, DT, STEPS_PER_DAY } from './constants';
 import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
 import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
+import { ErosionScratch, defaultGeoParams, erosionStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
+import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
 import { SpiritCrew, cancelPlans, planDike, planTrench } from './plans/plans';
 import { SOIL_PROPS, type World } from './world';
@@ -17,6 +19,14 @@ import { SOIL_PROPS, type World } from './world';
 const SOILWATER_EVERY = 4;
 /** Steps between builder updates. */
 const BUILD_EVERY = 10;
+/** Steps between erosion/deposition passes (offset from soil-water). */
+const EROSION_EVERY = 4;
+/** Steps between talus passes. */
+const TALUS_EVERY = 16;
+/** Steps between weathering passes (four times a day). */
+const WEATHER_EVERY = STEPS_PER_DAY / 4;
+/** Steps between publishing slow terrain changes to the renderer. */
+const TERRAIN_PUBLISH_EVERY = 30;
 
 export class Simulation {
   readonly world: World;
@@ -24,10 +34,18 @@ export class Simulation {
   readonly weather: Weather;
   readonly ledger: Ledger = newLedger();
   readonly crew = new SpiritCrew();
+  /** Sediment budget (m³). */
+  readonly sedLedger: SedimentLedger = newSedimentLedger();
+  /** Geomorphology tunables (a copy of PARAMS; tools and tests may change it). */
+  readonly geo: GeoParams = defaultGeoParams();
   step = 0;
 
   private readonly scratch: FlowScratch;
-  private readonly flowStats: FlowStats = { outflow: 0, maxDepth: 1, maxSpeed: 0 };
+  private readonly flowStats: FlowStats = { outflow: 0, maxDepth: 1, maxSpeed: 0, sedimentOut: 0 };
+  private readonly erosionScratch: ErosionScratch;
+  private readonly talusScratch: TalusScratch;
+  /** Rows changed by erosion/talus since they were last published. */
+  private readonly geoDirty: RowRange = { y0: Infinity, y1: -Infinity };
 
   // Dirty tracking for snapshots.
   private dirtyY0 = Infinity;
@@ -43,6 +61,8 @@ export class Simulation {
     this.world = world;
     this.rng = new Rng(seed ^ 0x5eed);
     this.scratch = new FlowScratch(world.size);
+    this.erosionScratch = new ErosionScratch(world.size);
+    this.talusScratch = new TalusScratch(world.size);
     this.weather = new Weather(world, this.rng);
   }
 
@@ -73,12 +93,34 @@ export class Simulation {
     const fs = this.flowStats;
     const n = Math.max(1, Math.ceil(DT / stableDt(fs.maxDepth, fs.maxSpeed)));
     let out = 0;
+    let sedOut = 0;
     for (let k = 0; k < n; k++) {
       flowStep(w, this.scratch, DEFAULT_FLOW_PARAMS, DT / n, fs);
       out += fs.outflow;
+      sedOut += fs.sedimentOut ?? 0;
     }
     this.ledger.outflow += out;
     this.outflowToday += out;
+    this.sedLedger.outflow += sedOut;
+
+    // Geomorphology.
+    const geo = this.geo;
+    if (this.step % EROSION_EVERY === EROSION_EVERY / 2) {
+      erosionStep(w, this.erosionScratch, EROSION_EVERY * DT, geo, this.sedLedger, this.geoDirty);
+    }
+    if (this.step % TALUS_EVERY === TALUS_EVERY - 1) {
+      const frac = (geo.talusPerDay * geo.morfac * TALUS_EVERY) / STEPS_PER_DAY / PARAMS.morfac;
+      talusStep(w, this.talusScratch, frac, geo, this.sedLedger, this.geoDirty);
+    }
+    if (this.step % WEATHER_EVERY === 1) {
+      weatherStep(w, WEATHER_EVERY / STEPS_PER_DAY, geo, this.sedLedger);
+    }
+    if (this.step % TERRAIN_PUBLISH_EVERY === 0 && this.geoDirty.y1 >= this.geoDirty.y0) {
+      if (this.geoDirty.y0 < this.dirtyY0) this.dirtyY0 = this.geoDirty.y0;
+      if (this.geoDirty.y1 > this.dirtyY1) this.dirtyY1 = this.geoDirty.y1;
+      this.geoDirty.y0 = Infinity;
+      this.geoDirty.y1 = -Infinity;
+    }
 
     if (this.step % BUILD_EVERY === 0 && this.crew.pending > 0) {
       const rate = (PARAMS.builderRatePerDay * BUILD_EVERY) / STEPS_PER_DAY;
@@ -92,6 +134,7 @@ export class Simulation {
     if (this.step % STEPS_PER_DAY === 0) {
       this.outflowLastDay = this.outflowToday;
       this.outflowToday = 0;
+      this.weather.updateElevation();
     }
     if (this.step % 30 === 0) this.lookDirty = true;
   }

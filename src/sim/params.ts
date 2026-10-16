@@ -31,6 +31,64 @@ export const PARAMS = {
   /** Spirit-crew earthworks: vertical change per plan cell per day (m), and cells worked in parallel. */
   builderRatePerDay: 1.5,
   builderCells: 160,
+
+  // --- Geomorphology (M1b): erosion, deposition, talus, weathering ---------
+  // See hydro/erosion.ts and hydro/talus.ts. Hydraulic-time rates are per
+  // hydraulic second; MORFAC speeds up all bed changes (it scales the
+  // transport capacity, so sediment stays exactly conserved).
+
+  /** Morphological acceleration factor. */
+  morfac: 60,
+  /** Transport capacity coefficient: equilibrium concentration per (m/s)^1.5 of excess speed (×MORFAC). */
+  capacityK: 1e-4,
+  /** Critical flow speed below which water picks up nothing (m/s). */
+  criticalVelocity: 0.4,
+  /** Water depth below which there is no pickup, and at which capacity ramps in fully (m). */
+  erosionMinDepth: 0.03,
+  erosionFullDepth: 0.15,
+  /** Depth beyond which capacity no longer grows (m). */
+  capacityMaxDepth: 2,
+  /** Pickup rate: fraction of the capacity deficit taken up per hydraulic second (× erodibility). */
+  pickupRate: 0.05,
+  /** Settling velocity (m/s): deposition fraction per second is settling / depth. */
+  settlingVelocity: 0.01,
+  /** Max fraction of local soil eroded in one pass. */
+  maxSoilFraction: 0.1,
+  /** Erodibility of bare bedrock (soil erodibility is ~1). */
+  bedrockErodibility: 1e-3,
+  /** Deposits may rise this far above the mean of the 4 neighbours (m). */
+  depositSlack: 0.05,
+  /**
+   * Bank erosion: bank lowering per hydraulic second per m/s of excess flow
+   * speed (×MORFAC), weighted by bankBase + how directly the flow runs into the bank.
+   */
+  bankK: 3e-6,
+  /** Flow speed needed for bank erosion (m/s). */
+  bankCriticalVelocity: 0.4,
+  /** Bank erosion weight for flow along a bank (1 more for flow straight into it). */
+  bankBase: 0.15,
+  /** Bed-slope diffusion of the submerged bed per unit transport rate (dimensionless). */
+  bedSlopeK: 1,
+  /** Deposits from water slower than this count towards silt (m/s). */
+  siltVelocity: 0.35,
+  /** Accumulated slow-water deposit that turns a cell's topsoil to silt (m). */
+  siltThreshold: 0.15,
+  /** Fertility gained per metre of deposit. */
+  fertilityPerMetre: 3,
+
+  /** Talus: fraction of the excess over the repose slope moved per game day. */
+  talusPerDay: 0.2,
+  /** Repose multiplier when wet (saturated ground, or the slope's toe under water), per soil type. */
+  reposeWet: [1, 0.85, 0.15, 0.75, 0.8, 0.25, 0.6],
+  /** Ground saturation above which soil counts as wet for talus. */
+  wetSaturation: 0.95,
+
+  /** Bedrock weathering into soil under bare rock (m per game year); decays with soil depth. */
+  weatheringPerYear: 0.03,
+  /** e-folding soil depth for weathering (m). */
+  weatheringDepth: 0.5,
+  /** No weathering beyond this soil depth (m). */
+  maxSoil: 5,
 } as const;
 
 /** Convert a per-day amount to a per-step amount. */

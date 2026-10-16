@@ -56,6 +56,8 @@ export interface FlowStats {
   maxDepth: number;
   /** Max |velocity| seen (m/s). */
   maxSpeed: number;
+  /** Sediment volume (m³) drained through outlets during the step. */
+  sedimentOut?: number;
 }
 
 /** Largest stable time step for the given conditions (Courant-like). */
@@ -173,6 +175,7 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
 
   // --- 3. Continuity, sediment transport, velocity, outlets -----------------
   let outflow = 0;
+  let sedOut = 0;
   let maxDepth = 0;
   let maxSpeed = 0;
   for (let y = 0; y < H; y++) {
@@ -205,7 +208,9 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
       if ((flags[i]! & CellFlag.Outlet) !== 0 && h > 0) {
         const vol = h * CELL_AREA;
         const out = Math.min(vol, h * Math.sqrt(g * h) * CELL * dt);
-        s -= s * (out / vol);
+        const so = s * (out / vol);
+        s -= so;
+        sedOut += so;
         h -= out / CELL_AREA;
         outflow += out;
       }
@@ -235,6 +240,7 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
     }
   }
   stats.outflow = outflow;
+  stats.sedimentOut = sedOut;
   stats.maxDepth = maxDepth;
   stats.maxSpeed = maxSpeed;
 }
