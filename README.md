@@ -7,11 +7,11 @@ with trenches, dikes, reservoirs and (eventually) pumps and turbines, but you
 only ever *plan*. Little people walk over and build it, and then decide for
 themselves where to farm, fish, graze and settle.
 
-**Play:** https://nomeata.github.io/hydro/ (desktop and phone)
+**Play:** https://hydro.nomeata.de/ (desktop and phone)
 
 | | |
 |---|---|
-| ![Overview](https://nomeata.github.io/hydro/screenshots/overview.png) | ![Close-up](https://nomeata.github.io/hydro/screenshots/closeup.png) |
+| ![Overview](https://hydro.nomeata.de/screenshots/overview.png) | ![Close-up](https://hydro.nomeata.de/screenshots/closeup.png) |
 
 <sub>Screenshots are rendered by CI from the deployed build.</sub>
 

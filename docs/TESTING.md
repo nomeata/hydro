@@ -84,7 +84,7 @@ A Playwright script (`e2e/screenshots.spec.ts`, tagged `@readme`) renders a
 few showcase views (overview, river close-up, winter, night) at a fixed seed
 after a fixed number of simulated days. CI copies them into
 `dist/screenshots/` before deploying, so they are published with the game at
-`https://nomeata.github.io/hydro/screenshots/*.png`, and `README.md` embeds
+`https://hydro.nomeata.de/screenshots/*.png`, and `README.md` embeds
 those URLs. They are therefore always the screenshots of the deployed build,
 and CI never has to commit to the repository.
 
