@@ -103,15 +103,15 @@ export class SkyLighting {
     const daySun = lerpC(hex(0xfff3dc), hex(0xffa860), lowT * 0.85);
     daySun.lerp(hex(0xeef2ff), winter * 0.35);
     const moon = hex(0x9fb4f0);
-    s.sunColor.copy(lerpC(moon, daySun, dayT)).multiplyScalar(0.55 + 2.35 * dayT);
+    s.sunColor.copy(lerpC(moon, daySun, dayT)).multiplyScalar(1.05 + 1.85 * dayT);
 
     const daySky = lerpC(hex(0xcfe6ff), hex(0xffd3b0), lowT * 0.6);
-    const nightSky = hex(0x5068b0);
-    s.sky.copy(lerpC(nightSky, daySky, dayT)).multiplyScalar(0.8 + 0.25 * dayT);
-    s.ground.copy(lerpC(hex(0x24304f), hex(0x8a7f62), dayT)).multiplyScalar(0.8 + 0.1 * dayT);
+    const nightSky = hex(0x7890d0);
+    s.sky.copy(lerpC(nightSky, daySky, dayT)).multiplyScalar(1.0 + 0.05 * dayT);
+    s.ground.copy(lerpC(hex(0x3c4a74), hex(0x8a7f62), dayT)).multiplyScalar(0.9);
 
-    s.skyTop.copy(lerpC(hex(0x0b1533), lerpC(hex(0x7fb7ec), hex(0x6f8fd0), lowT * 0.5), dayT));
-    s.skyBottom.copy(lerpC(hex(0x23305a), lerpC(hex(0xe3f1fb), hex(0xffcfa6), lowT * 0.8), dayT));
+    s.skyTop.copy(lerpC(hex(0x1c2a55), lerpC(hex(0x7fb7ec), hex(0x6f8fd0), lowT * 0.5), dayT));
+    s.skyBottom.copy(lerpC(hex(0x3d4f86), lerpC(hex(0xe3f1fb), hex(0xffcfa6), lowT * 0.8), dayT));
     s.daylight = dayT;
 
     this.sun.color.copy(s.sunColor);

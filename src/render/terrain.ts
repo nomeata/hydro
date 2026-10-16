@@ -149,7 +149,7 @@ const FRAGMENT_COLOUR = /* glsl */ `
       // Vegetation: yellowish when dry, lush when moist, dark forest when dense.
       vec3 grass = mix(uGrassDry, uGrassLush, smoothstep(0.1, 0.6, moist));
       grass = mix(grass, uForest, smoothstep(0.62, 0.9, veg));
-      vec3 c = mix(base, grass, smoothstep(0.08, 0.45, veg));
+      vec3 c = mix(base, grass, smoothstep(0.04, 0.26, veg));
       // Moisture darkens (wet soil), a little less under vegetation.
       c *= mix(1.0, 0.68, moist * mix(1.0, 0.45, veg));
       // Steep slopes show rock / bare earth.

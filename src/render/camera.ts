@@ -63,7 +63,7 @@ export class CameraController {
       y: (heights.height - 1) / 2,
       yaw: Math.PI / 4,
       pitch: 35 * DEG,
-      viewHeight: Math.min(70, this.limits.maxViewHeight),
+      viewHeight: Math.min(40, this.limits.maxViewHeight),
     };
     this.goal = { ...s };
     this.cur = { ...s };

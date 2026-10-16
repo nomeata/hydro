@@ -150,7 +150,7 @@ export class GameRenderer {
     // Default zoom: ~64 cells across the shorter screen side (portrait phones too).
     const cw = canvas.clientWidth || canvas.width || 1;
     const ch = canvas.clientHeight || canvas.height || 1;
-    this.camera.setState({ x: data.info.startX, y: data.info.startY, viewHeight: 64 * Math.max(1, ch / cw) });
+    this.camera.setState({ x: data.info.startX, y: data.info.startY, viewHeight: 36 * Math.max(1, ch / cw) });
 
     for (const t of Object.values(this.tex)) this.gl.initTexture(t);
 

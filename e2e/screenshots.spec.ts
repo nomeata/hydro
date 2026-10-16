@@ -14,7 +14,7 @@ test.describe('@readme', () => {
     mkdirSync(OUT, { recursive: true });
     await openGame(page);
     await runDays(page, 1);
-    await settleFrames(page, 30);
+    await settleFrames(page, 6);
     const suffix = info.project.name === 'phone' ? '-phone' : '';
     await page.screenshot({ path: `${OUT}/overview${suffix}.png` });
     if (info.project.name === 'desktop') {
@@ -23,7 +23,7 @@ test.describe('@readme', () => {
         cam.zoomBy(2.2);
         cam.rotateBy(0.6);
       });
-      await settleFrames(page, 60);
+      await settleFrames(page, 6);
       await page.screenshot({ path: `${OUT}/closeup.png` });
     }
   });
