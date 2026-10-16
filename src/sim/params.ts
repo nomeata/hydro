@@ -40,7 +40,7 @@ export const PARAMS = {
   /** Morphological acceleration factor. */
   morfac: 60,
   /** Transport capacity coefficient: equilibrium concentration per (m/s)^1.5 of excess speed (×MORFAC). */
-  capacityK: 4e-5,
+  capacityK: 2e-5,
   /** Critical flow speed below which water picks up nothing (m/s). */
   criticalVelocity: 0.4,
   /** Water depth below which there is no pickup, and at which capacity ramps in fully (m). */
@@ -79,7 +79,7 @@ export const PARAMS = {
    * per soil type (rock, gravel, sand, loam, clay, silt, peat): coarse or
    * cohesive beds resist. Sediment already in the water uses the plain value.
    */
-  bedCriticalFactor: [3, 2.5, 1, 1.2, 1.6, 1, 1.2],
+  bedCriticalFactor: [3, 4, 1, 1.2, 1.6, 1, 1.2],
   /** Net scour (m) after which a loose bed is armoured: its fines wash out, leaving gravel. */
   armourDepth: 0.3,
   /** Freshly dug or heaped soil: fraction by which looseness lowers the angle of repose... */

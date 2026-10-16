@@ -128,7 +128,7 @@ change). Erosion runs every 8 steps, talus every 16, weathering 4× a day.
   flow kernel. The water can keep `C = MORFAC·Kc·(|v| − v_c)^1.5·min(h, h_cap)`
   in suspension (v_c ≈ 0.4 m/s, nothing below h = 3 cm); any excess settles
   at the settling velocity. Picking up from the bed uses the bed's own
-  critical speed (`bedCriticalFactor` per soil type: gravel 2.5×, clay
+  critical speed (`bedCriticalFactor` per soil type: gravel 4×, clay
   1.6×, …) and ramps in with depth (no sheet-flow scour on hillsides).
   Between the two the water neither erodes nor deposits.
 - **Per-pass limits:** at most 10% of the local soil, never below half-way
