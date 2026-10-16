@@ -59,7 +59,9 @@ async function main(): Promise<void> {
   renderer.camera.focus(data.info.startX, data.info.startY);
   const cameraInput = attachCameraInput(canvas, renderer.camera);
 
-  const vegetation = new VegetationLayer(renderer.scene, renderer.heights, data.look, data.info.width, data.info.height, seed);
+  const vegetation = new VegetationLayer(renderer.scene, renderer.heights, data.look, data.info.width, data.info.height, seed, {
+    sunDir: renderer.sky.state.dir,
+  });
   // People come from the sim. Until herders exist (M3-δ), a main-thread
   // "fake crowd" of grazing animals adds ambient life; its latest frame is
   // merged into every snapshot's entities.

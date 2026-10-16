@@ -66,7 +66,43 @@ export class HeightField implements HeightSampler {
     const b = t[y0 * w + x1]!;
     const c = t[y1 * w + x0]!;
     const d = t[y1 * w + x1]!;
-    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+    // Match the rendered triangles (diagonal from b to c, see grid.ts), so
+    // objects sit exactly on the drawn surface rather than a smooth one.
+    if (fx + fy < 1) return a + (b - a) * fx + (c - a) * fy;
+    return d + (c - d) * (1 - fx) + (b - d) * (1 - fy);
+  }
+
+  /**
+   * Surface normal of the drawn terrain triangle at (cx, cy), in three.js
+   * axes (x east, y up, z south), using the render's vertical scale.
+   */
+  normalAt(cx: number, cy: number, out: { x: number; y: number; z: number }, heightScale: number): void {
+    const w = this.width;
+    const h = this.height;
+    const x = Math.min(Math.max(cx, 0), w - 1);
+    const y = Math.min(Math.max(cy, 0), h - 1);
+    const x0 = Math.min(Math.floor(x), Math.max(0, w - 2));
+    const y0 = Math.min(Math.floor(y), Math.max(0, h - 2));
+    const t = this.terrain;
+    const a = t[y0 * w + x0]!;
+    const b = t[y0 * w + x0 + 1]!;
+    const c = t[(y0 + 1) * w + x0]!;
+    const d = t[(y0 + 1) * w + x0 + 1]!;
+    let dhx: number;
+    let dhy: number;
+    if (x - x0 + (y - y0) < 1) {
+      dhx = b - a;
+      dhy = c - a;
+    } else {
+      dhx = d - c;
+      dhy = d - b;
+    }
+    const nx = -dhx * heightScale;
+    const nz = -dhy * heightScale;
+    const len = Math.hypot(nx, 1, nz);
+    out.x = nx / len;
+    out.y = 1 / len;
+    out.z = nz / len;
   }
 
   depthAt(cx: number, cy: number): number {

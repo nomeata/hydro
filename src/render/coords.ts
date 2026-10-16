@@ -29,4 +29,6 @@ export interface HeightSampler {
   terrainAt(cx: number, cy: number): number;
   /** Water depth in metres at the nearest cell. */
   depthAt(cx: number, cy: number): number;
+  /** Normal of the drawn terrain triangle (three.js axes) for the given vertical scale. */
+  normalAt?(cx: number, cy: number, out: { x: number; y: number; z: number }, heightScale: number): void;
 }

@@ -12,7 +12,7 @@
  * hidden when zoomed out (`setDetail`).
  */
 import * as THREE from 'three';
-import { heightToY, type HeightSampler } from '../coords';
+import { HEIGHT_SCALE, heightToY, type HeightSampler } from '../coords';
 import { hash2 } from '../../shared/rng';
 import { perlin } from '../../shared/noise';
 import { LandUse, SoilType } from '../../sim/world';
@@ -286,6 +286,12 @@ export interface VegetationOptions {
    * (chains `scene.onBeforeRender`). Otherwise call `cull(camera)` per frame.
    */
   autoCull?: boolean;
+  /**
+   * Direction towards the sun (three.js axes, live object). When given,
+   * objects are darkened like the slope they stand on, so they don't glow
+   * on shaded hillsides.
+   */
+  sunDir?: { x: number; y: number; z: number };
 }
 
 /**
@@ -322,6 +328,9 @@ export class VegetationLayer {
   private prevOnBeforeRender: THREE.Object3D['onBeforeRender'] | null = null;
   private readonly tmpM = new THREE.Matrix4();
   private readonly tmpQ = new THREE.Quaternion();
+  private readonly tmpQ2 = new THREE.Quaternion();
+  private readonly tmpV = new THREE.Vector3();
+  private readonly tmpN = { x: 0, y: 1, z: 0 };
   private readonly tmpP = new THREE.Vector3();
   private readonly tmpS = new THREE.Vector3();
   private readonly tmpC = new THREE.Color();
@@ -334,7 +343,7 @@ export class VegetationLayer {
     private readonly width: number,
     private readonly height: number,
     private readonly seed: number,
-    opts: VegetationOptions = {},
+    private readonly opts: VegetationOptions = {},
   ) {
     this.scene = scene;
     this.look = look;
@@ -616,22 +625,48 @@ export class VegetationLayer {
       const d: ChunkModelData = { matrices: new Float32Array(ps.length * 16), colors: new Float32Array(ps.length * 3), count: ps.length };
       const kind = ps[0]!.kind;
       const isTree = kind === VegKind.Deciduous || kind === VegKind.Conifer || kind === VegKind.BigRock;
+      // Rocks and logs lie on the ground: tilt them with the slope and bury
+      // them partly, so they share the slope's lighting and never float.
+      const lying = kind === VegKind.Rock || kind === VegKind.BigRock || kind === VegKind.Log;
+      const bury = kind === VegKind.Log ? 0.15 : lying ? 0.3 : 0;
       for (let k = 0; k < ps.length; k++) {
         const p = ps[k]!;
-        const ty =
+        const n = this.tmpN;
+        if (this.heights.normalAt) this.heights.normalAt(p.x, p.y, n, HEIGHT_SCALE);
+        else (n.x = 0), (n.y = 1), (n.z = 0);
+        // On a slope an upright object's downhill edge floats: sink it a bit.
+        const steep = Math.sqrt(Math.max(0, 1 - n.y * n.y)) / Math.max(n.y, 0.2);
+        let ty =
           kind === VegKind.Lily
             ? heightToY(this.heights.terrainAt(p.x, p.y) + this.heights.depthAt(p.x, p.y)) + 0.02
             : heightToY(this.heights.terrainAt(p.x, p.y)) - (isTree ? 0.02 : 0.005);
+        if (kind !== VegKind.Lily) ty -= bury * model.height * p.scale + Math.min(0.3, steep * (lying ? 0.05 : 0.12) * p.scale);
         if (ty < minY) minY = ty;
         if (ty + model.height * p.scale > maxY) maxY = ty + model.height * p.scale;
         this.tmpP.set(p.x + 0.5, ty, p.y + 0.5);
         this.tmpQ.setFromAxisAngle(this.up, p.yaw);
+        if (lying) {
+          this.tmpV.set(n.x, n.y, n.z);
+          this.tmpQ2.setFromUnitVectors(this.up, this.tmpV);
+          this.tmpQ.premultiply(this.tmpQ2);
+        }
         this.tmpS.setScalar(p.scale);
         this.tmpM.compose(this.tmpP, this.tmpQ, this.tmpS);
         this.tmpM.toArray(d.matrices, k * 16);
+        // Take on the slope's light: Lambert of the terrain normal relative to
+        // flat ground (fully for things lying on the ground, half for plants).
+        let light = 1;
+        const sun = this.opts.sunDir;
+        if (sun && kind !== VegKind.Lily) {
+          const flat = 0.55 + 0.45 * Math.max(0, sun.y);
+          const here = 0.55 + 0.45 * Math.max(0, n.x * sun.x + n.y * sun.y + n.z * sun.z);
+          light = Math.pow(here / flat, lying ? 1.6 : 0.6);
+        }
+        // Stone models are paler than the rocky ground; tone them down.
+        const tint = p.tint * light * (lying && kind !== VegKind.Log ? 0.66 : 1);
         // Gentle per-instance variation; in autumn deciduous trees get warmer.
-        if (autumn && kind === VegKind.Deciduous) this.tmpC.setRGB(p.tint * 1.04, p.tint, p.tint * 0.92);
-        else this.tmpC.setRGB(p.tint, p.tint * (0.98 + (0.04 * ((k * 7919) % 13)) / 13), p.tint);
+        if (autumn && kind === VegKind.Deciduous) this.tmpC.setRGB(tint * 1.04, tint, tint * 0.92);
+        else this.tmpC.setRGB(tint, tint * (0.98 + (0.04 * ((k * 7919) % 13)) / 13), tint);
         this.tmpC.toArray(d.colors, k * 3);
       }
       c.data.set(name, d);
