@@ -485,32 +485,40 @@ export function erosionStep(
         const inv = 1 / speed;
         const along = p.bankAlong;
         for (let d = 0; d < 4; d++) {
-          let un: number;
           let step: number;
+          let jx = x;
+          let jy = y;
           if (d === 0) {
             if (x === W - 1) continue;
-            un = vx;
             step = 1;
+            jx++;
           } else if (d === 1) {
             if (x === 0) continue;
-            un = -vx;
             step = -1;
+            jx--;
           } else if (d === 2) {
             if (y === H - 1) continue;
-            un = vy;
             step = W;
+            jy++;
           } else {
             if (y === 0) continue;
-            un = -vy;
             step = -W;
+            jy--;
           }
-          un = (un > 0 ? un * inv : 0) + along;
+          const j = i + step;
+          if (bedrock[j]! + soil[j]! <= eta) continue;
+          // How directly the flow runs up the bank: velocity against the
+          // bank's own uphill direction (from the smoothed terrain gradient,
+          // not the grid axis, so straight diagonal channels do not widen).
+          const gx = zAt(world, jx + 1, jy) - zAt(world, jx - 1, jy);
+          const gy = zAt(world, jx, jy + 1) - zAt(world, jx, jy - 1);
+          const gl = Math.sqrt(gx * gx + gy * gy);
+          let un = gl > 0 ? ((vx * gx + vy * gy) * inv) / gl : 0;
+          un = (un > 0 ? un : 0) + along;
           if (un <= 0) continue;
-          const b = bankErode(world, zi, i + step, drive * un * (1 + looseK * loose[i + step]!), eta, bankK, maxFrac, bedK);
+          const b = bankErode(world, zi, j, drive * un * (1 + looseK * loose[j]!), eta, bankK, maxFrac, bedK);
           if (b <= 0) continue;
           bank += b;
-          const r = reach[i]!;
-          if (r >= 0) sources[r]!.net += b;
           const yb = y + (d === 2 ? 1 : d === 3 ? -1 : 0);
           if (yb < y0) y0 = yb;
           if (yb > y1) y1 = yb;
@@ -538,8 +546,6 @@ export function erosionStep(
             if (put > 0) {
               soil[m]! += put;
               deposited += put * A;
-              const rm = reach[m]!;
-              if (rm >= 0) sources[rm]!.net -= put * A;
               const acc = bedAcc[m]! + put;
               if (acc > siltT) {
                 if (soilType[m]! <= SoilType.Gravel) soilType[m] = SoilType.Sand;
@@ -549,8 +555,12 @@ export function erosionStep(
               if (my > y1) y1 = my;
             }
           }
-          // Whatever does not fit on the bar goes downstream.
+          // Whatever does not fit on the bar goes downstream. (Bank and bar
+          // exchanges are lateral and do not count towards the inflow reach
+          // budget, only what is left over does.)
           s += b - put * A;
+          const r = reach[i]!;
+          if (r >= 0) sources[r]!.net += b - put * A;
         }
       }
       sediment[i] = s;
@@ -630,6 +640,14 @@ function bedSlope(world: World, transport: Float32Array, dt: number, p: GeoParam
   }
   dirty.y0 = y0;
   dirty.y1 = y1;
+}
+
+/** Terrain at (x, y), clamped to the map. */
+function zAt(world: World, x: number, y: number): number {
+  const xx = x < 0 ? 0 : x >= world.width ? world.width - 1 : x;
+  const yy = y < 0 ? 0 : y >= world.height ? world.height - 1 : y;
+  const i = yy * world.width + xx;
+  return world.bedrock[i]! + world.soil[i]!;
 }
 
 /** Highest terrain among the 4 neighbours of (x, y). */

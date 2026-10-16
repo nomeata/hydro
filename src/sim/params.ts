@@ -63,13 +63,13 @@ export const PARAMS = {
    * speed (×MORFAC), times how directly the flow runs into the bank. The
    * material builds a point bar on the far side of the channel.
    */
-  bankK: 3e-6,
+  bankK: 6e-6,
   /** Flow speed needed for bank erosion (m/s). */
   bankCriticalVelocity: 0.4,
   /** Bank erosion weight for flow along a bank (flow straight into it counts 1). */
   bankAlong: 0,
   /** Bed-slope diffusion of the submerged bed per unit transport rate (dimensionless). */
-  bedSlopeK: 1,
+  bedSlopeK: 0.3,
   /** Deposits from water slower than this count towards silt (m/s). */
   siltVelocity: 0.35,
   /** Accumulated deposit that turns a cell's topsoil to silt (slow water) or sand (bars on gravel) (m). */
