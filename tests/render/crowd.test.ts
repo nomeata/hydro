@@ -350,7 +350,7 @@ describe('CrowdLayer', () => {
       layer.update(1 / 60, now);
     }
     const perFrame = (performance.now() - t0) / frames;
-    console.log(`crowd: 400 entities, ${layer.drawCalls} draw calls, ${perFrame.toFixed(3)} ms/frame CPU (Node), bone textures ${layer.stats.textureBytes} B`);
+    console.log(`crowd: 400 entities, ${layer.drawCalls} draw calls, ${perFrame.toFixed(3)} ms/frame CPU (Node), ${layer.stats.textures} bone textures, ${layer.stats.textureBytes} B`);
     expect(perFrame).toBeLessThan(8);
     layer.dispose();
   });

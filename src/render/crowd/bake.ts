@@ -157,7 +157,7 @@ export function bakeBoneAnimation(
       const { nodeName, propertyName } = THREE.PropertyBinding.parseTrackName(track.name);
       const node = nodeName ? root.getObjectByName(nodeName) : null;
       if (!node || !['position', 'quaternion', 'scale'].includes(propertyName)) return [];
-      return [{ node, prop: propertyName as 'position' | 'quaternion' | 'scale', interp: track.createInterpolant() }];
+      return [{ node, prop: propertyName as 'position' | 'quaternion' | 'scale', interp: (track as unknown as { createInterpolant(): THREE.Interpolant }).createInterpolant() }];
     });
     for (let f = 0; f < bc.frames; f++) {
       restore();

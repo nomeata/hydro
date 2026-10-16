@@ -90,14 +90,16 @@ export class FakeCrowd {
   private readonly store: Site;
   private readonly sites: { dig: Site[]; field: Site; wood: Site; build: Site; pasture: Site; shore: Site[] };
   private readonly frameBuf: EntityFrame;
+  private readonly look: Uint8Array | null;
 
   constructor(
     private readonly heights: HeightSampler,
     opts: FakeCrowdOptions,
   ) {
+    this.look = opts.look ?? null;
     const rng = (this.rng = new Rng((opts.seed ^ 0x5eed_c0de) >>> 0));
     const R = opts.radius ?? 14;
-    [this.centerX, this.centerY] = opts.look ? this.openSpot(opts.centerX, opts.centerY, opts.searchRadius ?? 20, opts.look) : [opts.centerX, opts.centerY];
+    [this.centerX, this.centerY] = opts.look ? this.openSpot(opts.centerX, opts.centerY, opts.searchRadius ?? 20) : [opts.centerX, opts.centerY];
     const cx = this.centerX;
     const cy = this.centerY;
     const spot = (r0: number, r1: number, load: CarryKind, work: EntityAnim): Site => {
@@ -211,14 +213,9 @@ export class FakeCrowd {
   }
 
   /** Best open spot: low vegetation around, flat, dry, near (not in) water, close to (cx, cy). */
-  private openSpot(cx: number, cy: number, R: number, look: Uint8Array): [number, number] {
+  private openSpot(cx: number, cy: number, R: number): [number, number] {
     const h = this.heights;
-    const W = h.width;
-    const veg = (x: number, y: number) => {
-      const xi = Math.min(W - 1, Math.max(0, Math.round(x)));
-      const yi = Math.min(h.height - 1, Math.max(0, Math.round(y)));
-      return look[(yi * W + xi) * 4 + 2]! / 255;
-    };
+    const veg = (x: number, y: number) => this.vegetation(x, y);
     let best: [number, number] = [cx, cy];
     let bestScore = Infinity;
     for (let y = Math.round(cy - R); y <= cy + R; y += 2)
@@ -246,6 +243,14 @@ export class FakeCrowd {
     return best;
   }
 
+  private vegetation(x: number, y: number): number {
+    if (!this.look) return 0;
+    const h = this.heights;
+    const xi = Math.min(h.width - 1, Math.max(0, Math.round(x)));
+    const yi = Math.min(h.height - 1, Math.max(0, Math.round(y)));
+    return this.look[(yi * h.width + xi) * 4 + 2]! / 255;
+  }
+
   /** Dry spots next to calm-ish water, facing it. */
   private findShore(cx: number, cy: number, R: number): Site[] {
     const h = this.heights;
@@ -255,11 +260,13 @@ export class FakeCrowd {
       const r = Math.sqrt(this.rng.next()) * R;
       const x = cx + Math.cos(ang) * r;
       const y = cy + Math.sin(ang) * r;
-      if (!this.walkable(x, y) || h.depthAt(x, y) > 0.02) continue;
+      if (!this.walkable(x, y) || h.depthAt(x, y) > 0.02 || this.vegetation(x, y) > 0.45) continue;
+      // Keep a little dry margin so the rendered waterline does not reach the fisher.
+      if (h.depthAt(x + 0.7, y) > 0.02 || h.depthAt(x - 0.7, y) > 0.02 || h.depthAt(x, y + 0.7) > 0.02 || h.depthAt(x, y - 0.7) > 0.02) continue;
       for (let d = 0; d < 8; d++) {
         const a = (d / 8) * Math.PI * 2;
-        const wx = x + Math.cos(a) * 1.2;
-        const wy = y + Math.sin(a) * 1.2;
+        const wx = x + Math.cos(a) * 1.6;
+        const wy = y + Math.sin(a) * 1.6;
         if (h.depthAt(wx, wy) > 0.3) {
           if (out.every((s) => Math.hypot(s.x - x, s.y - y) > 2.5)) out.push({ x, y, load: CarryKind.Fish, work: EntityAnim.Fish, face: a });
           break;
@@ -315,6 +322,8 @@ export class FakeCrowd {
       a.x = a.tx = p[0];
       a.y = a.ty = p[1];
       a.site = site;
+      // Diggers and builders first walk to their own spot around the site.
+      if (role === 'digger' || role === 'builder') a.label = 'working';
     }
     return a;
   }
@@ -412,7 +421,13 @@ export class FakeCrowd {
         const s = a.site!;
         if (a.label === 'working') {
           if (r.next() < 0.25) this.stay(a, EntityAnim.Idle, r.range(1, 2.5), 'pause');
-          else this.wander(a, s.x, s.y, 1.6, 0.35, EntityAnim.Walk, 'arrived');
+          else {
+            // Each worker keeps to its own sector around the site (no overlaps).
+            const ang = a.id * 2.39996 + r.range(-0.35, 0.35);
+            const d = 0.9 + 0.5 * (a.id % 3) / 2 + r.range(0, 0.3);
+            if (!this.walkTo(a, s.x + Math.cos(ang) * d, s.y + Math.sin(ang) * d, 0.35, EntityAnim.Walk, 'arrived'))
+              this.stay(a, s.work, r.range(3, 6), 'working');
+          }
         } else {
           this.stay(a, s.work, r.range(4, 11), 'working');
           if (a.role === 'builder') a.heading = Math.atan2(s.y - a.y, s.x - a.x);

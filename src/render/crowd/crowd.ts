@@ -107,7 +107,8 @@ export interface CrowdStats {
   drawCalls: number;
   /** Smoothed CPU time of update() (ms). */
   updateMs: number;
-  /** Bytes of all bone textures. */
+  /** Number and bytes of the (shared) bone textures. */
+  textures: number;
   textureBytes: number;
 }
 
@@ -115,11 +116,12 @@ export class CrowdLayer {
   readonly group = new THREE.Group();
   readonly ready: Promise<void>;
   readonly tracks = new EntityTracks();
-  readonly stats: CrowdStats = { entities: 0, drawn: 0, props: 0, drawCalls: 0, updateMs: 0, textureBytes: 0 };
+  readonly stats: CrowdStats = { entities: 0, drawn: 0, props: 0, drawCalls: 0, updateMs: 0, textures: 0, textureBytes: 0 };
   /** Animation playback speed (0 freezes poses). */
   timeScale = 1;
 
   private readonly rigs = new Map<ModelName, Rig>();
+  private readonly textures: { anim: BoneAnimation; tex: THREE.DataTexture }[] = [];
   private readonly time = { value: 0 };
   private clock = 0;
   private propMesh: THREE.InstancedMesh | null = null;
@@ -138,6 +140,7 @@ export class CrowdLayer {
   private readonly vA = new THREE.Vector3();
   private readonly vB = new THREE.Vector3();
   private readonly toolLocal = new THREE.Matrix4();
+  private readonly rodLocal = new THREE.Matrix4().makeRotationX(-0.55);
 
   constructor(
     scene: THREE.Object3D,
@@ -325,10 +328,11 @@ export class CrowdLayer {
     for (const r of this.rigs.values()) {
       r.geometry.dispose();
       r.material.dispose();
-      r.tex.dispose();
       r.mesh.dispose();
     }
     this.rigs.clear();
+    for (const t of this.textures) t.tex.dispose();
+    this.textures.length = 0;
     this.propGeometry?.dispose();
     this.propMaterial.dispose();
     this.propMesh?.dispose();
@@ -367,7 +371,11 @@ export class CrowdLayer {
   private placeProp(rig: Rig, e: Ext, kind: PropKind, index: number): void {
     if (index >= this.propCapacity) this.growProps(Math.max(32, this.propCapacity * 2));
     const out = this.mTmp;
-    if (isTool(kind)) {
+    if (kind === PropKind.Rod) {
+      // The rod sticks out over the water: at the hand, tilted up and forward.
+      const hnd = this.vA.copy(rig.handR).applyMatrix4(sampleBone(rig.anim, e.clip, e.phase, rig.armR, this.mBone));
+      out.copy(this.mInst).multiply(this.mBone.makeTranslation(hnd.x, hnd.y, hnd.z)).multiply(this.rodLocal);
+    } else if (isTool(kind)) {
       // Instance · armR(t) · T(hand) · toolLocal.
       sampleBone(rig.anim, e.clip, e.phase, rig.armR, this.mBone);
       out.copy(this.mInst).multiply(this.mBone);
@@ -451,8 +459,14 @@ export class CrowdLayer {
     const entry = MODELS[name] as { category: string; height?: number; scale?: number };
     const person = entry.category === 'character';
     const anim = bakeBoneAnimation(root, sm, gltf.animations, person ? PERSON_CLIP_SPECS : PET_CLIP_SPECS);
-    const tex = boneTexture(anim);
-    this.stats.textureBytes += anim.data.byteLength;
+    // Models sharing a skeleton and clips (most mini-characters) share one texture.
+    let tex = this.textures.find((t) => sameData(t.anim.data, anim.data))?.tex;
+    if (!tex) {
+      tex = boneTexture(anim);
+      this.textures.push({ anim, tex });
+      this.stats.textureBytes += anim.data.byteLength;
+      this.stats.textures = this.textures.length;
+    }
     const box = new THREE.Box3().setFromObject(gltf.scene, true);
     const hgt = Math.max(1e-6, box.max.y - Math.min(0, box.min.y));
     const scale = entry.height !== undefined ? entry.height / hgt : (entry.scale ?? 1);
@@ -500,6 +514,12 @@ export class CrowdLayer {
     rig.mesh.visible = false;
     this.rigs.set(name, rig);
   }
+}
+
+function sameData(a: Float32Array, b: Float32Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i]! - b[i]!) > 1e-5) return false;
+  return true;
 }
 
 function wrap(x: number, period: number): number {
