@@ -34,12 +34,16 @@ export interface GeoParams {
   depositSlack: number;
   bankK: number;
   bankCriticalVelocity: number;
+  bankAlong: number;
   bedSlopeK: number;
   siltVelocity: number;
   siltThreshold: number;
   fertilityPerMetre: number;
   bedCriticalVelocity: number[];
   armourDepth: number;
+  looseRepose: number;
+  looseErodibility: number;
+  looseDays: number;
   talusPerDay: number;
   reposeWet: number[];
   wetSaturation: number;
@@ -64,12 +68,16 @@ export function defaultGeoParams(): GeoParams {
     depositSlack: p.depositSlack,
     bankK: p.bankK,
     bankCriticalVelocity: p.bankCriticalVelocity,
+    bankAlong: p.bankAlong,
     bedSlopeK: p.bedSlopeK,
     siltVelocity: p.siltVelocity,
     siltThreshold: p.siltThreshold,
     fertilityPerMetre: p.fertilityPerMetre,
     bedCriticalVelocity: p.bedCriticalFactor.map((f) => f * p.criticalVelocity),
     armourDepth: p.armourDepth,
+    looseRepose: p.looseRepose,
+    looseErodibility: p.looseErodibility,
+    looseDays: p.looseDays,
     talusPerDay: p.talusPerDay,
     reposeWet: [...p.reposeWet],
     wetSaturation: p.wetSaturation,
@@ -135,6 +143,13 @@ export class ErosionScratch {
    * neither degrades nor aggrades on average (see updateInflows).
    */
   readonly inflowConc: Float32Array;
+  /**
+   * Looseness of freshly worked soil (0..1): set by earthworks, it lowers
+   * the angle of repose and raises erodibility, and decays as the soil
+   * settles (looseDays), so new unlined trenches and dikes slump and wash
+   * out during their first year.
+   */
+  readonly loose: Float32Array;
   /** Index of the inflow source whose reach a cell belongs to, or -1. */
   readonly reach: Int16Array;
   sources: InflowSource[] | null = null;
@@ -145,6 +160,7 @@ export class ErosionScratch {
     this.inflowConc = new Float32Array(size);
     this.transport = new Float32Array(size);
     this.reach = new Int16Array(size).fill(-1);
+    this.loose = new Float32Array(size);
   }
 }
 
@@ -303,7 +319,7 @@ export function erosionStep(
   dirty: RowRange,
 ): void {
   const { width: W, height: H, bedrock, soil, soilType, water, sediment, velX, velY, flags, inflow, fertility } = world;
-  const { bedAcc, transport, inflowConc, reach } = scratch;
+  const { bedAcc, transport, inflowConc, reach, loose } = scratch;
   const t0 = scratch.time;
   scratch.time = t0 + dt;
   if (!scratch.sources) scratch.sources = buildSources(world, scratch);
@@ -322,6 +338,7 @@ export function erosionStep(
   const fertK = p.fertilityPerMetre;
   const vcBed = p.bedCriticalVelocity;
   const armour = p.armourDepth;
+  const looseK = p.looseErodibility;
 
   let eroded = 0;
   let bank = 0;
@@ -403,10 +420,11 @@ export function erosionStep(
         if (room > 0) {
           const demand = ((kp - s) * pickup) / A;
           const so = soil[i]!;
-          let e = Math.min(demand * props.erodibility, maxFrac * so, room);
+          const er = props.erodibility * (1 + looseK * loose[i]!);
+          let e = Math.min(demand * er, maxFrac * so, room);
           if (e < 0) e = 0;
           let eb = 0;
-          if (e < demand * props.erodibility && so * maxFrac < 1e-3) {
+          if (e < demand * er && so * maxFrac < 1e-3) {
             // Soil exhausted: bare bedrock, much harder.
             eb = Math.min(demand * bedK, room - e);
             if (eb < 0) eb = 0;
@@ -459,31 +477,36 @@ export function erosionStep(
       // Lateral migration: flow running into a bank (the outer bank of a
       // bend) wears it down, and the material is laid down as a point bar on
       // the far side of the channel. The channel shifts but keeps its width
-      // and depth; flow along a bank does not erode it.
+      // and depth. Flow along a bank wears it a little (bankAlong), which
+      // rounds off the sharp edges of dug trenches.
       if (h > hMin && speed > vcBank) {
         const eta = zi + h;
-        const drive = (speed - vcBank) / speed;
+        const drive = speed - vcBank;
+        const inv = 1 / speed;
+        const along = p.bankAlong;
         for (let d = 0; d < 4; d++) {
           let un: number;
           let step: number;
           if (d === 0) {
-            if (x === W - 1 || vx <= 0) continue;
+            if (x === W - 1) continue;
             un = vx;
             step = 1;
           } else if (d === 1) {
-            if (x === 0 || vx >= 0) continue;
+            if (x === 0) continue;
             un = -vx;
             step = -1;
           } else if (d === 2) {
-            if (y === H - 1 || vy <= 0) continue;
+            if (y === H - 1) continue;
             un = vy;
             step = W;
           } else {
-            if (y === 0 || vy >= 0) continue;
+            if (y === 0) continue;
             un = -vy;
             step = -W;
           }
-          const b = bankErode(world, zi, i + step, drive * un, eta, bankK, maxFrac, bedK);
+          un = (un > 0 ? un * inv : 0) + along;
+          if (un <= 0) continue;
+          const b = bankErode(world, zi, i + step, drive * un * (1 + looseK * loose[i + step]!), eta, bankK, maxFrac, bedK);
           if (b <= 0) continue;
           bank += b;
           const r = reach[i]!;
@@ -641,10 +664,18 @@ function bankErode(world: World, zi: number, j: number, un: number, eta: number,
 /**
  * Bedrock weathering for `days` game days: bedrock turns into soil at a rate
  * that decays with soil depth, so bare rock regains a thin regolith over
- * years. The surface does not move.
+ * years. The surface does not move. Loose soil settles meanwhile.
  */
-export function weatherStep(world: World, days: number, p: GeoParams, ledger: SedimentLedger): void {
+export function weatherStep(world: World, days: number, p: GeoParams, ledger: SedimentLedger, loose?: Float32Array): void {
   const { size, bedrock, soil, flags } = world;
+  if (loose) {
+    const keep = Math.exp(-days / p.looseDays);
+    for (let i = 0; i < size; i++) {
+      const l = loose[i]!;
+      if (l === 0) continue;
+      loose[i] = l < 0.01 ? 0 : l * keep;
+    }
+  }
   const rate = (p.weatheringPerYear * days) / DAYS_PER_YEAR;
   const inv = 1 / p.weatheringDepth;
   const maxS = p.maxSoil;

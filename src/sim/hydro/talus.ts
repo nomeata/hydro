@@ -5,7 +5,8 @@
  * water), so loose sand banks of a flooded trench slump while dry ones stand.
  *
  * Two passes (compute deltas, then apply), so the result does not depend on
- * the iteration order and soil volume is conserved exactly. Only soil moves,
+ * the iteration order and soil volume is conserved exactly. Freshly worked
+ * (loose) soil stands at a lower angle. Only soil moves,
  * never bedrock; lined cells neither give nor receive.
  */
 import { CELL } from '../constants';
@@ -39,7 +40,15 @@ const BARE = 0.05;
  * removed in this pass (≤ 0.5 for stability). Returns nothing; updates
  * `dirty` and the ledger.
  */
-export function talusStep(world: World, scratch: TalusScratch, frac: number, p: GeoParams, ledger: SedimentLedger, dirty: RowRange): void {
+export function talusStep(
+  world: World,
+  scratch: TalusScratch,
+  frac: number,
+  p: GeoParams,
+  ledger: SedimentLedger,
+  dirty: RowRange,
+  loose?: Float32Array,
+): void {
   const { width: W, height: H, bedrock, soil, soilType, water, ground, flags } = world;
   const { delta, donor, reposeDry } = scratch;
   const wetSat = p.wetSaturation;
@@ -60,7 +69,7 @@ export function talusStep(world: World, scratch: TalusScratch, frac: number, p: 
       if ((flags[i]! & CellFlag.Lined) !== 0) continue;
       const st = soilType[i]!;
       const zi = bedrock[i]! + so;
-      const rep = reposeDry[st]!;
+      const rep = loose ? reposeDry[st]! * (1 - p.looseRepose * loose[i]!) : reposeDry[st]!;
       const repWet = rep * wetF[st]!;
       const cap = so * SOIL_PROPS[st]!.porosity;
       // Wet soil, or a toe under water, stands at a lower angle.

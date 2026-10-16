@@ -36,6 +36,7 @@ export interface GeoState {
   /** Pairs [cell, value] of non-zero entries. */
   bedAcc: number[];
   inflowConc: number[];
+  loose: number[];
 }
 
 function sparse(a: Float32Array): number[] {
@@ -144,10 +145,10 @@ export class Simulation {
     }
     if (this.step % TALUS_EVERY === TALUS_EVERY - 1) {
       const frac = (geo.talusPerDay * geo.morfac * TALUS_EVERY) / STEPS_PER_DAY / PARAMS.morfac;
-      talusStep(w, this.talusScratch, frac, geo, this.sedLedger, this.geoDirty);
+      talusStep(w, this.talusScratch, frac, geo, this.sedLedger, this.geoDirty, this.erosionScratch.loose);
     }
     if (this.step % WEATHER_EVERY === 1) {
-      weatherStep(w, WEATHER_EVERY / STEPS_PER_DAY, geo, this.sedLedger);
+      weatherStep(w, WEATHER_EVERY / STEPS_PER_DAY, geo, this.sedLedger, this.erosionScratch.loose);
     }
     if (this.step % TERRAIN_PUBLISH_EVERY === 0 && this.geoDirty.y1 >= this.geoDirty.y0) {
       if (this.geoDirty.y0 < this.dirtyY0) this.dirtyY0 = this.geoDirty.y0;
@@ -158,7 +159,9 @@ export class Simulation {
 
     if (this.step % BUILD_EVERY === 0 && this.crew.pending > 0) {
       const rate = (PARAMS.builderRatePerDay * BUILD_EVERY) / STEPS_PER_DAY;
+      const loose = this.erosionScratch.loose;
       this.crew.work(w, rate, PARAMS.builderCells, (i) => {
+        loose[i] = 1;
         this.markTerrainDirty(i);
         this.planDirty = true;
       });
@@ -271,6 +274,7 @@ export class Simulation {
         time: this.erosionScratch.time,
         bedAcc: sparse(this.erosionScratch.bedAcc),
         inflowConc: sparse(this.erosionScratch.inflowConc),
+        loose: sparse(this.erosionScratch.loose),
       },
     };
   }
@@ -290,6 +294,7 @@ export class Simulation {
       this.erosionScratch.time = st.geo.time;
       unsparse(this.erosionScratch.bedAcc, st.geo.bedAcc);
       unsparse(this.erosionScratch.inflowConc, st.geo.inflowConc);
+      unsparse(this.erosionScratch.loose, st.geo.loose);
     }
     this.lookDirty = true;
     this.planDirty = true;

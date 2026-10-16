@@ -40,7 +40,7 @@ export const PARAMS = {
   /** Morphological acceleration factor. */
   morfac: 60,
   /** Transport capacity coefficient: equilibrium concentration per (m/s)^1.5 of excess speed (×MORFAC). */
-  capacityK: 1e-4,
+  capacityK: 4e-5,
   /** Critical flow speed below which water picks up nothing (m/s). */
   criticalVelocity: 0.4,
   /** Water depth below which there is no pickup, and at which capacity ramps in fully (m). */
@@ -66,6 +66,8 @@ export const PARAMS = {
   bankK: 3e-6,
   /** Flow speed needed for bank erosion (m/s). */
   bankCriticalVelocity: 0.4,
+  /** Bank erosion weight for flow along a bank (flow straight into it counts 1). */
+  bankAlong: 0,
   /** Bed-slope diffusion of the submerged bed per unit transport rate (dimensionless). */
   bedSlopeK: 1,
   /** Deposits from water slower than this count towards silt (m/s). */
@@ -80,13 +82,19 @@ export const PARAMS = {
   bedCriticalFactor: [3, 2.5, 1, 1.2, 1.6, 1, 1.2],
   /** Net scour (m) after which a loose bed is armoured: its fines wash out, leaving gravel. */
   armourDepth: 0.3,
+  /** Freshly dug or heaped soil: fraction by which looseness lowers the angle of repose... */
+  looseRepose: 0.7,
+  /** ...extra erodibility per unit looseness... */
+  looseErodibility: 2,
+  /** ...and the e-folding time (game days) in which it settles. */
+  looseDays: 48,
   /** Fertility gained per metre of deposit. */
   fertilityPerMetre: 3,
 
   /** Talus: fraction of the excess over the repose slope moved per game day. */
   talusPerDay: 0.2,
   /** Repose multiplier when wet (saturated ground, or the slope's toe under water), per soil type. */
-  reposeWet: [1, 0.85, 0.15, 0.75, 0.8, 0.25, 0.6],
+  reposeWet: [1, 0.85, 0.4, 0.75, 0.8, 0.5, 0.6],
   /** Ground saturation above which soil counts as wet for talus. */
   wetSaturation: 0.95,
 

@@ -13,7 +13,8 @@
  * with --snap-every N snapshots every N years <tag>-yN.png (relief and
  * change since the previous snapshot), and with
  * --crop x,y,n a magnified n×n crop of the four images, <tag>-crop.png.
- * `--set morfac=200` overrides a geomorphology parameter (see GeoParams).
+ * `--set morfac=200` overrides a geomorphology parameter (see GeoParams);
+ * `--set reposeWet2=0.4` sets one entry of an array parameter.
  * `--valley` runs a synthetic sinuous sand valley instead of a generated world.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -290,7 +291,12 @@ function main(): void {
   const tag = valley ? `valley-${size}` : `s${seed}-${size}`;
   const world = valley ? valleyWorld(size, seed) : generateWorld({ seed, size }).world;
   const sim = new Simulation(world, seed);
-  for (const [key, v] of sets) (sim.geo as unknown as Record<string, number>)[key] = v;
+  for (const [key, v] of sets) {
+    // Array entries as e.g. reposeWet2=0.4.
+    const m = /^([a-zA-Z]+)(\d+)$/.exec(key);
+    if (m) (sim.geo as unknown as Record<string, number[]>)[m[1]!]![Number(m[2])] = v;
+    else (sim.geo as unknown as Record<string, number>)[key] = v;
+  }
   const z0 = heights(world);
   let zmin = Infinity;
   let zmax = -Infinity;

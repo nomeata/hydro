@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { CellFlag, SoilType, World } from '../../src/sim/world';
 import { Simulation } from '../../src/sim/sim';
 import { CELL_AREA, DAYS_PER_YEAR, STEPS_PER_DAY } from '../../src/sim/constants';
-import { applyEarthwork, planTrench } from '../../src/sim/plans/plans';
 import { TalusScratch, talusStep } from '../../src/sim/hydro/talus';
 import { defaultGeoParams, newSedimentLedger, type RowRange } from '../../src/sim/hydro/erosion';
 import { generateWorld } from '../../src/sim/worldgen/index';
@@ -133,39 +132,44 @@ describe('talus', () => {
   });
 });
 
-/** A sandy plain with a dug trench that carries water from x = 0 to x = W-1. */
-function trenchWorld(lined: boolean): { w: World; cells: number[] } {
+/**
+ * A sandy plain; the spirit crew digs a trench from x = 0 to x = W-1 and
+ * water is let in at its head. Returns the world, the simulation and the
+ * trench cells (whose terrain the crew changed).
+ */
+function trenchWorld(lined: boolean): { w: World; sim: Simulation; cells: number[] } {
   const W = 64;
   const H = 32;
   const w = new World(W, H, 3);
+  const flat = (x: number): number => 103 + (W - x) * 0.025;
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const i = w.idx(x, y);
-      w.bedrock[i] = 100 + (W - x) * 0.025;
+      w.bedrock[i] = flat(x) - 3;
       w.soil[i] = 3;
       w.soilType[i] = SoilType.Sand;
       w.ground[i] = 0.5;
     }
-  const cells = planTrench(w, [[0, 16], [W - 1, 16]], 2, 1.5);
-  for (const i of cells) {
-    applyEarthwork(w, i, w.plan[i]! - w.terrain(i));
-    w.plan[i] = NaN;
-    if (lined) w.flags[i] |= CellFlag.Lined;
-  }
+  const sim = new Simulation(w, 5);
+  sim.command({ type: 'planTrench', points: [[0, 16], [W - 1, 16]], width: 2, depth: 1.5 });
+  while (sim.crew.pending > 0) sim.run(10);
+  const cells: number[] = [];
+  for (let i = 0; i < w.size; i++) if (Math.abs(w.terrain(i) - flat(i % W)) > 0.01) cells.push(i);
+  if (lined) for (const i of cells) w.flags[i] |= CellFlag.Lined;
   for (let y = 15; y <= 17; y++) {
-    w.inflow[w.idx(0, y)] = 0.5;
+    w.inflow[w.idx(0, y)] = 0.5 / 3;
     w.flags[w.idx(W - 1, y)] |= CellFlag.Outlet;
   }
-  return { w, cells };
+  return { w, sim, cells };
 }
 
 describe('trenches', () => {
   it('an unlined trench in sand slumps within a season; a lined one does not', () => {
     const results: number[] = [];
     for (const lined of [false, true]) {
-      const { w, cells } = trenchWorld(lined);
+      const { w, sim, cells } = trenchWorld(lined);
+      expect(cells.length).toBeGreaterThan(64 * 3);
       const z0 = cells.map((i) => w.terrain(i));
-      const sim = new Simulation(w, 5);
       sim.run(YEAR / 4);
       let change = 0;
       cells.forEach((i, k) => (change += Math.abs(w.terrain(i) - z0[k]!)));
@@ -173,7 +177,7 @@ describe('trenches', () => {
       if (lined) cells.forEach((i, k) => expect(w.terrain(i)).toBe(z0[k]));
       checkFinite(w);
     }
-    // Unlined: the steep sand banks under water slump by a good fraction of a metre.
+    // Unlined: the freshly dug sand banks slump into the water.
     expect(results[0]!).toBeGreaterThan(0.05);
     expect(results[1]!).toBe(0);
   });
