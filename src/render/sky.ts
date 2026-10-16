@@ -3,6 +3,7 @@
  * and season (`setSun`).
  */
 import * as THREE from 'three';
+import { seasonPalette, type SeasonPalette } from './seasons';
 
 export interface SunState {
   /** Unit vector pointing towards the light (sun or moon). */
@@ -56,6 +57,8 @@ export class SkyLighting {
     daylight: 1,
   };
   private readonly bgMat: THREE.ShaderMaterial;
+  /** Current season palette (also used for terrain, water and leaf colours). */
+  readonly palette: SeasonPalette = seasonPalette(1);
 
   constructor(scene: THREE.Scene) {
     this.sun.name = 'sun';
@@ -91,7 +94,7 @@ export class SkyLighting {
     const az = ha;
     const dayT = smooth(-0.14, 0.1, elev);
     const lowT = 1 - smooth(0.04, 0.45, elev); // warm light near the horizon
-    const winter = Math.max(0, Math.cos(((season - 3) * Math.PI) / 2));
+    const pal = seasonPalette(season, this.palette);
 
     if (elev > -0.05) {
       const e = Math.max(elev, 0.22);
@@ -100,18 +103,17 @@ export class SkyLighting {
       // Moonlight from a fixed high direction.
       s.dir.set(-0.4, 0.8, 0.45).normalize();
     }
-    const daySun = lerpC(hex(0xfff3dc), hex(0xffa860), lowT * 0.85);
-    daySun.lerp(hex(0xeef2ff), winter * 0.35);
+    const daySun = lerpC(pal.sun, hex(0xffa860), lowT * 0.85);
     const moon = hex(0x9fb4f0);
-    s.sunColor.copy(lerpC(moon, daySun, dayT)).multiplyScalar(1.05 + 1.85 * dayT);
+    s.sunColor.copy(lerpC(moon, daySun, dayT)).multiplyScalar(1.05 + (pal.sunIntensity - 1.05) * dayT);
 
-    const daySky = lerpC(hex(0xcfe6ff), hex(0xffd3b0), lowT * 0.6);
+    const daySky = lerpC(pal.sky, hex(0xffd3b0), lowT * 0.6);
     const nightSky = hex(0x7890d0);
     s.sky.copy(lerpC(nightSky, daySky, dayT)).multiplyScalar(1.0 + 0.05 * dayT);
-    s.ground.copy(lerpC(hex(0x3c4a74), hex(0x8a7f62), dayT)).multiplyScalar(0.9);
+    s.ground.copy(lerpC(hex(0x3c4a74), pal.ground, dayT)).multiplyScalar(0.9);
 
-    s.skyTop.copy(lerpC(hex(0x1c2a55), lerpC(hex(0x7fb7ec), hex(0x6f8fd0), lowT * 0.5), dayT));
-    s.skyBottom.copy(lerpC(hex(0x3d4f86), lerpC(hex(0xe3f1fb), hex(0xffcfa6), lowT * 0.8), dayT));
+    s.skyTop.copy(lerpC(hex(0x1c2a55), lerpC(pal.skyTop, hex(0x6f8fd0), lowT * 0.5), dayT));
+    s.skyBottom.copy(lerpC(hex(0x3d4f86), lerpC(pal.skyBottom, hex(0xffcfa6), lowT * 0.8), dayT));
     s.daylight = dayT;
 
     this.sun.color.copy(s.sunColor);
