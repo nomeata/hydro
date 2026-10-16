@@ -25,7 +25,7 @@ const CROP_RIPE = 230;
 /** Food (person-days) per harvested cell at fertility 1 and good moisture. */
 const YIELD = 34;
 /** Earth moved per builder visit (m). */
-const DIG_PER_VISIT = 0.35;
+const DIG_PER_VISIT = 0.5;
 /** House construction progress per builder visit. */
 const BUILD_PER_VISIT = 0.12;
 /** Water drawn by a growing field per day (m). */
@@ -104,7 +104,19 @@ export class PeopleSystem {
     return this.settlements.reduce((n, s) => n + s.state.population, 0);
   }
 
-  /** Builders available near cell i (for deciding whether the spirit crew helps). */
+  /**
+   * Whether village builders take care of plan cell i: a settlement is in
+   * reach and has at least 3 builders (until then the spirit crew helps).
+   */
+  handledByVillage(i: number): boolean {
+    const s = this.settlementNear(i);
+    if (!s) return false;
+    let n = 0;
+    for (const a of this.agents) if (a.settlement === s.state.id && a.job === Job.Builder) n++;
+    return n >= 3;
+  }
+
+  /** The settlement whose reach covers cell i, if any. */
   settlementNear(i: number): Settlement | null {
     const W = this.world.width;
     const x = i % W;
@@ -584,9 +596,13 @@ export class PeopleSystem {
         break;
       }
       case SiteKind.Earthwork: {
-        const i = a.site;
-        const target = w.plan[i]!;
-        if (!Number.isNaN(target)) {
+        // Work the cell and its planned neighbours (a small patch per visit).
+        const W = w.width;
+        const c = a.site;
+        for (const i of [c, c - 1, c + 1, c - W, c + W]) {
+          if (i < 0 || i >= w.size || (i !== c && Math.abs((i % W) - (c % W)) > 1)) continue;
+          const target = w.plan[i]!;
+          if (Number.isNaN(target)) continue;
           const diff = target - w.terrain(i);
           const step = Math.max(-DIG_PER_VISIT, Math.min(DIG_PER_VISIT, diff));
           applyEarthwork(w, i, step);

@@ -126,8 +126,8 @@ export class Simulation {
 
     if (this.step % BUILD_EVERY === 0 && this.crew.pending > 0) {
       const rate = (PARAMS.builderRatePerDay * BUILD_EVERY) / STEPS_PER_DAY;
-      // The spirit crew leaves plans within reach of a village to its builders.
-      const skip = people ? (i: number) => people.settlementNear(i) !== null : undefined;
+      // The spirit crew leaves plans to a village once it has enough builders.
+      const skip = people ? (i: number) => people.handledByVillage(i) : undefined;
       this.crew.work(
         w,
         rate,
