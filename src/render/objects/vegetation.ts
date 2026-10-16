@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import { heightToY, type HeightSampler } from '../coords';
 import { hash2 } from '../../shared/rng';
 import { perlin } from '../../shared/noise';
-import { SoilType } from '../../sim/world';
+import { LandUse, SoilType } from '../../sim/world';
 import { LOOK_CHANNELS } from '../../shared/protocol';
 import { modelLibrary, type StaticModel } from './loader';
 import type { ModelName } from './manifest';
@@ -96,6 +96,8 @@ export interface ScatterInput {
   readonly width: number;
   readonly height: number;
   readonly seed: number;
+  /** Land use per cell (LandUse enum), or null: built-up and farmed cells get no vegetation. */
+  readonly landuse?: Uint8Array | null;
 }
 
 const smooth = (a: number, b: number, x: number) => {
@@ -108,10 +110,14 @@ const smooth = (a: number, b: number, x: number) => {
  * input (no Math.random); used by the layer and by tests.
  */
 export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y1: number, out: Placement[] = []): Placement[] {
-  const { heights, look, width, height, seed } = inp;
+  const { heights, look, width, height, seed, landuse } = inp;
   const S = seed | 0;
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
+      if (landuse) {
+        const lu = landuse[y * width + x]!;
+        if (lu !== LandUse.None && lu !== LandUse.Pasture) continue;
+      }
       const li = (y * width + x) * LOOK_CHANNELS;
       const soil = look[li]!;
       const moist = look[li + 1]! / 255;
@@ -293,6 +299,7 @@ export class VegetationLayer {
   /** Resolves once models are loaded and the initial scatter is built. */
   readonly ready: Promise<void>;
   private look: Uint8Array;
+  private landuse: Uint8Array | null = null;
   private readonly chunkSize: number;
   private readonly chunks: Chunk[] = [];
   private readonly nx: number;
@@ -365,6 +372,46 @@ export class VegetationLayer {
     if (look) {
       this.look = look;
       this.chunks.forEach((_, i) => this.pending.add(i));
+    }
+    this.schedule();
+  }
+
+  /**
+   * Land use from a snapshot's `fields` (2 bytes per cell: LandUse, crop).
+   * Re-scatters the chunks whose land use changed (vegetation is cleared on
+   * fields, buildings, paths…).
+   */
+  setFields(fields: Uint8Array): void {
+    const n = this.width * this.height;
+    const prev = this.landuse;
+    const next = new Uint8Array(n);
+    for (let i = 0; i < n; i++) next[i] = fields[2 * i]!;
+    // Keep the cells next to buildings clear too (a little yard around each house).
+    const W = this.width;
+    for (let i = 0; i < n; i++) {
+      if (fields[2 * i] !== LandUse.Building) continue;
+      const x = i % W;
+      const y = (i / W) | 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= this.height) continue;
+          const j = ny * W + nx;
+          if (next[j] === LandUse.None) next[j] = LandUse.Yard;
+        }
+    }
+    this.landuse = next;
+    const cs = this.chunkSize;
+    for (let i = 0; i < n; i++) {
+      if (prev ? prev[i] === next[i] : next[i] === LandUse.None) continue;
+      const x = i % this.width;
+      const y = (i / this.width) | 0;
+      const ci = Math.floor(y / cs) * this.nx + Math.floor(x / cs);
+      if (!this.pending.has(ci)) {
+        this.chunks[ci]!.forced = true;
+        this.pending.add(ci);
+      }
     }
     this.schedule();
   }
@@ -538,7 +585,13 @@ export class VegetationLayer {
     const y0 = c.cy * cs;
     const x1 = Math.min(this.width, x0 + cs);
     const y1 = Math.min(this.height, y0 + cs);
-    const placements = scatter({ heights: this.heights, look: this.look, width: this.width, height: this.height, seed: this.seed }, x0, y0, x1, y1);
+    const placements = scatter(
+      { heights: this.heights, look: this.look, width: this.width, height: this.height, seed: this.seed, landuse: this.landuse },
+      x0,
+      y0,
+      x1,
+      y1,
+    );
     const palette = this.chunkPalette(c);
     const sig = signature(placements, palette);
     if (sig === c.sig && !c.forced) return;

@@ -3,10 +3,12 @@
  *   npx tsx tools/shot-game.ts [name] [--query "seed=3"] [--days 1] [--cam '{"viewHeight":20}'] [--phone]
  *     [--eval "js run in the page after setup (window.__hydro is `h`)"] [--speed 1]
  *     [--shots 2 --interval 1000]   (several shots: out/<name>-0.png, …)
+ *     [--eval-file script.js]   (like --eval, read from a file)
+ *     [--focus-village]   (centre the camera on the buildings, after --cam)
  * Assumes `npx vite preview --port 4173` (or dev server via --url) is running.
  */
 import { chromium, devices } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const opt = (k: string, d: string) => {
@@ -19,7 +21,8 @@ const query = opt('query', 'seed=1');
 const days = Number(opt('days', '0.5'));
 const cam = opt('cam', '');
 const phone = args.includes('--phone');
-const evalJs = opt('eval', '');
+const evalFile = opt('eval-file', '');
+const evalJs = evalFile ? readFileSync(evalFile, 'utf8') : opt('eval', '');
 const speed = Number(opt('speed', '0'));
 const shots = Number(opt('shots', '1'));
 const interval = Number(opt('interval', '1000'));
@@ -41,6 +44,18 @@ await page.waitForFunction(() => (window as any).__hydro, null, { timeout: 120_0
 console.log(`ready after ${Date.now() - t0} ms`);
 if (days > 0) await page.evaluate((d) => (window as any).__hydro.client.runDays(d), days);
 if (cam) await page.evaluate((c) => (window as any).__hydro.renderer.camera.setState(JSON.parse(c), true), cam);
+if (args.includes('--focus-village')) {
+  await page.waitForTimeout(800);
+  const r = await page.evaluate(() => {
+    const bs = (window as any).__hydro.renderer.buildings.buildings as { x: number; y: number }[];
+    if (!bs.length) return null;
+    const x = bs.reduce((a, b) => a + b.x, 0) / bs.length;
+    const y = bs.reduce((a, b) => a + b.y, 0) / bs.length;
+    (window as any).__hydro.renderer.camera.setState({ x, y }, true);
+    return { buildings: bs.length, x, y };
+  });
+  console.log('focus village', JSON.stringify(r));
+}
 if (evalJs) {
   const r = await page.evaluate((js) => new Function('h', js)((window as any).__hydro), evalJs);
   if (r !== undefined) console.log('eval:', JSON.stringify(r));
@@ -51,7 +66,7 @@ const stats = await page.evaluate(() => {
   const h = (window as any).__hydro;
   const r = h.renderer;
   const i = r.gl.info.render;
-  return { crowd: h.crowd?.stats, calls: i.calls, triangles: i.triangles, flow: r.flow.count, flowTarget: r.flow.target, cand: r.flow.candCount, box: r.flow.box, puffs: r.weather.puffCount };
+  return { crowd: h.crowd?.stats, calls: i.calls, triangles: i.triangles, buildingMeshes: r.buildings?.meshCount, crops: r.crops?.instanceCount, flow: r.flow.count, puffs: r.weather.puffCount };
 });
 console.log('render stats', JSON.stringify(stats));
 for (let k = 0; k < shots; k++) {

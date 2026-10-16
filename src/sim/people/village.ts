@@ -216,9 +216,21 @@ export class PeopleSystem {
   private addBuilding(kind: Building['kind'], settlement: number, x: number, y: number): Building {
     const b: Building = { id: this.nextId++, kind, settlement, x, y, rot: this.rng.int(0, 4) * (Math.PI / 2), progress: 0 };
     this.buildings.push(b);
-    const i = this.world.idx(x, y);
-    this.world.landuse[i] = LandUse.Building;
-    this.world.vegetation[i] = Math.min(this.world.vegetation[i]!, 0.1);
+    const w = this.world;
+    const i = w.idx(x, y);
+    w.landuse[i] = LandUse.Building;
+    w.vegetation[i] = Math.min(w.vegetation[i]!, 0.1);
+    // A small yard around it: trodden, kept free of fields and trees.
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if ((dx || dy) && w.inBounds(x + dx, y + dy)) {
+          const j = w.idx(x + dx, y + dy);
+          if (w.landuse[j] === LandUse.None && w.water[j]! < 0.05) {
+            w.landuse[j] = LandUse.Yard;
+            w.vegetation[j] = Math.min(w.vegetation[j]!, 0.25);
+          }
+        }
+      }
     this.buildingsDirty = true;
     return b;
   }
@@ -492,7 +504,14 @@ export class PeopleSystem {
         const m = this.fieldMoisture[i]!;
         const wet = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
         const forest = Math.max(0, w.vegetation[i]! - 0.45);
-        const suit = w.fertility[i]! * wet - r / (FIELD_RADIUS * 4) - forest;
+        // Grow fields in solid patches next to existing ones.
+        const W = w.width;
+        let adj = 0;
+        if (x > 0 && w.landuse[i - 1] === LandUse.Field) adj++;
+        if (x < W - 1 && w.landuse[i + 1] === LandUse.Field) adj++;
+        if (y > 0 && w.landuse[i - W] === LandUse.Field) adj++;
+        if (y < w.height - 1 && w.landuse[i + W] === LandUse.Field) adj++;
+        const suit = w.fertility[i]! * wet - r / (FIELD_RADIUS * 4) - forest + (wet > 0 ? 0.12 * adj : 0);
         if (suit > 0.12) cands.push([suit, i]);
       }
     cands.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
