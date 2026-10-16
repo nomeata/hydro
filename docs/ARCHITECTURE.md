@@ -121,18 +121,47 @@ ground/evaporation with exact accounting. The worst case (rain over the
 whole window) must still fit the budget.
 
 ### 3.3 Erosion, deposition, talus (M1b)
-- Transport capacity `C = Kc · |v| · max(slope, s_min) · min(h, h_cap)`, applied
-  only when `|v| > v_c` (≈0.4 m/s) and `h > 1 cm`.
-- Erode `Ks·(C − s)·MORFAC·erodibility`. Per-step limits: at most 10% of
-  local soil, and never below the lowest neighbour's surface. Deposit
-  `Kd·(s − C)·MORFAC`, never above the highest neighbour's surface.
-- Exposed bedrock erodes ~1000× slower. Weathering turns bedrock into soil
-  at a few cm/year, so soil depth reaches an equilibrium.
-- Inflow cells carry sediment at capacity. Outlets have a pinned base level.
-- Deposited sediment becomes silt and adds fertility.
-- Talus: repose angle per soil type, lower when wet. Lined cells are exempt.
-- **Long-horizon test:** 50 game years at 256²; hypsometry drift stays
-  bounded, no spikes or pits, rivers persist.
+Code: `sim/hydro/erosion.ts`, `sim/hydro/talus.ts`; tunables in
+`sim/params.ts` (copied into `Simulation.geo`, which tools and tests may
+change). Erosion runs every 8 steps, talus every 16, weathering 4× a day.
+- **Two capacities.** Suspended sediment is a volume per cell carried by the
+  flow kernel. The water can keep `C = MORFAC·Kc·(|v| − v_c)^1.5·min(h, h_cap)`
+  in suspension (v_c ≈ 0.4 m/s, nothing below h = 3 cm); any excess settles
+  at the settling velocity. Picking up from the bed uses the bed's own
+  critical speed (`bedCriticalFactor` per soil type: gravel 4×, clay
+  1.6×, …) and ramps in with depth (no sheet-flow scour on hillsides).
+  Between the two the water neither erodes nor deposits.
+- **Per-pass limits:** at most 10% of the local soil, never below half-way
+  to the lowest neighbour, deposits never above the highest neighbour;
+  bare bedrock erodes 1000× slower. Lined cells and outlets never change.
+- **Bed texture:** sustained scour (0.3 m net) armours a loose bed to gravel,
+  so steep reaches stop incising; deposits turn the topsoil into silt
+  (slow water, + fertility) or sand (bars on gravel).
+- **Lateral migration:** flow running up a bank (velocity against the
+  bank's smoothed uphill direction, so diagonal channels do not widen)
+  wears it down above `bankCriticalVelocity`; the material is laid down on
+  the far margin of the channel as a point bar. Channels shift but keep
+  their width. A weak bed-slope diffusion keeps cross-sections smooth.
+- **Boundaries:** outlets have a pinned base level. Each inflow carries the
+  sediment its river can transport: a slow controller adjusts the inflow
+  concentration so the reach within 8 cells below it neither degrades nor
+  aggrades (the upstream analogue of the pinned base level).
+- **Weathering** turns bedrock into soil at 3 cm/year under bare rock,
+  decaying with soil depth (e-folding 0.5 m, cap 5 m).
+- **Talus:** soil steeper than its repose slope (SOIL_PROPS) slumps to lower
+  8-neighbours; the slope is lower when wet (saturated, or the toe under
+  water) and for **loose soil**: earthworks loosen the cells they change,
+  which settle over about a game year. So a fresh unlined trench slumps and
+  narrows once water flows in, a lined one does not. Only soil moves.
+- **Ledgers:** f64 sediment ledger (inflow, outflow, eroded, bank,
+  deposited, weathered, talus); bedrock + soil + suspended sediment is
+  conserved apart from inflow and outflow. Save games keep the ledger and
+  the sparse per-cell erosion state (`SimState.geo`).
+- **Stationarity** (`tests/sim/erosion.test.ts`, `tools/longrun.ts`): on
+  generated 128² worlds over 10–20 game years the mean terrain change stays
+  at centimetres and grows ever more slowly, rivers persist and migrate,
+  sediment in ≈ sediment out. The default test runs one year at MORFAC ×6;
+  `HYDRO_LONG=1` runs ten years at the normal MORFAC.
 
 ### 3.4 Groundwater (M1a: bucket; M1c: lateral flow)
 - M1a: each cell's soil is a bucket of capacity `soil × porosity`.

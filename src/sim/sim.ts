@@ -9,6 +9,8 @@ import { Weather, type WeatherState } from './climate/weather';
 import { CELL_AREA, DT, STEPS_PER_DAY } from './constants';
 import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
 import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
+import { ErosionScratch, defaultGeoParams, erosionStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
+import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
 import { SpiritCrew, cancelPlans, planDike, planLevel, planTrench } from './plans/plans';
 import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
@@ -30,12 +32,45 @@ export interface SimState {
   crewQueue: number[];
   tileElevation: number[];
   people?: PeopleState;
+  /** Geomorphology (absent in saves from before M1b). */
+  geo?: GeoState;
+}
+
+/** Erosion state that must survive save/load: the ledger and sparse per-cell accumulators. */
+export interface GeoState {
+  sedLedger: SedimentLedger;
+  time: number;
+  /** Pairs [cell, value] of non-zero entries. */
+  bedAcc: number[];
+  inflowConc: number[];
+  loose: number[];
+  /** Last pass's transport rates (read again by the next pass's fast path). */
+  transport?: number[];
+}
+
+function sparse(a: Float32Array): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < a.length; i++) if (a[i] !== 0) out.push(i, a[i]!);
+  return out;
+}
+
+function unsparse(a: Float32Array, pairs: number[]): void {
+  a.fill(0);
+  for (let k = 0; k + 1 < pairs.length; k += 2) a[pairs[k]!] = pairs[k + 1]!;
 }
 
 /** Steps between soil-water/weather updates. */
 const SOILWATER_EVERY = 4;
 /** Steps between builder updates. */
 const BUILD_EVERY = 10;
+/** Steps between erosion/deposition passes (offset from soil-water). */
+const EROSION_EVERY = 8;
+/** Steps between talus passes. */
+const TALUS_EVERY = 16;
+/** Steps between weathering passes (four times a day). */
+const WEATHER_EVERY = STEPS_PER_DAY / 4;
+/** Steps between publishing slow terrain changes to the renderer. */
+const TERRAIN_PUBLISH_EVERY = 30;
 
 export class Simulation {
   readonly world: World;
@@ -43,10 +78,18 @@ export class Simulation {
   readonly weather: Weather;
   readonly ledger: Ledger = newLedger();
   readonly crew = new SpiritCrew();
+  /** Sediment budget (m³). */
+  readonly sedLedger: SedimentLedger = newSedimentLedger();
+  /** Geomorphology tunables (a copy of PARAMS; tools and tests may change it). */
+  readonly geo: GeoParams = defaultGeoParams();
   step = 0;
 
   private readonly scratch: FlowScratch;
-  private readonly flowStats: FlowStats = { outflow: 0, maxDepth: 1, maxSpeed: 0 };
+  private readonly flowStats: FlowStats = { outflow: 0, maxDepth: 1, maxSpeed: 0, sedimentOut: 0 };
+  private readonly erosionScratch: ErosionScratch;
+  private readonly talusScratch: TalusScratch;
+  /** Rows changed by erosion/talus since they were last published. */
+  private readonly geoDirty: RowRange = { y0: Infinity, y1: -Infinity };
 
   // Dirty tracking for snapshots.
   private dirtyY0 = Infinity;
@@ -67,6 +110,8 @@ export class Simulation {
     this.seed = seed;
     this.rng = new Rng(seed ^ 0x5eed);
     this.scratch = new FlowScratch(world.size);
+    this.erosionScratch = new ErosionScratch(world.size);
+    this.talusScratch = new TalusScratch(world.size);
     this.weather = new Weather(world, this.rng);
     if (opts.people) this.people = new PeopleSystem(world, seed, opts.people.startX, opts.people.startY);
   }
@@ -74,7 +119,11 @@ export class Simulation {
   readonly seed: number;
 
   private readonly peopleHost: PeopleHost = {
-    terrainChanged: (i) => this.markTerrainDirty(i),
+    terrainChanged: (i) => {
+      // Freshly dug or heaped soil is loose (slumps and erodes more easily).
+      this.erosionScratch.loose[i] = 1;
+      this.markTerrainDirty(i);
+    },
     planChanged: () => {
       this.planDirty = true;
     },
@@ -111,12 +160,34 @@ export class Simulation {
     const fs = this.flowStats;
     const n = Math.max(1, Math.ceil(DT / stableDt(fs.maxDepth, fs.maxSpeed)));
     let out = 0;
+    let sedOut = 0;
     for (let k = 0; k < n; k++) {
       flowStep(w, this.scratch, DEFAULT_FLOW_PARAMS, DT / n, fs);
       out += fs.outflow;
+      sedOut += fs.sedimentOut ?? 0;
     }
     this.ledger.outflow += out;
     this.outflowToday += out;
+    this.sedLedger.outflow += sedOut;
+
+    // Geomorphology.
+    const geo = this.geo;
+    if (this.step % EROSION_EVERY === EROSION_EVERY / 2) {
+      erosionStep(w, this.erosionScratch, EROSION_EVERY * DT, geo, this.sedLedger, this.geoDirty);
+    }
+    if (this.step % TALUS_EVERY === TALUS_EVERY - 1) {
+      const frac = (geo.talusPerDay * geo.morfac * TALUS_EVERY) / STEPS_PER_DAY / PARAMS.morfac;
+      talusStep(w, this.talusScratch, frac, geo, this.sedLedger, this.geoDirty, this.erosionScratch.loose);
+    }
+    if (this.step % WEATHER_EVERY === 1) {
+      weatherStep(w, WEATHER_EVERY / STEPS_PER_DAY, geo, this.sedLedger, this.erosionScratch.loose);
+    }
+    if (this.step % TERRAIN_PUBLISH_EVERY === 0 && this.geoDirty.y1 >= this.geoDirty.y0) {
+      if (this.geoDirty.y0 < this.dirtyY0) this.dirtyY0 = this.geoDirty.y0;
+      if (this.geoDirty.y1 > this.dirtyY1) this.dirtyY1 = this.geoDirty.y1;
+      this.geoDirty.y0 = Infinity;
+      this.geoDirty.y1 = -Infinity;
+    }
 
     const people = this.people;
     if (people && this.step % PEOPLE_TICK === 0) {
@@ -128,11 +199,13 @@ export class Simulation {
       const rate = (PARAMS.builderRatePerDay * BUILD_EVERY) / STEPS_PER_DAY;
       // The spirit crew leaves plans to a village once it has enough builders.
       const skip = people ? (i: number) => people.handledByVillage(i) : undefined;
+      const loose = this.erosionScratch.loose;
       this.crew.work(
         w,
         rate,
         PARAMS.builderCells,
         (i) => {
+          loose[i] = 1;
           this.markTerrainDirty(i);
           this.planDirty = true;
         },
@@ -144,6 +217,7 @@ export class Simulation {
     if (this.step % STEPS_PER_DAY === 0) {
       this.outflowLastDay = this.outflowToday;
       this.outflowToday = 0;
+      this.weather.updateElevation();
     }
     if (this.step % 30 === 0) this.lookDirty = true;
   }
@@ -242,6 +316,14 @@ export class Simulation {
       crewQueue: this.crew.getQueue(),
       people: this.people?.getState(),
       tileElevation: Array.from(this.weather.tileElevation),
+      geo: {
+        sedLedger: { ...this.sedLedger },
+        time: this.erosionScratch.time,
+        bedAcc: sparse(this.erosionScratch.bedAcc),
+        transport: sparse(this.erosionScratch.transport),
+        inflowConc: sparse(this.erosionScratch.inflowConc),
+        loose: sparse(this.erosionScratch.loose),
+      },
     };
   }
 
@@ -260,6 +342,14 @@ export class Simulation {
       this.people.setState(st.people);
     }
     this.fieldsDirty = true;
+    if (st.geo) {
+      Object.assign(this.sedLedger, st.geo.sedLedger);
+      this.erosionScratch.time = st.geo.time;
+      unsparse(this.erosionScratch.bedAcc, st.geo.bedAcc);
+      unsparse(this.erosionScratch.inflowConc, st.geo.inflowConc);
+      unsparse(this.erosionScratch.loose, st.geo.loose);
+      if (st.geo.transport) unsparse(this.erosionScratch.transport, st.geo.transport);
+    }
     this.lookDirty = true;
     this.planDirty = true;
   }

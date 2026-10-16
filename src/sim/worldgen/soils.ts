@@ -181,5 +181,37 @@ export function computeSoils(inp: SoilInputs): SoilOutputs {
       vegetation[i] = v;
     }
   }
+  respectRepose(z, W, H, soilType, soil, ground);
   return { soilType, soil, ground, fertility, vegetation, moisture };
+}
+
+/** Margin below the angle of repose that loose soil must keep at generation. */
+const REPOSE_MARGIN = 0.85;
+
+/**
+ * Where a cell is steeper towards any of its 8 neighbours than its soil can
+ * stand (talus would slump it at once), make it a rocky crag with a thin
+ * regolith instead, so the generated world starts in talus equilibrium.
+ */
+function respectRepose(z: Float32Array, W: number, H: number, soilType: Uint8Array, soil: Float32Array, ground: Float32Array): void {
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const t = soilType[i]!;
+      if (t === SoilType.Rock) continue;
+      let steep = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx;
+          const yy = y + dy;
+          if ((dx === 0 && dy === 0) || xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+          const s = (z[i]! - z[yy * W + xx]!) / (CELL * (dx !== 0 && dy !== 0 ? Math.SQRT2 : 1));
+          if (s > steep) steep = s;
+        }
+      if (steep > REPOSE_MARGIN * SOIL_PROPS[t]!.repose) {
+        soilType[i] = SoilType.Rock;
+        soil[i] = Math.min(soil[i]!, 0.3);
+        ground[i] = Math.min(ground[i]!, soil[i]! * SOIL_PROPS[SoilType.Rock]!.porosity);
+      }
+    }
 }

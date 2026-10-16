@@ -18,8 +18,13 @@ Fast, exact, run on every change.
 - **Ledgers:** f64 mass ledgers covering every source and sink (rain, inflow,
   outflow, evaporation, infiltration, thin-film removal) balance to < 1e-5 of
   throughput.
-- **Long-horizon geomorphology (M1b):** 256², 50 game years: hypsometry
-  drift bounded, no single-cell spikes/pits, outlet discharge never zero.
+- **Long-horizon geomorphology (M1b):** a generated 128² world for one game
+  year at MORFAC ×6 (`HYDRO_LONG=1`: ten years at the normal MORFAC):
+  hypsometry drift bounded, no single-cell spikes/pits, rivers and outlet
+  discharge persist, sediment in ≈ sediment out. Longer and larger runs
+  with yearly statistics and before/after/diff images: `npx tsx
+  tools/longrun.ts --seed 3 --years 20 --snap-every 5` (writes
+  `out/longrun/`); look at the images when tuning.
 - **Fuzzing:** random command sequences never produce NaN or negatives.
 
 ## 2. Scenario tests (vitest, Node) — `tests/scenarios/*.test.ts`
