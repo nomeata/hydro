@@ -120,8 +120,8 @@ export type Command =
 // Messages.
 
 export type ToWorker =
-  | { type: 'init'; seed: number; size: number; speed?: number }
-  | { type: 'load'; bytes: ArrayBuffer; speed?: number }
+  | { type: 'init'; seed: number; size: number; speed?: number; duty?: number }
+  | { type: 'load'; bytes: ArrayBuffer; speed?: number; duty?: number }
   | { type: 'setSpeed'; speed: number }
   | { type: 'command'; command: Command }
   | { type: 'ack'; poolId: number; depth: Float32Array; vel: Int8Array }

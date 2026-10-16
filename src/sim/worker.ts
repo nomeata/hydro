@@ -35,6 +35,8 @@ let lastSnapshot = 0;
 let msPerStep = 1;
 let achieved = 0;
 let ticking = false;
+/** Fraction of one core the sim may use (lower on phones to save battery and heat). */
+let duty = 1;
 
 const channel = new MessageChannel();
 channel.port1.onmessage = () => tick();
@@ -134,7 +136,10 @@ function tick(): void {
   if (now - lastSnapshot >= SNAPSHOT_INTERVAL_MS) {
     if (sendSnapshot()) lastSnapshot = now;
   }
-  schedule(accumulator >= 1 ? 0 : 5);
+  // CPU cap: after working for w ms, rest for w·(1/duty − 1) ms.
+  const worked = performance.now() - sliceStart;
+  const rest = duty < 1 ? worked * (1 / duty - 1) : 0;
+  schedule(accumulator >= 1 ? rest : Math.max(5, rest));
 }
 
 function sendSnapshot(): boolean {
@@ -194,6 +199,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     switch (msg.type) {
       case 'init':
         if (msg.speed !== undefined) speed = msg.speed;
+        if (msg.duty !== undefined) duty = msg.duty;
         init(msg.seed, msg.size);
         break;
       case 'setSpeed':
@@ -217,6 +223,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         break;
       case 'load':
         if (msg.speed !== undefined) speed = msg.speed;
+        if (msg.duty !== undefined) duty = msg.duty;
         load(msg.bytes).catch((e) => post({ type: 'loadFailed', message: String(e) }));
         break;
       case 'save':

@@ -42,7 +42,9 @@ Fun on screen fast.
 ## M1c — Deep water ☐
 - Lateral groundwater, springs, bogs
 - Snow + melt, climate anomaly (wet/dry years)
-- Phone bench page (`?bench=1`), quality tiers, CPU cap
+- ☑ Phone bench page (`?bench=1`)
+- ☑ CPU cap on touch devices (sim duty cycle 45%, `?duty=` overrides)
+- Quality tiers (pending real-device numbers)
 
 ## M2 — Living land ☐
 - Vegetation (grass, shrubs, forest, reeds) growth/death from moisture,

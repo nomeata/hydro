@@ -21,7 +21,7 @@ export class SimClient {
   private speed = 1;
 
   /** Start a new world, or resume from save-game bytes. */
-  constructor(start: ({ seed: number; size: number } | { bytes: ArrayBuffer }) & { speed?: number }) {
+  constructor(start: ({ seed: number; size: number } | { bytes: ArrayBuffer }) & { speed?: number; duty?: number }) {
     this.worker = new Worker(new URL('../sim/worker.ts', import.meta.url), { type: 'module' });
     this.ready = new Promise((resolve, reject) => {
       this.worker.onerror = (e) => reject(new Error(e.message));
@@ -62,8 +62,9 @@ export class SimClient {
       };
     });
     this.speed = start.speed ?? 1;
-    if ('bytes' in start) this.post({ type: 'load', bytes: start.bytes, speed: this.speed }, [start.bytes]);
-    else this.post({ type: 'init', seed: start.seed, size: start.size, speed: this.speed });
+    const duty = start.duty;
+    if ('bytes' in start) this.post({ type: 'load', bytes: start.bytes, speed: this.speed, duty }, [start.bytes]);
+    else this.post({ type: 'init', seed: start.seed, size: start.size, speed: this.speed, duty });
   }
 
   private rejectReady: ((e: Error) => void) | null = null;

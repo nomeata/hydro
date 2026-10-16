@@ -26,12 +26,14 @@ const AUTOSAVE = 'autosave';
 /** Tests start paused so that their state is exactly reproducible. */
 const initialSpeed = testMode ? 0 : 1;
 const AUTOSAVE_MS = 60_000;
+/** Phones: let the sim use at most ~45% of a core (battery, heat); ?duty= overrides. */
+const duty = Number(params.get('duty') ?? (matchMedia('(pointer: coarse)').matches ? 0.45 : 1));
 
 async function startClient(): Promise<{ client: SimClient; data: ReadyData }> {
   if (resume) {
     const saved = await readSave(AUTOSAVE);
     if (saved) {
-      const client = new SimClient({ bytes: saved.bytes, speed: initialSpeed });
+      const client = new SimClient({ bytes: saved.bytes, speed: initialSpeed, duty });
       try {
         return { client, data: await client.ready };
       } catch (e) {
@@ -40,7 +42,7 @@ async function startClient(): Promise<{ client: SimClient; data: ReadyData }> {
       }
     }
   }
-  const client = new SimClient({ seed, size, speed: initialSpeed });
+  const client = new SimClient({ seed, size, speed: initialSpeed, duty });
   return { client, data: await client.ready };
 }
 
