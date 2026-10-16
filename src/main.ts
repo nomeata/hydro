@@ -35,6 +35,7 @@ async function main(): Promise<void> {
     centerX: data.info.startX,
     centerY: data.info.startY,
     radius: 14,
+    look: data.look,
   });
   renderer.addFrameListener((dt) => wanderers.update(dt));
 
@@ -49,11 +50,17 @@ async function main(): Promise<void> {
   });
 
   let lookCounter = 0;
+  let season = 0;
   client.onSnapshot((s) => {
     mirror.apply(s);
     renderer.applySnapshot(s);
     hud.update(s);
     if (s.plan) tools.planUpdated();
+    if (s.terrain) vegetation.invalidate(0, s.terrain.y0, data.info.width, s.terrain.y1);
+    if (s.time.season !== season) {
+      season = s.time.season;
+      vegetation.setSeason(season);
+    }
     // Re-scatter vegetation occasionally; it changes slowly.
     if (s.look && ++lookCounter % 20 === 0) vegetation.update(s.look);
   });
