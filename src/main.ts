@@ -88,7 +88,7 @@ async function main(): Promise<void> {
       fakeCrowd = null;
       crowd.setFrame(s.entities, performance.now());
     } else if (fakeCrowd === undefined) {
-      fakeCrowd = new FakeCrowd(renderer.heights, { seed, centerX: data.info.startX, centerY: data.info.startY });
+      fakeCrowd = new FakeCrowd(renderer.heights, { seed, centerX: data.info.startX, centerY: data.info.startY, look: data.look });
     }
     hud.update(s);
     if (s.plan) tools.planUpdated();

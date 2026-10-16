@@ -151,19 +151,25 @@ export function bakeBoneAnimation(
   for (let k = 0; k < composed.length; k++) {
     const { clip } = composed[k]!;
     const bc = baked[k]!;
-    const mixer = new THREE.AnimationMixer(root);
-    const action = mixer.clipAction(clip);
-    action.setLoop(THREE.LoopRepeat, Infinity);
-    action.play();
+    // Evaluate the tracks directly (no AnimationMixer: its loop/enable state
+    // machine is not meant for random access).
+    const bound = clip.tracks.flatMap((track) => {
+      const { nodeName, propertyName } = THREE.PropertyBinding.parseTrackName(track.name);
+      const node = nodeName ? root.getObjectByName(nodeName) : null;
+      if (!node || !['position', 'quaternion', 'scale'].includes(propertyName)) return [];
+      return [{ node, prop: propertyName as 'position' | 'quaternion' | 'scale', interp: track.createInterpolant() }];
+    });
     for (let f = 0; f < bc.frames; f++) {
       restore();
       // Sample within [0, duration): the last frame wraps to the first.
-      const t = Math.min(clip.duration * (1 - 1e-6), (f / bc.frames) * clip.duration);
-      mixer.setTime(t);
+      const t = (f / bc.frames) * clip.duration;
+      for (const b of bound) {
+        const v = b.interp.evaluate(t);
+        if (b.prop === 'quaternion') b.node.quaternion.set(v[0]!, v[1]!, v[2]!, v[3]!).normalize();
+        else b.node[b.prop].set(v[0]!, v[1]!, v[2]!);
+      }
       writeFrame(bc.start + f);
     }
-    action.stop();
-    mixer.uncacheRoot(root);
   }
   restore();
   root.matrix.copy(rootMatrix);

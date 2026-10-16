@@ -31,6 +31,13 @@ export interface FakeCrowdOptions {
   dogs?: number;
   /** Layout radius in cells (default 14). */
   radius?: number;
+  /**
+   * Ground look (RGBA per cell, B = vegetation). When given, the village
+   * centre moves to the most open, flat, dry spot within `searchRadius` of
+   * the centre (so the crowd is not hidden in a forest), preferring water nearby.
+   */
+  look?: Uint8Array;
+  searchRadius?: number;
 }
 
 export const FAKE_TICK_S = 0.1;
@@ -75,6 +82,9 @@ interface Agent {
 
 export class FakeCrowd {
   readonly agents: Agent[] = [];
+  /** Village centre (cells). */
+  readonly centerX: number;
+  readonly centerY: number;
   private acc = 0;
   private readonly rng: Rng;
   private readonly store: Site;
@@ -87,8 +97,9 @@ export class FakeCrowd {
   ) {
     const rng = (this.rng = new Rng((opts.seed ^ 0x5eed_c0de) >>> 0));
     const R = opts.radius ?? 14;
-    const cx = opts.centerX;
-    const cy = opts.centerY;
+    [this.centerX, this.centerY] = opts.look ? this.openSpot(opts.centerX, opts.centerY, opts.searchRadius ?? 20, opts.look) : [opts.centerX, opts.centerY];
+    const cx = this.centerX;
+    const cy = this.centerY;
     const spot = (r0: number, r1: number, load: CarryKind, work: EntityAnim): Site => {
       const p = this.findSpot(cx, cy, r0, r1);
       return { x: p[0], y: p[1], load, work };
@@ -197,6 +208,42 @@ export class FakeCrowd {
       if (this.walkable(x, y)) return [x, y];
     }
     return [cx, cy];
+  }
+
+  /** Best open spot: low vegetation around, flat, dry, near (not in) water, close to (cx, cy). */
+  private openSpot(cx: number, cy: number, R: number, look: Uint8Array): [number, number] {
+    const h = this.heights;
+    const W = h.width;
+    const veg = (x: number, y: number) => {
+      const xi = Math.min(W - 1, Math.max(0, Math.round(x)));
+      const yi = Math.min(h.height - 1, Math.max(0, Math.round(y)));
+      return look[(yi * W + xi) * 4 + 2]! / 255;
+    };
+    let best: [number, number] = [cx, cy];
+    let bestScore = Infinity;
+    for (let y = Math.round(cy - R); y <= cy + R; y += 2)
+      for (let x = Math.round(cx - R); x <= cx + R; x += 2) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d > R || !this.walkable(x, y)) continue;
+        let v = 0;
+        let wet = 0;
+        let ok = 0;
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2;
+          const r = 2 + (k % 4) * 2;
+          const px = x + Math.cos(a) * r;
+          const py = y + Math.sin(a) * r;
+          v += veg(px, py);
+          if (h.depthAt(px, py) > 0.3) wet++;
+          if (this.walkable(px, py)) ok++;
+        }
+        const score = v / 16 + (16 - ok) / 16 + d / R * 0.35 + (wet > 0 && wet < 6 ? -0.15 : 0) + (wet >= 6 ? 0.5 : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          best = [x, y];
+        }
+      }
+    return best;
   }
 
   /** Dry spots next to calm-ish water, facing it. */
