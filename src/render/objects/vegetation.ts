@@ -386,6 +386,21 @@ export class VegetationLayer {
     const prev = this.landuse;
     const next = new Uint8Array(n);
     for (let i = 0; i < n; i++) next[i] = fields[2 * i]!;
+    // Keep the cells next to buildings clear too (a little yard around each house).
+    const W = this.width;
+    for (let i = 0; i < n; i++) {
+      if (fields[2 * i] !== LandUse.Building) continue;
+      const x = i % W;
+      const y = (i / W) | 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= this.height) continue;
+          const j = ny * W + nx;
+          if (next[j] === LandUse.None) next[j] = LandUse.Yard;
+        }
+    }
     this.landuse = next;
     const cs = this.chunkSize;
     for (let i = 0; i < n; i++) {
