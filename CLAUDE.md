@@ -19,7 +19,9 @@
 - Parallel agents: run each in its own git worktree (`isolation: "worktree"`)
   on its own branch from current `main`; it commits there, and the lead
   reviews and merges. In a fresh worktree, symlink `node_modules` from the
-  main checkout instead of reinstalling. Changes to shared contracts
+  main checkout instead of reinstalling. Agents commit after every
+  meaningful step: the container can restart and uncommitted work in a
+  worktree may be lost (or need salvaging). Changes to shared contracts
   (`src/shared/protocol.ts`, `src/render/coords.ts`, `src/sim/world.ts`)
   are made by the lead first, then branched from.
 - `main` must always build and pass tests: every push deploys to
