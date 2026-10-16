@@ -16,3 +16,11 @@
 - This container's CPU is ~5× slower than a typical desktop; judge perf with
   that in mind (bench results are relative).
 - Commit with the user as author; end messages with the Co-Authored-By trailer.
+- Parallel agents: run each in its own git worktree (`isolation: "worktree"`)
+  on its own branch from current `main`; it commits there, and the lead
+  reviews and merges. In a fresh worktree, symlink `node_modules` from the
+  main checkout instead of reinstalling. Changes to shared contracts
+  (`src/shared/protocol.ts`, `src/render/coords.ts`, `src/sim/world.ts`)
+  are made by the lead first, then branched from.
+- `main` must always build and pass tests: every push deploys to
+  https://hydro.nomeata.de/.
