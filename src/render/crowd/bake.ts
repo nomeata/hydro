@@ -128,7 +128,7 @@ export function bakeBoneAnimation(
   }
 
   const data = new Float32Array(total * boneCount * 12);
-  // Rest of rest-shape transform chain: v_model = Binv · bone.world · boneInv · B · v.
+  // Skinning chain (as in three.js): v_model = Binv · bone.world · boneInv · B · v.
   root.updateMatrixWorld(true);
   const B = mesh.bindMatrix.clone();
   const Binv = mesh.bindMatrixInverse.clone();
