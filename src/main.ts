@@ -88,8 +88,14 @@ async function main(): Promise<void> {
   document.getElementById('loading')?.classList.add('done');
 }
 
-main().catch((e) => {
+if (params.has('bench')) {
+  void import('./benchPage').then((m) => m.runBenchPage());
+} else {
+  main().catch(fail);
+}
+
+function fail(e: unknown): void {
   console.error(e);
   const el = document.getElementById('loading');
   if (el) el.innerHTML = `<p>Something went wrong: ${String(e)}</p>`;
-});
+}
