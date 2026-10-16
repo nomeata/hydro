@@ -14,6 +14,9 @@ export const ICONS = {
   dike: svg(
     '<path d="M2 26h28" stroke="#6b4a2b" stroke-width="2.4" stroke-linecap="round"/><path d="M5 26l6-12h10l6 12z" fill="#c49a62" stroke="#6b4a2b" stroke-width="2" stroke-linejoin="round"/><path d="M11 14h10" stroke="#7fbf5a" stroke-width="3" stroke-linecap="round"/><path d="M24 20c2 1 4 1 6 0" stroke="#59b3e6" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
   ),
+  level: svg(
+    '<path d="M3 24c4-6 7-9 10-6s5 2 7-1 6-3 9 1" fill="none" stroke="#b98a52" stroke-width="2" stroke-dasharray="2 2.5" stroke-linecap="round"/><path d="M3 22h26v5H3z" fill="#c49a62" stroke="#6b4a2b" stroke-width="2" stroke-linejoin="round"/><path d="M9 6h14l-2 9H11z" fill="#9aa3ad" stroke="#4b5560" stroke-width="1.6" stroke-linejoin="round"/><path d="M16 15v5" stroke="#6b4a2b" stroke-width="2.4" stroke-linecap="round"/>',
+  ),
   erase: svg(
     '<circle cx="16" cy="16" r="11" fill="#fbe1d6" stroke="#b5482d" stroke-width="2.4"/><path d="M11 11l10 10M21 11L11 21" stroke="#b5482d" stroke-width="2.6" stroke-linecap="round"/>',
   ),

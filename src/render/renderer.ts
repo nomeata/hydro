@@ -21,6 +21,8 @@ import {
   uploadFloatRows,
 } from './textures';
 import { WaterLayer, createWaterUniforms } from './water';
+import { FlowParticles } from './flow';
+import { WeatherLayer, createFrontUniforms } from './weather';
 
 /** Fixed time of day used for lighting: a pleasant early afternoon. */
 const DAY_TIME = 0.56;
@@ -59,6 +61,11 @@ export class GameRenderer {
   private readonly geometry: THREE.BufferGeometry;
   private readonly terrain: TerrainLayer;
   private readonly water: WaterLayer;
+  /** Drifting foam flecks / leaves showing the flow direction. */
+  readonly flow: FlowParticles;
+  /** Clouds, cloud shadows, rain and snow following the rain fronts. */
+  readonly weather: WeatherLayer;
+  private season = 1;
   private readonly tex: {
     terrain: THREE.DataTexture;
     look: THREE.DataTexture;
@@ -84,6 +91,7 @@ export class GameRenderer {
   private readonly onLost: (e: Event) => void;
   private readonly onRestored: () => void;
   private readonly tmpV = new THREE.Vector3();
+  private readonly tmpV2 = new THREE.Vector2();
 
   constructor(canvas: HTMLCanvasElement, data: InitialData, opts: GameRendererOptions = {}) {
     this.canvas = canvas;
@@ -123,22 +131,40 @@ export class GameRenderer {
 
     // Layers.
     this.geometry = makeChunkGeometry();
-    const tu = createTerrainUniforms(this.tex, W, H);
+    const fronts = createFrontUniforms();
+    const tu = createTerrainUniforms(this.tex, W, H, fronts);
     tu.uPlanOn.value = anyPlan ? 1 : 0;
     this.terrain = new TerrainLayer(this.geometry, tu, W, H);
     this.terrain.setCastShadow(this.shadows);
     this.scene.add(this.terrain.group);
     const wu = createWaterUniforms(
-      { terrain: this.tex.terrain, depthA: this.tex.depthA, depthB: this.tex.depthB, vel: this.tex.vel, noise: this.tex.noise },
+      {
+        terrain: this.tex.terrain,
+        depthA: this.tex.depthA,
+        depthB: this.tex.depthB,
+        vel: this.tex.vel,
+        noise: this.tex.noise,
+        plan: this.tex.plan,
+        preview: this.tex.preview,
+      },
       W,
       H,
+      fronts,
     );
+    // Plan flags are shared with the terrain so both overlays switch together.
+    wu.uPlanOn = tu.uPlanOn;
+    wu.uPreviewOn = tu.uPreviewOn;
     this.water = new WaterLayer(this.geometry, wu, W, H);
     this.water.updateVisibility(this.depthBuf(true), this.depthBuf(false));
     this.scene.add(this.water.group);
+    this.flow = new FlowParticles(this.heights);
+    this.scene.add(this.flow.mesh);
+    this.weather = new WeatherLayer(fronts, this.tex.terrain, W, H, HEIGHT_SCALE);
+    this.scene.add(this.weather.group);
     this.updateBounds();
 
     this.sky = new SkyLighting(this.scene);
+    this.applySeasonColours();
     if (this.shadows) {
       const s = this.sky.sun.shadow;
       s.mapSize.set(1024, 1024);
@@ -184,6 +210,9 @@ export class GameRenderer {
     this.curDepthTex().needsUpdate = true;
     packVel(s.vel, this.tex.vel.image.data as Uint8Array);
     this.tex.vel.needsUpdate = true;
+    this.flow.setVelocity(s.vel);
+    this.flow.gameSpeed = s.stats.speedRequested > 0 ? Math.max(s.stats.speedAchieved, 0.3) : 0;
+    this.weather.setFronts(s.climate.fronts);
     const wu = this.water.uniforms;
     wu.uDepthA.value = this.prevDepthTex();
     wu.uDepthB.value = this.curDepthTex();
@@ -213,7 +242,7 @@ export class GameRenderer {
       this.tex.plan.needsUpdate = true;
     }
     // Always daytime (a day/night cycle is distracting); the season drifts smoothly.
-    if (this.followSimTime) this.sky.setSun(DAY_TIME, s.time.yearFrac * 4);
+    if (this.followSimTime) this.setSun(DAY_TIME, s.time.yearFrac * 4);
     this.snapPending = true;
   }
 
@@ -232,6 +261,23 @@ export class GameRenderer {
   /** Lighting hook: timeOfDay 0..1 (0.5 noon), season 0..3 (fractional ok). */
   setSun(timeOfDay: number, season: number): void {
     this.sky.setSun(timeOfDay, season);
+    if (Math.abs(season - this.season) > 1e-4) {
+      this.season = season;
+      this.applySeasonColours();
+    }
+  }
+
+  /** Season palette → terrain ground cover, water tint, leaves, foam. */
+  private applySeasonColours(): void {
+    const p = this.sky.palette;
+    const tu = this.terrain.uniforms;
+    tu.uGrassDry.value.copy(p.grassDry);
+    tu.uGrassLush.value.copy(p.grassLush);
+    tu.uForest.value.copy(p.forest);
+    const wu = this.water.uniforms;
+    wu.uShallow.value.copy(p.waterShallow);
+    wu.uDeep.value.copy(p.waterDeep);
+    this.flow.setLeafColours(p.leafA, p.leafB);
   }
 
   addFrameListener(fn: FrameListener): () => void {
@@ -273,6 +319,8 @@ export class GameRenderer {
 
     if (this.shadows) this.fitShadow();
     else this.sky.placeSun(this.camera.targetWorld(this.tmpV), Math.max(this.info.width, this.info.height));
+    this.flow.update(dt, this.camera);
+    this.weather.update(dt, t, this.camera);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;
     this.gl.render(this.scene, this.camera.camera);
@@ -283,6 +331,8 @@ export class GameRenderer {
     const w = Math.max(1, c.clientWidth || c.width);
     const h = Math.max(1, c.clientHeight || c.height);
     this.gl.setSize(w, h, false);
+    const db = this.gl.getDrawingBufferSize(this.tmpV2);
+    this.weather?.setViewport(db.x, db.y);
     const r = c.getBoundingClientRect();
     this.camera.setViewport(w, h, r.left, r.top);
   }
@@ -315,6 +365,8 @@ export class GameRenderer {
     this.canvas.removeEventListener('webglcontextrestored', this.onRestored);
     this.terrain.dispose();
     this.water.dispose();
+    this.flow.dispose();
+    this.weather.dispose();
     this.sky.dispose();
     this.geometry.dispose();
     for (const t of Object.values(this.tex)) t.dispose();
@@ -341,6 +393,7 @@ export class GameRenderer {
     const hf = this.heights;
     const skirt = heightToY(hf.minTerrain) - Math.max(3, (hf.maxTerrain - hf.minTerrain) * HEIGHT_SCALE * 0.15);
     this.terrain.uniforms.uSkirtY.value = skirt;
+    this.weather.setCloudBase(heightToY(hf.maxTerrain) + 14);
     setChunkBounds(this.geometry, skirt - 1, heightToY(hf.maxTerrain + this.maxDepthSeen) + 2);
   }
 

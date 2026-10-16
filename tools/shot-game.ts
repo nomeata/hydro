@@ -1,6 +1,8 @@
 /**
  * Screenshot the real game for visual review.
  *   npx tsx tools/shot-game.ts [name] [--query "seed=3"] [--days 1] [--cam '{"viewHeight":20}'] [--phone]
+ *     [--eval "js run in the page after setup (window.__hydro is `h`)"] [--speed 1]
+ *     [--shots 2 --interval 1000]   (several shots: out/<name>-0.png, …)
  * Assumes `npx vite preview --port 4173` (or dev server via --url) is running.
  */
 import { chromium, devices } from '@playwright/test';
@@ -17,6 +19,10 @@ const query = opt('query', 'seed=1');
 const days = Number(opt('days', '0.5'));
 const cam = opt('cam', '');
 const phone = args.includes('--phone');
+const evalJs = opt('eval', '');
+const speed = Number(opt('speed', '0'));
+const shots = Number(opt('shots', '1'));
+const interval = Number(opt('interval', '1000'));
 
 mkdirSync('out', { recursive: true });
 const browser = await chromium.launch({
@@ -35,7 +41,22 @@ await page.waitForFunction(() => (window as any).__hydro, null, { timeout: 120_0
 console.log(`ready after ${Date.now() - t0} ms`);
 if (days > 0) await page.evaluate((d) => (window as any).__hydro.client.runDays(d), days);
 if (cam) await page.evaluate((c) => (window as any).__hydro.renderer.camera.setState(JSON.parse(c), true), cam);
+if (evalJs) {
+  const r = await page.evaluate((js) => new Function('h', js)((window as any).__hydro), evalJs);
+  if (r !== undefined) console.log('eval:', JSON.stringify(r));
+}
+if (speed > 0) await page.evaluate((s) => (window as any).__hydro.client.setSpeed(s), speed);
 await page.waitForTimeout(1500);
-await page.screenshot({ path: `out/${name}.png` });
-console.log(`wrote out/${name}.png`);
+const stats = await page.evaluate(() => {
+  const r = (window as any).__hydro.renderer;
+  const i = r.gl.info.render;
+  return { calls: i.calls, triangles: i.triangles, flow: r.flow.count, flowTarget: r.flow.target, cand: r.flow.candCount, box: r.flow.box, puffs: r.weather.puffCount };
+});
+console.log('render stats', JSON.stringify(stats));
+for (let k = 0; k < shots; k++) {
+  if (k > 0) await page.waitForTimeout(interval);
+  const path = shots > 1 ? `out/${name}-${k}.png` : `out/${name}.png`;
+  await page.screenshot({ path });
+  console.log(`wrote ${path}`);
+}
 await browser.close();

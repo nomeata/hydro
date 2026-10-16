@@ -5,15 +5,27 @@
 import type { Command, SimTime } from '../shared/protocol';
 import { Rng } from '../shared/rng';
 import { timeAt, seaLevelTemperature } from './climate/calendar';
-import { Weather } from './climate/weather';
+import { Weather, type WeatherState } from './climate/weather';
 import { CELL_AREA, DT, STEPS_PER_DAY } from './constants';
 import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
 import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { ErosionScratch, defaultGeoParams, erosionStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
 import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
-import { SpiritCrew, cancelPlans, planDike, planTrench } from './plans/plans';
+import { SpiritCrew, cancelPlans, planDike, planLevel, planTrench } from './plans/plans';
 import { SOIL_PROPS, type World } from './world';
+
+export interface SimState {
+  step: number;
+  rng: number[];
+  weather: WeatherState;
+  ledger: Ledger;
+  flowStats: FlowStats;
+  outflowToday: number;
+  outflowLastDay: number;
+  crewQueue: number[];
+  tileElevation: number[];
+}
 
 /** Steps between soil-water/weather updates. */
 const SOILWATER_EVERY = 4;
@@ -158,6 +170,12 @@ export class Simulation {
         if (changed.length) this.planDirty = true;
         break;
       }
+      case 'planLevel': {
+        const changed = planLevel(w, cmd.points, cmd.width);
+        this.crew.enqueue(changed);
+        if (changed.length) this.planDirty = true;
+        break;
+      }
       case 'cancelPlan': {
         if (cancelPlans(w, cmd.x, cmd.y, cmd.radius).length) this.planDirty = true;
         break;
@@ -212,6 +230,35 @@ export class Simulation {
     const { water, size } = this.world;
     for (let i = 0; i < size; i++) s += water[i]!;
     return s * CELL_AREA;
+  }
+
+  /** Non-field state needed to resume exactly (see persist.ts). */
+  getState(): SimState {
+    return {
+      step: this.step,
+      rng: this.rng.getState(),
+      weather: structuredClone(this.weather.state),
+      ledger: { ...this.ledger },
+      flowStats: { ...this.flowStats },
+      outflowToday: this.outflowToday,
+      outflowLastDay: this.outflowLastDay,
+      crewQueue: this.crew.getQueue(),
+      tileElevation: Array.from(this.weather.tileElevation),
+    };
+  }
+
+  setState(st: SimState): void {
+    this.step = st.step;
+    this.rng.setState(st.rng);
+    this.weather.state = structuredClone(st.weather);
+    this.weather.tileElevation.set(st.tileElevation);
+    Object.assign(this.ledger, st.ledger);
+    Object.assign(this.flowStats, st.flowStats);
+    this.outflowToday = st.outflowToday;
+    this.outflowLastDay = st.outflowLastDay;
+    this.crew.setQueue(st.crewQueue);
+    this.lookDirty = true;
+    this.planDirty = true;
   }
 
   /** Hash of the persistent state, for determinism tests. */

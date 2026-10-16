@@ -1,13 +1,13 @@
 import { expect, type Page } from '@playwright/test';
 
 /** Open the game in test mode and wait until the world is ready. */
-export async function openGame(page: Page, query = ''): Promise<string[]> {
+export async function openGame(page: Page, query = '', base = './?test=1&seed=1'): Promise<string[]> {
   const errors: string[] = [];
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(`./?test=1&seed=1${query}`);
+  await page.goto(`${base}${query}`);
   await page.waitForFunction(() => (window as any).__hydro !== undefined, null, { timeout: 90_000 });
   await expect(page.locator('#loading')).toHaveClass(/done/);
   return errors;
