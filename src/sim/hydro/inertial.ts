@@ -215,8 +215,14 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
 
       const hm = 0.5 * (h0 + h);
       if (hm > DRY) {
-        const vx = (0.5 * (qL + qR)) / hm;
-        const vy = (0.5 * (qU + qD)) / hm;
+        // Thin films (water dropping over a bank) give huge q/h; clamp so that
+        // the time-step limit and erosion see physically sensible speeds.
+        let vx = (0.5 * (qL + qR)) / hm;
+        let vy = (0.5 * (qU + qD)) / hm;
+        if (vx > maxV) vx = maxV;
+        else if (vx < -maxV) vx = -maxV;
+        if (vy > maxV) vy = maxV;
+        else if (vy < -maxV) vy = -maxV;
         velX[i] = vx;
         velY[i] = vy;
         const sp = Math.abs(vx) + Math.abs(vy);
