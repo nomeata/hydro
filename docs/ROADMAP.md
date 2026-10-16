@@ -46,21 +46,15 @@ Fun on screen fast.
 - ☑ CPU cap on touch devices (sim duty cycle 45%, `?duty=` overrides)
 - Quality tiers (pending real-device numbers)
 
-## M2 — Living land ☐
-- Vegetation (grass, shrubs, forest, reeds) growth/death from moisture,
-  fertility, temperature; holds soil, boosts infiltration
-- Trees and plants rendered with instanced Kenney models
-- Wildlife ambience (deer, birds, fish jumps)
-- Soil look: moisture, fertility, salinity tints
-
 ## M3 — The people arrive ☐
-- Settlers arrive at fog edge when land is attractive; households, houses
-- Agents: needs, jobs, pathfinding on the terrain (avoid deep water, slopes)
-- Builders carry out player plans (replace spirit crew); building speed
-  depends on wellbeing
-- Farmers (fields + crops), fishers, herders (cows, pigs), woodcutters
-- Hidden settlement economy: food, materials, wellbeing, growth
-- Territory → fog of war reveal → progression and tool unlocks
+See docs/PEOPLE.md (phases §10).
+- Prerequisite: lateral groundwater (M1c) so canals water nearby fields
+- M3-α First village: founding family, builders replace spirit crew,
+  houses, farmers, fields/gardens, granary props, footbridges, baked-
+  animation characters
+- M3-β Fishers, flood flight & memory, ruins
+- M3-γ Fog of war, more settlements, tool unlocks
+- M3-δ Herders, woodcutters, desire paths, vegetation dynamics (old M2)
 
 ## M4 — Structures ☐
 - Lining, sluice gates, weirs, wells, pumps (manual/animal), water wheels and
