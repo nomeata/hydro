@@ -10,6 +10,7 @@ export const enum Job {
   Idle = 0,
   Builder = 1,
   Farmer = 2,
+  Fisher = 3,
 }
 
 export const enum Task {
@@ -35,6 +36,7 @@ export const enum SiteKind {
   Harvest = 5,
   Deliver = 6,
   Wander = 7,
+  Fish = 8,
 }
 
 export interface Agent {
@@ -60,6 +62,8 @@ export interface Agent {
   /** Amount carried (food, person-days). */
   load: number;
   anim: EntityAnim;
+  /** Running away from rising water. */
+  flee?: boolean;
   /** Last movement velocity (cells per step), for extrapolation. */
   vx: number;
   vy: number;

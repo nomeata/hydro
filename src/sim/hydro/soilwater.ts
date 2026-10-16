@@ -17,12 +17,14 @@ export interface Ledger {
   inflow: number;
   outflow: number;
   evaporation: number;
+  /** Deep percolation from the soil into the regional aquifer (leaves the map). */
+  seepage: number;
   /** Net water added by earthworks (water displaced when raising ground, etc). */
   earthworks: number;
 }
 
 export function newLedger(): Ledger {
-  return { rain: 0, snowfall: 0, inflow: 0, outflow: 0, evaporation: 0, earthworks: 0 };
+  return { rain: 0, snowfall: 0, inflow: 0, outflow: 0, evaporation: 0, seepage: 0, earthworks: 0 };
 }
 
 export interface SoilWaterInput {
@@ -49,6 +51,8 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
   let snowfall = 0;
   let inflowSum = 0;
   let evap = 0;
+  let seep = 0;
+  const deepK = PARAMS.deepDrainPerDay * dayFrac;
 
   for (let ty = 0; ty * TILE < H; ty++) {
     for (let tx = 0; tx * TILE < W; tx++) {
@@ -120,6 +124,13 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
             evap += e;
           }
 
+          // Deep percolation: wet soil slowly drains to the regional aquifer.
+          if (g > 0 && cap > 0) {
+            const d = Math.min(g, deepK * (g / cap) * Math.max(0.15, props.conductivity));
+            g -= d;
+            seep += d;
+          }
+
           // Exfiltration: an overfull bucket overflows to the surface (springs, bogs).
           if (g > cap) {
             h += g - cap;
@@ -136,4 +147,5 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
   ledger.snowfall += snowfall * CELL_AREA;
   ledger.inflow += inflowSum * CELL_AREA;
   ledger.evaporation += evap * CELL_AREA;
+  ledger.seepage += seep * CELL_AREA;
 }

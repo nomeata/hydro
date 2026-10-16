@@ -7,6 +7,7 @@ import { Rng } from '../shared/rng';
 import { timeAt, seaLevelTemperature } from './climate/calendar';
 import { Weather, type WeatherState } from './climate/weather';
 import { CELL_AREA, DT, STEPS_PER_DAY } from './constants';
+import { GroundwaterScratch, groundwaterStep } from './hydro/groundwater';
 import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
 import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { ErosionScratch, defaultGeoParams, erosionStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
@@ -65,6 +66,8 @@ const SOILWATER_EVERY = 4;
 const BUILD_EVERY = 10;
 /** Steps between erosion/deposition passes (offset from soil-water). */
 const EROSION_EVERY = 8;
+/** Steps between lateral groundwater updates (one game hour). */
+const GROUNDWATER_EVERY = STEPS_PER_DAY / 24;
 /** Steps between talus passes. */
 const TALUS_EVERY = 16;
 /** Steps between weathering passes (four times a day). */
@@ -85,6 +88,7 @@ export class Simulation {
   step = 0;
 
   private readonly scratch: FlowScratch;
+  private readonly gwScratch: GroundwaterScratch;
   private readonly flowStats: FlowStats = { outflow: 0, maxDepth: 1, maxSpeed: 0, sedimentOut: 0 };
   private readonly erosionScratch: ErosionScratch;
   private readonly talusScratch: TalusScratch;
@@ -110,6 +114,7 @@ export class Simulation {
     this.seed = seed;
     this.rng = new Rng(seed ^ 0x5eed);
     this.scratch = new FlowScratch(world.size);
+    this.gwScratch = new GroundwaterScratch(world.size);
     this.erosionScratch = new ErosionScratch(world.size);
     this.talusScratch = new TalusScratch(world.size);
     this.weather = new Weather(world, this.rng);
@@ -172,6 +177,8 @@ export class Simulation {
 
     // Geomorphology.
     const geo = this.geo;
+    if (this.step % GROUNDWATER_EVERY === 2) groundwaterStep(w, this.gwScratch);
+
     if (this.step % EROSION_EVERY === EROSION_EVERY / 2) {
       erosionStep(w, this.erosionScratch, EROSION_EVERY * DT, geo, this.sedLedger, this.geoDirty);
     }

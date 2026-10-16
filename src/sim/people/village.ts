@@ -28,12 +28,20 @@ const YIELD = 34;
 const DIG_PER_VISIT = 0.5;
 /** House construction progress per builder visit. */
 const BUILD_PER_VISIT = 0.12;
+/** Fish live per block of FISH_BLOCK² cells. */
+export const FISH_BLOCK = 8;
+/** Fish stock (person-days of food) per calm, deep water cell at capacity. */
+const FISH_PER_CELL = 8;
+/** Logistic growth rate of fish per day. */
+const FISH_GROWTH = 0.06;
+/** Food landed by one fishing session at full stock (person-days). */
+const CATCH = 5;
 /** Water drawn by a growing field per day (m). */
 const FIELD_DRAW = 0.004;
 
 export interface Building {
   id: number;
-  kind: 'house' | 'store';
+  kind: 'house' | 'store' | 'ruin';
   settlement: number;
   x: number;
   y: number;
@@ -53,6 +61,7 @@ export interface PeopleState {
   startX: number;
   startY: number;
   lastDay: number;
+  fish: number[];
 }
 
 export interface PeopleHost {
@@ -78,6 +87,10 @@ export class PeopleSystem {
   private readonly nearestWater: Int32Array;
   private readonly waterDist: Float32Array;
   private readonly pf: PathFinder;
+  /** Fish stock per block (person-days of food), and the block's capacity. */
+  readonly fish: Float32Array;
+  readonly fishCap: Float32Array;
+  readonly fbw: number;
   private rng: Rng;
   private nextId = 1;
   private founded = false;
@@ -97,7 +110,14 @@ export class PeopleSystem {
     this.fieldMoisture = new Float32Array(world.size);
     this.nearestWater = new Int32Array(world.size).fill(-1);
     this.waterDist = new Float32Array(world.size);
+    this.fbw = Math.ceil(world.width / FISH_BLOCK);
+    const blocks = this.fbw * Math.ceil(world.height / FISH_BLOCK);
+    this.fish = new Float32Array(blocks);
+    this.fishCap = new Float32Array(blocks);
     this.updateMoisture();
+    this.updateFishCapacity();
+    // Waters start fully stocked.
+    this.fish.set(this.fishCap);
   }
 
   get population(): number {
@@ -137,6 +157,7 @@ export class PeopleSystem {
       this.lastDay = time.day;
       this.daily(time, host);
     }
+    if (step % 30 === 0) this.floodHouses();
     for (const a of this.agents) this.updateAgent(a, time, host);
     // Remove agents who have left.
     this.agents = this.agents.filter((a) => !(a.task === Task.Leave && a.pathPos >= a.path.length));
@@ -244,6 +265,8 @@ export class PeopleSystem {
     for (const [site, until] of this.blocked) if (until <= time.day) this.blocked.delete(site);
     const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
     this.growCrops(time, host);
+    this.updateFishCapacity();
+    this.growFish(time);
     for (const s of this.settlements) {
       this.updateSafety(s);
       s.day(doy, this.rng);
@@ -305,11 +328,29 @@ export class PeopleSystem {
     }
   }
 
+  /** Memories of floods fade over about five years. */
   private updateFloodMemory(): void {
+    const w = this.world;
+    for (let i = 0; i < w.size; i++) if (w.floodMemory[i]! > 0 && w.water[i]! <= 0.3) w.floodMemory[i]!--;
+  }
+
+  /** Floods are noticed as they happen: houses in deep water are ruined, flooded land remembered. */
+  private floodHouses(): void {
     const w = this.world;
     for (let i = 0; i < w.size; i++) {
       if (w.water[i]! > 0.3 && w.landuse[i] !== LandUse.None) w.floodMemory[i] = 255;
-      else if (w.floodMemory[i]! > 0) w.floodMemory[i]!--;
+    }
+    for (const b of this.buildings) {
+      if (b.kind !== 'house') continue;
+      if (w.water[w.idx(b.x, b.y)]! > 0.4) {
+        if (b.progress >= 1) {
+          const s = this.settlements[b.settlement];
+          if (s) s.state.houses = Math.max(0, s.state.houses - 1);
+        }
+        b.kind = 'ruin';
+        b.progress = 0;
+        this.buildingsDirty = true;
+      }
     }
   }
 
@@ -356,6 +397,80 @@ export class PeopleSystem {
       w.crop[i] = c;
     }
     host.waterUsed(used * 25);
+  }
+
+  /** Fish need calm (< 0.4 m/s), not too shallow (> 0.5 m) water. */
+  private updateFishCapacity(): void {
+    const w = this.world;
+    const { width: W, water, velX, velY } = w;
+    this.fishCap.fill(0);
+    for (let i = 0; i < w.size; i++) {
+      const d = water[i]!;
+      if (d < 0.5) continue;
+      const v = Math.hypot(velX[i]!, velY[i]!);
+      if (v > 0.4) continue;
+      const b = Math.floor((i / W) / FISH_BLOCK) * this.fbw + Math.floor((i % W) / FISH_BLOCK);
+      this.fishCap[b]! += FISH_PER_CELL * Math.min(1, d / 1.5);
+    }
+  }
+
+  private growFish(time: SimTime): void {
+    const winter = time.season === 3;
+    for (let b = 0; b < this.fish.length; b++) {
+      const K = this.fishCap[b]!;
+      let f = Math.min(this.fish[b]!, K);
+      if (K > 0) {
+        // A few fish always find their way into new water (natural stocking).
+        f = Math.max(f, 0.02 * K);
+        if (!winter) f += FISH_GROWTH * f * (1 - f / K);
+      }
+      this.fish[b] = f;
+    }
+  }
+
+  /** A dry shore cell next to stocked, calm water, near the agent and within reach. */
+  private fishingSpot(a: Agent, s: Settlement): number {
+    const w = this.world;
+    const W = w.width;
+    const cx = Math.round(s.state.x);
+    const cy = Math.round(s.state.y);
+    let best = -1;
+    let bestScore = -Infinity;
+    for (let k = 0; k < 120; k++) {
+      // Deterministic sampling of candidate cells around the village.
+      const r = 3 + this.rng.next() * (REACH - 3);
+      const ang = this.rng.range(0, Math.PI * 2);
+      const x = Math.round(cx + Math.cos(ang) * r);
+      const y = Math.round(cy + Math.sin(ang) * r);
+      if (x < 1 || y < 1 || x >= W - 1 || y >= w.height - 1) continue;
+      const i = y * W + x;
+      if (w.water[i]! > 0.05 || this.reserved.has(i) || this.blocked.has(i) || w.landuse[i] === LandUse.Building) continue;
+      for (const j of [i - 1, i + 1, i - W, i + W]) {
+        if (w.water[j]! < 0.5) continue;
+        const b = Math.floor((j / W) / FISH_BLOCK) * this.fbw + Math.floor((j % W) / FISH_BLOCK);
+        const K = this.fishCap[b]!;
+        if (K <= 0) continue;
+        const score = (this.fish[b]! / K) * 10 - Math.hypot(x - a.x, y - a.y) / 4;
+        if (score > bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      }
+    }
+    return best;
+  }
+
+  /** How much fishing the waters within reach can sustain (person-days per day). */
+  private fishSupply(s: Settlement): number {
+    let total = 0;
+    for (let b = 0; b < this.fish.length; b++) {
+      if (this.fishCap[b]! <= 0) continue;
+      const bx = (b % this.fbw) * FISH_BLOCK + FISH_BLOCK / 2;
+      const by = Math.floor(b / this.fbw) * FISH_BLOCK + FISH_BLOCK / 2;
+      if (Math.hypot(bx - s.state.x, by - s.state.y) > REACH) continue;
+      total += this.fish[b]!;
+    }
+    return total * FISH_GROWTH * 0.25; // a sustainable share of the growth at mid stock
   }
 
   /** Spawn arrivals / send away leavers so agents match the settlement's population. */
@@ -430,8 +545,19 @@ export class PeopleSystem {
   }
 
   private planHouses(s: Settlement): void {
-    const building = this.buildings.some((b) => b.settlement === s.state.id && b.progress < 1);
+    const building = this.buildings.some((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
     if (building || !s.wantsHouse()) return;
+    // Rebuild a ruin once its site has long been dry (people forget floods).
+    const w0 = this.world;
+    const ruin = this.buildings.find(
+      (b) => b.settlement === s.state.id && b.kind === 'ruin' && w0.floodMemory[w0.idx(b.x, b.y)]! === 0 && w0.water[w0.idx(b.x, b.y)]! < 0.01,
+    );
+    if (ruin) {
+      ruin.kind = 'house';
+      ruin.progress = 0.3; // the walls still stand
+      this.buildingsDirty = true;
+      return;
+    }
     // Look for a free, safe spot near the centre, not hugging other buildings.
     const w = this.world;
     let best = -1;
@@ -464,22 +590,27 @@ export class PeopleSystem {
   private assignJobs(s: Settlement, host: PeopleHost): void {
     const mine = this.agents.filter((a) => a.settlement === s.state.id && a.task !== Task.Leave);
     const n = mine.length;
-    const houseWork = this.buildings.some((b) => b.settlement === s.state.id && b.progress < 1);
+    const houseWork = this.buildings.some((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
     const planWork = host.planCells().some((i) => !Number.isNaN(this.world.plan[i]!) && this.settlementNear(i) === s);
-    const builders = houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0;
-    let b = mine.filter((a) => a.job === Job.Builder).length;
+    const want = new Map<Job, number>();
+    want.set(Job.Builder, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0);
+    // Fishers: as many as the waters sustain (one landing ≈ CATCH a day), up to a quarter.
+    want.set(Job.Fisher, n >= 3 ? Math.min(Math.round(n * 0.25), Math.round(this.fishSupply(s) / CATCH)) : 0);
     // Move at most two people per day, lowest ids first (deterministic, no flip-flop).
     let moves = 2;
-    for (const a of mine) {
-      if (moves === 0) break;
-      if (b < builders && a.job !== Job.Builder) {
-        a.job = Job.Builder;
-        b++;
-        moves--;
-      } else if (b > builders && a.job === Job.Builder) {
-        a.job = Job.Farmer;
-        b--;
-        moves--;
+    for (const [job, target] of want) {
+      let have = mine.filter((a) => a.job === job).length;
+      for (const a of mine) {
+        if (moves === 0) break;
+        if (have < target && (a.job === Job.Farmer || a.job === Job.Idle)) {
+          a.job = job;
+          have++;
+          moves--;
+        } else if (have > target && a.job === job) {
+          a.job = Job.Farmer;
+          have--;
+          moves--;
+        }
       }
     }
     for (const a of mine) if (a.job === Job.Idle) a.job = Job.Farmer;
@@ -544,12 +675,19 @@ export class PeopleSystem {
   }
 
   private updateAgent(a: Agent, time: SimTime, host: PeopleHost): void {
+    // Check for rising water every 10 ticks per person (staggered by id).
+    if (!a.flee && a.task !== Task.Leave && (time.step / PEOPLE_TICK + a.id) % 10 === 0 && this.world.water[this.cellOf(a)]! > 0.3) {
+      this.flee(a, time);
+    }
     switch (a.task) {
       case Task.Leave:
       case Task.Walk: {
         const arrived = walk(this.world, a, PEOPLE_TICK);
-        a.anim = a.carry !== CarryKind.None ? EntityAnim.Carry : EntityAnim.Walk;
-        if (arrived && a.task === Task.Walk) this.arrive(a);
+        a.anim = a.flee ? EntityAnim.Run : a.carry !== CarryKind.None ? EntityAnim.Carry : EntityAnim.Walk;
+        if (arrived && a.task === Task.Walk) {
+          a.flee = false;
+          this.arrive(a);
+        }
         break;
       }
       case Task.Work:
@@ -592,6 +730,18 @@ export class PeopleSystem {
         a.timer = 10;
         a.anim = EntityAnim.Idle;
         break;
+      case SiteKind.Fish: {
+        a.timer = 160;
+        a.anim = EntityAnim.Fish;
+        // Face the water.
+        const w = this.world;
+        const W = w.width;
+        const i = a.site;
+        let best = -1;
+        for (const j of [i - 1, i + 1, i - W, i + W]) if (j >= 0 && j < w.size && (best < 0 || w.water[j]! > w.water[best]!)) best = j;
+        if (best >= 0) a.heading = Math.atan2(((best / W) | 0) - ((i / W) | 0), (best % W) - (i % W));
+        break;
+      }
       default:
         a.task = Task.Rest;
         a.timer = 30 + this.rng.int(0, 80);
@@ -649,6 +799,25 @@ export class PeopleSystem {
         }
         break;
       }
+      case SiteKind.Fish: {
+        const W = w.width;
+        const i = a.site;
+        let caught = 0;
+        for (const j of [i - 1, i + 1, i - W, i + W]) {
+          if (j < 0 || j >= w.size || w.water[j]! < 0.5) continue;
+          const b = Math.floor((j / W) / FISH_BLOCK) * this.fbw + Math.floor((j % W) / FISH_BLOCK);
+          const K = this.fishCap[b]!;
+          if (K <= 0) continue;
+          caught = Math.min(this.fish[b]!, CATCH * (this.fish[b]! / K));
+          this.fish[b]! -= caught;
+          break;
+        }
+        if (caught > 0.3) {
+          a.load = caught;
+          a.carry = CarryKind.Fish;
+        }
+        break;
+      }
       case SiteKind.Deliver:
         if (s && a.load > 0) s.bookFood(a.load);
         a.load = 0;
@@ -663,17 +832,24 @@ export class PeopleSystem {
     if (!s) return;
     const w = this.world;
     // Deliver what you carry first.
-    if (a.carry === CarryKind.Sack && a.load > 0) {
+    if ((a.carry === CarryKind.Sack || a.carry === CarryKind.Fish) && a.load > 0) {
       const store = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store');
       if (store && this.goTo(a, w.idx(store.x, store.y), SiteKind.Deliver, time)) return;
     }
     if (a.job === Job.Builder) {
-      const house = this.buildings.find((b) => b.settlement === s.state.id && b.progress < 1);
+      const house = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
       if (house && this.goTo(a, w.idx(house.x, house.y), SiteKind.House, time, house.id)) return;
       const cell = this.nearestPlanCell(a, s, host);
       if (cell >= 0 && this.goTo(a, cell, SiteKind.Earthwork, time)) {
         this.reserved.add(cell);
         a.carry = w.plan[cell]! > w.terrain(cell) ? CarryKind.Earth : CarryKind.None;
+        return;
+      }
+    }
+    if (a.job === Job.Fisher && time.season !== 3) {
+      const spot = this.fishingSpot(a, s);
+      if (spot >= 0 && this.goTo(a, spot, SiteKind.Fish, time)) {
+        this.reserved.add(spot);
         return;
       }
     }
@@ -693,6 +869,37 @@ export class PeopleSystem {
     a.task = Task.Rest;
     a.timer = 40;
     a.anim = EntityAnim.Idle;
+  }
+
+  /** Run uphill to the nearest dry, higher place. */
+  private flee(a: Agent, time: SimTime): void {
+    const w = this.world;
+    const here = this.cellOf(a);
+    const h0 = w.terrain(here);
+    let best = -1;
+    let bestScore = -Infinity;
+    for (let r = 2; r <= 14; r += 2) {
+      for (let k = 0; k < 12; k++) {
+        const ang = (k / 12) * Math.PI * 2;
+        const x = Math.round(a.x + Math.cos(ang) * r);
+        const y = Math.round(a.y + Math.sin(ang) * r);
+        if (!w.inBounds(x, y)) continue;
+        const i = w.idx(x, y);
+        if (w.water[i]! > 0.02) continue;
+        const score = w.terrain(i) - h0 - r * 0.2;
+        if (score > bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      }
+      if (best >= 0 && bestScore > 1) break;
+    }
+    if (best < 0) return;
+    // Drop whatever was in hand; the work is abandoned.
+    if (this.goTo(a, best, SiteKind.Wander, time)) {
+      a.flee = true;
+      if (a.carry === CarryKind.Earth) a.carry = CarryKind.None;
+    }
   }
 
   private nearestPlanCell(a: Agent, s: Settlement, host: PeopleHost): number {
@@ -766,7 +973,8 @@ export class PeopleSystem {
     this.reserved.clear();
     for (const a of this.agents) {
       const k = a.siteKind;
-      const claims = k === SiteKind.Earthwork || k === SiteKind.Sow || k === SiteKind.Tend || k === SiteKind.Harvest;
+      const claims =
+        k === SiteKind.Earthwork || k === SiteKind.Sow || k === SiteKind.Tend || k === SiteKind.Harvest || k === SiteKind.Fish;
       if ((a.task === Task.Walk || a.task === Task.Work) && claims) {
         this.reserved.add(a.site);
       }
@@ -788,6 +996,7 @@ export class PeopleSystem {
       startX: this.startX,
       startY: this.startY,
       lastDay: this.lastDay,
+      fish: Array.from(this.fish),
     });
   }
 
@@ -807,6 +1016,7 @@ export class PeopleSystem {
     this.startX = c.startX;
     this.startY = c.startY;
     this.lastDay = c.lastDay;
+    if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     this.buildingsDirty = true;
     this.updateMoisture();
   }

@@ -34,7 +34,7 @@ describe('Simulation', () => {
     const before = totalStored(w);
     sim.run(STEPS_PER_DAY * 2);
     const L = sim.ledger;
-    const expected = before + L.rain + L.snowfall + L.inflow - L.outflow - L.evaporation;
+    const expected = before + L.rain + L.snowfall + L.inflow - L.outflow - L.evaporation - L.seepage;
     const after = totalStored(w);
     expect(Math.abs(after - expected) / Math.max(1, L.inflow + L.rain)).toBeLessThan(1e-3);
     expect(L.outflow).toBeGreaterThan(0);

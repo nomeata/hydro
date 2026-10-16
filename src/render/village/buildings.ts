@@ -161,6 +161,8 @@ export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap
 /** Geometry/mesh key of a building given the current food level. */
 export function buildingKey(b: BuildingInfo, food: number): string {
   if (b.kind === 'store') return `store:${food}`;
+  // Ruins: the walls still stand, the roof is gone.
+  if (b.kind === 'ruin') return `house:${houseVariant(b.id)}:${Stage.Walls}`;
   return `house:${houseVariant(b.id)}:${buildStage(b.progress)}`;
 }
 

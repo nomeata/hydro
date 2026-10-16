@@ -147,7 +147,8 @@ export interface EntityFrame {
 /** A building (rarely changes; sent when the set changes). */
 export interface BuildingInfo {
   id: number;
-  kind: 'house' | 'store';
+  /** A ruin is a house destroyed by a flood (or abandoned); it may be rebuilt. */
+  kind: 'house' | 'store' | 'ruin';
   /** Cell coordinates of the footprint centre. */
   x: number;
   y: number;

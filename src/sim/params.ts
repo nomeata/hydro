@@ -16,6 +16,8 @@ export const PARAMS = {
   evapPerDay: 0.006,
   /** Topsoil (groundwater) evaporation at 20 °C and full saturation (m/day). */
   soilEvapPerDay: 0.003,
+  /** Deep percolation from saturated soil of conductivity 1 (m/day). Keeps closed basins from filling up over years. */
+  deepDrainPerDay: 0.008,
   /** Infiltration scale applied to SOIL_PROPS.infiltration (m per hydro second). */
   infiltrationScale: 1.0,
 

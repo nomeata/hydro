@@ -39,8 +39,9 @@ Fun on screen fast.
 - ☑ IndexedDB autosave/resume, export/import save files, menu
 - ☑ Long-horizon geomorphology test (stationarity; `tools/longrun.ts`)
 
-## M1c — Deep water ☐
-- Lateral groundwater, springs, bogs
+## M1c — Deep water ◐
+- ☑ Lateral groundwater (hourly Darcy diffusion), springs/bogs via overflow
+- ☑ Deep percolation sink so closed basins don't fill up over years
 - Snow + melt, climate anomaly (wet/dry years)
 - ☑ Phone bench page (`?bench=1`)
 - ☑ CPU cap on touch devices (sim duty cycle 45%, `?duty=` overrides)
@@ -49,10 +50,12 @@ Fun on screen fast.
 ## M3 — The people arrive ☐
 See docs/PEOPLE.md (phases §10).
 - Prerequisite: lateral groundwater (M1c) so canals water nearby fields
-- M3-α First village: founding family, builders replace spirit crew,
+- ☑ M3-α First village: founding family, builders replace spirit crew,
   houses, farmers, fields/gardens, granary props, footbridges, baked-
   animation characters
-- M3-β Fishers, flood flight & memory, ruins
+- ◐ M3-β ☑ fishers (fish stock per calm-water block), ☑ flood flight,
+  ☑ flood memory, ☑ flooded houses become ruins (rebuilt once forgotten);
+  ☐ fish-jump visuals
 - M3-γ Fog of war, more settlements, tool unlocks
 - M3-δ Herders, woodcutters, desire paths, vegetation dynamics (old M2)
 

@@ -37,6 +37,25 @@ describe('first village', () => {
     expect(p.agents.length).toBe(s.population + p.agents.filter((a) => a.task === 4).length);
   }, 240_000);
 
+  it('fishers go fishing when there is stocked water nearby', async () => {
+    // Seed 3 has a lake by the village (see the year test).
+    const sim = village(3);
+    await runDays(sim, 20);
+    const p = sim.people!;
+    const fishers = p.agents.filter((a) => a.job === 3);
+    const s = p.settlements[0]!.state;
+    let stock = 0;
+    let cap = 0;
+    for (let b = 0; b < p.fish.length; b++) {
+      stock += p.fish[b]!;
+      cap += p.fishCap[b]!;
+    }
+    console.log(`day 20: pop ${s.population}, fishers ${fishers.length}, fish ${stock.toFixed(0)}/${cap.toFixed(0)}`);
+    expect(cap).toBeGreaterThan(0);
+    expect(fishers.length).toBeGreaterThan(0);
+    expect(stock).toBeLessThan(cap); // they have caught something
+  }, 240_000);
+
   it('builders realise a plan near the village', async () => {
     const sim = village(3);
     sim.run(STEPS_PER_DAY);
@@ -59,4 +78,27 @@ describe('first village', () => {
     b.run(STEPS_PER_DAY * 2);
     expect(b.stateHash()).toBe(a.stateHash());
   }, 120_000);
+});
+
+describe('floods', () => {
+  it('ruin flooded houses and send people running uphill', async () => {
+    const gen = generateWorld({ seed: 3, size: 128 });
+    const sim = new Simulation(gen.world, 3, { people: { startX: gen.startX, startY: gen.startY } });
+    await runDays(sim, 12);
+    const p = sim.people!;
+    const house = p.buildings.find((b) => b.kind === 'house' && b.progress >= 1)!;
+    expect(house).toBeDefined();
+    const housesBefore = p.settlements[0]!.state.houses;
+    // A flood: deep water around the house and the village centre.
+    const s = p.settlements[0]!.state;
+    sim.command({ type: 'debugWater', x: house.x, y: house.y, radius: 6, depth: 1.5 });
+    sim.command({ type: 'debugWater', x: s.x, y: s.y, radius: 6, depth: 1.5 });
+    sim.run(40);
+    const fleeing = p.agents.filter((a) => a.flee).length;
+    await runDays(sim, 1);
+    expect(p.buildings.find((b) => b.id === house.id)!.kind).toBe('ruin');
+    expect(p.settlements[0]!.state.houses).toBeLessThan(housesBefore);
+    expect(fleeing).toBeGreaterThan(0);
+    expect(sim.world.floodMemory[sim.world.idx(house.x, house.y)]!).toBeGreaterThan(200);
+  }, 240_000);
 });
