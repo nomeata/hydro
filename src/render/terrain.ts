@@ -53,6 +53,7 @@ export interface TerrainUniforms extends FrontUniforms {
   uCropGreen: { value: THREE.Color };
   uCropRipe: { value: THREE.Color };
   uYard: { value: THREE.Color };
+  uStubble: { value: number };
 }
 
 const COMMON_GLSL = /* glsl */ `
@@ -213,6 +214,7 @@ export function createTerrainUniforms(
     uCropGreen: { value: new THREE.Color(0x5e9e3a) },
     uCropRipe: { value: new THREE.Color(0xe8c050) },
     uYard: { value: new THREE.Color(0xa08060) },
+    uStubble: { value: 0 },
   };
 }
 

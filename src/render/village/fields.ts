@@ -60,6 +60,8 @@ uniform vec3 uCropYoung;
 uniform vec3 uCropGreen;
 uniform vec3 uCropRipe;
 uniform vec3 uYard;
+/** 1 in autumn: harvested (bare) fields show straw stubble rows. */
+uniform float uStubble;
 
 uint patchHash(ivec2 b) {
   uint h = (uint(b.x) * 0x9e3779b1u) ^ (uint(b.y) * 0x85ebca77u);
@@ -119,6 +121,11 @@ vec3 fieldColour(vec3 ground, vec3 world) {
   if (crop >= ${CROP_RIPE}.0) cropCol = uCropRipe;
   cropCol *= mix(0.86, 1.06, rowA);
   vec3 col = mix(soil, cropCol, rowMask);
+  if (crop < ${CROP_SOWN}.0 && uStubble > 0.0) {
+    float along = (alongX ? world.x : world.z) * 9.0;
+    float dash = step(0.35, fract(along + 0.37 * floor(t)));
+    col = mix(col, uCropRipe * 0.82, smoothstep(0.72, 0.9, row) * dash * aa * 0.8 * uStubble);
+  }
   return mix(ground, col, fieldEdge(c, f));
 }
 `;

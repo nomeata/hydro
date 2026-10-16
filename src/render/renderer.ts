@@ -296,6 +296,9 @@ export class GameRenderer {
     tu.uGrassDry.value.copy(p.grassDry);
     tu.uGrassLush.value.copy(p.grassLush);
     tu.uForest.value.copy(p.forest);
+    // Stubble on harvested fields through autumn (season 2..3), fading at the edges.
+    const sf = ((this.season % 4) + 4) % 4;
+    tu.uStubble.value = Math.min(Math.max((sf - 1.85) / 0.15, 0), 1) * Math.min(Math.max((3.0 - sf) / 0.15, 0), 1);
     const wu = this.water.uniforms;
     wu.uShallow.value.copy(p.waterShallow);
     wu.uDeep.value.copy(p.waterDeep);
