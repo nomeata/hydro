@@ -60,19 +60,26 @@ export const PARAMS = {
   depositSlack: 0.05,
   /**
    * Bank erosion: bank lowering per hydraulic second per m/s of excess flow
-   * speed (×MORFAC), weighted by bankBase + how directly the flow runs into the bank.
+   * speed (×MORFAC), times how directly the flow runs into the bank. The
+   * material builds a point bar on the far side of the channel.
    */
   bankK: 3e-6,
   /** Flow speed needed for bank erosion (m/s). */
   bankCriticalVelocity: 0.4,
-  /** Bank erosion weight for flow along a bank (1 more for flow straight into it). */
-  bankBase: 0.15,
   /** Bed-slope diffusion of the submerged bed per unit transport rate (dimensionless). */
   bedSlopeK: 1,
   /** Deposits from water slower than this count towards silt (m/s). */
   siltVelocity: 0.35,
-  /** Accumulated slow-water deposit that turns a cell's topsoil to silt (m). */
+  /** Accumulated deposit that turns a cell's topsoil to silt (slow water) or sand (bars on gravel) (m). */
   siltThreshold: 0.15,
+  /**
+   * Critical speed for pickup from the bed, as a multiple of criticalVelocity,
+   * per soil type (rock, gravel, sand, loam, clay, silt, peat): coarse or
+   * cohesive beds resist. Sediment already in the water uses the plain value.
+   */
+  bedCriticalFactor: [3, 2.5, 1, 1.2, 1.6, 1, 1.2],
+  /** Net scour (m) after which a loose bed is armoured: its fines wash out, leaving gravel. */
+  armourDepth: 0.3,
   /** Fertility gained per metre of deposit. */
   fertilityPerMetre: 3,
 

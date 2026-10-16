@@ -34,11 +34,12 @@ export interface GeoParams {
   depositSlack: number;
   bankK: number;
   bankCriticalVelocity: number;
-  bankBase: number;
   bedSlopeK: number;
   siltVelocity: number;
   siltThreshold: number;
   fertilityPerMetre: number;
+  bedCriticalVelocity: number[];
+  armourDepth: number;
   talusPerDay: number;
   reposeWet: number[];
   wetSaturation: number;
@@ -63,11 +64,12 @@ export function defaultGeoParams(): GeoParams {
     depositSlack: p.depositSlack,
     bankK: p.bankK,
     bankCriticalVelocity: p.bankCriticalVelocity,
-    bankBase: p.bankBase,
     bedSlopeK: p.bedSlopeK,
     siltVelocity: p.siltVelocity,
     siltThreshold: p.siltThreshold,
     fertilityPerMetre: p.fertilityPerMetre,
+    bedCriticalVelocity: p.bedCriticalFactor.map((f) => f * p.criticalVelocity),
+    armourDepth: p.armourDepth,
     talusPerDay: p.talusPerDay,
     reposeWet: [...p.reposeWet],
     wetSaturation: p.wetSaturation,
@@ -118,8 +120,12 @@ interface InflowSource {
 
 /** Per-cell erosion state (saved sparsely via Simulation.getState). */
 export class ErosionScratch {
-  /** Slow-water deposit accumulated per cell (m), drives conversion to silt. */
-  readonly siltAcc: Float32Array;
+  /**
+   * Net deposit (+) or erosion (−) per cell since its soil type last changed
+   * (m). Deposits turn the topsoil into silt (slow water) or sand (bars on
+   * gravel); sustained scour washes out the fines and leaves gravel armour.
+   */
+  readonly bedAcc: Float32Array;
   /** Sediment transport rate per unit width (capacity × speed, m²/s) of the last pass. */
   readonly transport: Float32Array;
   /**
@@ -135,7 +141,7 @@ export class ErosionScratch {
   /** Hydraulic seconds seen so far. */
   time = 0;
   constructor(size: number) {
-    this.siltAcc = new Float32Array(size);
+    this.bedAcc = new Float32Array(size);
     this.inflowConc = new Float32Array(size);
     this.transport = new Float32Array(size);
     this.reach = new Int16Array(size).fill(-1);
@@ -143,13 +149,22 @@ export class ErosionScratch {
 }
 
 const NO_EXCHANGE = CellFlag.Lined | CellFlag.Outlet;
+/** Max cells walked across a channel to find the point-bar side. */
+const BAR_REACH = 8;
 
-/** Equilibrium suspended sediment for a cell, as a height (m) over the cell. */
-export function capacity(h: number, speed: number, p: GeoParams): number {
+/**
+ * Equilibrium suspended sediment for a cell, as a height (m) over the cell.
+ * With the default critical speed and no depth ramp this is what the water
+ * can keep in suspension (excess settles); pickup from the bed uses the
+ * bed's own critical speed (coarser beds need faster water) and ramps in
+ * with depth, so thin sheet flow does not scour hillsides. Between the two
+ * the water neither erodes nor deposits.
+ */
+export function capacity(h: number, speed: number, p: GeoParams, vc = p.criticalVelocity, ramped = false): number {
   if (h <= p.erosionMinDepth) return 0;
-  const ex = speed - p.criticalVelocity;
+  const ex = speed - vc;
   if (ex <= 0) return 0;
-  const ramp = h >= p.erosionFullDepth ? 1 : (h - p.erosionMinDepth) / (p.erosionFullDepth - p.erosionMinDepth);
+  const ramp = !ramped || h >= p.erosionFullDepth ? 1 : (h - p.erosionMinDepth) / (p.erosionFullDepth - p.erosionMinDepth);
   const hc = h < p.capacityMaxDepth ? h : p.capacityMaxDepth;
   return p.morfac * p.capacityK * ex * Math.sqrt(ex) * hc * ramp;
 }
@@ -288,7 +303,7 @@ export function erosionStep(
   dirty: RowRange,
 ): void {
   const { width: W, height: H, bedrock, soil, soilType, water, sediment, velX, velY, flags, inflow, fertility } = world;
-  const { siltAcc, transport, inflowConc, reach } = scratch;
+  const { bedAcc, transport, inflowConc, reach } = scratch;
   const t0 = scratch.time;
   scratch.time = t0 + dt;
   if (!scratch.sources) scratch.sources = buildSources(world, scratch);
@@ -302,10 +317,11 @@ export function erosionStep(
   const slack = p.depositSlack;
   const bankK = p.bankK * p.morfac * dt;
   const vcBank = p.bankCriticalVelocity;
-  const bankBase = p.bankBase;
   const vSilt = p.siltVelocity;
   const siltT = p.siltThreshold;
   const fertK = p.fertilityPerMetre;
+  const vcBed = p.bedCriticalVelocity;
+  const armour = p.armourDepth;
 
   let eroded = 0;
   let bank = 0;
@@ -375,15 +391,17 @@ export function erosionStep(
         nn++;
       }
 
+      const st0 = soilType[i]!;
       const kh = capacity(h, speed, p);
       const kap = kh * A;
+      const kp = speed > vcBed[st0]! ? capacity(h, speed, p, vcBed[st0]!, true) * A : 0;
       transport[i] = kh * speed;
-      if (kap > s) {
+      if (kp > s) {
         // Pickup.
-        const props = SOIL_PROPS[soilType[i]!]!;
+        const props = SOIL_PROPS[st0]!;
         const room = 0.5 * (zi - zmin);
         if (room > 0) {
-          const demand = ((kap - s) * pickup) / A;
+          const demand = ((kp - s) * pickup) / A;
           const so = soil[i]!;
           let e = Math.min(demand * props.erodibility, maxFrac * so, room);
           if (e < 0) e = 0;
@@ -401,11 +419,15 @@ export function erosionStep(
             eroded += tot * A;
             const r = reach[i]!;
             if (r >= 0) sources[r]!.net += tot * A;
-            siltAcc[i] = Math.max(0, siltAcc[i]! - tot);
+            const acc = bedAcc[i]! - tot;
+            if (acc < -armour && st0 >= SoilType.Sand && st0 !== SoilType.Clay) {
+              soilType[i] = SoilType.Gravel;
+              bedAcc[i] = 0;
+            } else bedAcc[i] = acc;
             changed = true;
           }
         }
-      } else if (s > 0) {
+      } else if (s > kap) {
         // Settling.
         const rate = h > hMin ? Math.min(1, settle / h) : 1;
         let d = ((s - kap) * rate) / A;
@@ -418,38 +440,94 @@ export function erosionStep(
           deposited += d * A;
           const r = reach[i]!;
           if (r >= 0) sources[r]!.net -= d * A;
-          if (speed < vSilt) {
-            const acc = siltAcc[i]! + d;
-            siltAcc[i] = acc;
-            const st = soilType[i]!;
-            if (acc > siltT && st !== SoilType.Silt && st !== SoilType.Peat) soilType[i] = SoilType.Silt;
+          const acc = bedAcc[i]! + d;
+          bedAcc[i] = acc;
+          const slow = speed < vSilt;
+          if (slow) {
             const fe = fertility[i]! + d * fertK;
             fertility[i] = fe > 1 ? 1 : fe;
+          }
+          if (acc > siltT) {
+            if (slow && st0 !== SoilType.Silt && st0 !== SoilType.Peat) soilType[i] = SoilType.Silt;
+            else if (!slow && st0 <= SoilType.Gravel) soilType[i] = SoilType.Sand;
+            bedAcc[i] = 0;
           }
           changed = true;
         }
       }
 
-      // Bank erosion: fast flow wears down a neighbour that stands above the
-      // water surface, most where the flow runs into it (outer banks of
-      // bends). Rivers widen until the flow along their banks is too slow.
+      // Lateral migration: flow running into a bank (the outer bank of a
+      // bend) wears it down, and the material is laid down as a point bar on
+      // the far side of the channel. The channel shifts but keeps its width
+      // and depth; flow along a bank does not erode it.
       if (h > hMin && speed > vcBank) {
         const eta = zi + h;
-        const drive = speed - vcBank;
-        const ux = vx / speed;
-        const uy = vy / speed;
-        let b = 0;
-        if (x < W - 1) b += bankErode(world, zi, i + 1, drive * (bankBase + (ux > 0 ? ux : 0)), eta, bankK, maxFrac, bedK);
-        if (x > 0) b += bankErode(world, zi, i - 1, drive * (bankBase + (ux < 0 ? -ux : 0)), eta, bankK, maxFrac, bedK);
-        if (y < H - 1) b += bankErode(world, zi, i + W, drive * (bankBase + (uy > 0 ? uy : 0)), eta, bankK, maxFrac, bedK);
-        if (y > 0) b += bankErode(world, zi, i - W, drive * (bankBase + (uy < 0 ? -uy : 0)), eta, bankK, maxFrac, bedK);
-        if (b > 0) {
-          s += b;
+        const drive = (speed - vcBank) / speed;
+        for (let d = 0; d < 4; d++) {
+          let un: number;
+          let step: number;
+          if (d === 0) {
+            if (x === W - 1 || vx <= 0) continue;
+            un = vx;
+            step = 1;
+          } else if (d === 1) {
+            if (x === 0 || vx >= 0) continue;
+            un = -vx;
+            step = -1;
+          } else if (d === 2) {
+            if (y === H - 1 || vy <= 0) continue;
+            un = vy;
+            step = W;
+          } else {
+            if (y === 0 || vy >= 0) continue;
+            un = -vy;
+            step = -W;
+          }
+          const b = bankErode(world, zi, i + step, drive * un, eta, bankK, maxFrac, bedK);
+          if (b <= 0) continue;
           bank += b;
           const r = reach[i]!;
           if (r >= 0) sources[r]!.net += b;
-          if (y - 1 < y0) y0 = Math.max(0, y - 1);
-          if (y + 1 > y1) y1 = Math.min(H - 1, y + 1);
+          const yb = y + (d === 2 ? 1 : d === 3 ? -1 : 0);
+          if (yb < y0) y0 = yb;
+          if (yb > y1) y1 = yb;
+          // Walk across the channel to its far margin.
+          let m = i;
+          let mx = x;
+          let my = y;
+          const sx = d === 0 ? -1 : d === 1 ? 1 : 0;
+          const sy = d === 2 ? -1 : d === 3 ? 1 : 0;
+          for (let k = 0; k < BAR_REACH; k++) {
+            const nx = mx + sx;
+            const ny = my + sy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) break;
+            const n = ny * W + nx;
+            if (water[n]! <= hMin || (flags[n]! & NO_EXCHANGE) !== 0 || inflow[n]! > 0) break;
+            m = n;
+            mx = nx;
+            my = ny;
+          }
+          let put = 0;
+          if (m !== i) {
+            const zm = bedrock[m]! + soil[m]!;
+            const room = maxNeighbour(world, mx, my) - zm;
+            put = Math.min(b / A, room > 0 ? room : 0);
+            if (put > 0) {
+              soil[m]! += put;
+              deposited += put * A;
+              const rm = reach[m]!;
+              if (rm >= 0) sources[rm]!.net -= put * A;
+              const acc = bedAcc[m]! + put;
+              if (acc > siltT) {
+                if (soilType[m]! <= SoilType.Gravel) soilType[m] = SoilType.Sand;
+                bedAcc[m] = 0;
+              } else bedAcc[m] = acc;
+              if (my < y0) y0 = my;
+              if (my > y1) y1 = my;
+            }
+          }
+          // Whatever does not fit on the bar goes downstream.
+          s += b - put * A;
         }
       }
       sediment[i] = s;
@@ -529,6 +607,18 @@ function bedSlope(world: World, transport: Float32Array, dt: number, p: GeoParam
   }
   dirty.y0 = y0;
   dirty.y1 = y1;
+}
+
+/** Highest terrain among the 4 neighbours of (x, y). */
+function maxNeighbour(world: World, x: number, y: number): number {
+  const { width: W, height: H, bedrock, soil } = world;
+  const i = y * W + x;
+  let z = -Infinity;
+  if (x > 0) z = Math.max(z, bedrock[i - 1]! + soil[i - 1]!);
+  if (x < W - 1) z = Math.max(z, bedrock[i + 1]! + soil[i + 1]!);
+  if (y > 0) z = Math.max(z, bedrock[i - W]! + soil[i - W]!);
+  if (y < H - 1) z = Math.max(z, bedrock[i + W]! + soil[i + W]!);
+  return z;
 }
 
 /** Lower bank cell j next to a channel cell with terrain zi; returns the volume taken (m³). */

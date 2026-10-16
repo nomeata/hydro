@@ -34,7 +34,7 @@ export interface GeoState {
   sedLedger: SedimentLedger;
   time: number;
   /** Pairs [cell, value] of non-zero entries. */
-  siltAcc: number[];
+  bedAcc: number[];
   inflowConc: number[];
 }
 
@@ -269,7 +269,7 @@ export class Simulation {
       geo: {
         sedLedger: { ...this.sedLedger },
         time: this.erosionScratch.time,
-        siltAcc: sparse(this.erosionScratch.siltAcc),
+        bedAcc: sparse(this.erosionScratch.bedAcc),
         inflowConc: sparse(this.erosionScratch.inflowConc),
       },
     };
@@ -288,7 +288,7 @@ export class Simulation {
     if (st.geo) {
       Object.assign(this.sedLedger, st.geo.sedLedger);
       this.erosionScratch.time = st.geo.time;
-      unsparse(this.erosionScratch.siltAcc, st.geo.siltAcc);
+      unsparse(this.erosionScratch.bedAcc, st.geo.bedAcc);
       unsparse(this.erosionScratch.inflowConc, st.geo.inflowConc);
     }
     this.lookDirty = true;
