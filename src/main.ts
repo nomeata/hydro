@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const data = await client.ready;
   const mirror = new WorldMirror(data);
 
-  const renderer = new GameRenderer(canvas, data);
+  const renderer = new GameRenderer(canvas, data, { followSimTime: true });
   renderer.camera.focus(data.info.startX, data.info.startY);
   const cameraInput = attachCameraInput(canvas, renderer.camera);
 

@@ -9,7 +9,6 @@ import { openGame, runDays, settleFrames } from './helpers';
 const OUT = 'dist/screenshots';
 
 test.describe('@readme', () => {
-  test.skip(({ browserName }, info) => info.project.name !== 'desktop' && info.project.name !== 'phone');
 
   test('showcase', async ({ page }, info) => {
     mkdirSync(OUT, { recursive: true });
