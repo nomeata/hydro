@@ -48,9 +48,10 @@ if (evalJs) {
 if (speed > 0) await page.evaluate((s) => (window as any).__hydro.client.setSpeed(s), speed);
 await page.waitForTimeout(1500);
 const stats = await page.evaluate(() => {
-  const r = (window as any).__hydro.renderer;
+  const h = (window as any).__hydro;
+  const r = h.renderer;
   const i = r.gl.info.render;
-  return { calls: i.calls, triangles: i.triangles, flow: r.flow.count, flowTarget: r.flow.target, cand: r.flow.candCount, box: r.flow.box, puffs: r.weather.puffCount };
+  return { crowd: h.crowd?.stats, calls: i.calls, triangles: i.triangles, flow: r.flow.count, flowTarget: r.flow.target, cand: r.flow.candCount, box: r.flow.box, puffs: r.weather.puffCount };
 });
 console.log('render stats', JSON.stringify(stats));
 for (let k = 0; k < shots; k++) {

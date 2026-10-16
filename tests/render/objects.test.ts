@@ -217,38 +217,3 @@ describe('vegetation scatter', () => {
     layer.dispose();
   });
 });
-
-describe('wanderers', () => {
-  it('walk around on dry land near the centre and never wade into deep water', async () => {
-    const { WandererLayer } = await import('../../src/render/objects/wanderers');
-    const n = 64;
-    // Lake on the west half, dry land east.
-    const w = world(n, (x) => ({ soil: SoilType.Loam, moist: 0.5, veg: 0.4, depth: x < 30 ? 1 : 0, h: x < 30 ? 5 : 10 }));
-    const clips = ['idle', 'walk', 'eat', 'sit'].map((name) => new THREE.AnimationClip(name, 1, []));
-    const stub = {
-      loadAnimated: async (name: ModelName) => {
-        const template = new THREE.Group();
-        template.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.2), vertexColorMaterial()));
-        return { name, template, clips, scale: 1 };
-      },
-    };
-    const scene = new THREE.Scene();
-    const layer = new WandererLayer(scene, w.heights, { count: 6, seed: 3, centerX: 34, centerY: 32, radius: 10, library: stub });
-    await layer.ready;
-    expect(layer.count).toBeGreaterThanOrEqual(6 + 8); // people + land pets + fish in the lake
-    const start = layer.positions();
-    let walked = 0;
-    for (let t = 0; t < 120; t += 0.1) {
-      layer.update(0.1);
-      for (const p of layer.positions()) {
-        if (p.model === 'pet_fish') expect(w.heights.depthAt(p.x, p.y)).toBeGreaterThan(0.2);
-        else expect(w.heights.depthAt(p.x, p.y)).toBeLessThanOrEqual(0.2);
-        expect(Math.hypot(p.x - 34, p.y - 32)).toBeLessThan(40);
-      }
-    }
-    const end = layer.positions();
-    for (let i = 0; i < end.length; i++) walked += Math.hypot(end[i]!.x - start[i]!.x, end[i]!.y - start[i]!.y);
-    expect(walked).toBeGreaterThan(5);
-    layer.dispose();
-  });
-});

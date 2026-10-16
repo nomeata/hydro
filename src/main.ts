@@ -10,7 +10,8 @@ import { WorldMirror } from './client/mirror';
 import { GameRenderer } from './render/renderer';
 import { attachCameraInput } from './render/camera';
 import { VegetationLayer } from './render/objects/vegetation';
-import { WandererLayer } from './render/objects/wanderers';
+import { CrowdLayer } from './render/crowd/crowd';
+import { FakeCrowd } from './render/crowd/fakeCrowd';
 import { Hud } from './ui/hud';
 import { ToolPalette } from './ui/tools';
 
@@ -58,15 +59,15 @@ async function main(): Promise<void> {
   const cameraInput = attachCameraInput(canvas, renderer.camera);
 
   const vegetation = new VegetationLayer(renderer.scene, renderer.heights, data.look, data.info.width, data.info.height, seed);
-  const wanderers = new WandererLayer(renderer.scene, renderer.heights, {
-    count: 10,
-    seed,
-    centerX: data.info.startX,
-    centerY: data.info.startY,
-    radius: 14,
-    look: data.look,
+  // People and animals. Until the sim has agents (M3-α), a main-thread fake
+  // crowd feeds the renderer; real snapshot entities take over when present.
+  const crowd = new CrowdLayer(renderer.scene, renderer.heights, { camera: renderer.camera.camera });
+  // Created on the first snapshot, once water depths are known.
+  let fakeCrowd: FakeCrowd | null | undefined;
+  renderer.addFrameListener((dt, now) => {
+    if (fakeCrowd?.advance(dt)) crowd.setFrame(fakeCrowd.frame(), now);
+    crowd.update(dt, now);
   });
-  renderer.addFrameListener((dt) => wanderers.update(dt));
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
   const tools = new ToolPalette(uiRoot, {
@@ -83,6 +84,12 @@ async function main(): Promise<void> {
   client.onSnapshot((s) => {
     mirror.apply(s);
     renderer.applySnapshot(s);
+    if (s.entities) {
+      fakeCrowd = null;
+      crowd.setFrame(s.entities, performance.now());
+    } else if (fakeCrowd === undefined) {
+      fakeCrowd = new FakeCrowd(renderer.heights, { seed, centerX: data.info.startX, centerY: data.info.startY, look: data.look });
+    }
     hud.update(s);
     if (s.plan) tools.planUpdated();
     if (s.terrain) vegetation.invalidate(0, s.terrain.y0, data.info.width, s.terrain.y1);
@@ -146,7 +153,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd, fakeCrowd: () => fakeCrowd };
   }
   document.getElementById('loading')?.classList.add('done');
 }
