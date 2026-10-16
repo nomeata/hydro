@@ -1,0 +1,375 @@
+/**
+ * GameRenderer: owns the WebGL renderer, scene, terrain/water layers, sky and
+ * camera. Other layers (objects, characters) add themselves to `scene` and
+ * subscribe to `addFrameListener`.
+ */
+import * as THREE from 'three';
+import type { Snapshot, WorldInfo } from '../shared/protocol';
+import { CameraController } from './camera';
+import { HEIGHT_SCALE, heightToY } from './coords';
+import { makeChunkGeometry, setChunkBounds } from './grid';
+import { HeightField } from './heights';
+import { rayMarchHeightfield } from './picking';
+import { SkyLighting } from './sky';
+import { TerrainLayer, createTerrainUniforms } from './terrain';
+import {
+  makeByteTexture,
+  makeFloatTexture,
+  makeNoiseTexture,
+  packPlan,
+  packVel,
+  uploadFloatRows,
+} from './textures';
+import { WaterLayer, createWaterUniforms } from './water';
+
+export interface InitialData {
+  info: WorldInfo;
+  terrain: Float32Array;
+  look: Uint8Array;
+  plan: Float32Array;
+}
+
+export interface GameRendererOptions {
+  /** Default min(devicePixelRatio, 1.5). */
+  pixelRatio?: number;
+  /** Sun shadow map (default off). */
+  shadows?: boolean;
+  /** MSAA (default true). */
+  antialias?: boolean;
+  /** Follow the snapshot's time of day / season for lighting (default false: fixed afternoon). */
+  followSimTime?: boolean;
+}
+
+type FrameListener = (dtSec: number, nowMs: number) => void;
+
+let capsLogged = false;
+
+export class GameRenderer {
+  readonly scene = new THREE.Scene();
+  readonly heights: HeightField;
+  readonly camera: CameraController;
+  readonly gl: THREE.WebGLRenderer;
+  readonly sky: SkyLighting;
+  readonly info: WorldInfo;
+
+  private readonly canvas: HTMLCanvasElement;
+  private readonly geometry: THREE.BufferGeometry;
+  private readonly terrain: TerrainLayer;
+  private readonly water: WaterLayer;
+  private readonly tex: {
+    terrain: THREE.DataTexture;
+    look: THREE.DataTexture;
+    plan: THREE.DataTexture;
+    preview: THREE.DataTexture;
+    depthA: THREE.DataTexture;
+    depthB: THREE.DataTexture;
+    vel: THREE.DataTexture;
+    noise: THREE.DataTexture;
+  };
+  /** CPU buffers for the two depth textures; `depthCur` is the newer one. */
+  private depthPrevIsA = true;
+  private readonly listeners: FrameListener[] = [];
+  private lastFrameMs: number | null = null;
+  private snapPending = false;
+  private snapAtMs = 0;
+  private snapIntervalMs = 100;
+  private lastSnapAtMs: number | null = null;
+  private contextLost = false;
+  private readonly shadows: boolean;
+  private readonly followSimTime: boolean;
+  private maxDepthSeen = 0;
+  private readonly onLost: (e: Event) => void;
+  private readonly onRestored: () => void;
+  private readonly tmpV = new THREE.Vector3();
+
+  constructor(canvas: HTMLCanvasElement, data: InitialData, opts: GameRendererOptions = {}) {
+    this.canvas = canvas;
+    this.info = data.info;
+    const { width: W, height: H } = data.info;
+    this.shadows = opts.shadows ?? false;
+    this.followSimTime = opts.followSimTime ?? false;
+
+    this.gl = new THREE.WebGLRenderer({
+      canvas,
+      antialias: opts.antialias ?? true,
+      powerPreference: 'high-performance',
+      alpha: false,
+    });
+    this.gl.setPixelRatio(opts.pixelRatio ?? Math.min(globalThis.devicePixelRatio || 1, 1.5));
+    this.gl.shadowMap.enabled = this.shadows;
+    this.gl.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.logCapabilities();
+
+    // CPU state.
+    this.heights = new HeightField(W, H, data.terrain);
+
+    // Textures.
+    const planBuf = new Float32Array(W * H);
+    const anyPlan = packPlan(data.plan, planBuf);
+    const previewBuf = new Float32Array(W * H);
+    this.tex = {
+      terrain: makeFloatTexture(W, H, new Float32Array(this.heights.terrain)),
+      look: makeByteTexture(W, H, 4, new Uint8Array(data.look.subarray(0, W * H * 4))),
+      plan: makeFloatTexture(W, H, planBuf),
+      preview: makeFloatTexture(W, H, previewBuf),
+      depthA: makeFloatTexture(W, H),
+      depthB: makeFloatTexture(W, H),
+      vel: makeByteTexture(W, H, 2),
+      noise: makeNoiseTexture(),
+    };
+
+    // Layers.
+    this.geometry = makeChunkGeometry();
+    const tu = createTerrainUniforms(this.tex, W, H);
+    tu.uPlanOn.value = anyPlan ? 1 : 0;
+    this.terrain = new TerrainLayer(this.geometry, tu, W, H);
+    this.terrain.setCastShadow(this.shadows);
+    this.scene.add(this.terrain.group);
+    const wu = createWaterUniforms(
+      { terrain: this.tex.terrain, depthA: this.tex.depthA, depthB: this.tex.depthB, vel: this.tex.vel, noise: this.tex.noise },
+      W,
+      H,
+    );
+    this.water = new WaterLayer(this.geometry, wu, W, H);
+    this.water.updateVisibility(this.depthBuf(true), this.depthBuf(false));
+    this.scene.add(this.water.group);
+    this.updateBounds();
+
+    this.sky = new SkyLighting(this.scene);
+    if (this.shadows) {
+      const s = this.sky.sun.shadow;
+      s.mapSize.set(1024, 1024);
+      s.bias = -0.0005;
+      s.normalBias = 0.02;
+      this.sky.sun.castShadow = true;
+    }
+
+    // Camera.
+    this.camera = new CameraController(this.heights);
+    this.resize();
+    // Default zoom: ~64 cells across the shorter screen side (portrait phones too).
+    const cw = canvas.clientWidth || canvas.width || 1;
+    const ch = canvas.clientHeight || canvas.height || 1;
+    this.camera.setState({ x: data.info.startX, y: data.info.startY, viewHeight: 64 * Math.max(1, ch / cw) });
+
+    for (const t of Object.values(this.tex)) this.gl.initTexture(t);
+
+    this.onLost = (e: Event) => {
+      e.preventDefault();
+      this.contextLost = true;
+      console.warn('[render] WebGL context lost');
+    };
+    this.onRestored = () => {
+      console.info('[render] WebGL context restored');
+      this.contextLost = false;
+      for (const t of Object.values(this.tex)) t.needsUpdate = true;
+    };
+    canvas.addEventListener('webglcontextlost', this.onLost);
+    canvas.addEventListener('webglcontextrestored', this.onRestored);
+  }
+
+  /** Upload a snapshot: depth/vel always, terrain rows / look / plan when present. */
+  applySnapshot(s: Snapshot): void {
+    const W = this.info.width;
+    const H = this.info.height;
+    const n = W * H;
+    // Swap: the old "current" becomes "previous", new data goes into the other buffer.
+    this.depthPrevIsA = !this.depthPrevIsA;
+    const cur = this.depthBuf(false);
+    cur.set(s.depth.subarray(0, n));
+    this.heights.depth.set(cur);
+    this.curDepthTex().needsUpdate = true;
+    packVel(s.vel, this.tex.vel.image.data as Uint8Array);
+    this.tex.vel.needsUpdate = true;
+    const wu = this.water.uniforms;
+    wu.uDepthA.value = this.prevDepthTex();
+    wu.uDepthB.value = this.curDepthTex();
+    wu.uMix.value = 0;
+    this.water.updateVisibility(this.depthBuf(true), cur);
+    let maxD = 0;
+    for (let i = 0; i < n; i++) if (cur[i]! > maxD) maxD = cur[i]!;
+    if (maxD > this.maxDepthSeen) {
+      this.maxDepthSeen = maxD;
+      this.updateBounds();
+    }
+
+    if (s.terrain) {
+      const { y0, y1, data } = s.terrain;
+      this.heights.setRows(y0, y1, data);
+      (this.tex.terrain.image.data as Float32Array).set(data.subarray(0, (y1 - y0) * W), y0 * W);
+      uploadFloatRows(this.gl, this.tex.terrain, y0, y1);
+      this.updateBounds();
+    }
+    if (s.look) {
+      (this.tex.look.image.data as Uint8Array).set(s.look.subarray(0, n * 4));
+      this.tex.look.needsUpdate = true;
+    }
+    if (s.plan) {
+      const any = packPlan(s.plan, this.tex.plan.image.data as Float32Array);
+      this.terrain.uniforms.uPlanOn.value = any ? 1 : 0;
+      this.tex.plan.needsUpdate = true;
+    }
+    if (this.followSimTime) this.sky.setSun(s.time.timeOfDay, s.time.season + s.time.dayOfSeason / 30);
+    this.snapPending = true;
+  }
+
+  /** Optimistic plan overlay (target height per cell, NaN = none), or null to clear. */
+  setPreviewPlan(cells: Float32Array | null): void {
+    const u = this.terrain.uniforms;
+    if (!cells) {
+      u.uPreviewOn.value = 0;
+      return;
+    }
+    const any = packPlan(cells, this.tex.preview.image.data as Float32Array);
+    u.uPreviewOn.value = any ? 1 : 0;
+    this.tex.preview.needsUpdate = true;
+  }
+
+  /** Lighting hook: timeOfDay 0..1 (0.5 noon), season 0..3 (fractional ok). */
+  setSun(timeOfDay: number, season: number): void {
+    this.sky.setSun(timeOfDay, season);
+  }
+
+  addFrameListener(fn: FrameListener): () => void {
+    this.listeners.push(fn);
+    return () => {
+      const i = this.listeners.indexOf(fn);
+      if (i >= 0) this.listeners.splice(i, 1);
+    };
+  }
+
+  /** Render one frame. `nowMs` should be a performance.now()/rAF timestamp. */
+  frame(nowMs: number): void {
+    const dt = this.lastFrameMs === null ? 0 : Math.min(0.1, Math.max(0, (nowMs - this.lastFrameMs) / 1000));
+    this.lastFrameMs = nowMs;
+
+    if (this.snapPending) {
+      this.snapPending = false;
+      if (this.lastSnapAtMs !== null) {
+        const iv = Math.min(500, Math.max(30, nowMs - this.lastSnapAtMs));
+        this.snapIntervalMs += (iv - this.snapIntervalMs) * 0.3;
+      }
+      this.lastSnapAtMs = nowMs;
+      this.snapAtMs = nowMs;
+    }
+    const mix = Math.min(1, Math.max(0, (nowMs - this.snapAtMs) / this.snapIntervalMs));
+    this.water.uniforms.uMix.value = mix;
+
+    this.camera.update(dt);
+    const t = nowMs / 1000;
+    this.terrain.uniforms.uTime.value = t;
+    const wu = this.water.uniforms;
+    wu.uTime.value = t;
+    const sky = this.sky.state;
+    wu.uSunDir.value.copy(sky.dir);
+    wu.uSunColor.value.copy(sky.sunColor);
+    wu.uSkyColor.value.copy(sky.sky);
+    wu.uGroundColor.value.copy(sky.ground);
+    this.camera.camera.getWorldDirection(wu.uViewDir.value).negate();
+
+    if (this.shadows) this.fitShadow();
+    else this.sky.placeSun(this.camera.targetWorld(this.tmpV), Math.max(this.info.width, this.info.height));
+    for (const fn of this.listeners) fn(dt, nowMs);
+    if (this.contextLost) return;
+    this.gl.render(this.scene, this.camera.camera);
+  }
+
+  resize(): void {
+    const c = this.canvas;
+    const w = Math.max(1, c.clientWidth || c.width);
+    const h = Math.max(1, c.clientHeight || c.height);
+    this.gl.setSize(w, h, false);
+    const r = c.getBoundingClientRect();
+    this.camera.setViewport(w, h, r.left, r.top);
+  }
+
+  /** Cell coordinates (fractional, cell i centre at i) under a client position, or null. */
+  pick(clientX: number, clientY: number): { x: number; y: number } | null {
+    const r = this.canvas.getBoundingClientRect();
+    this.camera.setViewport(r.width || 1, r.height || 1, r.left, r.top);
+    const { origin, dir } = this.camera.rayAt(clientX, clientY);
+    const hf = this.heights;
+    const hit = rayMarchHeightfield(
+      origin,
+      dir,
+      (x, z) => heightToY(hf.surfaceAt(x - 0.5, z - 0.5)),
+      {
+        minX: 0.5,
+        maxX: hf.width - 0.5,
+        minZ: 0.5,
+        maxZ: hf.height - 0.5,
+        minY: heightToY(hf.minTerrain) - 1,
+        maxY: heightToY(hf.maxTerrain + this.maxDepthSeen) + 1,
+      },
+      0.35,
+    );
+    return hit ? { x: hit.x - 0.5, y: hit.z - 0.5 } : null;
+  }
+
+  dispose(): void {
+    this.canvas.removeEventListener('webglcontextlost', this.onLost);
+    this.canvas.removeEventListener('webglcontextrestored', this.onRestored);
+    this.terrain.dispose();
+    this.water.dispose();
+    this.sky.dispose();
+    this.geometry.dispose();
+    for (const t of Object.values(this.tex)) t.dispose();
+    this.listeners.length = 0;
+    this.gl.dispose();
+  }
+
+  // -------------------------------------------------------------------------
+
+  private depthBuf(prev: boolean): Float32Array {
+    const useA = prev === this.depthPrevIsA;
+    return (useA ? this.tex.depthA : this.tex.depthB).image.data as Float32Array;
+  }
+
+  private prevDepthTex(): THREE.DataTexture {
+    return this.depthPrevIsA ? this.tex.depthA : this.tex.depthB;
+  }
+
+  private curDepthTex(): THREE.DataTexture {
+    return this.depthPrevIsA ? this.tex.depthB : this.tex.depthA;
+  }
+
+  private updateBounds(): void {
+    const hf = this.heights;
+    const skirt = heightToY(hf.minTerrain) - Math.max(3, (hf.maxTerrain - hf.minTerrain) * HEIGHT_SCALE * 0.15);
+    this.terrain.uniforms.uSkirtY.value = skirt;
+    setChunkBounds(this.geometry, skirt - 1, heightToY(hf.maxTerrain + this.maxDepthSeen) + 2);
+  }
+
+  private fitShadow(): void {
+    const sun = this.sky.sun;
+    const focus = this.camera.targetWorld(this.tmpV);
+    const vh = this.camera.getCurrentState().viewHeight;
+    const cam = sun.shadow.camera;
+    const ext = vh * 0.9;
+    cam.left = -ext;
+    cam.right = ext;
+    cam.top = ext;
+    cam.bottom = -ext;
+    const D = Math.max(this.info.width, this.info.height);
+    cam.near = 1;
+    cam.far = D * 3;
+    cam.updateProjectionMatrix();
+    this.sky.placeSun(focus, D);
+  }
+
+  private logCapabilities(): void {
+    if (capsLogged) return;
+    capsLogged = true;
+    const gl = this.gl.getContext();
+    const ext = (n: string): boolean => !!gl.getExtension(n);
+    console.info('[render] WebGL capabilities', {
+      webgl2: typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext,
+      OES_texture_float_linear: ext('OES_texture_float_linear'),
+      EXT_color_buffer_float: ext('EXT_color_buffer_float'),
+      MAX_VERTEX_TEXTURE_IMAGE_UNITS: gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
+      MAX_TEXTURE_SIZE: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      renderer: gl.getParameter(gl.RENDERER),
+      pixelRatio: this.gl.getPixelRatio(),
+    });
+  }
+}

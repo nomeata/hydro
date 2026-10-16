@@ -123,7 +123,7 @@ export class Simulation {
         const r = cmd.radius;
         for (let y = Math.max(0, Math.floor(cmd.y - r)); y <= Math.min(w.height - 1, Math.ceil(cmd.y + r)); y++)
           for (let x = Math.max(0, Math.floor(cmd.x - r)); x <= Math.min(w.width - 1, Math.ceil(cmd.x + r)); x++)
-            if ((x + 0.5 - cmd.x) ** 2 + (y + 0.5 - cmd.y) ** 2 <= r * r) w.water[w.idx(x, y)]! += cmd.depth;
+            if ((x - cmd.x) ** 2 + (y - cmd.y) ** 2 <= r * r) w.water[w.idx(x, y)]! += cmd.depth;
         break;
       }
     }

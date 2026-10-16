@@ -4,7 +4,7 @@
  * free of imports from sim/ or render/.
  */
 
-/** A point in cell coordinates (may be fractional). */
+/** A point in fractional cell coordinates; cell i's centre is at i. */
 export type Pt = readonly [number, number];
 
 export interface SimTime {

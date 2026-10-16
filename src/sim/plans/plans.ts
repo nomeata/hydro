@@ -46,9 +46,9 @@ export function rasterisePath(world: PlanGrid, points: readonly Pt[], reach: num
     const y1 = Math.min(world.height - 1, Math.ceil(Math.max(ay, by) + reach));
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
-        // Cell centre in cell coordinates is (x + 0.5, y + 0.5).
-        const px = x + 0.5 - ax;
-        const py = y + 0.5 - ay;
+        // Cell centres are at integer cell coordinates (see render/coords.ts).
+        const px = x - ax;
+        const py = y - ay;
         const t = len2 > 0 ? Math.max(0, Math.min(1, (px * dx + py * dy) / len2)) : 0;
         const ex = px - t * dx;
         const ey = py - t * dy;
@@ -73,8 +73,8 @@ function pathLength(points: readonly Pt[]): number {
 }
 
 function terrainAtPoint(world: PlanGrid, p: Pt): number {
-  const x = Math.max(0, Math.min(world.width - 1, Math.floor(p[0])));
-  const y = Math.max(0, Math.min(world.height - 1, Math.floor(p[1])));
+  const x = Math.max(0, Math.min(world.width - 1, Math.round(p[0])));
+  const y = Math.max(0, Math.min(world.height - 1, Math.round(p[1])));
   return world.terrain(world.idx(x, y));
 }
 
@@ -142,8 +142,8 @@ export function cancelPlans(world: PlanGrid, x: number, y: number, radius: numbe
   const r2 = radius * radius;
   for (let cy = Math.max(0, Math.floor(y - radius)); cy <= Math.min(world.height - 1, Math.ceil(y + radius)); cy++) {
     for (let cx = Math.max(0, Math.floor(x - radius)); cx <= Math.min(world.width - 1, Math.ceil(x + radius)); cx++) {
-      const dx = cx + 0.5 - x;
-      const dy = cy + 0.5 - y;
+      const dx = cx - x;
+      const dy = cy - y;
       if (dx * dx + dy * dy > r2) continue;
       const i = world.idx(cx, cy);
       if (!Number.isNaN(world.plan[i]!)) {
