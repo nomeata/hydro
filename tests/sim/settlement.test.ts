@@ -17,7 +17,6 @@ function simulate(years: number, opts: { landScale?: number; disasterYear?: numb
   let houseTimer = 0;
   for (let day = 0; day < years * DAYS_PER_YEAR; day++) {
     const doy = day % DAYS_PER_YEAR;
-    const year = Math.floor(day / DAYS_PER_YEAR);
     const pop = s.state.population;
     if (doy === s.state.harvestDay) {
       const farmers = Math.floor(pop * 0.6);

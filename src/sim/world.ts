@@ -32,6 +32,9 @@ export const FIELD_SPECS = [
   { name: 'plan', kind: 'f32', persist: true },
   { name: 'inflow', kind: 'f32', persist: true },
   { name: 'flowAvg', kind: 'f32', persist: true },
+  { name: 'landuse', kind: 'u8', persist: true },
+  { name: 'crop', kind: 'u8', persist: true },
+  { name: 'floodMemory', kind: 'u8', persist: true },
 ] as const satisfies readonly { name: string; kind: FieldKind; persist: boolean }[];
 
 export type FieldName = (typeof FIELD_SPECS)[number]['name'];
@@ -77,6 +80,18 @@ export const SOIL_PROPS: readonly SoilProps[] = [
   { name: 'peat', porosity: 0.8, infiltration: 2e-5, conductivity: 0.05, erodibility: 0.6, fertility: 0.4, repose: 0.7 },
 ];
 
+/** Land use per cell. */
+export const enum LandUse {
+  None = 0,
+  Field = 1,
+  Garden = 2,
+  Pasture = 3,
+  Path = 4,
+  Building = 5,
+  Yard = 6,
+  Bridge = 7,
+}
+
 /** Bit flags in the `flags` field. */
 export const enum CellFlag {
   /** Stone lining: no erosion, no slumping. */
@@ -119,6 +134,12 @@ export class World {
   declare readonly inflow: Float32Array;
   /** Exponential moving average of |discharge|, used for river detection. */
   declare readonly flowAvg: Float32Array;
+  /** Land use (LandUse enum). */
+  declare readonly landuse: Uint8Array;
+  /** Crop growth stage 0..255 on fields (0 = bare/ploughed, 255 = ripe). */
+  declare readonly crop: Uint8Array;
+  /** Recent flooding: 255 when flooded, decays by 1 per day. */
+  declare readonly floodMemory: Uint8Array;
 
   constructor(width: number, height: number, seed: number) {
     this.width = width;
