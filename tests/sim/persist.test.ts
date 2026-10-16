@@ -8,7 +8,7 @@ describe('save games', () => {
     const make = () => {
       const { world } = generateWorld({ seed: 5, size: 64 });
       const sim = new Simulation(world, 5);
-      sim.run(300);
+      sim.run(1500); // past the erosion spin-up, so inflow sediment is learned
       sim.command({ type: 'planTrench', points: [[10, 10], [40, 30]], width: 2, depth: 1 });
       sim.run(100);
       return sim;
@@ -22,6 +22,8 @@ describe('save games', () => {
     b.run(500);
     expect(b.stateHash()).toBe(a.stateHash());
     expect(b.crew.pending).toBe(a.crew.pending);
+    expect(b.sedLedger).toEqual(a.sedLedger);
+    expect(Array.from(b.world.soilType)).toEqual(Array.from(a.world.soilType));
   });
 
   it('rejects garbage', async () => {

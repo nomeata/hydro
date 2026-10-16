@@ -25,6 +25,28 @@ export interface SimState {
   outflowLastDay: number;
   crewQueue: number[];
   tileElevation: number[];
+  /** Geomorphology (absent in saves from before M1b). */
+  geo?: GeoState;
+}
+
+/** Erosion state that must survive save/load: the ledger and sparse per-cell accumulators. */
+export interface GeoState {
+  sedLedger: SedimentLedger;
+  time: number;
+  /** Pairs [cell, value] of non-zero entries. */
+  siltAcc: number[];
+  inflowConc: number[];
+}
+
+function sparse(a: Float32Array): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < a.length; i++) if (a[i] !== 0) out.push(i, a[i]!);
+  return out;
+}
+
+function unsparse(a: Float32Array, pairs: number[]): void {
+  a.fill(0);
+  for (let k = 0; k + 1 < pairs.length; k += 2) a[pairs[k]!] = pairs[k + 1]!;
 }
 
 /** Steps between soil-water/weather updates. */
@@ -244,6 +266,12 @@ export class Simulation {
       outflowLastDay: this.outflowLastDay,
       crewQueue: this.crew.getQueue(),
       tileElevation: Array.from(this.weather.tileElevation),
+      geo: {
+        sedLedger: { ...this.sedLedger },
+        time: this.erosionScratch.time,
+        siltAcc: sparse(this.erosionScratch.siltAcc),
+        inflowConc: sparse(this.erosionScratch.inflowConc),
+      },
     };
   }
 
@@ -257,6 +285,12 @@ export class Simulation {
     this.outflowToday = st.outflowToday;
     this.outflowLastDay = st.outflowLastDay;
     this.crew.setQueue(st.crewQueue);
+    if (st.geo) {
+      Object.assign(this.sedLedger, st.geo.sedLedger);
+      this.erosionScratch.time = st.geo.time;
+      unsparse(this.erosionScratch.siltAcc, st.geo.siltAcc);
+      unsparse(this.erosionScratch.inflowConc, st.geo.inflowConc);
+    }
     this.lookDirty = true;
     this.planDirty = true;
   }

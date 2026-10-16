@@ -105,7 +105,7 @@ export interface RowRange {
   y1: number;
 }
 
-/** Per-cell state that is not saved (silt accumulation since the last reset). */
+/** Per-cell erosion state (saved sparsely via Simulation.getState). */
 export class ErosionScratch {
   /** Slow-water deposit accumulated per cell (m), drives conversion to silt. */
   readonly siltAcc: Float32Array;
