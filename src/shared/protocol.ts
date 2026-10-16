@@ -109,6 +109,8 @@ export type Command =
   | { type: 'planTrench'; points: Pt[]; width: number; depth: number }
   /** Raise a dike along a polyline to a level crest `height` above the lowest ground on the path. */
   | { type: 'planDike'; points: Pt[]; width: number; height: number }
+  /** Flatten the brushed area to the ground height at the stroke's start. */
+  | { type: 'planLevel'; points: Pt[]; width: number }
   /** Remove plans within a radius. */
   | { type: 'cancelPlan'; x: number; y: number; radius: number }
   /** Debug: pour water. */
@@ -118,8 +120,8 @@ export type Command =
 // Messages.
 
 export type ToWorker =
-  | { type: 'init'; seed: number; size: number }
-  | { type: 'load'; bytes: ArrayBuffer }
+  | { type: 'init'; seed: number; size: number; speed?: number }
+  | { type: 'load'; bytes: ArrayBuffer; speed?: number }
   | { type: 'setSpeed'; speed: number }
   | { type: 'command'; command: Command }
   | { type: 'ack'; poolId: number; depth: Float32Array; vel: Int8Array }
@@ -138,6 +140,7 @@ export type FromWorker =
     }
   | ({ type: 'snapshot' } & Snapshot)
   | { type: 'saved'; bytes: ArrayBuffer }
+  | { type: 'loadFailed'; message: string }
   | { type: 'ranDays'; days: number }
   | { type: 'hash'; hash: string }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string };

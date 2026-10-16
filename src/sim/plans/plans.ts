@@ -137,6 +137,29 @@ export function planDike(world: PlanGrid, points: readonly Pt[], width: number, 
   return changed;
 }
 
+/**
+ * Level: flatten the area brushed by the path to the ground height at the
+ * start of the stroke (raising or lowering). Returns changed cells.
+ */
+export function planLevel(world: PlanGrid, points: readonly Pt[], width: number): number[] {
+  if (points.length === 0) return [];
+  const half = width / 2;
+  const level = terrainAtPoint(world, points[0]!);
+  const hits = rasterisePath(world, points, half + BANK);
+  const changed: number[] = [];
+  for (const [i, h] of hits) {
+    const ground = world.terrain(i);
+    let target = level;
+    if (h.dist > half) target = level + (ground - level) * ((h.dist - half) / BANK);
+    const cur = current(world, i);
+    if (Math.abs(target - cur) > 0.01 && Math.abs(target - ground) > 0.01) {
+      world.plan[i] = target;
+      changed.push(i);
+    }
+  }
+  return changed;
+}
+
 export function cancelPlans(world: PlanGrid, x: number, y: number, radius: number): number[] {
   const changed: number[] = [];
   const r2 = radius * radius;
@@ -196,10 +219,12 @@ export class SpiritCrew {
     for (const c of cells) this.queue.push(c);
   }
 
-  /** Rebuild the queue from the world (after loading a save). */
-  rebuild(world: World): void {
-    this.queue = [];
-    for (let i = 0; i < world.size; i++) if (!Number.isNaN(world.plan[i]!)) this.queue.push(i);
+  getQueue(): number[] {
+    return this.queue.slice();
+  }
+
+  setQueue(q: readonly number[]): void {
+    this.queue = q.slice();
   }
 
   work(world: World, rate: number, maxCells: number, onChange: (i: number, planDone: boolean) => void): void {

@@ -73,3 +73,16 @@ describe('Simulation', () => {
     expect(Math.abs(w.terrain(w.idx(30, 31)) - w.terrain(w.idx(30, 33)))).toBeLessThan(0.05);
   });
 });
+
+describe('level tool', () => {
+  it('flattens a brushed area to the starting height', () => {
+    const w = valley();
+    const sim = new Simulation(w, 1);
+    const start = w.terrain(w.idx(10, 12));
+    sim.command({ type: 'planLevel', points: [[10, 12], [20, 12], [20, 20]], width: 4 });
+    sim.run(STEPS_PER_DAY * 4);
+    for (const [x, y] of [[15, 12], [20, 16], [19, 19]] as const) {
+      expect(Math.abs(w.terrain(w.idx(x, y)) - start)).toBeLessThan(0.05);
+    }
+  });
+});

@@ -130,6 +130,7 @@ html, body {
 }
 .options[hidden] { display: none; }
 .options label { display: flex; flex-direction: column; gap: 2px; min-width: 110px; }
+.options label[hidden] { display: none; }
 .options output { font-weight: 700; }
 .options input[type='range'] { width: 120px; accent-color: var(--accent-2); }
 
@@ -184,3 +185,42 @@ html, body {
   .options input[type='range'] { width: 96px; }
   .date { font-size: 13px; }
 }
+
+/* --- menu ------------------------------------------------------------ */
+.topbar .speed { margin-left: auto; }
+.menu-button {
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.menu-button span { display: block; width: 18px; height: 3px; border-radius: 2px; background: var(--ink); }
+.menu {
+  position: absolute;
+  top: calc(60px + var(--safe-top));
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  min-width: 180px;
+}
+.menu[hidden] { display: none; }
+.menu button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.menu button:hover { background: var(--paper-2); }

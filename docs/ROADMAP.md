@@ -31,12 +31,12 @@ Fun on screen fast.
 - ☐ Plans visible under water
 - ☐ Rain fronts visible as clouds/rain
 
-## M1b — The land moves ☐
+## M1b — The land moves ◐
 - Erosion/deposition/talus with safeguards, silt fertility tint; tuned to be
   stationary (sediment in ≈ sediment out, rivers keep meandering)
 - Seasonal colour palette
-- Level tool
-- IndexedDB save/load
+- ☑ Level tool
+- ☑ IndexedDB autosave/resume, export/import save files, menu
 - Long-horizon geomorphology test (stationarity)
 
 ## M1c — Deep water ☐

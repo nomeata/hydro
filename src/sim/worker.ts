@@ -6,6 +6,7 @@
  */
 import { VEL_SCALE, type FromWorker, type Snapshot, type ToWorker } from '../shared/protocol';
 import { CELL, STEPS_PER_DAY, STEPS_PER_SECOND_1X } from './constants';
+import { loadGame, saveGame } from './persist';
 import { Simulation } from './sim';
 import { generateWorld } from './worldgen';
 
@@ -24,6 +25,8 @@ interface BufferSet {
 }
 
 let sim: Simulation | null = null;
+/** Generator info stored alongside saves. */
+let meta: Record<string, unknown> = {};
 let speed = 1;
 let pool: BufferSet[] = [];
 let accumulator = 0;
@@ -48,26 +51,44 @@ function init(seed: number, size: number): void {
   const t0 = performance.now();
   const gen = generateWorld({ seed, size });
   const t1 = performance.now();
-  sim = new Simulation(gen.world, seed);
-  sim.run(SPINUP_STEPS);
-  sim.step = 0;
+  const fresh = new Simulation(gen.world, seed);
+  fresh.run(SPINUP_STEPS);
+  fresh.step = 0;
   const t2 = performance.now();
   log('info', `worldgen ${(t1 - t0).toFixed(0)} ms, spin-up ${(t2 - t1).toFixed(0)} ms`);
+  start(fresh, { startX: gen.startX, startY: gen.startY, riverScale: gen.riverScale });
+}
 
-  const w = sim.world;
+async function load(bytes: ArrayBuffer): Promise<void> {
+  const { sim: loaded, meta: m } = await loadGame(bytes);
+  start(loaded, m);
+}
+
+/** Begin running `s`, announcing it to the main thread. */
+function start(s: Simulation, m: Record<string, unknown>): void {
+  sim = s;
+  meta = m;
+  const w = s.world;
   pool = [0, 1, 2].map((id) => ({ id, depth: new Float32Array(w.size), vel: new Int8Array(w.size * 2) }));
   const terrain = new Float32Array(w.size);
-  sim.terrainRows(0, w.height, terrain);
+  s.terrainRows(0, w.height, terrain);
   const look = new Uint8Array(w.size * 4);
-  sim.computeLook(look);
+  s.computeLook(look);
   const plan = w.plan.slice();
-  sim.takeDirtyRows();
-  sim.lookDirty = false;
-  sim.planDirty = false;
+  s.takeDirtyRows();
+  s.lookDirty = false;
+  s.planDirty = false;
   post(
     {
       type: 'ready',
-      info: { seed, width: w.width, height: w.height, cellSize: CELL, startX: gen.startX, startY: gen.startY },
+      info: {
+        seed: w.seed,
+        width: w.width,
+        height: w.height,
+        cellSize: CELL,
+        startX: Number(m.startX ?? w.width / 2),
+        startY: Number(m.startY ?? w.height / 2),
+      },
       terrain,
       look,
       plan,
@@ -172,6 +193,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
   try {
     switch (msg.type) {
       case 'init':
+        if (msg.speed !== undefined) speed = msg.speed;
         init(msg.seed, msg.size);
         break;
       case 'setSpeed':
@@ -194,8 +216,13 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         if (sim) post({ type: 'hash', hash: sim.stateHash() });
         break;
       case 'load':
+        if (msg.speed !== undefined) speed = msg.speed;
+        load(msg.bytes).catch((e) => post({ type: 'loadFailed', message: String(e) }));
+        break;
       case 'save':
-        log('warn', `${msg.type} not implemented yet`);
+        if (sim) {
+          void saveGame(sim, meta).then((bytes) => post({ type: 'saved', bytes }, [bytes]));
+        }
         break;
     }
   } catch (e) {

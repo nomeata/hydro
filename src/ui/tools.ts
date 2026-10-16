@@ -4,11 +4,11 @@
  * finger / the left mouse button draws, and two fingers still pan and zoom.
  */
 import type { Command, Pt } from '../shared/protocol';
-import { planDike, planTrench, type PlanGrid } from '../sim/plans/plans';
+import { planDike, planLevel, planTrench, type PlanGrid } from '../sim/plans/plans';
 import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
 
-export type ToolId = 'look' | 'trench' | 'dike' | 'erase';
+export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'erase';
 
 export interface ToolHost {
   canvas: HTMLCanvasElement;
@@ -31,6 +31,7 @@ const TOOLS: ToolDef[] = [
   { id: 'look', label: 'Look', icon: ICONS.hand, hint: '' },
   { id: 'trench', label: 'Trench', icon: ICONS.trench, hint: 'Draw a trench. Its floor slopes evenly from start to end.' },
   { id: 'dike', label: 'Dike', icon: ICONS.dike, hint: 'Draw a dike. Its crest is level.' },
+  { id: 'level', label: 'Level', icon: ICONS.level, hint: 'Brush over land to flatten it to the height where you start.' },
   { id: 'erase', label: 'Remove', icon: ICONS.erase, hint: 'Brush over plans to remove them.' },
 ];
 
@@ -115,7 +116,8 @@ export class ToolPalette {
     this.tool = id;
     this.drawing = null;
     for (const [k, b] of this.buttons) b.setAttribute('aria-pressed', String(k === id));
-    this.options.hidden = id !== 'trench' && id !== 'dike';
+    this.options.hidden = id !== 'trench' && id !== 'dike' && id !== 'level';
+    this.amountInput.closest('label')!.hidden = id === 'level';
     this.hint.textContent = TOOLS.find((t) => t.id === id)!.hint;
     this.host.setCameraPrimaryPointer(id === 'look');
     if (!this.awaitingPlan) this.host.setPreviewPlan(null);
@@ -177,6 +179,9 @@ export class ToolPalette {
     } else if (this.tool === 'dike') {
       this.host.command({ type: 'planDike', points: simplify(d.points), width: this.width, height: this.height });
       this.awaitingPlan = true;
+    } else if (this.tool === 'level') {
+      this.host.command({ type: 'planLevel', points: simplify(d.points), width: this.width });
+      this.awaitingPlan = true;
     }
     // One stroke per tool use: go back to looking around, so a stray touch
     // never places a second plan.
@@ -206,6 +211,7 @@ export class ToolPalette {
       const pts = simplify(d.points);
       if (this.tool === 'trench') planTrench(grid, pts, this.width, this.depth);
       else if (this.tool === 'dike') planDike(grid, pts, this.width, this.height);
+      else if (this.tool === 'level') planLevel(grid, pts, this.width);
       this.host.setPreviewPlan(grid.plan);
     });
   }
