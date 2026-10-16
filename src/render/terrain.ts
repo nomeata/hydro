@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import { HEIGHT_SCALE } from './coords';
 import { CHUNK, GRID_VERTEX_GLSL, chunkOrigins } from './grid';
-import { PLAN_NONE } from './textures';
+import { PLAN_GLSL } from './planOverlay';
+import { CLOUD_SHADOW_GLSL, type FrontUniforms } from './weather';
 
 /** Soil base colours (sRGB), indexed by SoilType. */
 export const SOIL_COLOURS: readonly number[] = [
@@ -26,7 +27,7 @@ export interface TerrainTextures {
   preview: THREE.DataTexture;
 }
 
-export interface TerrainUniforms {
+export interface TerrainUniforms extends FrontUniforms {
   uTerrain: { value: THREE.Texture };
   uLook: { value: THREE.Texture };
   uPlan: { value: THREE.Texture };
@@ -99,22 +100,8 @@ vec3 soilBase(vec4 l) {
   return uSoil[clamp(s, 0, 6)];
 }
 
-// Plan overlay tint for one plan texture; returns rgb + alpha.
-vec4 planTint(highp sampler2D tex, ivec2 c, vec2 wp, float speed, float boost) {
-  float target = texelFetch(tex, c, 0).r;
-  if (target < ${PLAN_NONE / 2}.0) return vec4(0.0);
-  float h = texelFetch(uTerrain, c, 0).r;
-  float diff = target - h;
-  vec3 col;
-  float a;
-  if (diff < -0.05) { col = vec3(1.0, 0.42, 0.08); a = 0.45; }        // dig: orange
-  else if (diff > 0.05) { col = vec3(0.36, 0.17, 0.06); a = 0.6; }   // raise: warm earth brown
-  else { col = vec3(1.0, 0.86, 0.45); a = 0.25; }                      // reached: pale gold
-  float stripe = step(0.5, fract((wp.x + wp.y) * 0.35 - uTime * speed));
-  a *= mix(0.45, 1.0, stripe);
-  // Soft outline: brighter near the cell edge where the neighbour has no plan.
-  return vec4(col, clamp(a * boost, 0.0, 0.9));
-}
+${PLAN_GLSL}
+${CLOUD_SHADOW_GLSL}
 `;
 
 const FRAGMENT_COLOUR = /* glsl */ `
@@ -167,24 +154,30 @@ const FRAGMENT_COLOUR = /* glsl */ `
       groundCol = c;
 
       // Plan overlays (existing plan, then optimistic preview on top).
-      ivec2 pc = clamp(ivec2(floor(cell + 0.5)), ivec2(0), ivec2(uGrid) - 1);
       if (uPlanOn > 0.5) {
-        vec4 t = planTint(uPlan, pc, vTerrWorld.xz, 0.35, 1.0);
+        vec4 t = planOverlay(uPlan, cell, 0.35, 1.0, 0.14);
         groundCol = mix(groundCol, t.rgb, t.a);
         planGlow += t.rgb * t.a * 0.12;
       }
       if (uPreviewOn > 0.5) {
-        vec4 t = planTint(uPreview, pc, vTerrWorld.xz, 0.8, 1.35);
+        vec4 t = planOverlay(uPreview, cell, 0.8, 1.35, 0.14);
         groundCol = mix(groundCol, mix(t.rgb, vec3(1.0), 0.15), t.a);
         planGlow += t.rgb * t.a * 0.2;
       }
     }
+    if (vSkirt <= 0.001) groundCol *= cloudShadow(vTerrWorld.xz);
     diffuseColor.rgb = groundCol;
   }
 `;
 
-export function createTerrainUniforms(tex: TerrainTextures, width: number, height: number): TerrainUniforms {
+export function createTerrainUniforms(
+  tex: TerrainTextures,
+  width: number,
+  height: number,
+  fronts: FrontUniforms,
+): TerrainUniforms {
   return {
+    ...fronts,
     uTerrain: { value: tex.terrain },
     uLook: { value: tex.look },
     uPlan: { value: tex.plan },
@@ -215,7 +208,7 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAGMENT_COLOUR}`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += planGlow;');
   };
-  mat.customProgramCacheKey = () => 'hydro-terrain-v1';
+  mat.customProgramCacheKey = () => 'hydro-terrain-v2';
   return mat;
 }
 

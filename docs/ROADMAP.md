@@ -24,17 +24,17 @@ Fun on screen fast.
   mini-characters and cube pets (no AI yet)
 - ☑ e2e smoke + interaction tests, README screenshots, deploy
 
-## M1a feedback round ◐
+## M1a feedback round ☑
 - ☑ No day/night; seasons drive light and hue
 - ☑ Tools return to Look after one stroke
-- ☐ Flow direction visible (drifting foam particles, flow streaks)
-- ☐ Plans visible under water
-- ☐ Rain fronts visible as clouds/rain
+- ☑ Flow direction visible (drifting foam particles, flow streaks)
+- ☑ Plans visible under water
+- ☑ Rain fronts visible as clouds/rain
 
 ## M1b — The land moves ◐
 - Erosion/deposition/talus with safeguards, silt fertility tint; tuned to be
   stationary (sediment in ≈ sediment out, rivers keep meandering)
-- Seasonal colour palette
+- ☑ Seasonal colour palette (light, sky, grass, water, leaves)
 - ☑ Level tool
 - ☑ IndexedDB autosave/resume, export/import save files, menu
 - Long-horizon geomorphology test (stationarity)

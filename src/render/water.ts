@@ -8,12 +8,18 @@ import * as THREE from 'three';
 import { HEIGHT_SCALE } from './coords';
 import { VEL_SCALE } from '../shared/protocol';
 import { CHUNK, GRID_VERTEX_GLSL, chunkOrigins } from './grid';
+import { PLAN_GLSL } from './planOverlay';
+import { CLOUD_SHADOW_GLSL, type FrontUniforms } from './weather';
 
 /** Depth (m) above which a cell counts as wet for rendering. */
 export const WET_DEPTH = 0.01;
 
-export interface WaterUniforms {
+export interface WaterUniforms extends FrontUniforms {
   [k: string]: THREE.IUniform;
+  uPlan: { value: THREE.Texture };
+  uPreview: { value: THREE.Texture };
+  uPlanOn: { value: number };
+  uPreviewOn: { value: number };
   uTerrain: { value: THREE.Texture };
   uDepthA: { value: THREE.Texture };
   uDepthB: { value: THREE.Texture };
@@ -103,6 +109,12 @@ void main() {
 
 const FRAG = /* glsl */ `
 #include <common>
+uniform highp sampler2D uTerrain;
+uniform highp sampler2D uPlan;
+uniform highp sampler2D uPreview;
+uniform float uPlanOn;
+uniform float uPreviewOn;
+uniform vec2 uGrid;
 uniform sampler2D uNoise;
 uniform float uTime;
 uniform vec3 uSunDir;
@@ -116,6 +128,8 @@ uniform vec3 uFoam;
 varying vec3 vWorld;
 varying float vDepth;
 varying vec2 vVel;
+${PLAN_GLSL}
+${CLOUD_SHADOW_GLSL}
 
 void main() {
   if (vDepth <= 0.0) discard;
@@ -124,7 +138,7 @@ void main() {
 
   // Flow-mapped ripples: two phases of the noise advected along the velocity.
   float speed = length(vVel);
-  vec2 flow = vVel * 0.12;
+  vec2 flow = vVel * 0.26;
   float ph0 = fract(uTime * 0.35);
   float ph1 = fract(uTime * 0.35 + 0.5);
   float w1 = abs(1.0 - 2.0 * ph0);
@@ -174,6 +188,24 @@ void main() {
   vec3 col = mix(lit + glint, foamCol, foam * 0.9);
   float alpha = mix(0.62, 0.9, deepT);
   alpha = max(alpha, foam * 0.85);
+  col *= cloudShadow(vWorld.xz);
+
+  // Plans stay visible under water: stripes + outline drawn on the surface.
+  vec2 cell = vWorld.xz - 0.5;
+  if (uPlanOn > 0.5) {
+    vec4 t = planOverlay(uPlan, cell, 0.35, 1.0, 0.16);
+    vec3 pc = t.rgb * (amb + uSunColor) * RECIPROCAL_PI;
+    float pa = clamp(t.a * 1.45, 0.0, 0.92);
+    col = mix(col, pc, pa);
+    alpha = max(alpha, pa);
+  }
+  if (uPreviewOn > 0.5) {
+    vec4 t = planOverlay(uPreview, cell, 0.8, 1.35, 0.16);
+    vec3 pc = mix(t.rgb, vec3(1.0), 0.15) * (amb + uSunColor) * RECIPROCAL_PI;
+    float pa = clamp(t.a * 1.3, 0.0, 0.95);
+    col = mix(col, pc, pa);
+    alpha = max(alpha, pa);
+  }
   alpha *= smoothstep(0.0, 0.05, vDepth);
   gl_FragColor = vec4(col, alpha);
   #include <colorspace_fragment>
@@ -181,11 +213,25 @@ void main() {
 `;
 
 export function createWaterUniforms(
-  tex: { terrain: THREE.Texture; depthA: THREE.Texture; depthB: THREE.Texture; vel: THREE.Texture; noise: THREE.Texture },
+  tex: {
+    terrain: THREE.Texture;
+    depthA: THREE.Texture;
+    depthB: THREE.Texture;
+    vel: THREE.Texture;
+    noise: THREE.Texture;
+    plan: THREE.Texture;
+    preview: THREE.Texture;
+  },
   width: number,
   height: number,
+  fronts: FrontUniforms,
 ): WaterUniforms {
   return {
+    ...fronts,
+    uPlan: { value: tex.plan },
+    uPreview: { value: tex.preview },
+    uPlanOn: { value: 0 },
+    uPreviewOn: { value: 0 },
     uTerrain: { value: tex.terrain },
     uDepthA: { value: tex.depthA },
     uDepthB: { value: tex.depthB },

@@ -208,6 +208,18 @@ itself with its own clock.
   At dry vertices next to wet ones, the water height is set to the highest
   wet neighbour's surface so the depth test cuts a smooth waterline. Shore
   fade by depth, foam by |v|, animated normals.
+- **Plans** are drawn by shared GLSL (`planOverlay.ts`) on the terrain *and*
+  on the water surface (stripes + outline), so they stay visible under water.
+- **Flow particles** (`flow.ts`): up to 2600 comet-shaped foam flecks and
+  leaves, advected on the CPU through a decoded copy of the snapshot
+  velocity (visual speed ≈ 2.2·v^0.7 cells/s at 1×, frozen when paused),
+  spawned in flowing cells inside the view; one instanced draw.
+- **Weather** (`weather.ts`): rain fronts become flat-bottomed low-poly
+  puff clusters (one InstancedMesh, depth pre-pass + colour pass) that
+  dissolve when zoomed in, soft ground/water shadows via front uniforms,
+  and GPU-only rain/snow (one instanced draw tiled around the camera).
+- **Seasons** (`seasons.ts`): one palette blended over the year drives sun,
+  sky, grass, water and leaf colours.
 - **Objects:** each Kenney model merged into one geometry with the shared
   colormap, one `InstancedMesh` per model, bucketed per chunk. Small props
   are hidden when zoomed out. Target < 150 draw calls on the phone.
