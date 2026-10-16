@@ -373,6 +373,15 @@ export function erosionStep(
       }
       if ((f & NO_EXCHANGE) !== 0) continue;
 
+      const st0 = soilType[i]!;
+      const kh = capacity(h, speed, p);
+      // Clear water too slow to carry anything (most ponds and puddles):
+      // no pickup, settling or bank erosion (vcBank ≥ the critical speed).
+      if (kh === 0 && s <= 0) continue;
+      const kap = kh * A;
+      const kp = speed > vcBed[st0]! ? capacity(h, speed, p, vcBed[st0]!, true) * A : 0;
+      transport[i] = kh * speed;
+
       const zi = bedrock[i]! + soil[i]!;
       // Neighbour terrain extremes and mean.
       let zmin = Infinity;
@@ -408,11 +417,6 @@ export function erosionStep(
         nn++;
       }
 
-      const st0 = soilType[i]!;
-      const kh = capacity(h, speed, p);
-      const kap = kh * A;
-      const kp = speed > vcBed[st0]! ? capacity(h, speed, p, vcBed[st0]!, true) * A : 0;
-      transport[i] = kh * speed;
       if (kp > s) {
         // Pickup.
         const props = SOIL_PROPS[st0]!;

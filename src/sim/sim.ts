@@ -55,7 +55,7 @@ const SOILWATER_EVERY = 4;
 /** Steps between builder updates. */
 const BUILD_EVERY = 10;
 /** Steps between erosion/deposition passes (offset from soil-water). */
-const EROSION_EVERY = 4;
+const EROSION_EVERY = 8;
 /** Steps between talus passes. */
 const TALUS_EVERY = 16;
 /** Steps between weathering passes (four times a day). */

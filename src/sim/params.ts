@@ -64,7 +64,7 @@ export const PARAMS = {
    * material builds a point bar on the far side of the channel.
    */
   bankK: 6e-6,
-  /** Flow speed needed for bank erosion (m/s). */
+  /** Flow speed needed for bank erosion (m/s); at least criticalVelocity. */
   bankCriticalVelocity: 0.4,
   /** Bank erosion weight for flow along a bank (flow straight into it counts 1). */
   bankAlong: 0,
