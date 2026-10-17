@@ -40,7 +40,7 @@ const PROC_COLOURS: Record<ProcKind, number> = {
   sack: 0xe0cfa6,
   hay: 0xe2c25a,
   soil: 0x6e4e32,
-  fish: 0xa9b8c2,
+  fish: 0x8fb3c9,
 };
 
 function procGeometry(kind: ProcKind): THREE.BufferGeometry {
@@ -64,7 +64,7 @@ function procGeometry(kind: ProcKind): THREE.BufferGeometry {
     const tail = new THREE.ConeGeometry(0.45, 0.35, 4);
     tail.rotateX(Math.PI);
     tail.translate(0, 1.1, 0);
-    g = mergeGeometries([g.toNonIndexed(), tail.toNonIndexed()], false);
+    g = mergeGeometries([g.index ? g.toNonIndexed() : g, tail.index ? tail.toNonIndexed() : tail], false);
     // Hangs down from its tail at the origin.
     g.translate(0, -1.27, 0);
   } else if (kind === 'hay') {

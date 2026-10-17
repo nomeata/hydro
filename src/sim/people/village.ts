@@ -124,6 +124,8 @@ export interface PeopleState {
   startY: number;
   lastDay: number;
   fish: number[];
+  /** Fish capacity per block as of the latest daily update (absent in older saves). */
+  fishCap?: number[];
   /** Day of the latest founding (absent in older saves). */
   lastFounding?: number;
   /** Highest total population so far (tool unlocks). */
@@ -1613,6 +1615,7 @@ export class PeopleSystem {
       startY: this.startY,
       lastDay: this.lastDay,
       fish: Array.from(this.fish),
+      fishCap: Array.from(this.fishCap),
       lastFounding: this.lastFounding,
       peak: this.peakPopulation,
       floods: this.floods,
@@ -1639,6 +1642,8 @@ export class PeopleSystem {
     this.peakPopulation = c.peak ?? 0;
     this.floods = c.floods ?? { cells: 0, ruined: 0 };
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
+    // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.
+    if (c.fishCap && c.fishCap.length === this.fishCap.length) this.fishCap.set(c.fishCap);
     this.buildingsDirty = true;
     this.updateMoisture();
     this.updateQuays();

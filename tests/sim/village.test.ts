@@ -35,7 +35,8 @@ describe('first village', () => {
     expect(fields).toBeGreaterThan(10);
     expect(s.population).toBeGreaterThanOrEqual(4);
     const adults = p.agents.filter((a) => !a.child);
-    expect(adults.length).toBe(s.population + adults.filter((a) => a.task === 4).length);
+    // All villages (a second one may be founded from the fog within the year); children are not counted.
+    expect(adults.length).toBe(p.population + adults.filter((a) => a.task === 4).length);
   }, 240_000);
 
   it('fishers go fishing when there is stocked water nearby', async () => {

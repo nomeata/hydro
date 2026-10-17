@@ -163,20 +163,20 @@ const BLOSSOMS = [0xe8484f, 0xf7d046, 0xb46ad8, 0xffffff, 0xff9a3c];
 
 /** A laundry line about one cell long along x: two posts, a line, cloths of a few colours. */
 export function laundryGeometry(seed: number): THREE.BufferGeometry {
-  const L = 1.0;
-  const H = 0.42;
+  const L = 1.1;
+  const H = 0.6;
   const parts = [
-    box(0.035, H, 0.035, -L / 2, 0, 0, 0x8a6a44),
-    box(0.035, H, 0.035, L / 2, 0, 0, 0x8a6a44),
-    box(L, 0.012, 0.012, 0, H - 0.03, 0, 0xe8e2d0),
+    box(0.045, H, 0.045, -L / 2, 0, 0, 0x8a6a44),
+    box(0.045, H, 0.045, L / 2, 0, 0, 0x8a6a44),
+    box(L, 0.016, 0.016, 0, H - 0.04, 0, 0xe8e2d0),
   ];
   const n = 3 + Math.floor(hash01(seed, 3) * 2);
   for (let k = 0; k < n; k++) {
-    const w = 0.13 + 0.07 * hash01(seed, 10 + k);
-    const h = 0.12 + 0.1 * hash01(seed, 20 + k);
-    const x = -L / 2 + 0.14 + ((L - 0.28) * (k + 0.5)) / n;
+    const w = 0.16 + 0.08 * hash01(seed, 10 + k);
+    const h = 0.15 + 0.12 * hash01(seed, 20 + k);
+    const x = -L / 2 + 0.15 + ((L - 0.3) * (k + 0.5)) / n;
     const col = CLOTHS[Math.floor(hash01(seed, 30 + k) * CLOTHS.length)]!;
-    parts.push(box(w, h, 0.012, x, H - 0.035 - h, 0, col));
+    parts.push(box(w, h, 0.015, x, H - 0.045 - h, 0, col));
   }
   const g = mergeGeometries(parts, false);
   for (const p of parts) p.dispose();
@@ -189,17 +189,17 @@ export function flowerGeometry(seed: number): THREE.BufferGeometry {
   const n = 3 + Math.floor(hash01(seed, 4) * 2);
   for (let k = 0; k < n; k++) {
     const a = (k / n) * Math.PI * 2 + hash01(seed, 40 + k);
-    const r = k === 0 ? 0 : 0.09;
+    const r = k === 0 ? 0 : 0.13;
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
-    const leaf = new THREE.IcosahedronGeometry(0.075, 0);
-    leaf.scale(1, 0.75, 1);
-    leaf.translate(x, 0.04, z);
+    const leaf = new THREE.IcosahedronGeometry(0.1, 0);
+    leaf.scale(1, 0.8, 1);
+    leaf.translate(x, 0.05, z);
     parts.push(coloured(leaf, 0x4f8f3a));
     const col = BLOSSOMS[Math.floor(hash01(seed, 50 + k) * BLOSSOMS.length)]!;
     for (let j = 0; j < 2; j++) {
-      const b = new THREE.IcosahedronGeometry(0.032, 0);
-      b.translate(x + (j ? 0.03 : -0.025), 0.1 + 0.02 * j, z + (j ? -0.02 : 0.025));
+      const b = new THREE.IcosahedronGeometry(0.045, 0);
+      b.translate(x + (j ? 0.04 : -0.035), 0.13 + 0.025 * j, z + (j ? -0.03 : 0.035));
       parts.push(coloured(b, col, false));
     }
   }
@@ -246,8 +246,8 @@ export class VillageCuesLayer {
   ) {
     this.group.name = 'village-cues';
     scene.add(this.group);
-    const mat = new THREE.MeshLambertMaterial({ color: 0xf2f0ec, transparent: true, opacity: 0.62, depthWrite: false, flatShading: true });
-    mat.emissive.setRGB(0.22, 0.22, 0.23);
+    const mat = new THREE.MeshLambertMaterial({ color: 0xf4f2ee, transparent: true, opacity: 0.5, depthWrite: false });
+    mat.emissive.setRGB(0.3, 0.3, 0.31);
     this.smoke = this.makeSmoke(mat, 32);
     const lib = opts.library ?? modelLibrary();
     this.ready = lib
@@ -319,7 +319,7 @@ export class VillageCuesLayer {
   }
 
   private makeSmoke(mat: THREE.Material, capacity: number): THREE.InstancedMesh {
-    const g = new THREE.IcosahedronGeometry(1, 0);
+    const g = new THREE.IcosahedronGeometry(1, 1);
     const mesh = new THREE.InstancedMesh(g, mat, capacity);
     mesh.name = 'chimney-smoke';
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -393,11 +393,13 @@ export class VillageCuesLayer {
       for (let j = 0; j < PUFFS; j++) {
         const u = (((t + off + (j * PUFF_LIFE) / PUFFS) % PUFF_LIFE) + PUFF_LIFE) % PUFF_LIFE / PUFF_LIFE;
         // Rise, drift downwind (more as it rises), wobble a little.
-        const drift = Math.pow(u, 1.4) * 1.3 * this.wind;
-        const wob = Math.sin((t + j * 1.7 + off) * 1.9) * 0.05 * u;
+        const drift = Math.pow(u, 1.3) * 1.6 * this.wind;
+        const cyc = Math.floor((t + off + (j * PUFF_LIFE) / PUFFS) / PUFF_LIFE);
+        const side = (hash01(c.seed * 7 + j, cyc) - 0.5) * 0.5;
+        const wob = (side + Math.sin((t + j * 1.7 + off) * 1.3) * 0.08) * u;
         this.tmpP.set(c.x + this.windX * drift - this.windZ * wob, c.y + u * PUFF_RISE * (0.7 + 0.3 * c.strength), c.z + this.windZ * drift + this.windX * wob);
         // Grow as it rises, then shrink away.
-        const s = (0.07 + 0.2 * u) * Math.min(1, u / 0.08) * Math.min(1, (1 - u) / 0.3) * (0.6 + 0.4 * c.strength);
+        const s = (0.06 + 0.26 * u) * Math.min(1, u / 0.08) * Math.min(1, (1 - u) / 0.35) * (0.6 + 0.4 * c.strength);
         this.tmpS.setScalar(Math.max(0.001, s));
         this.tmpQ.identity();
         this.tmpM.compose(this.tmpP, this.tmpQ, this.tmpS);
