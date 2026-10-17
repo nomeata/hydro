@@ -10,7 +10,7 @@ import { timeAt, seaLevelTemperature } from '../../src/sim/climate/calendar';
 import { DAYS_PER_YEAR, STEPS_PER_DAY } from '../../src/sim/constants';
 import { ErosionScratch, defaultGeoParams, erosionStep, newSedimentLedger } from '../../src/sim/hydro/erosion';
 import { newLedger, soilWaterStep } from '../../src/sim/hydro/soilwater';
-import { Job, Task, walk, type Walker } from '../../src/sim/people/agents';
+import { Job, walk, type Walker } from '../../src/sim/people/agents';
 import { DESIRE, longestPath, updateDesirePaths } from '../../src/sim/people/desire';
 import { HERD } from '../../src/sim/people/herds';
 import type { PeopleSystem } from '../../src/sim/people/village';
@@ -383,4 +383,4 @@ describe('achievements of the living land', () => {
   });
 });
 
-void Task;
+
