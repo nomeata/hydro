@@ -8,7 +8,7 @@
  */
 import { CELL_AREA, DT, STEPS_PER_DAY, TILE } from '../constants';
 import { PARAMS } from '../params';
-import { SOIL_PROPS, type World } from '../world';
+import { LandUse, SOIL_PROPS, type World } from '../world';
 
 /** Running totals of every source and sink (m³), in f64. */
 export interface Ledger {
@@ -40,7 +40,8 @@ export interface SoilWaterInput {
 }
 
 export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger): void {
-  const { width: W, height: H, water, ground, soil, soilType, snow, inflow } = world;
+  const { width: W, height: H, water, ground, soil, soilType, snow, inflow, vegetation, landuse } = world;
+  const vegInf = PARAMS.vegetationInfiltration;
   const { tileRain, tileElevation, tilesWide, seaLevelTemp, steps } = inp;
   const dayFrac = steps / STEPS_PER_DAY;
   const hydroSeconds = steps * DT;
@@ -108,7 +109,9 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
           let g = ground[i]!;
           if (h > 0 && g < cap) {
             const room = cap - g;
-            const inf = Math.min(h, room, props.infiltration * infK * (1 - g / Math.max(cap, 1e-6)));
+            // Roots open the soil; trodden paths seal it a little.
+            const open = (1 + vegInf * vegetation[i]!) * (landuse[i] === LandUse.Path ? PARAMS.pathInfiltration : 1);
+            const inf = Math.min(h, room, props.infiltration * infK * open * (1 - g / Math.max(cap, 1e-6)));
             h -= inf;
             g += inf;
           }

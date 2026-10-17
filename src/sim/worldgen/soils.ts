@@ -36,6 +36,20 @@ export interface SoilOutputs {
   moisture: Float32Array;
 }
 
+/** Seed of the forest patch noise for a world seed. */
+export function forestPatchSeed(seed: number): number {
+  return subSeed(seed, 302);
+}
+
+/**
+ * Low-frequency noise (about −0.6..0.6) that decides where forest stands
+ * grow on suitable land, at global position (gx, gy) in metres. Shared with
+ * the living vegetation (sim/vegetation.ts), so forests keep to their patches.
+ */
+export function forestPatchNoise(patchSeed: number, gx: number, gy: number): number {
+  return fbm(gx / 380, gy / 380, patchSeed, 3);
+}
+
 /** Box blur via a summed-area table (radius r, clamped at edges). */
 export function boxBlur(src: Float32Array, W: number, H: number, r: number): Float32Array {
   const sat = new Float64Array((W + 1) * (H + 1));
@@ -83,7 +97,7 @@ export function computeSoils(inp: SoilInputs): SoilOutputs {
   for (let i = 0; i < n; i++) lacc[i] = Math.log(acc[i]! * CELL);
   const lacc2 = boxBlur(lacc, W, H, 2);
   const sSand = subSeed(inp.seed, 301);
-  const sPatch = subSeed(inp.seed, 302);
+  const sPatch = forestPatchSeed(inp.seed);
   const sThick = subSeed(inp.seed, 303);
 
   for (let y = 0; y < H; y++) {
@@ -168,7 +182,7 @@ export function computeSoils(inp: SoilInputs): SoilOutputs {
       if (wet) v = 0;
       else {
         const grass = (0.3 + 0.5 * moist) * (t === SoilType.Rock ? 0.15 : t === SoilType.Sand ? 0.4 : t === SoilType.Gravel ? 0.55 : 1);
-        const patch = smoothstep(-0.1, 0.15, fbm(gx / 380, gy / 380, sPatch, 3) + 0.3 * (moist - 0.4));
+        const patch = smoothstep(-0.1, 0.15, forestPatchNoise(sPatch, gx, gy) + 0.3 * (moist - 0.4));
         const suit =
           smoothstep(0.18, 0.45, moist) *
           (1 - smoothstep(0.5, 0.9, s)) *
