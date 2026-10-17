@@ -63,15 +63,27 @@ See docs/PEOPLE.md (phases §10).
 - ☑ Welcome panels illustrated by live scenes from the real engine
   (staged scene world, scripted timelines, SVG fallback)
 
+## M3½ — Endorphins ◐
+Player feedback: more direct progress hits; keep it all positive
+(DESIGN §4a).
+- ☑ Stats bar: population (log bar between unlock milestones, sparkle at a
+  milestone) and prosperity (population-weighted wellbeing)
+- ☑ Daily history recorded in the sim and saved (thinned: daily for two
+  years, half-seasons before, years after 20 years); `history` message
+- ☑ History chart panel: villagers (log) and prosperity, season bands,
+  rain, dry spells, floods, milestone stars
+- ☐ Achievements per world
+
 ## M4 — Structures ☐
 - Lining, sluice gates, weirs, wells, pumps (manual/animal), water wheels and
   mills
 - NPCs build their own small works (irrigation ditches, little dams, paths)
 
 ## M5 — Human impact ☐
-- Ploughing/sealing → runoff; overgrazing/logging → erosion; irrigation →
-  salinity; sewage → pollution downstream (fish die, sickness); wells →
+- Ploughing/sealing → runoff; overgrazing/logging → erosion; wells →
   groundwater drawdown; flood memory for house placement
+- Shelved by the player ("keep it all positive"): irrigation → salinity,
+  sewage → pollution downstream
 
 ## M6 — Power ☐
 - Dams + turbines (head × flow), power poles with supply radius, lit houses,

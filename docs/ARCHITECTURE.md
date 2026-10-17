@@ -305,6 +305,15 @@ Header JSON + binary fields, gzip via `CompressionStream`, stored in
 IndexedDB. Autosave every few game days and on `visibilitychange`. Versioned
 with migrations and golden save files per version. Export/import comes later.
 
+**History** (`src/sim/history.ts`, `SimState.history`): at each calendar day
+boundary the Simulation records population, prosperity (population-weighted
+wellbeing, `src/shared/progress.ts`), precipitation (from the ledger),
+daily mean temperature, flood counters (`PeopleSystem.floods`) and the
+number of villages, plus the day each unlock milestone was reached. Saved
+as columns; days older than two years merge into half-season bins, older
+than twenty years into years. The main thread asks for it with
+`{type:'history'}` (`SimClient.history()`) when the history chart is open.
+
 ## 7. Code layout
 ```
 src/
