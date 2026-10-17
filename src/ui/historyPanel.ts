@@ -52,6 +52,8 @@ export class HistoryPanel {
   private layout: ChartLayout | null = null;
   /** Day under the cursor (kept across refreshes), or null. */
   private day: number | null = null;
+  /** The text of the star or medal last tapped (kept across refreshes), or null. */
+  private info: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private onClose: (() => void) | null = null;
 
@@ -101,6 +103,7 @@ export class HistoryPanel {
     this.onClose = onClose ?? null;
     this.el.hidden = false;
     this.day = null;
+    this.info = null;
     this.readout.textContent = HINT;
     void this.refresh();
     this.timer ??= setInterval(() => void this.refresh(), REFRESH_MS);
@@ -140,8 +143,9 @@ export class HistoryPanel {
     const target = (e.target as Element).closest?.('.star, .medal-mark');
     if (target) {
       this.day = null;
+      this.info = target.getAttribute('data-info') ?? '';
       this.clearCursor();
-      this.readout.textContent = target.getAttribute('data-info') ?? '';
+      this.readout.textContent = this.info;
       return;
     }
     const r = svg.getBoundingClientRect();
@@ -158,13 +162,14 @@ export class HistoryPanel {
 
   private select(day: number | null): void {
     this.day = day;
+    if (day !== null) this.info = null;
     const L = this.layout;
     const s = day === null || !this.data ? null : sampleAt(this.data.samples, day);
     const g = this.chartEl.querySelector('.cursor');
     if (!L || !g) return;
     if (!s) {
       g.innerHTML = '';
-      if (day === null) this.readout.textContent = HINT;
+      if (day === null) this.readout.textContent = this.info ?? HINT;
       return;
     }
     const x = L.dayToX(s.d + s.n / 2).toFixed(1);
