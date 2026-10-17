@@ -16,6 +16,7 @@ import { PARAMS } from './params';
 import { SpiritCrew, cancelPlans, planDike, planLevel, planTrench } from './plans/plans';
 import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
 import { SOIL_PROPS, type World } from './world';
+import { History, type HistoryState } from './history';
 import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
 
 export interface SimOptions {
@@ -36,6 +37,8 @@ export interface SimState {
   people?: PeopleState;
   /** Geomorphology (absent in saves from before M1b). */
   geo?: GeoState;
+  /** Daily history for the stats chart (absent in older saves). */
+  history?: HistoryState;
 }
 
 /** Erosion state that must survive save/load: the ledger and sparse per-cell accumulators. */
@@ -115,6 +118,8 @@ export class Simulation {
    */
   fog = false;
   revealDirty = true;
+  /** Daily history (stats bar chart), recorded at each calendar day boundary. */
+  readonly history = new History();
 
   constructor(world: World, seed: number, opts: SimOptions = {}) {
     this.world = world;
@@ -130,6 +135,31 @@ export class Simulation {
       this.fog = true;
       revealDisc(world, opts.people.startX, opts.people.startY, START_REVEAL);
     }
+    this.resetHistory();
+  }
+
+  /** Clear the history and count from now (after the worker's spin-up, or for old saves). */
+  resetHistory(): void {
+    const f = this.people?.floods;
+    this.history.reset(this.ledger.rain + this.ledger.snowfall, f?.cells ?? 0, f?.ruined ?? 0);
+  }
+
+  /** Record the calendar day that just ended. */
+  private recordHistory(day: number): void {
+    const p = this.people;
+    const w = this.world;
+    const t = timeAt(this.step - STEPS_PER_DAY / 2);
+    this.history.record({
+      day,
+      villages: p ? p.settlements.map((s) => s.state) : [],
+      peak: p ? Math.max(p.peakPopulation, p.population) : 0,
+      precipTotal: this.ledger.rain + this.ledger.snowfall,
+      area: w.size * CELL_AREA,
+      // The daily mean: the diurnal term vanishes at this time of day.
+      temperature: seaLevelTemperature({ ...t, timeOfDay: 0.375 }),
+      floodCells: p?.floods.cells ?? 0,
+      ruined: p?.floods.ruined ?? 0,
+    });
   }
 
   /** Grow the known land around every settlement (daily). */
@@ -253,6 +283,8 @@ export class Simulation {
     }
 
     this.step++;
+    const today = timeAt(this.step).day;
+    if (today !== timeAt(this.step - 1).day) this.recordHistory(today - 1);
     if (this.step % STEPS_PER_DAY === 0) {
       this.outflowLastDay = this.outflowToday;
       this.outflowToday = 0;
@@ -364,6 +396,7 @@ export class Simulation {
         inflowConc: sparse(this.erosionScratch.inflowConc),
         loose: sparse(this.erosionScratch.loose),
       },
+      history: this.history.getState(),
     };
   }
 
@@ -397,6 +430,8 @@ export class Simulation {
       unsparse(this.erosionScratch.loose, st.geo.loose);
       if (st.geo.transport) unsparse(this.erosionScratch.transport, st.geo.transport);
     }
+    if (st.history) this.history.setState(st.history);
+    else this.resetHistory();
     this.lookDirty = true;
     this.planDirty = true;
   }

@@ -105,6 +105,8 @@ export interface PeopleState {
   lastFounding?: number;
   /** Highest total population so far (tool unlocks). */
   peak?: number;
+  /** Cumulative flood counters (history; absent in older saves). */
+  floods?: { cells: number; ruined: number };
 }
 
 export interface PeopleHost {
@@ -144,6 +146,11 @@ export class PeopleSystem {
   private lastFounding = 0;
   /** Highest total population so far: tools unlocked by it stay unlocked. */
   peakPopulation = 0;
+  /**
+   * Cumulative flood counters for the history chart: land cells newly
+   * flooded (flood memory set from nothing) and houses ruined by floods.
+   */
+  floods = { cells: 0, ruined: 0 };
   /** Block attractiveness from the latest survey (debugging/tests; recomputed before use). */
   attractiveness: Float32Array | null = null;
 
@@ -576,7 +583,10 @@ export class PeopleSystem {
   private floodHouses(): void {
     const w = this.world;
     for (let i = 0; i < w.size; i++) {
-      if (w.water[i]! > 0.3 && w.landuse[i] !== LandUse.None) w.floodMemory[i] = 255;
+      if (w.water[i]! > 0.3 && w.landuse[i] !== LandUse.None) {
+        if (w.floodMemory[i] === 0) this.floods.cells++;
+        w.floodMemory[i] = 255;
+      }
     }
     for (const b of this.buildings) {
       if (b.kind !== 'house') continue;
@@ -587,6 +597,7 @@ export class PeopleSystem {
         }
         b.kind = 'ruin';
         b.progress = 0;
+        this.floods.ruined++;
         this.buildingsDirty = true;
       }
     }
@@ -1250,6 +1261,7 @@ export class PeopleSystem {
       fish: Array.from(this.fish),
       lastFounding: this.lastFounding,
       peak: this.peakPopulation,
+      floods: this.floods,
     });
   }
 
@@ -1271,6 +1283,7 @@ export class PeopleSystem {
     this.lastDay = c.lastDay;
     this.lastFounding = c.lastFounding ?? 0;
     this.peakPopulation = c.peak ?? 0;
+    this.floods = c.floods ?? { cells: 0, ruined: 0 };
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     this.buildingsDirty = true;
     this.updateMoisture();

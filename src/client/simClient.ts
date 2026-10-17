@@ -2,7 +2,7 @@
  * Main-thread wrapper around the simulation worker: typed messages, snapshot
  * delivery and buffer return, and promise-based test hooks.
  */
-import type { Command, FromWorker, SceneId, Snapshot, ToWorker, WorldInfo } from '../shared/protocol';
+import type { Command, FromWorker, HistoryData, SceneId, Snapshot, ToWorker, WorldInfo } from '../shared/protocol';
 
 export interface ReadyData {
   info: WorldInfo;
@@ -51,6 +51,9 @@ export class SimClient {
             break;
           case 'hash':
             this.resolve('hash', msg.hash);
+            break;
+          case 'history':
+            this.resolve('history', msg.history);
             break;
           case 'saved':
             this.resolve('saved', msg.bytes);
@@ -114,6 +117,11 @@ export class SimClient {
 
   runDays(days: number): Promise<number> {
     return this.request('ranDays', { type: 'runDays', days }) as Promise<number>;
+  }
+
+  /** The game's daily history (stats chart). */
+  history(): Promise<HistoryData> {
+    return this.request('history', { type: 'history' }) as Promise<HistoryData>;
   }
 
   stateHash(): Promise<string> {

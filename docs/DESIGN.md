@@ -18,7 +18,7 @@
    occasionally a little dam of their own, entirely on their own initiative.
    The player only shapes circumstances.
 4. **Watch and learn.** Very little UI explanation. No event log, no thought
-   bubbles. Consequences (soil exhaustion, salinisation, runoff, sewage) are
+   bubbles. Consequences (soil exhaustion, runoff, erosion) are
    slow and subtle; an attentive player learns to read the colours of the land.
 5. **Slow and cozy.** Make a change, then lean back. No failure state, but
    setbacks: floods wash away fields, droughts empty villages, and they recover.
@@ -97,8 +97,8 @@
   growth, migration, and building speed. Building is "free" for the player;
   the only cost is time, and time depends on how prosperous people are.
 - Their impacts on the land: ploughing and sealing (roofs, paths) increase
-  runoff; overgrazing and logging cause erosion; irrigation can salinise;
-  sewage pollutes rivers downstream; wells lower groundwater. All gentle and
+  runoff; overgrazing and logging cause erosion; wells lower groundwater.
+  All gentle and
   slow.
 - Houses are not built in places that flooded recently (people remember
   floods for a while — then forget).
@@ -125,6 +125,31 @@ cancelled.
 | Pumped storage | Pump uphill when surplus, generate when deficit | late |
 
 Unlocks are driven by population/prosperity milestones, not by purchase.
+
+## 4a. Progress you can feel
+
+The player asked for "more direct endorphin hits". Decisions:
+
+- **Keep it all positive.** Sewage/pollution and irrigation salinisation are
+  shelved: they would only punish. Mild *natural* setbacks stay (runoff from
+  sealed and ploughed land, erosion from overgrazing and logging, floods and
+  droughts), because they are part of the landscape's life, not blame.
+- **Two headline stats** in a small **stats bar** next to the speed controls
+  (on phones a second row below them):
+  - **Population**: the total number of villagers. Its bar fills on a log
+    scale from the last tool-unlock milestone to the next
+    (`src/shared/unlocks.ts`; beyond the last one, towards doublings of it).
+    Reaching a milestone gives a small sparkle and a note of what unlocked.
+  - **Prosperity**: the population-weighted mean of the settlements'
+    wellbeing, in % ("waiting for settlers" before the first village).
+- **History chart**: tapping the stats bar opens the whole game's story:
+  villagers (log scale) and prosperity (%) over time on season-coloured
+  bands, rain drops, dry spells, floods, and stars at the tool-unlock
+  milestones (filled with the day they were reached, outlined for the ones
+  ahead). The sim records one sample per game day and saves it with the
+  world (thinned for long games).
+- **Achievements, per world** (planned next): little goals like "first
+  harvest", "a village survives a flood", recorded on the world's history.
 
 ## 5. Power (later milestones)
 - Purely hydro-powered society. Power = efficiency × ρ g × head × flow, with

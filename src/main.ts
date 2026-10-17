@@ -12,6 +12,8 @@ import { GameRenderer } from './render/renderer';
 import { attachCameraInput } from './render/camera';
 import { WorldLayers } from './render/worldLayers';
 import { Hud } from './ui/hud';
+import { StatsBar } from './ui/statsbar';
+import { HistoryPanel } from './ui/historyPanel';
 import { ToolPalette } from './ui/tools';
 
 const params = new URLSearchParams(location.search);
@@ -62,6 +64,8 @@ async function main(): Promise<void> {
   const layers = new WorldLayers(renderer, data, seed, { centerX: data.info.startX, centerY: data.info.startY, dogs: 0 });
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
+  const historyPanel = new HistoryPanel(uiRoot, () => client.history());
+  const statsBar = new StatsBar(uiRoot.querySelector('.topbar')!, () => historyPanel.open());
   const tools = new ToolPalette(uiRoot, {
     canvas,
     mirror,
@@ -76,6 +80,7 @@ async function main(): Promise<void> {
     renderer.applySnapshot(s);
     layers.applySnapshot(s);
     hud.update(s);
+    statsBar.update(s.stats);
     const v = s.stats.village;
     if (v) tools.setPopulation(v.peak ?? v.population);
     if (s.plan) tools.planUpdated();
@@ -148,7 +153,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, SimClient };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, SimClient, statsBar, historyPanel };
   }
   document.getElementById('loading')?.classList.add('done');
 }
