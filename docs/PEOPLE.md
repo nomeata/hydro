@@ -178,7 +178,7 @@ Rising water near people makes them run uphill. Crops drown,
 
 ## 6. Fog of war & progression (M3-γ)
 - `world.revealed` (u8, persisted): a disc of 40 cells around the start
-  point, then `R = 40 + 4·√pop` cells around each settlement, updated
+  point, then `R = 56 + 5·√pop` cells around each settlement, updated
   daily, with a 6-cell soft edge and a little noise wobble. Revealed land
   stays revealed. Old saves without it get the start + village discs.
 - Plans can only be placed on revealed land (≥ 128): the sim drops plan

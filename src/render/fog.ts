@@ -1,6 +1,7 @@
 /**
- * Fog of war (docs/PEOPLE.md §6): unknown land is hidden under a soft,
- * slowly billowing sea of low-poly cloud.
+ * Fog of war (docs/PEOPLE.md §6): unknown land is simply not there. Known
+ * land fades softly into the background sky at its edge, so the player
+ * never sees the (rectangular) extent of the world until they reach it.
  *
  * The sim sends `revealed` (0..255 per cell, soft edge). Here it becomes
  * - a linear-filtered R8 texture that the terrain and water shaders read:
@@ -31,6 +32,10 @@ export interface FogUniforms {
   uFogOn: { value: number };
   uFogHigh: { value: THREE.Color };
   uFogLow: { value: THREE.Color };
+  /** Background gradient (linear colours) and drawing-buffer size, to fade into. */
+  uBgTop: { value: THREE.Color };
+  uBgBottom: { value: THREE.Color };
+  uViewport: { value: THREE.Vector2 };
 }
 
 /**
@@ -45,6 +50,9 @@ uniform vec2 uFogGrid;
 uniform float uFogOn;
 uniform vec3 uFogHigh;
 uniform vec3 uFogLow;
+uniform vec3 uBgTop;
+uniform vec3 uBgBottom;
+uniform vec2 uViewport;
 
 /** 0 = hidden, 1 = known, smooth in between (cell coordinates). */
 float revealAt(vec2 cell) {
@@ -97,15 +105,21 @@ vec3 fogColour(float billow) {
  * sea. Expects `vec2 fogCell` (cell coords) and `float hY` (scaled height,
  * modified in place), `uHeightScale`.
  */
-export const FOG_VERTEX_GLSL = /* glsl */ `
-  float fogRv = revealAt(fogCell);
-  float fogK = smoothstep(0.08, 0.45, fogRv);
-  if (fogK < 1.0) {
-    float fb = fogBillow(fogCell, uTime);
-    float fogY = (fogBaseH(fogCell) + (fb - 0.5) * 4.0) * uHeightScale;
-    hY = mix(fogY, hY, fogK);
-  }
+/** Fragment-only GLSL: the background (sky) colour behind this pixel, linear; same as sky.ts. */
+export const FOG_FRAGMENT_GLSL = /* glsl */ `
+vec3 fogBackground() {
+  vec2 uv = gl_FragCoord.xy / uViewport;
+  vec3 c = mix(uBgBottom, uBgTop, smoothstep(0.0, 1.0, uv.y));
+  vec2 d = uv - 0.5;
+  return c * (1.0 - dot(d, d) * 0.35);
+}
 `;
+
+/**
+ * GLSL hook in the terrain vertex shader. Unknown land keeps its real
+ * height: it simply fades into the background in the fragment shader.
+ */
+export const FOG_VERTEX_GLSL = /* glsl */ ``;
 
 export class FogField {
   readonly width: number;
@@ -157,6 +171,9 @@ export class FogField {
       uFogOn: { value: this.enabled ? 1 : 0 },
       uFogHigh: { value: new THREE.Color(0xf7f8fc) },
       uFogLow: { value: new THREE.Color(0xc9d6ea) },
+      uBgTop: { value: new THREE.Color(0xbfe3f2) },
+      uBgBottom: { value: new THREE.Color(0xe9f3dc) },
+      uViewport: { value: new THREE.Vector2(1, 1) },
     };
     this.updateBounds();
   }

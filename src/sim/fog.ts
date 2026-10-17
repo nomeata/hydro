@@ -10,15 +10,15 @@ import type { World } from './world';
 /** Cells with revealed at or above this count as known land (plans, objects). */
 export const REVEALED = 128;
 /** Radius (cells) revealed around the start point of a new game. */
-export const START_REVEAL = 40;
+export const START_REVEAL = 56;
 /** Width (cells) of the soft edge of a revealed disc. */
-export const REVEAL_SOFT = 6;
+export const REVEAL_SOFT = 10;
 /** How far (cells) the edge wobbles in and out, so the known land isn't a perfect circle. */
 const WOBBLE = 5;
 
-/** Reveal radius of a settlement: R = 40 + 4·√pop. */
+/** Reveal radius of a settlement: R = START_REVEAL + 5·√pop. */
 export function revealRadius(population: number): number {
-  return START_REVEAL + 4 * Math.sqrt(Math.max(0, population));
+  return START_REVEAL + 5 * Math.sqrt(Math.max(0, population));
 }
 
 /**

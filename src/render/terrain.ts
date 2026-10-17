@@ -9,7 +9,7 @@ import { CHUNK, GRID_VERTEX_GLSL, chunkOrigins } from './grid';
 import { PLAN_GLSL } from './planOverlay';
 import { CLOUD_SHADOW_GLSL, type FrontUniforms } from './weather';
 import { FIELDS_GLSL } from './village/fields';
-import { FOG_GLSL, FOG_VERTEX_GLSL, type FogUniforms } from './fog';
+import { FOG_FRAGMENT_GLSL, FOG_GLSL, FOG_VERTEX_GLSL, type FogUniforms } from './fog';
 
 /** Soil base colours (sRGB), indexed by SoilType. */
 export const SOIL_COLOURS: readonly number[] = [
@@ -92,6 +92,8 @@ const VERTEX_DISPLACE = /* glsl */ `
 `;
 
 const FRAGMENT_PARS = /* glsl */ `
+${FOG_FRAGMENT_GLSL}
+float fogVis = 1.0;
 uniform sampler2D uLook;
 uniform highp sampler2D uPlan;
 uniform highp sampler2D uPreview;
@@ -125,7 +127,6 @@ ${FIELDS_GLSL}
 
 const FRAGMENT_COLOUR = /* glsl */ `
   vec3 planGlow = vec3(0.0);
-  vec3 fogGlow = vec3(0.0);
   {
     vec3 groundCol;
     if (vSkirt > 0.001) {
@@ -187,17 +188,17 @@ const FRAGMENT_COLOUR = /* glsl */ `
         planGlow += t.rgb * t.a * 0.2;
       }
     }
-    // Fog of war: a soft, billowing haze over unknown land (and its side walls).
+    // Fog of war: known land fades into the background; unknown land and the
+    // map's side walls (until the edge is explored) are not drawn at all.
     if (uFogOn > 0.5) {
       vec2 fc = vTerrWorld.xz - 0.5;
       float rv = revealAt(fc);
       if (rv < 0.999) {
-        float fb = fogBillow(fc, uTime);
-        float fogT = 1.0 - smoothstep(0.2, 0.8, rv + (fb - 0.5) * 0.45);
-        vec3 fcol = fogColour(fogBillow(fc * 1.9 + 3.1, uTime * 1.4));
-        groundCol = mix(groundCol, fcol, fogT);
-        planGlow *= 1.0 - fogT;
-        fogGlow = fcol * fogT * 0.38;
+        float n = fogNoise(fc * 0.18) * 0.6 + fogNoise(fc * 0.55 + 4.7) * 0.4;
+        fogVis = smoothstep(0.25, 0.85, rv + (n - 0.5) * 0.35);
+        if (vSkirt > 0.001) fogVis = 0.0;
+        if (fogVis <= 0.002) discard;
+        planGlow *= fogVis;
       }
     }
     if (vSkirt <= 0.001) groundCol *= cloudShadow(vTerrWorld.xz);
@@ -251,9 +252,13 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${COMMON_GLSL}\n${VARYINGS}\n${FRAGMENT_PARS}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAGMENT_COLOUR}`)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += planGlow + fogGlow;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += planGlow;')
+      .replace(
+        '#include <colorspace_fragment>',
+        '#include <colorspace_fragment>\n  if (fogVis < 1.0) gl_FragColor.rgb = mix(linearToOutputTexel(vec4(fogBackground(), 1.0)).rgb, gl_FragColor.rgb, fogVis);',
+      );
   };
-  mat.customProgramCacheKey = () => 'hydro-terrain-v4';
+  mat.customProgramCacheKey = () => 'hydro-terrain-v5';
   return mat;
 }
 

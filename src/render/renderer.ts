@@ -341,6 +341,12 @@ export class GameRenderer {
     const dt = this.lastFrameMs === null ? 0 : Math.min(0.1, Math.max(0, (nowMs - this.lastFrameMs) / 1000));
     this.lastFrameMs = nowMs;
 
+    // Known land fades into exactly the sky behind it.
+    const fu = this.fog.uniforms;
+    fu.uBgTop.value.copy(this.sky.state.skyTop);
+    fu.uBgBottom.value.copy(this.sky.state.skyBottom);
+    this.gl.getDrawingBufferSize(fu.uViewport.value);
+
     if (this.snapPending) {
       this.snapPending = false;
       if (this.lastSnapAtMs !== null) {
