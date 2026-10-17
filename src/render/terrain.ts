@@ -248,7 +248,7 @@ export function createTerrainUniforms(
     uCropGreen: { value: new THREE.Color(0x5e9e3a) },
     uCropRipe: { value: new THREE.Color(0xe8c050) },
     uYard: { value: new THREE.Color(0xa08060) },
-    uPath: { value: new THREE.Color(0xb59a72) },
+    uPath: { value: new THREE.Color(0xa4835a) },
     uStubble: { value: 0 },
     uLining: { value: tex.lining },
     uLiningOn: { value: 0 },

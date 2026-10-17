@@ -142,7 +142,7 @@ vec3 pathColour(vec3 ground, vec3 world) {
   vec3 earth = uPath * mix(0.9, 1.08, fieldNoise(world.xz * 4.7 + 1.9));
   // Tufts of grass survive where fewer feet go.
   float tuft = smoothstep(0.62, 0.8, fieldNoise(world.xz * 9.0 + 3.3)) * (1.0 - smoothstep(0.75, 1.0, p));
-  return mix(ground, earth, m * (0.85 - 0.6 * tuft));
+  return mix(ground, earth, m * (0.92 - 0.6 * tuft));
 }
 
 bool isField(ivec2 c) {
