@@ -98,6 +98,8 @@ export interface ScatterInput {
   readonly seed: number;
   /** Land use per cell (LandUse enum), or null: built-up and farmed cells get no vegetation. */
   readonly landuse?: Uint8Array | null;
+  /** Stone lining per cell (planned or built): no vegetation there. */
+  readonly lining?: Uint8Array | null;
   /** Fog of war (revealed 0..255 per cell), or null: nothing grows visibly on unknown land. */
   readonly revealed?: Uint8Array | null;
 }
@@ -115,7 +117,7 @@ const smooth = (a: number, b: number, x: number) => {
  * input (no Math.random); used by the layer and by tests.
  */
 export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y1: number, out: Placement[] = []): Placement[] {
-  const { heights, look, width, height, seed, landuse, revealed } = inp;
+  const { heights, look, width, height, seed, landuse, lining, revealed } = inp;
   const S = seed | 0;
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
@@ -124,6 +126,7 @@ export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y
         const lu = landuse[y * width + x]!;
         if (lu !== LandUse.None && lu !== LandUse.Pasture) continue;
       }
+      if (lining && lining[y * width + x] !== 0) continue;
       const li = (y * width + x) * LOOK_CHANNELS;
       const soil = look[li]!;
       const moist = look[li + 1]! / 255;
@@ -312,6 +315,7 @@ export class VegetationLayer {
   readonly ready: Promise<void>;
   private look: Uint8Array;
   private landuse: Uint8Array | null = null;
+  private lining: Uint8Array | null = null;
   private revealed: Uint8Array | null = null;
   private readonly chunkSize: number;
   private readonly chunks: Chunk[] = [];
@@ -424,6 +428,22 @@ export class VegetationLayer {
       const x = i % this.width;
       const y = (i / this.width) | 0;
       const ci = Math.floor(y / cs) * this.nx + Math.floor(x / cs);
+      if (!this.pending.has(ci)) {
+        this.chunks[ci]!.forced = true;
+        this.pending.add(ci);
+      }
+    }
+    this.schedule();
+  }
+
+  /** Stone lining per cell (from snapshots): re-scatters the chunks where it changed. */
+  setLining(lining: Uint8Array): void {
+    const prev = this.lining;
+    this.lining = lining.slice();
+    const cs = this.chunkSize;
+    for (let i = 0; i < lining.length; i++) {
+      if ((prev ? prev[i]! !== 0 : false) === (lining[i]! !== 0)) continue;
+      const ci = Math.floor(((i / this.width) | 0) / cs) * this.nx + Math.floor((i % this.width) / cs);
       if (!this.pending.has(ci)) {
         this.chunks[ci]!.forced = true;
         this.pending.add(ci);
@@ -632,6 +652,7 @@ export class VegetationLayer {
         seed: this.seed,
         landuse: this.landuse,
         revealed: this.revealed,
+        lining: this.lining,
       },
       x0,
       y0,

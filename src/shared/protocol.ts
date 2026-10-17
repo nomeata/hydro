@@ -131,6 +131,8 @@ export const enum CarryKind {
   Log = 4,
   Bundle = 5,
   Bucket = 6,
+  /** A dressed stone for lining a bank. */
+  Stone = 7,
 }
 
 /**
@@ -163,6 +165,41 @@ export interface BuildingInfo {
   /** Construction progress 0..1. */
   progress: number;
 }
+
+/**
+ * A water structure (sent when the set changes). Heights in metres.
+ * - gate: a sluice gate across the line through (x, y) along `rot`
+ *   (`width` cells wide); the leaf rises to `top` when closed and lifts
+ *   clear when open; water passes down to `sill` when open.
+ * - weir: a lined overflow wall from (x, y) to (x2, y2) with its crest at `top`.
+ * - jetty: a villagers' wooden jetty from the shore cell (x, y) out over
+ *   the water to (x2, y2), its deck at `top`.
+ */
+export interface StructureInfo {
+  id: number;
+  kind: 'gate' | 'weir' | 'jetty';
+  x: number;
+  y: number;
+  /** Direction of the structure's line in cell coordinates: (cos rot, sin rot). */
+  rot: number;
+  /** Length along the line (cells). */
+  width: number;
+  top: number;
+  sill: number;
+  open: boolean;
+  /** Construction progress 0..1. */
+  progress: number;
+  /** Weirs: the far end of the line. */
+  x2?: number;
+  y2?: number;
+}
+
+/**
+ * Lining state per cell in Snapshot.lining: 0 none, 1..253 planned
+ * (progress), 254 lined as a quay (a lake front by the houses), 255 lined.
+ */
+export const LINING_DONE = 255;
+export const LINING_QUAY = 254;
 
 /** Village statistics (hidden from players; shown with ?stats=1; population drives tool unlocks). */
 export interface VillageStats {
@@ -201,6 +238,10 @@ export interface Snapshot {
   buildings?: BuildingInfo[];
   /** Land use and crop stage per cell (2 bytes each: LandUse, crop 0..255), when changed. */
   fields?: Uint8Array;
+  /** Water structures (gates, weirs), when changed. */
+  structures?: StructureInfo[];
+  /** Stone lining per cell (see LINING_DONE), when changed. Not pooled. */
+  lining?: Uint8Array;
   /** Fog of war: revealed 0..255 per cell (≥ 128 is known land), when changed. */
   revealed?: Uint8Array;
   /**
@@ -223,6 +264,18 @@ export type Command =
   | { type: 'planDike'; points: Pt[]; width: number; height: number }
   /** Flatten the brushed area to the ground height at the stroke's start. */
   | { type: 'planLevel'; points: Pt[]; width: number }
+  /** Stone lining on the cells brushed by a path (built after any earthworks there). */
+  | { type: 'planLining'; points: Pt[]; width: number }
+  /** Weir: a lined wall along the straight line from the first to the last point, crest `height` above the lowest ground. */
+  | { type: 'planWeir'; points: Pt[]; width: number; height: number }
+  /**
+   * Sluice gate. A tap (or a very short stroke) on a dike or weir puts a
+   * gate into it; a stroke across a channel builds a dike of crest `height`
+   * with a gate (`width` 1–3 cells) at its lowest point.
+   */
+  | { type: 'placeGate'; points: Pt[]; width: number; height: number }
+  /** Open or close a gate (open = !open when omitted). */
+  | { type: 'toggleGate'; id: number; open?: boolean }
   /** Remove plans within a radius. */
   | { type: 'cancelPlan'; x: number; y: number; radius: number }
   /** Debug: pour water. */

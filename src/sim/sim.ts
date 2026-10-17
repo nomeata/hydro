@@ -14,8 +14,9 @@ import { ErosionScratch, defaultGeoParams, erosionStep, newSedimentLedger, weath
 import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
 import { SpiritCrew, cancelPlans, planDike, planLevel, planTrench } from './plans/plans';
+import { Structures, type StructuresState } from './structures/structures';
 import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
-import { SOIL_PROPS, type World } from './world';
+import { CellFlag, SOIL_PROPS, type World } from './world';
 import { History, type HistoryState } from './history';
 import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
 
@@ -35,6 +36,8 @@ export interface SimState {
   crewQueue: number[];
   tileElevation: number[];
   people?: PeopleState;
+  /** Water structures (absent in saves from before M4a). */
+  structures?: StructuresState;
   /** Geomorphology (absent in saves from before M1b). */
   geo?: GeoState;
   /** Daily history for the stats chart (absent in older saves). */
@@ -85,6 +88,8 @@ export class Simulation {
   readonly weather: Weather;
   readonly ledger: Ledger = newLedger();
   readonly crew = new SpiritCrew();
+  /** Lining, weirs and sluice gates. */
+  readonly structures: Structures;
   /** Sediment budget (m³). */
   readonly sedLedger: SedimentLedger = newSedimentLedger();
   /** Geomorphology tunables (a copy of PARAMS; tools and tests may change it). */
@@ -130,6 +135,8 @@ export class Simulation {
     this.erosionScratch = new ErosionScratch(world.size);
     this.talusScratch = new TalusScratch(world.size);
     this.weather = new Weather(world, this.rng);
+    this.structures = new Structures(world);
+    this.structures.allow = (i) => !this.fog || isRevealed(this.world, i);
     if (opts.people) {
       this.people = new PeopleSystem(world, seed, opts.people.startX, opts.people.startY);
       this.fog = true;
@@ -195,6 +202,11 @@ export class Simulation {
       this.planDirty = true;
     },
     planCells: () => this.crew.cells,
+    lined: (i) => {
+      // Villagers' own stone work; a planned lining there is done too.
+      this.structures.lining.delete(i);
+      this.structures.liningDirty = true;
+    },
     waterUsed: (m3) => {
       this.ledger.evaporation += m3;
     },
@@ -229,7 +241,7 @@ export class Simulation {
     let out = 0;
     let sedOut = 0;
     for (let k = 0; k < n; k++) {
-      flowStep(w, this.scratch, DEFAULT_FLOW_PARAMS, DT / n, fs);
+      flowStep(w, this.scratch, DEFAULT_FLOW_PARAMS, DT / n, fs, this.structures.walls);
       out += fs.outflow;
       sedOut += fs.sedimentOut ?? 0;
     }
@@ -281,6 +293,10 @@ export class Simulation {
         skip,
       );
     }
+    // Stone work (lining, gates) is always done by the spirit crew.
+    if (this.step % BUILD_EVERY === 0 && this.structures.pending) {
+      this.structures.crewWork((PARAMS.liningPerDay * BUILD_EVERY) / STEPS_PER_DAY, PARAMS.builderCells);
+    }
 
     this.step++;
     const today = timeAt(this.step).day;
@@ -303,6 +319,8 @@ export class Simulation {
     switch (cmd.type) {
       case 'planTrench': {
         const changed = this.onlyRevealed(planTrench(w, cmd.points, cmd.width, cmd.depth));
+        // Remember the player's canals (villagers line those near home).
+        for (const i of changed) if (w.plan[i]! < w.terrain(i)) w.flags[i]! |= CellFlag.Canal;
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
@@ -319,8 +337,31 @@ export class Simulation {
         if (changed.length) this.planDirty = true;
         break;
       }
+      case 'planLining':
+        if (this.structures.planLining(cmd.points, cmd.width).length) this.lookDirty = true;
+        break;
+      case 'planWeir': {
+        const changed = this.structures.planWeir(cmd.points, cmd.width, cmd.height);
+        this.crew.enqueue(changed);
+        this.lookDirty = true;
+        if (changed.length) this.planDirty = true;
+        break;
+      }
+      case 'placeGate': {
+        const r = this.structures.placeGate(cmd.points, Math.max(1, Math.min(3, cmd.width)), cmd.height);
+        if (r) {
+          this.crew.enqueue(r.cells);
+          this.lookDirty = true;
+          this.planDirty = true;
+        }
+        break;
+      }
+      case 'toggleGate':
+        this.structures.toggleGate(cmd.id, cmd.open);
+        break;
       case 'cancelPlan': {
         if (cancelPlans(w, cmd.x, cmd.y, cmd.radius).length) this.planDirty = true;
+        this.structures.cancel(cmd.x, cmd.y, cmd.radius);
         break;
       }
       case 'debugWater': {
@@ -388,6 +429,7 @@ export class Simulation {
       crewQueue: this.crew.getQueue(),
       people: this.people?.getState(),
       tileElevation: Array.from(this.weather.tileElevation),
+      structures: this.structures.getState(),
       geo: {
         sedLedger: { ...this.sedLedger },
         time: this.erosionScratch.time,
@@ -422,6 +464,7 @@ export class Simulation {
       this.revealDirty = true;
     }
     this.fieldsDirty = true;
+    if (st.structures) this.structures.setState(st.structures);
     if (st.geo) {
       Object.assign(this.sedLedger, st.geo.sedLedger);
       this.erosionScratch.time = st.geo.time;
@@ -468,6 +511,11 @@ export class Simulation {
     mix(w.sediment);
     mix(w.landuse);
     mix(w.crop);
+    mix(w.flags);
+    {
+      const json = JSON.stringify(this.structures.getState());
+      for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
+    }
     mix(w.revealed);
     if (this.people) {
       const json = JSON.stringify(this.people.getState());

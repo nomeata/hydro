@@ -6,7 +6,7 @@
  * Props are small (≤ ~600 vertices each), so the wasted vertex work is minor.
  *
  * Prop frames (model units of a ~0.67 tall Kenney character):
- *  - loads (Earth … Bucket): centred at the origin, long axis along x
+ *  - loads (Earth … Stone): centred at the origin, long axis along x
  *    (across the carrier's chest);
  *  - tools (Hoe … Rod): the grip at the origin, the handle along +z from the
  *    grip (the T-pose fist points along ±x, the arm swings about x).
@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ModelName } from '../objects/manifest';
-import { PropKind } from './clips';
+import { PROP_KINDS, PropKind } from './clips';
 
 export interface PropSource {
   loadStatic(name: ModelName): Promise<{ geometry: THREE.BufferGeometry }>;
@@ -91,6 +91,13 @@ function bundle(): THREE.BufferGeometry {
   return merge([coloured(body, 0x9fb37c), coloured(strap1, 0x6e4b2a), coloured(strap2, 0x6e4b2a)]);
 }
 
+/** A dressed stone block for lining, a little chipped. */
+function stone(): THREE.BufferGeometry {
+  const block = new THREE.BoxGeometry(1, 0.55, 0.7);
+  const chip = new THREE.BoxGeometry(0.3, 0.2, 0.3).translate(0.4, 0.22, 0.25);
+  return merge([coloured(block, 0xb3ada2), coloured(chip, 0x9d978c)]);
+}
+
 function rod(): THREE.BufferGeometry {
   // Grip at the origin, rod along +y (normalise lays it along +z), tip raised.
   const pole = new THREE.CylinderGeometry(0.012, 0.025, 1, 5).translate(0, 0.5 - 0.15, 0);
@@ -106,6 +113,7 @@ const SIZES: Record<number, number> = {
   [PropKind.Log]: 0.34,
   [PropKind.Bundle]: 0.24,
   [PropKind.Bucket]: 0.15,
+  [PropKind.Stone]: 0.2,
   [PropKind.Hoe]: 0.42,
   [PropKind.Shovel]: 0.42,
   [PropKind.Hammer]: 0.2,
@@ -128,7 +136,7 @@ export function isTool(kind: number): boolean {
 /** Build the merged prop geometry (with per-vertex `aPropKind`). */
 export async function buildPropGeometry(lib: PropSource | null): Promise<THREE.BufferGeometry> {
   const parts: THREE.BufferGeometry[] = [];
-  for (let k = 1; k < 11; k++) {
+  for (let k = 1; k < PROP_KINDS; k++) {
     let g: THREE.BufferGeometry | null = null;
     const model = KENNEY[k];
     if (model && lib) {
@@ -144,6 +152,7 @@ export async function buildPropGeometry(lib: PropSource | null): Promise<THREE.B
       if (k === PropKind.Sack) g = sack();
       else if (k === PropKind.Earth) g = earthBasket();
       else if (k === PropKind.Bundle) g = bundle();
+      else if (k === PropKind.Stone) g = stone();
       else if (k === PropKind.Rod) g = rod();
       else if (isTool(k)) g = coloured(new THREE.BoxGeometry(0.06, 1, 0.06).translate(0, 0.5, 0), 0x7a5532);
       else g = coloured(new THREE.BoxGeometry(1, 0.6, 0.6), k === PropKind.Fish ? 0x8fb4c8 : k === PropKind.Log ? 0x8a5a33 : 0x9a9a9a);

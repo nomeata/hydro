@@ -74,9 +74,14 @@ Player feedback: more direct progress hits; keep it all positive
   rain, dry spells, floods, milestone stars
 - ☐ Achievements per world
 
-## M4 — Structures ☐
-- Lining, sluice gates, weirs, wells, pumps (manual/animal), water wheels and
-  mills
+## M4 — Structures ◐
+- ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
+  above), sluice gates (hold a reservoir closed, drain to the sill open;
+  tap to toggle), built by the spirit crew; plans only on known land;
+  tools unlock at 15/30/50 villagers; digit-key hotkeys
+- ☑ Villagers line banks by their homes and the player's canals near the
+  village on their own; quays by the houses; a fishing jetty per village
+- Wells, pumps (manual/animal), water wheels and mills
 - NPCs build their own small works (irrigation ditches, little dams, paths)
 
 ## M5 — Human impact ☐
@@ -95,6 +100,8 @@ Player feedback: more direct progress hits; keep it all positive
 - Performance: tile sleeping, possibly WASM/GPU kernels
 
 ## Later / ideas
+- Ports & shipping: harbours at the quays, boats between villages on lakes
+  and canals
 - Sound (Settlers-like work sounds, ambience), music
 - Multiple biomes (desert oases, alpine)
 - Photo mode, timelapse of a valley over decades

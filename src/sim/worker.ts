@@ -267,6 +267,21 @@ function sendSnapshot(): boolean {
       transfer.push(f.buffer);
     }
   }
+  const st = sim.structures;
+  const people = sim.people;
+  if (st.structuresDirty || people?.jettyDirty) {
+    snap.structures = people ? [...st.info(), ...people.jettyInfo()] : st.info();
+    st.structuresDirty = false;
+    if (people) people.jettyDirty = false;
+  }
+  if (st.liningDirty || people?.quayDirty) {
+    const lining = new Uint8Array(w.size);
+    st.packLining(lining, people?.quay);
+    if (people) people.quayDirty = false;
+    snap.lining = lining;
+    st.liningDirty = false;
+    transfer.push(lining.buffer);
+  }
   if (sim.fog && sim.revealDirty) {
     snap.revealed = w.revealed.slice();
     sim.revealDirty = false;

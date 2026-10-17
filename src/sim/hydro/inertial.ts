@@ -11,6 +11,11 @@
  *
  * Sediment moves with the same volumes (upwind concentration), so both water
  * and sediment are conserved exactly apart from the outlet drain.
+ *
+ * Walls (closed sluice gates) are thin crests on a cell: every face of a
+ * wall cell sees the bed max(z_i, z_j, top), so water passes only above the
+ * top. They are applied after the main face loop by recomputing just the
+ * faces of the (few) wall cells, so they cost nothing in the hot loop.
  */
 import { CELL, CELL_AREA, DRY, GRAVITY } from '../constants';
 import { CellFlag, type World } from '../world';
@@ -32,6 +37,13 @@ export const DEFAULT_FLOW_PARAMS: FlowParams = {
   maxVelocity: 5,
   minFaceDepth: 1e-4,
 };
+
+/** Thin walls on cells (closed gates): `count` cells with their crest heights (m). */
+export interface Walls {
+  count: number;
+  cell: Int32Array;
+  top: Float32Array;
+}
 
 /** Reusable scratch buffers. */
 export class FlowScratch {
@@ -68,7 +80,7 @@ export function stableDt(maxDepth: number, maxSpeed: number, alpha = 0.7): numbe
 /**
  * Advance surface water by dt seconds. Allocation-free.
  */
-export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: number, stats: FlowStats): void {
+export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: number, stats: FlowStats, walls?: Walls | null): void {
   const { width: W, height: H, size, bedrock, soil, water, sediment, qx, qy, flags, velX, velY } = world;
   const { qxOld, qyOld, limit, conc } = scratch;
   qxOld.set(qx);
@@ -142,6 +154,8 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
       }
     }
   }
+
+  if (walls && walls.count > 0) applyWalls(world, scratch, p, dt, walls);
 
   // --- 2. Outflow limiting: no cell may lose more water than it holds -------
   const k = dt * CELL; // volume per unit of q
@@ -243,4 +257,56 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
   stats.sedimentOut = sedOut;
   stats.maxDepth = maxDepth;
   stats.maxSpeed = maxSpeed;
+}
+
+function wallTop(walls: Walls, i: number): number {
+  let t = -Infinity;
+  for (let k = 0; k < walls.count; k++) if (walls.cell[k] === i && walls.top[k]! > t) t = walls.top[k]!;
+  return t;
+}
+
+/** Recompute the faces of wall cells with the wall crest as the face bed (same formula as the main loop). */
+function applyWalls(world: World, scratch: FlowScratch, p: FlowParams, dt: number, walls: Walls): void {
+  const { width: W, height: H, bedrock, soil, water, qx, qy } = world;
+  const { qxOld, qyOld } = scratch;
+  const g = GRAVITY;
+  const n2 = p.manning * p.manning;
+  const theta = p.theta;
+  const side = (1 - theta) * 0.5;
+  const invDx = 1 / CELL;
+  const face = (a: number, b: number, q0: number, qa: number, qb: number): number => {
+    const za = bedrock[a]! + soil[a]!;
+    const zb = bedrock[b]! + soil[b]!;
+    const ha = water[a]!;
+    const hb = water[b]!;
+    const ea = za + ha;
+    const eb = zb + hb;
+    const bed = Math.max(za, zb, wallTop(walls, a), wallTop(walls, b));
+    const hf = Math.max(ea, eb) - bed;
+    if (!(hf > p.minFaceDepth && (ha > 0 || hb > 0))) return 0;
+    const qt = theta * q0 + side * (qa + qb);
+    let q = qt - g * hf * dt * (eb - ea) * invDx;
+    if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
+    const qmax = hf * p.maxVelocity;
+    return q > qmax ? qmax : q < -qmax ? -qmax : q;
+  };
+  const xFace = (f: number): void => {
+    const x = f % W;
+    if (x >= W - 1) return;
+    const q0 = qxOld[f]!;
+    qx[f] = face(f, f + 1, q0, x > 0 ? qxOld[f - 1]! : q0, x < W - 2 ? qxOld[f + 1]! : q0);
+  };
+  const yFace = (f: number): void => {
+    const y = (f / W) | 0;
+    if (y >= H - 1) return;
+    const q0 = qyOld[f]!;
+    qy[f] = face(f, f + W, q0, y > 0 ? qyOld[f - W]! : q0, y < H - 2 ? qyOld[f + W]! : q0);
+  };
+  for (let k = 0; k < walls.count; k++) {
+    const i = walls.cell[k]!;
+    xFace(i);
+    if (i % W > 0) xFace(i - 1);
+    yFace(i);
+    if (i >= W) yFace(i - W);
+  }
 }

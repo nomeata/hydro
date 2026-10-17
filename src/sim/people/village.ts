@@ -4,16 +4,17 @@
  * player's plans, and the agents doing all of it. Land grows crops, agents
  * collect them, the settlement only decides (see §2 of the design).
  */
-import { CarryKind, EntityAnim, FISH_BLOCK, type SimTime } from '../../shared/protocol';
+import { CarryKind, EntityAnim, FISH_BLOCK, type SimTime, type StructureInfo } from '../../shared/protocol';
 import { Rng } from '../../shared/rng';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../constants';
 import { REVEALED } from '../fog';
 import { PARAMS } from '../params';
 import { applyEarthwork } from '../plans/plans';
-import { LandUse, SOIL_PROPS, type World } from '../world';
+import { CellFlag, LandUse, SOIL_PROPS, type World } from '../world';
 import { Job, SiteKind, Task, packEntities, walk, type Agent } from './agents';
 import { PathFinder } from './path';
 import { Settlement, type SettlementState } from './settlement';
+import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works';
 
 /** Hydro steps between agent updates. */
 export const PEOPLE_TICK = 2;
@@ -30,6 +31,8 @@ const YIELD = 34;
 const DIG_PER_VISIT = 0.5;
 /** House construction progress per builder visit. */
 const BUILD_PER_VISIT = 0.12;
+/** Jetty construction progress per builder visit. */
+const JETTY_PER_VISIT = 0.2;
 export { FISH_BLOCK };
 /** Fish stock (person-days of food) per calm, deep water cell at capacity. */
 const FISH_PER_CELL = 8;
@@ -118,6 +121,8 @@ export interface PeopleHost {
   planCells(): readonly number[];
   /** Water removed from the world by fields (m³), for the ledger. */
   waterUsed(m3: number): void;
+  /** Villagers lined cell i (CellFlag.Lined is already set). */
+  lined(i: number): void;
 }
 
 export class PeopleSystem {
@@ -153,6 +158,12 @@ export class PeopleSystem {
   floods = { cells: 0, ruined: 0 };
   /** Block attractiveness from the latest survey (debugging/tests; recomputed before use). */
   attractiveness: Float32Array | null = null;
+  /** Quay cells (lined lake fronts by the houses), derived daily; rendering only. */
+  readonly quay: Uint8Array;
+  /** Set when `quay` changed, and when a jetty changed (for snapshots). */
+  quayDirty = true;
+  jettyDirty = true;
+  private readonly onBridge = (i: number): boolean => this.world.landuse[i] === LandUse.Bridge;
 
   constructor(
     private readonly world: World,
@@ -165,6 +176,7 @@ export class PeopleSystem {
     this.fieldMoisture = new Float32Array(world.size);
     this.nearestWater = new Int32Array(world.size).fill(-1);
     this.waterDist = new Float32Array(world.size);
+    this.quay = new Uint8Array(world.size);
     this.fbw = Math.ceil(world.width / FISH_BLOCK);
     const blocks = this.fbw * Math.ceil(world.height / FISH_BLOCK);
     this.fish = new Float32Array(blocks);
@@ -399,11 +411,115 @@ export class PeopleSystem {
       s.day(doy, this.rng);
       this.syncPopulation(s);
       this.planHouses(s);
+      this.planWorks(s);
       this.assignJobs(s, host);
       this.manageFields(s);
     }
     this.peakPopulation = Math.max(this.peakPopulation, this.population);
     if (time.day % FOUNDING.everyDays === 0) this.considerFounding(time);
+    this.updateQuays();
+  }
+
+  // ---------------------------------------------------------------------------
+  // The villagers' own works: lining, quays, the jetty (works.ts)
+
+  /** Daily: what to line next, how much stone work the village can afford, and its jetty. */
+  private planWorks(s: Settlement): void {
+    const st = s.state;
+    const houses = this.buildings.filter((b) => b.settlement === st.id && (b.kind === 'house' || b.kind === 'store'));
+    st.lineSites = surveyLining(this.world, st.x, st.y, (x, y) => this.settlements.length < 2 || this.ownerOf(x, y) === s, houses);
+    // The jetty's landing comes first: its shore and the banks beside it.
+    const jt = st.jetty;
+    if (jt && jt.progress >= 1) {
+      const w = this.world;
+      const W = w.width;
+      const landing: number[] = [];
+      for (const [ox, oy] of [[0, 0], [-jt.dy, jt.dx], [jt.dy, -jt.dx]] as const) {
+        const x = (jt.shore % W) + ox;
+        const y = ((jt.shore / W) | 0) + oy;
+        if (!w.inBounds(x, y)) continue;
+        const i = w.idx(x, y);
+        if ((w.flags[i]! & CellFlag.Lined) === 0 && w.water[i]! < 0.3 && w.landuse[i] !== LandUse.Building) landing.push(i);
+      }
+      st.lineSites = [...landing, ...st.lineSites.filter((i) => !landing.includes(i))];
+    }
+    const w = Math.max(0, Math.min(1, st.wellbeing));
+    st.lineBudget = Math.min(WORKS.maxBudget, (st.lineBudget ?? 0) + WORKS.ratePerDay * (0.2 + 0.8 * w));
+    if (!st.lineSites.length) st.lineBudget = Math.min(st.lineBudget, 1);
+    if (!st.jetty && this.agents.some((a) => a.settlement === st.id && a.job === Job.Fisher)) {
+      const W = this.world.width;
+      const j = chooseJetty(this.world, st.x, st.y, (c) => {
+        const b = Math.floor(c / W / FISH_BLOCK) * this.fbw + Math.floor((c % W) / FISH_BLOCK);
+        const K = this.fishCap[b]!;
+        return K > 0 ? this.fish[b]! / K : 0;
+      });
+      if (j) {
+        st.jetty = j;
+        this.jettyDirty = true;
+      }
+    }
+  }
+
+  /** Lined banks by the houses that face open water read as quays. */
+  private updateQuays(): void {
+    const W = this.world.width;
+    const near: { x: number; y: number; r?: number }[] = this.buildings.filter((b) => b.kind === 'house' || b.kind === 'store');
+    for (const s of this.settlements) {
+      const j = s.state.jetty;
+      if (j && j.progress >= 1) near.push({ x: j.shore % W, y: (j.shore / W) | 0, r: 2 });
+    }
+    if (markQuays(this.world, near, this.quay)) this.quayDirty = true;
+  }
+
+  /** A finished jetty's end cell (where a fisher sits), or -1. */
+  private jettyEnd(s: Settlement): number {
+    const j = s.state.jetty;
+    return j && j.progress >= 1 ? j.cells[j.cells.length - 1]! : -1;
+  }
+
+  /** Jetties for the structure list (rendering). */
+  jettyInfo(): StructureInfo[] {
+    const W = this.world.width;
+    const out: StructureInfo[] = [];
+    for (const s of this.settlements) {
+      const j = s.state.jetty;
+      if (!j || j.progress <= 0) continue;
+      const end = j.cells[j.cells.length - 1]!;
+      out.push({
+        id: 100000 + s.state.id,
+        kind: 'jetty',
+        x: j.shore % W,
+        y: (j.shore / W) | 0,
+        x2: end % W,
+        y2: (end / W) | 0,
+        rot: Math.atan2(j.dy, j.dx),
+        width: j.cells.length,
+        top: j.top,
+        sill: j.top,
+        open: false,
+        progress: j.progress,
+      });
+    }
+    return out;
+  }
+
+  /** Stone work a mason can start now: the next free site, or -1. */
+  private nextLineSite(s: Settlement): number {
+    const st = s.state;
+    const sites = st.lineSites;
+    if (!sites || !sites.length) return -1;
+    // Masons at work (or carrying a stone) count against the budget.
+    let busy = 0;
+    for (const a of this.agents)
+      if (a.settlement === st.id && (a.carry === CarryKind.Stone || a.siteKind === SiteKind.Quarry || a.siteKind === SiteKind.Line) && a.task !== Task.None)
+        busy++;
+    if ((st.lineBudget ?? 0) < busy + 1) return -1;
+    const w = this.world;
+    for (const i of sites) {
+      if (this.reserved.has(i) || this.blocked.has(i) || (w.flags[i]! & CellFlag.Lined) !== 0) continue;
+      return i;
+    }
+    return -1;
   }
 
   // ---------------------------------------------------------------------------
@@ -695,6 +811,13 @@ export class PeopleSystem {
     const cy = Math.round(s.state.y);
     let best = -1;
     let bestScore = -Infinity;
+    // The village jetty's end is the favourite spot.
+    const end = this.jettyEnd(s);
+    if (end >= 0 && !this.reserved.has(end) && !this.blocked.has(end)) {
+      const b = Math.floor(end / W / FISH_BLOCK) * this.fbw + Math.floor((end % W) / FISH_BLOCK);
+      const K = this.fishCap[b]!;
+      if (K > 0 && this.fish[b]! / K > 0.2) return end;
+    }
     for (let k = 0; k < 120; k++) {
       // Deterministic sampling of candidate cells around the village.
       const r = 3 + this.rng.next() * (REACH - 3);
@@ -854,7 +977,12 @@ export class PeopleSystem {
     const planWork =
       PARAMS.villagersBuildPlans && host.planCells().some((i) => !Number.isNaN(this.world.plan[i]!) && this.settlementNear(i) === s);
     const want = new Map<Job, number>();
-    want.set(Job.Builder, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0);
+    // Stone work and the jetty need a builder or two (a small mason share, more when prosperous).
+    const st = s.state;
+    const stoneWork = n >= 4 && (st.lineSites?.length ?? 0) > 0 && (st.lineBudget ?? 0) >= 1;
+    const jettyWork = st.jetty !== undefined && st.jetty.progress < 1;
+    const masons = stoneWork || jettyWork ? Math.max(1, Math.round(n * (0.04 + 0.08 * Math.max(0, st.wellbeing)))) : 0;
+    want.set(Job.Builder, Math.max(masons, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0));
     // Fishers: as many as the waters sustain (one landing ≈ CATCH a day), up to a quarter.
     want.set(Job.Fisher, n >= 3 ? Math.min(Math.round(n * 0.25), Math.round(this.fishSupply(s) / CATCH)) : 0);
     // Move at most two people per day, lowest ids first (deterministic, no flip-flop).
@@ -992,6 +1120,22 @@ export class PeopleSystem {
         a.timer = 10;
         a.anim = EntityAnim.Idle;
         break;
+      case SiteKind.Quarry:
+        a.timer = 16;
+        a.anim = EntityAnim.Work;
+        break;
+      case SiteKind.Line: {
+        a.timer = 70;
+        a.anim = EntityAnim.Build;
+        const W = this.world.width;
+        const here = this.cellOf(a);
+        if (here !== a.site) a.heading = Math.atan2(((a.site / W) | 0) - ((here / W) | 0), (a.site % W) - (here % W));
+        break;
+      }
+      case SiteKind.Jetty:
+        a.timer = 60;
+        a.anim = EntityAnim.Build;
+        break;
       case SiteKind.Fish: {
         a.timer = 160;
         a.anim = EntityAnim.Fish;
@@ -1002,6 +1146,9 @@ export class PeopleSystem {
         let best = -1;
         for (const j of [i - 1, i + 1, i - W, i + W]) if (j >= 0 && j < w.size && (best < 0 || w.water[j]! > w.water[best]!)) best = j;
         if (best >= 0) a.heading = Math.atan2(((best / W) | 0) - ((i / W) | 0), (best % W) - (i % W));
+        // On a jetty: look out along it.
+        const jt = this.settlements[a.settlement]?.state.jetty;
+        if (jt && jt.cells[jt.cells.length - 1] === i) a.heading = Math.atan2(jt.dy, jt.dx);
         break;
       }
       default:
@@ -1085,6 +1232,38 @@ export class PeopleSystem {
         a.load = 0;
         a.carry = CarryKind.None;
         break;
+      case SiteKind.Quarry:
+        a.carry = CarryKind.Stone;
+        break;
+      case SiteKind.Line: {
+        const i = a.site;
+        if (a.carry === CarryKind.Stone && (w.flags[i]! & CellFlag.Lined) === 0) {
+          w.flags[i]! |= CellFlag.Lined;
+          w.vegetation[i] = Math.min(w.vegetation[i]!, 0.05);
+          if (s) {
+            s.state.lineBudget = Math.max(0, (s.state.lineBudget ?? 0) - 1);
+            s.state.lineSites = s.state.lineSites?.filter((c) => c !== i);
+          }
+          host.lined(i);
+        }
+        a.carry = CarryKind.None;
+        break;
+      }
+      case SiteKind.Jetty: {
+        const j = s?.state.jetty;
+        if (j && j.progress < 1) {
+          j.progress = Math.min(1, j.progress + JETTY_PER_VISIT);
+          if (j.progress >= 1) {
+            let top = w.terrain(j.shore);
+            for (const c of j.cells) top = Math.max(top, w.surface(c) + 0.25);
+            j.top = top;
+            for (const c of j.cells) w.landuse[c] = LandUse.Bridge;
+          }
+          this.jettyDirty = true;
+        }
+        a.carry = CarryKind.None;
+        break;
+      }
     }
     void time;
   }
@@ -1101,6 +1280,25 @@ export class PeopleSystem {
     if (a.job === Job.Builder) {
       const house = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
       if (house && this.goTo(a, w.idx(house.x, house.y), SiteKind.House, time, house.id)) return;
+      const jt = s.state.jetty;
+      if (jt && jt.progress < 1 && !this.blocked.has(jt.shore) && this.goTo(a, jt.shore, SiteKind.Jetty, time)) {
+        a.carry = CarryKind.Log;
+        return;
+      }
+      // Stone work: fetch a stone from the store, then lay it.
+      if (a.carry === CarryKind.Stone) {
+        const site = this.nextLineSite(s);
+        const stand = site >= 0 ? standCell(w, site, a.x, a.y) : -1;
+        if (stand >= 0 && this.goTo(a, stand, SiteKind.Line, time, site)) {
+          this.reserved.add(site);
+          return;
+        }
+        if (site >= 0) this.blocked.set(site, time.day + 3);
+        a.carry = CarryKind.None;
+      } else if (this.nextLineSite(s) >= 0) {
+        const store = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store');
+        if (store && this.goTo(a, w.idx(store.x, store.y), SiteKind.Quarry, time)) return;
+      }
       const cell = PARAMS.villagersBuildPlans ? this.nearestPlanCell(a, s, host) : -1;
       if (cell >= 0 && this.goTo(a, cell, SiteKind.Earthwork, time)) {
         this.reserved.add(cell);
@@ -1218,7 +1416,7 @@ export class PeopleSystem {
 
   /** Plan a walk to `cell`; returns false (and blocks the site) if unreachable. */
   private goTo(a: Agent, cell: number, kind: SiteKind, time: SimTime, site = cell): boolean {
-    const path = this.pf.find(this.cellOf(a), cell, { window: REACH + 8, maxExpand: 4000 });
+    const path = this.pf.find(this.cellOf(a), cell, { window: REACH + 8, maxExpand: 4000, bridge: this.onBridge });
     if (!path) {
       this.blocked.set(cell, time.day + 3);
       return false;
@@ -1236,7 +1434,12 @@ export class PeopleSystem {
     for (const a of this.agents) {
       const k = a.siteKind;
       const claims =
-        k === SiteKind.Earthwork || k === SiteKind.Sow || k === SiteKind.Tend || k === SiteKind.Harvest || k === SiteKind.Fish;
+        k === SiteKind.Earthwork ||
+        k === SiteKind.Sow ||
+        k === SiteKind.Tend ||
+        k === SiteKind.Harvest ||
+        k === SiteKind.Fish ||
+        k === SiteKind.Line;
       if ((a.task === Task.Walk || a.task === Task.Work) && claims) {
         this.reserved.add(a.site);
       }
@@ -1287,5 +1490,8 @@ export class PeopleSystem {
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     this.buildingsDirty = true;
     this.updateMoisture();
+    this.updateQuays();
+    this.quayDirty = true;
+    this.jettyDirty = true;
   }
 }

@@ -41,6 +41,19 @@ test('drawing a trench creates a plan that gets built', async ({ page }) => {
   });
 });
 
+test('digit keys pick tools, Escape returns to Look', async ({ page }) => {
+  await openGame(page);
+  await page.keyboard.press('2');
+  await expect(page.locator('button[data-tool=trench]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('button[data-tool=trench]')).toHaveAttribute('title', 'Trench (2)');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
+  // A locked tool (Gate, 7) only shows when it unlocks.
+  await page.keyboard.press('7');
+  await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.tools .hint')).toContainText('Unlocks at');
+});
+
 test('mouse wheel zooms and drag pans the camera', async ({ page }) => {
   await openGame(page);
   const state0 = await page.evaluate(() => JSON.stringify((window as any).__hydro.renderer.camera.getState()));

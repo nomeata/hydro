@@ -72,6 +72,7 @@ export class WorldLayers {
     if (s.revealed) v.setRevealed(s.revealed);
     if (s.terrain) v.invalidate(0, s.terrain.y0, W, s.terrain.y1);
     if (s.fields) v.setFields(s.fields);
+    if (s.lining) v.setLining(s.lining);
     if (s.fish) this.fishJumps.setFish(s.fish);
     if (s.time.season !== this.season) {
       this.season = s.time.season;

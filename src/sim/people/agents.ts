@@ -37,6 +37,12 @@ export const enum SiteKind {
   Deliver = 6,
   Wander = 7,
   Fish = 8,
+  /** Pick up a stone at the store (for lining). */
+  Quarry = 9,
+  /** Lay a stone: line the cell `site`. */
+  Line = 10,
+  /** Build the village jetty (site = shore cell). */
+  Jetty = 11,
 }
 
 export interface Agent {

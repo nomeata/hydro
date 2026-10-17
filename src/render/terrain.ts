@@ -9,6 +9,7 @@ import { CHUNK, GRID_VERTEX_GLSL, chunkOrigins } from './grid';
 import { PLAN_GLSL } from './planOverlay';
 import { CLOUD_SHADOW_GLSL, type FrontUniforms } from './weather';
 import { FIELDS_GLSL } from './village/fields';
+import { LINING_GLSL } from './structures/lining';
 import { FOG_FRAGMENT_GLSL, FOG_GLSL, FOG_VERTEX_GLSL, type FogUniforms } from './fog';
 
 /** Soil base colours (sRGB), indexed by SoilType. */
@@ -29,6 +30,8 @@ export interface TerrainTextures {
   preview: THREE.DataTexture;
   /** Land use and crop stage (RG8), see village/fields.ts. */
   fields: THREE.DataTexture;
+  /** Stone lining per cell (R8), see structures/lining.ts. */
+  lining: THREE.DataTexture;
 }
 
 export interface TerrainUniforms extends FrontUniforms, FogUniforms {
@@ -55,6 +58,8 @@ export interface TerrainUniforms extends FrontUniforms, FogUniforms {
   uCropRipe: { value: THREE.Color };
   uYard: { value: THREE.Color };
   uStubble: { value: number };
+  uLining: { value: THREE.Texture };
+  uLiningOn: { value: number };
 }
 
 const COMMON_GLSL = /* glsl */ `
@@ -123,6 +128,7 @@ vec3 soilBase(vec4 l) {
 ${PLAN_GLSL}
 ${CLOUD_SHADOW_GLSL}
 ${FIELDS_GLSL}
+${LINING_GLSL}
 `;
 
 const FRAGMENT_COLOUR = /* glsl */ `
@@ -170,6 +176,9 @@ const FRAGMENT_COLOUR = /* glsl */ `
       c = mix(c, cliff, smoothstep(0.55, 1.1, slope) * 0.85);
       // Snow.
       c = mix(c, uSnow, smoothstep(0.15, 0.6, snow));
+      // Stone lining (cobbles), and planned lining.
+      vec4 ln = liningColour(c, cell);
+      c = mix(c, ln.rgb, ln.a);
       // Per-triangle variation.
       float n = tHash(q * 2.0 + (lower ? 0.0 : 1.0) + 0.5);
       c *= 0.9 + 0.16 * n;
@@ -239,6 +248,8 @@ export function createTerrainUniforms(
     uCropRipe: { value: new THREE.Color(0xe8c050) },
     uYard: { value: new THREE.Color(0xa08060) },
     uStubble: { value: 0 },
+    uLining: { value: tex.lining },
+    uLiningOn: { value: 0 },
   };
 }
 
@@ -258,7 +269,7 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
         '#include <colorspace_fragment>\n  if (fogVis < 1.0) gl_FragColor.rgb = mix(linearToOutputTexel(vec4(fogBackground(), 1.0)).rgb, gl_FragColor.rgb, fogVis);',
       );
   };
-  mat.customProgramCacheKey = () => 'hydro-terrain-v5';
+  mat.customProgramCacheKey = () => 'hydro-terrain-v6';
   return mat;
 }
 

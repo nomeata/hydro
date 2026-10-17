@@ -25,6 +25,8 @@ import { FlowParticles } from './flow';
 import { WeatherLayer, createFrontUniforms } from './weather';
 import { BuildingsLayer } from './village/buildings';
 import { CropLayer } from './village/crops';
+import { StructuresLayer } from './structures/structures';
+import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
 import type { BuildingInfo } from '../shared/protocol';
 
@@ -75,6 +77,11 @@ export class GameRenderer {
   readonly buildings: BuildingsLayer;
   /** Crop models on fields when zoomed in (the terrain shader paints the fields). */
   readonly crops: CropLayer;
+  /** Sluice gates and weirs from the snapshot's structure list. */
+  readonly structures: StructuresLayer;
+  /** Lining per cell as last received, and cells previewed by a lining tool. */
+  private liningBase: Uint8Array;
+  private liningPreview: readonly number[] | null = null;
   /** Fog of war: what the player knows of the land. */
   readonly fog: FogField;
   /** Latest building list (unfiltered; buildings in the fog are not drawn). */
@@ -90,6 +97,7 @@ export class GameRenderer {
     vel: THREE.DataTexture;
     noise: THREE.DataTexture;
     fields: THREE.DataTexture;
+    lining: THREE.DataTexture;
   };
   /** CPU buffers for the two depth textures; `depthCur` is the newer one. */
   private depthPrevIsA = true;
@@ -143,7 +151,9 @@ export class GameRenderer {
       vel: makeByteTexture(W, H, 2),
       noise: makeNoiseTexture(),
       fields: makeByteTexture(W, H, 2),
+      lining: makeLiningTexture(W, H),
     };
+    this.liningBase = new Uint8Array(W * H);
 
     // Layers.
     this.geometry = makeChunkGeometry();
@@ -173,6 +183,8 @@ export class GameRenderer {
     // Plan flags are shared with the terrain so both overlays switch together.
     wu.uPlanOn = tu.uPlanOn;
     wu.uPreviewOn = tu.uPreviewOn;
+    wu.uLining = tu.uLining;
+    wu.uLiningOn = tu.uLiningOn;
     this.water = new WaterLayer(this.geometry, wu, W, H);
     this.updateFogChunks();
     this.scene.add(this.water.group);
@@ -184,6 +196,7 @@ export class GameRenderer {
     this.buildings = new BuildingsLayer(this.scene, this.heights);
     this.buildings.setShadows(this.shadows);
     this.crops = new CropLayer(this.scene, this.heights);
+    this.structures = new StructuresLayer(this.scene, this.heights);
     this.updateBounds();
 
     this.sky = new SkyLighting(this.scene);
@@ -256,6 +269,7 @@ export class GameRenderer {
       uploadFloatRows(this.gl, this.tex.terrain, y0, y1);
       this.updateBounds();
       this.buildings.refreshHeights();
+      this.structures.refreshHeights();
       this.crops.invalidate();
     }
     if (s.look) {
@@ -266,6 +280,12 @@ export class GameRenderer {
       const any = packPlan(s.plan, this.tex.plan.image.data as Float32Array);
       this.terrain.uniforms.uPlanOn.value = any ? 1 : 0;
       this.tex.plan.needsUpdate = true;
+    }
+    if (s.structures) this.structures.setStructures(s.structures);
+    if (s.lining) {
+      this.liningBase.set(s.lining.subarray(0, n));
+      this.uploadLining();
+      this.structures.setLining(s.lining);
     }
     if (s.revealed) {
       this.fog.setRevealed(s.revealed);
@@ -301,6 +321,26 @@ export class GameRenderer {
     const any = packPlan(cells, this.tex.preview.image.data as Float32Array);
     u.uPreviewOn.value = any ? 1 : 0;
     this.tex.preview.needsUpdate = true;
+  }
+
+  /** Optimistic lining overlay (cells to show as planned lining), or null to clear. */
+  setPreviewLining(cells: readonly number[] | null): void {
+    this.liningPreview = cells;
+    this.uploadLining();
+  }
+
+  private uploadLining(): void {
+    const data = this.tex.lining.image.data as Uint8Array;
+    data.set(this.liningBase);
+    if (this.liningPreview) for (const i of this.liningPreview) if (data[i] === 0) data[i] = 1;
+    let any = false;
+    for (let i = 0; i < data.length; i++)
+      if (data[i] !== 0) {
+        any = true;
+        break;
+      }
+    this.terrain.uniforms.uLiningOn.value = any ? 1 : 0;
+    this.tex.lining.needsUpdate = true;
   }
 
   /** Lighting hook: timeOfDay 0..1 (0.5 noon), season 0..3 (fractional ok). */
@@ -377,6 +417,7 @@ export class GameRenderer {
     this.weather.update(dt, t, this.camera);
     const cs = this.camera.getCurrentState();
     this.crops.update(nowMs, cs.x, cs.y, cs.viewHeight);
+    this.structures.update(dt);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;
     this.gl.render(this.scene, this.camera.camera);
@@ -425,6 +466,7 @@ export class GameRenderer {
     this.weather.dispose();
     this.buildings.dispose();
     this.crops.dispose();
+    this.structures.dispose();
     this.fog.dispose();
     this.sky.dispose();
     this.geometry.dispose();
