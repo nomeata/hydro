@@ -353,14 +353,14 @@ export class Achievements {
     const { water, velX, velY } = w;
     const fast = (i: number) => velX[i]! ** 2 + velY[i]! ** 2 >= FALL_SPEED * FALL_SPEED;
     for (let i = 0; i < w.size; i++) {
-      if (!this.touched[i] || water[i]! < 0.03) continue;
+      if (!this.touched[i] || water[i]! < 0.01) continue;
       const sa = w.surface(i);
       const x0 = i % W;
       const y0 = (i / W) | 0;
       for (let y = Math.max(0, y0 - 2); y <= Math.min(H - 1, y0 + 2); y++)
         for (let x = Math.max(0, x0 - 2); x <= Math.min(W - 1, x0 + 2); x++) {
           const j = y * W + x;
-          if (j === i || water[j]! < 0.03) continue;
+          if (j === i || water[j]! < 0.01) continue;
           if (Math.abs(sa - w.surface(j)) >= ACH.fallDrop && (fast(i) || fast(j))) return true;
         }
     }
