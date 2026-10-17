@@ -82,6 +82,8 @@ export class GameRenderer {
   /** Lining per cell as last received, and cells previewed by a lining tool. */
   private liningBase: Uint8Array;
   private liningPreview: readonly number[] | null = null;
+  /** Whether the terrain and water shaders include the lining code yet. */
+  private liningShaders = false;
   /** Fog of war: what the player knows of the land. */
   readonly fog: FogField;
   /** Latest building list (unfiltered; buildings in the fog are not drawn). */
@@ -341,6 +343,15 @@ export class GameRenderer {
       }
     this.terrain.uniforms.uLiningOn.value = any ? 1 : 0;
     this.tex.lining.needsUpdate = true;
+    // Compile the lining shader code only once there is lining to show.
+    if (any && !this.liningShaders) {
+      this.liningShaders = true;
+      for (const m of [this.terrain.material, this.water.material]) {
+        const md = m as THREE.Material & { defines?: Record<string, string> };
+        md.defines = { ...md.defines, HYDRO_LINING: '' };
+        m.needsUpdate = true;
+      }
+    }
   }
 
   /** Lighting hook: timeOfDay 0..1 (0.5 noon), season 0..3 (fractional ok). */

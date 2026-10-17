@@ -5,7 +5,9 @@
  * The lining texture is R8 per cell (protocol LINING_DONE): 0 none,
  * 1..253 planned with build progress, 254 a quay (dressed stone slabs with
  * a pale coping along the water), 255 lined (cobbles). Requires
- * `uniform vec2 uGrid; uniform float uTime;` in the including shader.
+ * `uniform vec2 uGrid; uniform float uTime;` in the including shader. The
+ * full code is compiled only with `#define HYDRO_LINING` (see
+ * GameRenderer.uploadLining), so worlds without lining pay nothing.
  */
 import * as THREE from 'three';
 import { LINING_DONE, LINING_QUAY } from '../../shared/protocol';
@@ -26,6 +28,7 @@ export const LINING_GLSL = /* glsl */ `
 uniform sampler2D uLining;
 uniform float uLiningOn;
 
+#ifdef HYDRO_LINING
 float liningAt(ivec2 c) {
   if (c.x < 0 || c.y < 0 || c.x >= int(uGrid.x) || c.y >= int(uGrid.y)) return 0.0;
   return texelFetch(uLining, c, 0).r * 255.0;
@@ -113,4 +116,9 @@ vec4 liningColour(vec3 c, vec2 cell) {
   float laid = step(cb.x, prog) * (1.0 - cb.y);
   return vec4(mix(planCol, lined, laid), 1.0);
 }
+#else
+// No lining anywhere yet: a trivial stand-in keeps the shader small (and
+// quick to compile in software GL) until the first stones are planned.
+vec4 liningColour(vec3 c, vec2 cell) { return vec4(c, 0.0); }
+#endif
 `;

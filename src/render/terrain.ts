@@ -269,7 +269,9 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
         '#include <colorspace_fragment>\n  if (fogVis < 1.0) gl_FragColor.rgb = mix(linearToOutputTexel(vec4(fogBackground(), 1.0)).rgb, gl_FragColor.rgb, fogVis);',
       );
   };
-  mat.customProgramCacheKey = () => 'hydro-terrain-v6';
+  const withDefines = mat as unknown as { defines: Record<string, string> };
+  withDefines.defines = {};
+  mat.customProgramCacheKey = () => `hydro-terrain-v6${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}`;
   return mat;
 }
 
