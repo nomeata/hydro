@@ -2,6 +2,7 @@
  * Small game menu: new world, export / import save files.
  */
 export interface MenuActions {
+  howToPlay(): void;
   newWorld(): void;
   exportSave(): Promise<void>;
   importSave(file: File): Promise<void>;
@@ -38,6 +39,7 @@ export class Menu {
       });
       this.panel.append(b);
     };
+    item('How to play', () => actions.howToPlay());
     item('New world', () => {
       if (confirm('Start a new world? The current one will be replaced.')) actions.newWorld();
     });

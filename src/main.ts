@@ -6,6 +6,7 @@ import './ui/styles.css';
 import { SimClient, type ReadyData } from './client/simClient';
 import { readSave, writeSave } from './persist/idb';
 import { Menu } from './ui/menu';
+import { Intro } from './ui/intro';
 import { WorldMirror } from './client/mirror';
 import { GameRenderer } from './render/renderer';
 import { attachCameraInput } from './render/camera';
@@ -144,7 +145,21 @@ async function main(): Promise<void> {
     }
   });
 
+  // Welcome panels: first visit, and from the menu. The game waits meanwhile.
+  const intro = new Intro(uiRoot);
+  const showIntro = () => {
+    const before = client.getSpeed();
+    client.setSpeed(0);
+    hud.setSpeed(0);
+    intro.open(() => {
+      client.setSpeed(before);
+      hud.setSpeed(before);
+    });
+  };
+  if (!testMode && !Intro.seen()) showIntro();
+
   new Menu(uiRoot, {
+    howToPlay: showIntro,
     newWorld: () => {
       location.search = '?new=1';
     },
@@ -166,7 +181,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd, fakeCrowd: () => fakeCrowd };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd, fakeCrowd: () => fakeCrowd, showIntro };
   }
   document.getElementById('loading')?.classList.add('done');
 }

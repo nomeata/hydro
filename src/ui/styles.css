@@ -224,3 +224,48 @@ html, body {
   color: var(--ink);
 }
 .menu button:hover { background: var(--paper-2); }
+
+/* --- intro ----------------------------------------------------------- */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(40, 60, 80, 0.35);
+  backdrop-filter: blur(2px);
+}
+.intro[hidden] { display: none; }
+.intro-card {
+  width: min(420px, 100%);
+  padding: 16px 18px 12px;
+  text-align: center;
+  animation: intro-pop 0.35s ease-out;
+}
+@keyframes intro-pop { from { transform: scale(0.92); opacity: 0; } }
+.intro-art svg { display: block; width: 100%; height: auto; border-radius: 12px; }
+.intro h2 { margin: 14px 0 6px; font-size: 21px; }
+.intro p { margin: 0 0 14px; font-size: 15px; line-height: 1.45; min-height: 4.4em; }
+.intro-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.intro-nav button { appearance: none; font: inherit; cursor: pointer; color: var(--ink); }
+.intro-nav .skip { border: 0; background: transparent; opacity: 0.7; padding: 10px 8px; }
+.intro-nav .next {
+  border: 2px solid var(--wood);
+  background: var(--accent);
+  color: white;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 12px;
+  min-width: 108px;
+}
+.intro-nav .dots { display: flex; gap: 8px; }
+.intro-nav .dot {
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--wood);
+  background: transparent;
+}
+.intro-nav .dot[aria-current='true'] { background: var(--wood); }
