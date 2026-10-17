@@ -56,7 +56,9 @@ See docs/PEOPLE.md (phases §10).
 - ◐ M3-β ☑ fishers (fish stock per calm-water block), ☑ flood flight,
   ☑ flood memory, ☑ flooded houses become ruins (rebuilt once forgotten);
   ☐ fish-jump visuals
-- M3-γ Fog of war, more settlements, tool unlocks
+- ☑ M3-γ Fog of war (revealed land grows with villages, cloud-sea
+  rendering, plans only on known land, camera bounds), more settlements
+  founded on attractive land, tool unlocks by population
 - M3-δ Herders, woodcutters, desire paths, vegetation dynamics (old M2)
 
 ## M4 — Structures ☐

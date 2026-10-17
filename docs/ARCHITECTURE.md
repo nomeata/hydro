@@ -260,8 +260,10 @@ itself with its own clock.
   frustum (off on the low tier), LOD by chunk stride when zoomed out,
   `webglcontextlost`/`restored` handling. Feature checks are logged at
   startup.
-- **Fog of war (M3):** hidden chunks are not drawn, with a soft cloud band at
-  the edge.
+- **Fog of war (M3-γ, `fog.ts`):** a revealed R8 texture turns the
+  terrain over unknown land into a billowing cloud sea (see PEOPLE.md §6);
+  water chunks entirely in the fog are not drawn, objects there are not
+  placed, and the camera pans only over known land.
 
 ## 6. Persistence (M1b)
 Header JSON + binary fields, gzip via `CompressionStream`, stored in

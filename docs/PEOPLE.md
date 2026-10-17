@@ -115,11 +115,26 @@ earthworks was tried and felt odd while playing; `PARAMS.villagersBuildPlans`
 switches it back on for experiments).
 
 **Founding:** attractiveness per 8×8 block, recomputed every 4 days, from:
-- flat, fertile, moist but not flooded land (low floodMemory);
+- flat, fertile, moist but not flooded land (low floodMemory), not already
+  used, little forest;
 - nearby water;
-- at least 20 cells from other settlements.
+- at least 26 cells (`FOUNDING.minSpacing`) from other settlements;
+- on known land or at its soft edge (revealed ≥ 64).
 
-The first family arrives within 1–2 game days of a new game.
+The first family arrives within 1–2 game days of a new game. Further
+villages (code: `FOUNDING` in `village.ts`): once all villages together
+have ≥ 25 people, or one village has ≥ 18 people and no free house, and at
+most once per game year, the best block scoring ≥ 0.55 (0..~1.15:
+fertility × wetness × flatness, averaged, plus 0.15 near water) gets a
+migrant family of 3–5. They walk in with their bundles from the nearest
+edge of the fog and found a village there (store + houses, as the first).
+Typical natural land scores 0.4–0.55, good river meadows 0.7–0.85, so on
+many maps the player attracts new villages by irrigating a dry plain.
+
+Each village runs on its own: land (fields) belongs to the nearest village,
+jobs, houses, fishing and migration are per village. Snapshot stats carry
+an aggregate (`stats.village`, with `count` and `peak`) and a per-village
+list (`stats.villages`).
 
 ## 5. Agents
 
@@ -162,9 +177,24 @@ Rising water near people makes them run uphill. Crops drown,
 `floodMemory` marks the area, and nobody builds houses there for years.
 
 ## 6. Fog of war & progression (M3-γ)
-- Reveal radius is `R = 40 + 4·√pop` cells around each settlement, and
-  revealed land stays revealed. Plans can only be placed on revealed land.
-- Tools unlock at population milestones.
+- `world.revealed` (u8, persisted): a disc of 40 cells around the start
+  point, then `R = 40 + 4·√pop` cells around each settlement, updated
+  daily, with a 6-cell soft edge and a little noise wobble. Revealed land
+  stays revealed. Old saves without it get the start + village discs.
+- Plans can only be placed on revealed land (≥ 128): the sim drops plan
+  cells elsewhere, the tool preview masks them too. The fog is only on in
+  worlds with villages (pure physics tests are unaffected).
+- Rendering (`render/fog.ts`): the terrain mesh itself becomes a sea of
+  soft, slowly billowing low-poly cloud over unknown land (vertices move to
+  the terrain blurred over ~40 cells plus a lift; white/blue haze colour,
+  a little self-lit). Water, flow flecks, fish jumps, vegetation, buildings
+  and people are not drawn there; water chunks entirely in the fog are
+  skipped. Weather clouds still drift over it. The camera pans only over
+  known land plus a margin.
+- Tools unlock at population milestones (highest total population so far,
+  so unlocks are never lost): one table in `src/shared/unlocks.ts`
+  (line 15, weir 30, gate 50; others from the start). Locked tools are
+  greyed with a lock and say "Unlocks at N villagers".
 
 ## 7. Making the hidden economy visible ("watch and learn")
 - **Food:** haystacks, sacks in the granary, fish-drying racks. Their number
