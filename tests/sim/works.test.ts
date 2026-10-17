@@ -134,7 +134,7 @@ describe("villagers' own works", () => {
     const b = (await loadGame(bytes)).sim;
     expect(b.stateHash()).toBe(sim.stateHash());
     await runDays(sim, 25);
-    b.run(STEPS_PER_DAY * 25);
+    await runDays(b, 25);
     expect(b.stateHash()).toBe(sim.stateHash());
     expect(s.jetty!.progress).toBe(1);
     for (const c of s.jetty!.cells) expect(sim.world.landuse[c]).toBe(LandUse.Bridge);
