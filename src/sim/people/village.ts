@@ -75,6 +75,20 @@ export interface Building {
   progress: number;
 }
 
+/** A ready-made village (PeopleSystem.stage). Coordinates are cells. */
+export interface StagedVillage {
+  /** The store, at the village centre. */
+  x: number;
+  y: number;
+  food: number;
+  /** Houses; progress < 1 is still being built (default 1). */
+  houses: { x: number; y: number; progress?: number; rot?: number }[];
+  /** Rectangles of field cells (inclusive) with their crop stage 0..255. */
+  fields: { x0: number; y0: number; x1: number; y1: number; crop: number }[];
+  /** People; `fishing` ones sit at their (shore) cell with a rod for that many steps first. */
+  people: { x: number; y: number; job: 'farmer' | 'fisher' | 'builder'; variant?: number; fishing?: number }[];
+}
+
 export interface PeopleState {
   nextId: number;
   agents: Agent[];
@@ -222,6 +236,74 @@ export class PeopleSystem {
     if (site < 0) return;
     // The founders bring enough food to last until the first harvest.
     this.foundAt(site, 400, 4, false);
+  }
+
+  /**
+   * Skip the founding and set up a ready-made village instead (or none):
+   * used by the welcome scenes (sim/scenes.ts), which show a living village
+   * without fast-forwarding a game. Buildings, fields and people are placed
+   * as given; from then on everything runs as usual.
+   */
+  stage(spec: StagedVillage | null): void {
+    this.founded = true;
+    if (!spec) return;
+    const w = this.world;
+    const s = new Settlement(this.settlements.length, spec.x, spec.y, 0, spec.food);
+    this.settlements.push(s);
+    this.addBuilding('store', s.state.id, spec.x, spec.y).progress = 1;
+    for (const h of spec.houses) {
+      const b = this.addBuilding('house', s.state.id, h.x, h.y);
+      b.progress = h.progress ?? 1;
+      if (h.rot !== undefined) b.rot = h.rot;
+      if (b.progress >= 1) s.state.houses++;
+    }
+    for (const f of spec.fields) {
+      for (let y = f.y0; y <= f.y1; y++)
+        for (let x = f.x0; x <= f.x1; x++) {
+          if (!w.inBounds(x, y)) continue;
+          const i = w.idx(x, y);
+          if (w.landuse[i] !== LandUse.None && w.landuse[i] !== LandUse.Yard) continue;
+          w.landuse[i] = LandUse.Field;
+          w.crop[i] = f.crop;
+          w.vegetation[i] = Math.min(w.vegetation[i]!, 0.15);
+        }
+    }
+    const jobs = { farmer: Job.Farmer, fisher: Job.Fisher, builder: Job.Builder } as const;
+    for (const p of spec.people) {
+      const cell = w.idx(Math.round(p.x), Math.round(p.y));
+      const a: Agent = {
+        id: this.nextId++,
+        settlement: s.state.id,
+        variant: p.variant ?? this.rng.int(0, 10),
+        x: p.x,
+        y: p.y,
+        heading: 0,
+        job: jobs[p.job],
+        task: Task.None,
+        siteKind: SiteKind.None,
+        site: -1,
+        path: [],
+        pathPos: 0,
+        timer: 0,
+        carry: CarryKind.None,
+        load: 0,
+        anim: EntityAnim.Idle,
+        vx: 0,
+        vy: 0,
+      };
+      if (p.fishing) {
+        // Already at the shore: start the session as if just arrived.
+        a.siteKind = SiteKind.Fish;
+        a.site = cell;
+        this.arrive(a);
+        a.timer = p.fishing;
+      }
+      this.agents.push(a);
+    }
+    s.state.population = spec.people.length;
+    this.peakPopulation = s.state.population;
+    this.buildingsDirty = true;
+    this.updateMoisture();
   }
 
   /** Best place for a village centre near (cx, cy): flat, dry, fertile, near water. */

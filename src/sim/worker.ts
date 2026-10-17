@@ -9,6 +9,8 @@ import { CELL, STEPS_PER_DAY, STEPS_PER_SECOND_1X } from './constants';
 import { loadGame, saveGame } from './persist';
 import { Simulation } from './sim';
 import { generateWorld } from './worldgen';
+import { SCENE_LAYOUT, buildScene, cloneScene } from './scenes';
+import type { SceneId } from '../shared/protocol';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -61,6 +63,35 @@ function init(seed: number, size: number): void {
   const t2 = performance.now();
   log('info', `worldgen ${(t1 - t0).toFixed(0)} ms, spin-up ${(t2 - t1).toFixed(0)} ms`);
   start(fresh, { startX: gen.startX, startY: gen.startY, riverScale: gen.riverScale });
+}
+
+/** Staged scenes: the run id echoed in snapshots (null: a normal game). */
+let sceneRun: number | null = null;
+/** Built scenes, kept as templates: a restart is a cheap copy. */
+const sceneCache = new Map<SceneId, Simulation>();
+
+/** Start a staged scene; switching scenes keeps the buffers (same grid size) and resends everything. */
+function startScene(id: SceneId, run: number): void {
+  sceneRun = run;
+  let tpl = sceneCache.get(id);
+  if (!tpl) {
+    const t0 = performance.now();
+    tpl = buildScene(id);
+    sceneCache.set(id, tpl);
+    log('info', `scene ${id} built in ${(performance.now() - t0).toFixed(0)} ms`);
+  }
+  const s = cloneScene(tpl);
+  if (!sim || sim.world.size !== s.world.size) {
+    start(s, { startX: SCENE_LAYOUT.village.x, startY: SCENE_LAYOUT.village.y });
+    return;
+  }
+  sim = s;
+  fishDay = -1;
+  accumulator = 0;
+  // The renderer gets the whole new state with the next snapshot.
+  s.markTerrainDirty(0);
+  s.markTerrainDirty(s.world.size - 1);
+  lastSnapshot = 0;
 }
 
 async function load(bytes: ArrayBuffer): Promise<void> {
@@ -173,6 +204,7 @@ function sendSnapshot(): boolean {
       outflowPerDay: sim.outflowLastDay,
     },
     poolId: set.id,
+    sceneRun: sceneRun ?? undefined,
     depth: set.depth,
     vel: set.vel,
   };
@@ -256,6 +288,11 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         if (msg.speed !== undefined) speed = msg.speed;
         if (msg.duty !== undefined) duty = msg.duty;
         init(msg.seed, msg.size);
+        break;
+      case 'scene':
+        if (msg.speed !== undefined) speed = msg.speed;
+        if (msg.duty !== undefined) duty = msg.duty;
+        startScene(msg.scene, msg.run);
         break;
       case 'setSpeed':
         speed = Math.max(0, msg.speed);

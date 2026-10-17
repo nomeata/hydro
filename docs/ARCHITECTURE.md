@@ -205,8 +205,9 @@ change). Erosion runs every 8 steps, talus every 16, weathering 4× a day.
 The worker caps its CPU share on mobile and pauses when the tab is hidden.
 
 ## 4. Worker protocol (`shared/protocol.ts`)
-Main → worker: `init`, `load`, `setSpeed`, `command`, `ack` (returns
-buffers), `requestSave`. Worker → main: `ready`, `snapshot`, `saved`, `log`.
+Main → worker: `init`, `load`, `scene` (welcome scenes, §5.1), `setSpeed`,
+`command`, `ack` (returns buffers), `requestSave`. Worker → main: `ready`,
+`snapshot`, `saved`, `log`.
 
 **Snapshots** (~10 Hz), using transferable buffers from a 3-set ping-pong
 pool. When no set is free, the worker **skips** the snapshot and never
@@ -265,6 +266,40 @@ itself with its own clock.
   water chunks entirely in the fog are not drawn, objects there are not
   placed, and the camera pans only over known land.
 
+### 5.1 Welcome scenes (`sim/scenes.ts`, `ui/introScenes.ts`)
+The welcome panels are illustrated by the real engine, not by drawings:
+- **Scene world:** `buildSceneWorld()` hand-builds a 96² world in code,
+  independent of worldgen tuning: rolling meadow, two wooded hills, a river
+  from an inflow on the left edge to an outlet on the bottom edge, a pond,
+  and a dry hollow lower than the river. Landmarks live in
+  `sim/sceneLayout.ts` (pure data, so the UI can aim cameras without
+  bundling the sim). `buildScene(id)` makes a Simulation of it (fog off,
+  no random rain fronts, early summer) and spins it up so the river flows:
+  `water` adds one scripted rain front (`Weather.addFront`), `shape` is the
+  bare land, `village` stages a ready-made village with
+  `PeopleSystem.stage(…)` (store, five houses and one being built, fields
+  at several crop stages, farmers, builders, two fishers already fishing).
+  Everything is deterministic and runs as in the game from then on.
+- **Runtime:** the dialog starts a second `SimClient` with
+  `{type: 'scene', scene, run}`. The worker builds each scene once and keeps
+  it as a template; a (re)start is a cheap `cloneScene`. Switching scenes
+  keeps the buffers (same grid) and resends the whole state; every
+  snapshot carries `sceneRun`, so stale states of a scene already left are
+  dropped. One `GameRenderer` (pixel ratio ≤ 1.5, no shadows) with the
+  game's own `WorldLayers` (vegetation, crowd, fish jumps;
+  `render/worldLayers.ts`, shared with `main.ts`) draws on the dialog's
+  canvas from a fixed camera per scene, with no camera input. Closing the
+  dialog terminates the worker and disposes the renderer
+  (`forceContextLoss`); the main canvas is not rendered while the dialog is
+  open.
+- **Timelines:** each scene loops (11–14 s, then a short fade and a fresh
+  clone). `shape` animates an HTML hand over a piece of the tool palette and
+  the canvas: it picks Trench, draws (showing the real plan preview from
+  `planTrench` on a `WorldMirror` grid), releases (a real `planTrench`
+  command), and the spirit crew digs while the hollow fills.
+- **Fallback:** the SVG drawings show while the scene loads and stay when
+  WebGL or the worker fails.
+
 ## 6. Persistence (M1b)
 Header JSON + binary fields, gzip via `CompressionStream`, stored in
 IndexedDB. Autosave every few game days and on `visibilitychange`. Versioned
@@ -275,15 +310,18 @@ with migrations and golden save files per version. Export/import comes later.
 src/
   main.ts                bootstrap
   shared/                protocol.ts, rng.ts, noise.ts
-  sim/                   world.ts, constants.ts, params.ts, sim.ts, worker.ts
+  sim/                   world.ts, constants.ts, params.ts, sim.ts, worker.ts,
+                         scenes.ts + sceneLayout.ts (welcome scenes)
     worldgen/            terrain.ts, macro.ts (river network), carve.ts, soils.ts
     hydro/               inertial.ts, erosion.ts, groundwater.ts, talus.ts
     climate/             calendar.ts, weather.ts
     plans/               plans.ts, builders.ts
   client/                simClient.ts
   render/                renderer.ts, camera.ts, terrain.ts, water.ts, sky.ts,
-                         objects.ts, characters.ts, picking.ts
-  ui/                    hud.ts, tools.ts, input.ts, styles.css
+                         objects.ts, characters.ts, picking.ts,
+                         worldLayers.ts (vegetation/crowd/fish wiring)
+  ui/                    hud.ts, tools.ts, input.ts, styles.css,
+                         intro.ts + introScenes.ts (welcome panels)
   persist/               idb.ts
 tools/                   bench.ts, preview.ts
 tests/                   vitest (sim/, scenarios/)

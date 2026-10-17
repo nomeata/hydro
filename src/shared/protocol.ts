@@ -209,6 +209,8 @@ export interface Snapshot {
    * stocked. Sent about daily.
    */
   fish?: Uint8Array;
+  /** Staged scenes: the `run` of the scene message this state belongs to. */
+  sceneRun?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,9 +231,14 @@ export type Command =
 // ---------------------------------------------------------------------------
 // Messages.
 
+/** Staged scenes of the welcome panels (sim/scenes.ts). */
+export type SceneId = 'water' | 'shape' | 'village';
+
 export type ToWorker =
   | { type: 'init'; seed: number; size: number; speed?: number; duty?: number }
   | { type: 'load'; bytes: ArrayBuffer; speed?: number; duty?: number }
+  /** Start (or restart, or switch to) a staged scene; later scenes reuse the first one's buffers. */
+  | { type: 'scene'; scene: SceneId; run: number; speed?: number; duty?: number }
   | { type: 'setSpeed'; speed: number }
   | { type: 'command'; command: Command }
   | { type: 'ack'; poolId: number; depth: Float32Array; vel: Int8Array }

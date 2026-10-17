@@ -208,6 +208,11 @@ function smooth(a: number, b: number, x: number): number {
 
 export class WeatherLayer {
   readonly group = new THREE.Group();
+  /**
+   * Multiplies the zoom measure that clouds fade with: > 1 keeps clouds
+   * visible closer in (the welcome scenes show a front passing at close zoom).
+   */
+  zoomBias = 1;
   readonly uniforms: FrontUniforms;
   private readonly fronts = new Map<string, TrackedFront>();
   private readonly layouts = new Map<number, Puff[]>();
@@ -436,7 +441,7 @@ export class WeatherLayer {
     // Zoom-dependent visibility: clouds read as weather passing when zoomed
     // out and almost vanish when zoomed in so they never block the view.
     const st = camera.getCurrentState();
-    const vh = shortSideCells(camera);
+    const vh = shortSideCells(camera) * this.zoomBias;
     // Zooming in, clouds dissolve into smaller, fainter puffs and then vanish.
     this.cloudScale = smooth(30, 95, vh);
     this.puffMat.opacity = 0.62 + 0.28 * smooth(50, 120, vh);
