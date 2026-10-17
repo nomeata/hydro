@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import { openGame } from './helpers';
 
 test('finishing a trench earns First Spade: a toast, and the Achievements card lists it', async ({ page }) => {
-  const errors = await openGame(page);
+  // A small world keeps the simulated day quick on slow CI machines.
+  const errors = await openGame(page, '&size=128');
   // Dig a little trench by the start and let a day pass.
   await page.evaluate(async () => {
     const h = (window as any).__hydro;
