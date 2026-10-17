@@ -109,9 +109,10 @@ job from marginal returns (value of the best unworked site minus travel
 cost). It moves at most one person per job per day, and only for a gain
 above 15 %.
 
-**Builders:** throughput = builders × f(w) × 1/(1 + travel/work). A plan
-more than ~40 cells from any settlement waits and is drawn as "waiting".
-The spirit crew stays until the first village has 3 builders.
+**Builders** build the village's own houses. The player's plans are realised
+by the anonymous crew, quickly and independently of villages (villagers doing
+earthworks was tried and felt odd while playing; `PARAMS.villagersBuildPlans`
+switches it back on for experiments).
 
 **Founding:** attractiveness per 8×8 block, recomputed every 4 days, from:
 - flat, fertile, moist but not flooded land (low floodMemory);

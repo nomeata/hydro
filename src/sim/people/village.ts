@@ -7,6 +7,7 @@
 import { CarryKind, EntityAnim, FISH_BLOCK, type SimTime } from '../../shared/protocol';
 import { Rng } from '../../shared/rng';
 import { DAYS_PER_SEASON, STEPS_PER_DAY } from '../constants';
+import { PARAMS } from '../params';
 import { applyEarthwork } from '../plans/plans';
 import { LandUse, SOIL_PROPS, type World } from '../world';
 import { Job, SiteKind, Task, packEntities, walk, type Agent } from './agents';
@@ -600,7 +601,8 @@ export class PeopleSystem {
     const mine = this.agents.filter((a) => a.settlement === s.state.id && a.task !== Task.Leave);
     const n = mine.length;
     const houseWork = this.buildings.some((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
-    const planWork = host.planCells().some((i) => !Number.isNaN(this.world.plan[i]!) && this.settlementNear(i) === s);
+    const planWork =
+      PARAMS.villagersBuildPlans && host.planCells().some((i) => !Number.isNaN(this.world.plan[i]!) && this.settlementNear(i) === s);
     const want = new Map<Job, number>();
     want.set(Job.Builder, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0);
     // Fishers: as many as the waters sustain (one landing ≈ CATCH a day), up to a quarter.
@@ -848,7 +850,7 @@ export class PeopleSystem {
     if (a.job === Job.Builder) {
       const house = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
       if (house && this.goTo(a, w.idx(house.x, house.y), SiteKind.House, time, house.id)) return;
-      const cell = this.nearestPlanCell(a, s, host);
+      const cell = PARAMS.villagersBuildPlans ? this.nearestPlanCell(a, s, host) : -1;
       if (cell >= 0 && this.goTo(a, cell, SiteKind.Earthwork, time)) {
         this.reserved.add(cell);
         a.carry = w.plan[cell]! > w.terrain(cell) ? CarryKind.Earth : CarryKind.None;

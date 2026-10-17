@@ -30,9 +30,15 @@ export const PARAMS = {
   /** Lapse rate (°C per metre). */
   lapseRate: 0.0065,
 
-  /** Spirit-crew earthworks: vertical change per plan cell per day (m), and cells worked in parallel. */
-  builderRatePerDay: 1.5,
-  builderCells: 160,
+  /**
+   * Plans are realised by an anonymous crew: vertical change per plan cell
+   * per day (m), and cells worked in parallel. Quick on purpose: the player
+   * already waits for the water to respond; slow building adds nothing.
+   */
+  builderRatePerDay: 4,
+  builderCells: 400,
+  /** Whether village builders realise the player's plans (experiment; off). */
+  villagersBuildPlans: false,
 
   // --- Geomorphology (M1b): erosion, deposition, talus, weathering ---------
   // See hydro/erosion.ts and hydro/talus.ts. Hydraulic-time rates are per
