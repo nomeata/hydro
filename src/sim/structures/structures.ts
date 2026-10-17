@@ -92,6 +92,8 @@ export class Structures {
    * a forbidden cell is not placed at all.
    */
   allow: ((i: number) => boolean) | null = null;
+  /** Told when the crew finishes lining a cell (achievements; an observer only). */
+  onLined: ((i: number) => void) | null = null;
 
   constructor(private readonly world: World) {}
 
@@ -379,6 +381,7 @@ export class Structures {
       if (np >= 1) {
         this.lining.delete(i);
         this.world.flags[i]! |= CellFlag.Lined;
+        this.onLined?.(i);
       } else this.lining.set(i, np);
       this.liningDirty = true;
       if (np >= 1) this.weirProgressChanged(i);

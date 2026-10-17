@@ -271,6 +271,8 @@ export interface Snapshot {
   fish?: Uint8Array;
   /** Staged scenes: the `run` of the scene message this state belongs to. */
   sceneRun?: number;
+  /** Achievements, when changed (see the Achievements section). */
+  achievements?: AchievementsUpdate;
 }
 
 // ---------------------------------------------------------------------------
@@ -376,4 +378,24 @@ export interface HistoryMilestone {
 export interface HistoryData {
   samples: HistorySample[];
   milestones: HistoryMilestone[];
+  /** Achievements earned so far (chart medals). */
+  achievements?: AchievementEarned[];
+}
+
+// ---------------------------------------------------------------------------
+// Achievements (per world; static table in src/shared/achievements.ts).
+
+export interface AchievementEarned {
+  /** Achievement id (src/shared/achievements.ts). */
+  id: string;
+  /** Game day it was earned. */
+  day: number;
+}
+
+/** Sent with a snapshot whenever the set changes (and once after start or load). */
+export interface AchievementsUpdate {
+  /** All achievements earned so far, in the order earned. */
+  earned: AchievementEarned[];
+  /** Ids earned since the previous update (empty after loading a save: no fanfare). */
+  fresh: string[];
 }

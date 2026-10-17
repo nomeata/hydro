@@ -6,6 +6,7 @@
 import type { HistoryData } from '../shared/protocol';
 import { COLORS, SEASON_COLORS, buildChart, describeSample, sampleAt, type ChartLayout } from './historyChart';
 import { STAR_PATH } from './icons';
+import { CATEGORY_COLORS } from './achievementIcons';
 
 const REFRESH_MS = 3000;
 const HINT = 'Tap or hover the chart for details.';
@@ -33,6 +34,14 @@ const LEGEND: [string, string][] = [
     ),
     'New tools (reached · ahead)',
   ],
+  [
+    mini(
+      `<path d="M7 9l-2 5 2.5-1 1.5 2 1-5zM15 9l2 5-2.5-1-1.5 2-1-5z" fill="${CATEGORY_COLORS.water}"/><circle cx="11" cy="6.5" r="5" fill="#fff4d0" stroke="${CATEGORY_COLORS.people}" stroke-width="2"/><circle cx="11" cy="6.5" r="2" fill="${COLORS.star}"/>`,
+      22,
+      16,
+    ),
+    'Achievements',
+  ],
 ];
 
 export class HistoryPanel {
@@ -43,6 +52,8 @@ export class HistoryPanel {
   private layout: ChartLayout | null = null;
   /** Day under the cursor (kept across refreshes), or null. */
   private day: number | null = null;
+  /** The text of the star or medal last tapped (kept across refreshes), or null. */
+  private info: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private onClose: (() => void) | null = null;
 
@@ -92,6 +103,7 @@ export class HistoryPanel {
     this.onClose = onClose ?? null;
     this.el.hidden = false;
     this.day = null;
+    this.info = null;
     this.readout.textContent = HINT;
     void this.refresh();
     this.timer ??= setInterval(() => void this.refresh(), REFRESH_MS);
@@ -128,11 +140,12 @@ export class HistoryPanel {
     if (!L) return;
     const svg = this.chartEl.querySelector('svg');
     if (!svg) return;
-    const target = (e.target as Element).closest?.('.star');
+    const target = (e.target as Element).closest?.('.star, .medal-mark');
     if (target) {
       this.day = null;
+      this.info = target.getAttribute('data-info') ?? '';
       this.clearCursor();
-      this.readout.textContent = target.getAttribute('data-info') ?? '';
+      this.readout.textContent = this.info;
       return;
     }
     const r = svg.getBoundingClientRect();
@@ -149,13 +162,14 @@ export class HistoryPanel {
 
   private select(day: number | null): void {
     this.day = day;
+    if (day !== null) this.info = null;
     const L = this.layout;
     const s = day === null || !this.data ? null : sampleAt(this.data.samples, day);
     const g = this.chartEl.querySelector('.cursor');
     if (!L || !g) return;
     if (!s) {
       g.innerHTML = '';
-      if (day === null) this.readout.textContent = HINT;
+      if (day === null) this.readout.textContent = this.info ?? HINT;
       return;
     }
     const x = L.dayToX(s.d + s.n / 2).toFixed(1);

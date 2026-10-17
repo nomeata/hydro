@@ -67,7 +67,7 @@ See docs/PEOPLE.md (phases §10).
   flowers and children playing; listless villagers by the store in hard
   times; per-village store with sacks, hay and a fish-drying rack
 
-## M3½ — Endorphins ◐
+## M3½ — Endorphins ☑
 Player feedback: more direct progress hits; keep it all positive
 (DESIGN §4a).
 - ☑ Stats bar: population (log bar between unlock milestones, sparkle at a
@@ -76,7 +76,9 @@ Player feedback: more direct progress hits; keep it all positive
   years, half-seasons before, years after 20 years); `history` message
 - ☑ History chart panel: villagers (log) and prosperity, season bands,
   rain, dry spells, floods, milestone stars
-- ☐ Achievements per world
+- ☑ Achievements per world (docs/ACHIEVEMENTS.md): checked by the sim
+  against a start-of-world baseline, saved; toasts, Achievements card in
+  the menu, medals on the history chart
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill

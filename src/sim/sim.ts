@@ -19,6 +19,7 @@ import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './
 import { CellFlag, SOIL_PROPS, type World } from './world';
 import { History, type HistoryState } from './history';
 import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
+import { Achievements, type AchievementsState } from './achievements';
 
 export interface SimOptions {
   /** Enable villages; founding happens near the start point. */
@@ -42,6 +43,8 @@ export interface SimState {
   geo?: GeoState;
   /** Daily history for the stats chart (absent in older saves). */
   history?: HistoryState;
+  /** Achievements (absent in older saves). */
+  achievements?: AchievementsState;
 }
 
 /** Erosion state that must survive save/load: the ledger and sparse per-cell accumulators. */
@@ -69,6 +72,12 @@ function unsparse(a: Float32Array, pairs: number[]): void {
 
 /** Steps between soil-water/weather updates. */
 const SOILWATER_EVERY = 4;
+
+function pathLength(points: readonly (readonly [number, number])[]): number {
+  let l = 0;
+  for (let k = 0; k + 1 < points.length; k++) l += Math.hypot(points[k + 1]![0] - points[k]![0], points[k + 1]![1] - points[k]![1]);
+  return l;
+}
 /** Steps between builder updates. */
 const BUILD_EVERY = 10;
 /** Steps between erosion/deposition passes (offset from soil-water). */
@@ -125,6 +134,8 @@ export class Simulation {
   revealDirty = true;
   /** Daily history (stats bar chart), recorded at each calendar day boundary. */
   readonly history = new History();
+  /** Achievements: an observer of the world, saved with it. */
+  readonly achievements: Achievements;
 
   constructor(world: World, seed: number, opts: SimOptions = {}) {
     this.world = world;
@@ -143,6 +154,15 @@ export class Simulation {
       revealDisc(world, opts.people.startX, opts.people.startY, START_REVEAL);
     }
     this.resetHistory();
+    this.achievements = new Achievements(world.width, world.height);
+    this.structures.onLined = (i) => this.achievements.lined(i, this.time.day);
+    this.watchPeople();
+    this.achievements.baseline(this);
+  }
+
+  /** Let the achievements hear of the villagers' harvests, catches and rebuilt houses. */
+  private watchPeople(): void {
+    if (this.people) this.people.onEvent = (e, cell) => this.achievements.peopleEvent(e, cell, this.time.day);
   }
 
   /** Clear the history and count from now (after the worker's spin-up, or for old saves). */
@@ -287,6 +307,7 @@ export class Simulation {
         PARAMS.builderCells,
         (i) => {
           loose[i] = 1;
+          this.achievements.touch(i);
           this.markTerrainDirty(i);
           this.planDirty = true;
         },
@@ -300,7 +321,11 @@ export class Simulation {
 
     this.step++;
     const today = timeAt(this.step).day;
-    if (today !== timeAt(this.step - 1).day) this.recordHistory(today - 1);
+    if (today !== timeAt(this.step - 1).day) {
+      this.recordHistory(today - 1);
+      this.achievements.daily(this, today - 1);
+    }
+    this.achievements.update(this, this.step, today);
     if (this.step % STEPS_PER_DAY === 0) {
       this.outflowLastDay = this.outflowToday;
       this.outflowToday = 0;
@@ -319,6 +344,7 @@ export class Simulation {
     switch (cmd.type) {
       case 'planTrench': {
         const changed = this.onlyRevealed(planTrench(w, cmd.points, cmd.width, cmd.depth));
+        this.achievements.stroke('trench', changed, pathLength(cmd.points));
         // Remember the player's canals (villagers line those near home).
         for (const i of changed) if (w.plan[i]! < w.terrain(i)) w.flags[i]! |= CellFlag.Canal;
         this.crew.enqueue(changed);
@@ -327,12 +353,14 @@ export class Simulation {
       }
       case 'planDike': {
         const changed = this.onlyRevealed(planDike(w, cmd.points, cmd.width, cmd.height));
+        this.achievements.stroke('dike', changed, pathLength(cmd.points));
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
       }
       case 'planLevel': {
         const changed = this.onlyRevealed(planLevel(w, cmd.points, cmd.width));
+        this.achievements.stroke('level', changed, pathLength(cmd.points));
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
@@ -356,11 +384,15 @@ export class Simulation {
         }
         break;
       }
-      case 'toggleGate':
-        this.structures.toggleGate(cmd.id, cmd.open);
+      case 'toggleGate': {
+        const g = this.structures.gates.find((g) => g.id === cmd.id);
+        if (this.structures.toggleGate(cmd.id, cmd.open) && g?.open && g.progress >= 1) this.achievements.gateOpened(this.time.day);
         break;
+      }
       case 'cancelPlan': {
-        if (cancelPlans(w, cmd.x, cmd.y, cmd.radius).length) this.planDirty = true;
+        const gone = cancelPlans(w, cmd.x, cmd.y, cmd.radius);
+        this.achievements.cancelled(gone);
+        if (gone.length) this.planDirty = true;
         this.structures.cancel(cmd.x, cmd.y, cmd.radius);
         break;
       }
@@ -443,6 +475,7 @@ export class Simulation {
         loose: sparse(this.erosionScratch.loose),
       },
       history: this.history.getState(),
+      achievements: this.achievements.getState(),
     };
   }
 
@@ -459,6 +492,7 @@ export class Simulation {
     if (st.people) {
       this.people ??= new PeopleSystem(this.world, this.seed, st.people.startX, st.people.startY);
       this.people.setState(st.people);
+      this.watchPeople();
       this.fog = true;
       // Saves from before the fog of war: reveal the start and every village.
       if (!this.world.revealed.some((v) => v > 0)) {
@@ -479,6 +513,8 @@ export class Simulation {
     }
     if (st.history) this.history.setState(st.history);
     else this.resetHistory();
+    if (st.achievements) this.achievements.setState(st.achievements);
+    else this.achievements.catchUp(this, Math.max(0, this.time.day - 1));
     this.lookDirty = true;
     this.planDirty = true;
   }
