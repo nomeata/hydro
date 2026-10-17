@@ -128,6 +128,10 @@ const PANELS: Panel[] = [
   },
 ];
 
+/** Shown under the last panel's text. */
+const NOTE =
+  'Hydro is a work in progress. Coming later: herders and woodcutters, sluices, pumps and mills, hydro power with lit cottages, and a world that keeps growing.';
+
 export class Intro {
   private readonly el: HTMLElement;
   private page = 0;
@@ -147,7 +151,8 @@ export class Intro {
       <div class="intro-card panel">
         <div class="intro-art"><div class="intro-svg"></div></div>
         <h2></h2>
-        <p></p>
+        <p class="intro-text"></p>
+        <p class="intro-note" hidden>${NOTE}</p>
         <div class="intro-nav">
           <button class="skip">Skip</button>
           <div class="dots">${PANELS.map((_, k) => `<button class="dot" data-page="${k}" aria-label="Page ${k + 1}"></button>`).join('')}</div>
@@ -255,7 +260,8 @@ export class Intro {
     const last = this.page === PANELS.length - 1;
     this.el.querySelector('.intro-svg')!.innerHTML = p.art;
     this.el.querySelector('h2')!.textContent = p.title;
-    this.el.querySelector('p')!.textContent = p.text;
+    this.el.querySelector('.intro-text')!.textContent = p.text;
+    this.el.querySelector<HTMLElement>('.intro-note')!.hidden = !last;
     this.el.querySelector('.next')!.textContent = last ? 'Let’s go!' : 'Next';
     this.el.querySelectorAll('.dot').forEach((d, k) => d.setAttribute('aria-current', String(k === this.page)));
     this.el.dataset.page = String(this.page);
