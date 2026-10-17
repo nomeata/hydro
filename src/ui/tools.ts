@@ -11,7 +11,7 @@ import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
 import { toolName } from '../shared/progress';
 
-export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'line' | 'weir' | 'gate' | 'erase';
+export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'weir' | 'gate' | 'erase';
 
 export interface ToolHost {
   canvas: HTMLCanvasElement;
@@ -39,7 +39,7 @@ const TOOLS: ToolDef[] = [
   { id: 'trench', label: 'Trench', icon: ICONS.trench, hint: 'Draw a trench. Its floor slopes evenly from start to end.' },
   { id: 'dike', label: 'Dike', icon: ICONS.dike, hint: 'Draw a dike. Its crest is level.' },
   { id: 'level', label: 'Level', icon: ICONS.level, hint: 'Brush over land to flatten it to the height where you start.' },
-  { id: 'line', label: toolName('line'), icon: ICONS.line, hint: 'Brush along a trench or dike to line it with stone: it no longer erodes or slumps.' },
+  // No lining tool: villagers line the banks near their homes (planLining stays a command for scenes and tests).
   { id: 'weir', label: toolName('weir'), icon: ICONS.weir, hint: 'Draw a short line across a river: a stone weir with a level crest that water spills over.' },
   {
     id: 'gate',
@@ -62,7 +62,6 @@ const SETTINGS: Partial<Record<ToolId, ToolSettings>> = {
   trench: { width: 2, amount: 1.5, maxWidth: 8, amountLabel: 'Depth' },
   dike: { width: 2, amount: 2, maxWidth: 8, amountLabel: 'Height' },
   level: { width: 2, maxWidth: 8 },
-  line: { width: 4, maxWidth: 8 },
   weir: { width: 2, amount: 1, maxWidth: 4, amountLabel: 'Height' },
   gate: { width: 1, amount: 2, maxWidth: 3, amountLabel: 'Height' },
 };
@@ -305,9 +304,6 @@ export class ToolPalette {
       case 'level':
         cmd = { type: 'planLevel', points, width };
         break;
-      case 'line':
-        cmd = { type: 'planLining', points, width };
-        break;
       case 'weir':
         cmd = { type: 'planWeir', points: ends, width, height: amount };
         break;
@@ -362,7 +358,6 @@ export class ToolPalette {
       if (this.tool === 'trench') planTrench(grid, pts, width, amount);
       else if (this.tool === 'dike') planDike(grid, pts, width, amount);
       else if (this.tool === 'level') planLevel(grid, pts, width);
-      else if (this.tool === 'line') lining = [...rasterisePath(grid, pts, Math.max(0.5, width / 2)).keys()];
       else if (this.tool === 'weir') {
         planDike(grid, ends, width, amount);
         lining = [...rasterisePath(grid, ends, width / 2 + 1).keys()];

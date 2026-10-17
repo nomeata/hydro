@@ -7,10 +7,15 @@
 
 /** Total villagers needed before a tool can be used. */
 export const TOOL_UNLOCKS: Readonly<Record<string, number>> = {
-  line: 15,
   weir: 30,
   gate: 50,
 };
+
+/** Cheat for testing (`?cheat=1`): every tool is available from the start. */
+let unlockAll = false;
+export function setUnlockAll(on: boolean): void {
+  unlockAll = on;
+}
 
 /** Villagers needed for `tool` (0 = from the start). */
 export function unlockPopulation(tool: string): number {
@@ -23,5 +28,5 @@ export function unlockPopulation(tool: string): number {
  * takes a tool away again.
  */
 export function isUnlocked(tool: string, population: number): boolean {
-  return population >= unlockPopulation(tool);
+  return unlockAll || population >= unlockPopulation(tool);
 }

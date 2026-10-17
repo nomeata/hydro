@@ -54,7 +54,6 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'longCanal', title: 'Long Canal', description: `Dig a canal at least ${ACH.canalCells * 5} m long.`, icon: 'canal', category: 'water' },
   { id: 'lakeMaker', title: 'Lake Maker', description: 'Fill a new pond where the land used to be dry.', icon: 'lake', category: 'water' },
   { id: 'waterfall', title: 'Waterfall', description: `Let water tumble ${ACH.fallDrop} m down over your works.`, icon: 'waterfall', category: 'water' },
-  { id: 'stoneByStone', title: 'Stone by Stone', description: 'Your first stone lining is laid.', icon: 'stone', category: 'water' },
   { id: 'weirBuilder', title: 'Weir Builder', description: 'Finish a weir across the water.', icon: 'weir', category: 'water' },
   { id: 'gatekeeper', title: 'Gatekeeper', description: 'Open a sluice gate.', icon: 'gate', category: 'water' },
   // The land
@@ -69,6 +68,7 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'threeVillages', title: 'Three Villages', description: 'Three villages share the valley.', icon: 'village', category: 'people' },
   { id: 'goneFishing', title: 'Gone Fishing', description: 'A fish is caught in water that you made.', icon: 'fish', category: 'people' },
   { id: 'goldenYear', title: 'Golden Year', description: `${ACH.harvests} harvests in a single year.`, icon: 'sheaf', category: 'people' },
+  { id: 'stoneByStone', title: 'Stone by Stone', description: 'The villagers line a bank with stone.', icon: 'stone', category: 'people' },
   { id: 'quayside', title: 'Quayside', description: 'Villagers line a quay by their houses.', icon: 'quay', category: 'people' },
   { id: 'cattleCountry', title: 'Cattle Country', description: `A village keeps a herd of ${ACH.herdCows} cows.`, icon: 'cow', category: 'people' },
   { id: 'jetty', title: 'Fishing Jetty', description: 'Villagers build a jetty out over the water.', icon: 'jetty', category: 'people' },

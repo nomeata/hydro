@@ -86,6 +86,8 @@ describe("villagers' own works", () => {
     console.log(`lined by the houses: ${bank}, far away: ${far}, pop ${s.population}, w ${s.wellbeing.toFixed(2)}`);
     expect(bank).toBeGreaterThanOrEqual(5);
     expect(far).toBe(0);
+    // Their first lined bank earns Stone by Stone.
+    expect(sim.achievements.earned.map((e) => e.id)).toContain('stoneByStone');
     // Every lined cell is near water and near the village.
     for (let i = 0; i < w.size; i++) {
       if (!(w.flags[i]! & CellFlag.Lined)) continue;
