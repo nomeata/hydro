@@ -314,6 +314,14 @@ as columns; days older than two years merge into half-season bins, older
 than twenty years into years. The main thread asks for it with
 `{type:'history'}` (`SimClient.history()`) when the history chart is open.
 
+**Achievements** (`src/sim/achievements.ts`, `SimState.achievements`): an
+observer of the Simulation (hooks: `PeopleSystem.onEvent`,
+`Structures.onLined`, the crew's changed cells, plan commands) with a
+start-of-world baseline (RLE bitsets). Snapshots carry
+`achievements: {earned, fresh}` when the set changes (and once after start
+or load, with `fresh` empty); the history message carries the earned list
+for the chart's medals. See docs/ACHIEVEMENTS.md.
+
 ## 7. Code layout
 ```
 src/
