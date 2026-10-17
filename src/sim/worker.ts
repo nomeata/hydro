@@ -242,6 +242,7 @@ function sendSnapshot(): boolean {
       wellbeing: v.wellbeing,
       mood: v.mood ?? 0,
       fishers: sim!.people!.fishersOf(v.id),
+      wood: Math.floor(v.wood ?? 0),
     }));
     if (vs.length) {
       const pop = vs.reduce((n, v) => n + v.population, 0);

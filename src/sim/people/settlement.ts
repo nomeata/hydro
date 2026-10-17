@@ -4,7 +4,7 @@
  * this module never produces anything by itself.
  */
 import type { Rng } from '../../shared/rng';
-import { DAYS_PER_YEAR } from '../constants';
+import { DAYS_PER_SEASON, DAYS_PER_YEAR } from '../constants';
 import type { Jetty } from './works';
 
 export const ECONOMY = {
@@ -32,7 +32,26 @@ export const ECONOMY = {
   starvationDeathRate: 0.3,
   /** Families arrive with this many people (min, max). */
   familySize: [2, 5] as const,
+  /** Logs the woodpile holds at most. */
+  woodMax: 10,
+  /** Logs burnt per day in winter, and in the rest of the year. */
+  woodBurnWinter: 0.6,
+  woodBurn: 0.15,
+  /** Wellbeing bonus of a warm hearth (wood on the pile) in winter. */
+  warmWinter: 0.05,
 };
+
+/** The village herd's day (docs/PEOPLE.md §5): out at pasture with the herder, or home at the fold. */
+export interface HerdState {
+  /** The herd is out at pasture (cows and sheep head for `pasture`), else home at `fold`. */
+  out: boolean;
+  /** Pasture cell of the current or next outing. */
+  pasture: number;
+  /** Where the herd stays by the village. */
+  fold: number;
+  /** Step before which the herder rests between outings. */
+  restUntil: number;
+}
 
 export interface SettlementState {
   id: number;
@@ -61,6 +80,12 @@ export interface SettlementState {
    * (absent in old saves: 0).
    */
   mood?: Mood;
+  /** Logs on the woodpile (M3-δ; absent in old saves: none). Cosmetic, plus a warm winter. */
+  wood?: number;
+  /** Forest edge cells the woodcutters may fell, best first (daily). */
+  chopSites?: number[];
+  /** The herd's day, once the village keeps animals. */
+  herd?: HerdState;
 }
 
 export type Mood = -1 | 0 | 1;
@@ -150,8 +175,14 @@ export class Settlement {
 
     // Wellbeing (never feeds back into production; see PEOPLE.md §4).
     const housing = s.population === 0 ? 1 : Math.min(1, (s.houses * ECONOMY.houseCapacity) / s.population);
-    const target =
-      0.55 * Math.min(1, this.foodSecurity(dayOfYear)) + 0.2 * housing + 0.15 * s.waterAccess + 0.1 * s.safety;
+    // Firewood: burnt over the year, most in winter, when a warm hearth cheers people up a little.
+    const winter = Math.floor(dayOfYear / DAYS_PER_SEASON) === 3;
+    const warm = winter && (s.wood ?? 0) >= 1 ? ECONOMY.warmWinter : 0;
+    if (s.wood !== undefined) s.wood = Math.max(0, s.wood - (winter ? ECONOMY.woodBurnWinter : ECONOMY.woodBurn));
+    const target = Math.min(
+      1,
+      0.55 * Math.min(1, this.foodSecurity(dayOfYear)) + 0.2 * housing + 0.15 * s.waterAccess + 0.1 * s.safety + warm,
+    );
     s.wellbeing += (target - s.wellbeing) / ECONOMY.wellbeingTau;
     s.mood = nextMood(s.mood ?? 0, s.wellbeing);
 

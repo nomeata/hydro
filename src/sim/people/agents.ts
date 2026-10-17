@@ -4,13 +4,17 @@
  */
 import { CarryKind, EntityAnim, EntityKind, type EntityFrame } from '../../shared/protocol';
 import { STEPS_PER_SECOND_1X } from '../constants';
-import type { World } from '../world';
+import { LandUse, type World } from '../world';
 
 export const enum Job {
   Idle = 0,
   Builder = 1,
   Farmer = 2,
   Fisher = 3,
+  /** Fells trees at the forest edge and carries the logs to the woodpile (M3-δ). */
+  Woodcutter = 4,
+  /** Leads the village herd to pasture and back, and brings the milk home (M3-δ). */
+  Herder = 5,
 }
 
 export const enum Task {
@@ -43,6 +47,10 @@ export const enum SiteKind {
   Line = 10,
   /** Build the village jetty (site = shore cell). */
   Jetty = 11,
+  /** Fell a tree: the forest cell `site` (standing at its edge). */
+  Chop = 12,
+  /** Lead the herd to pasture and watch it graze (site = pasture cell). */
+  Herd = 13,
 }
 
 export interface Agent {
@@ -82,12 +90,27 @@ export interface Agent {
 
 /** Walking speed in cells per hydro step (≈ 1.5 cells per real second at 1×). */
 export const WALK_SPEED = 1.5 / STEPS_PER_SECOND_1X;
+/** Walking on a trodden path is a little quicker. */
+export const PATH_SPEED = 1.2;
+/** Footfall added to a cell's traffic by every walker entering it (desire paths, people/desire.ts). */
+export const TRAFFIC_STEP = 4;
+
+/** Something that walks along a path of cells (people and animals). */
+export interface Walker {
+  x: number;
+  y: number;
+  heading: number;
+  path: number[];
+  pathPos: number;
+  vx: number;
+  vy: number;
+}
 
 /**
  * Move an agent along its path for `steps` hydro steps. Returns true when it
  * has arrived at the end of the path.
  */
-export function walk(world: World, a: Agent, steps: number, speed = 1): boolean {
+export function walk(world: World, a: Walker, steps: number, speed = 1): boolean {
   const W = world.width;
   let budget = steps * WALK_SPEED * speed;
   const x0 = a.x;
@@ -99,14 +122,19 @@ export function walk(world: World, a: Agent, steps: number, speed = 1): boolean 
     const dx = tx - a.x;
     const dy = ty - a.y;
     const d = Math.hypot(dx, dy);
-    // Wading slows people down.
-    const slow = world.water[c]! > 0.05 ? 0.5 : 1;
+    // Wading slows people down; trodden paths speed them up.
+    const slow = world.water[c]! > 0.05 ? 0.5 : world.landuse[c] === LandUse.Path ? PATH_SPEED : 1;
     const can = budget * slow;
     if (d <= can) {
       a.x = tx;
       a.y = ty;
       budget -= d / slow;
       a.pathPos++;
+      // Footfall: well-used ways become desire paths.
+      if (d > 0) {
+        const t = world.traffic[c]!;
+        world.traffic[c] = t > 255 - TRAFFIC_STEP ? 255 : t + TRAFFIC_STEP;
+      }
     } else {
       a.x += (dx / d) * can;
       a.y += (dy / d) * can;
@@ -121,14 +149,39 @@ export function walk(world: World, a: Agent, steps: number, speed = 1): boolean 
   return a.pathPos >= a.path.length;
 }
 
-/** Pack all agents into an entity frame (velocities in cells per real second at 1×). */
-export function packEntities(agents: readonly Agent[], speed: number): EntityFrame {
-  const n = agents.length;
+/** A village animal (M3-δ): cows and sheep go to pasture with the herder, pigs and chicks stay by the houses. */
+export interface Animal extends Walker {
+  id: number;
+  settlement: number;
+  /** EntityKind: Cow, Sheep, Pig or Chick. */
+  kind: EntityKind;
+  task: Task;
+  timer: number;
+  anim: EntityAnim;
+}
+
+/** Pack all agents and animals into an entity frame (velocities in cells per real second at 1×). */
+export function packEntities(agents: readonly Agent[], speed: number, animals: readonly Animal[] = []): EntityFrame {
+  const na = agents.length;
+  const n = na + animals.length;
   const id = new Uint16Array(n);
   const info = new Uint8Array(n * 4);
   const pos = new Float32Array(n * 5);
   const k = STEPS_PER_SECOND_1X * speed;
-  for (let i = 0; i < n; i++) {
+  for (let i = na; i < n; i++) {
+    const a = animals[i - na]!;
+    id[i] = a.id;
+    info[i * 4] = a.kind;
+    info[i * 4 + 1] = a.id & 3;
+    info[i * 4 + 2] = a.anim;
+    info[i * 4 + 3] = CarryKind.None;
+    pos[i * 5] = a.x;
+    pos[i * 5 + 1] = a.y;
+    pos[i * 5 + 2] = a.vx * k;
+    pos[i * 5 + 3] = a.vy * k;
+    pos[i * 5 + 4] = a.heading;
+  }
+  for (let i = 0; i < na; i++) {
     const a = agents[i]!;
     id[i] = a.id;
     info[i * 4] = a.child ? EntityKind.Child : EntityKind.Person;
