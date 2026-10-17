@@ -3,7 +3,7 @@
  *   npx tsx tools/shot-intro.ts [--url http://localhost:4233/] [--phone] [--pages 0,1,2] [--times 3,6,9] [--full]
  *     [--cam '{"pitch":0.5}']   (override the scene camera, for trying angles)
  * Writes out/intro-<page>-<t>[-phone].png (the dialog card, or the whole page with --full).
- * Times are seconds after the panel's scene went live. Assumes a preview
+ * Times are seconds of scene time (page clock) since the panel's scene started. Assumes a preview
  * server is running (`npx vite preview --port 4233`).
  */
 import { chromium, devices } from '@playwright/test';
@@ -30,7 +30,7 @@ const browser = await chromium.launch({
 const ctx = await browser.newContext(phone ? devices['Pixel 7'] : { viewport: { width: 1280, height: 800 } });
 const page = await ctx.newPage();
 page.on('console', (m) => {
-  if (m.type() === 'error' || m.type() === 'warning' || m.text().startsWith('[sim]')) console.log(`[${m.type()}] ${m.text()}`);
+  if (m.type() === 'error' || m.type() === 'warning' || m.text().startsWith('[sim]') || m.text().startsWith('[intro]')) console.log(`[${m.type()}] ${m.text()}`);
 });
 page.on('pageerror', (e) => console.log(`[pageerror] ${e}`));
 await page.goto(`${url}?test=1&seed=1&size=64`);
@@ -42,10 +42,16 @@ for (const p of pages) {
   await page.waitForSelector('.intro-art.live-on', { timeout: 60_000 });
   console.log(`page ${p} live after ${Date.now() - t0} ms`);
   if (cam) await page.evaluate((c) => (window as any).__hydro.intro.scenes.renderer.camera.setState(JSON.parse(c), true), cam);
-  const live = Date.now();
   for (const t of times) {
-    const wait = live + t * 1000 - Date.now();
-    if (wait > 0) await page.waitForTimeout(wait);
+    // Scene time by the page's clock (screenshots under SwiftShader take seconds).
+    await page.waitForFunction(
+      (tt) => {
+        const sc = (window as any).__hydro.intro.scenes;
+        return sc && performance.now() - sc.runStart >= tt * 1000;
+      },
+      t,
+      { polling: 50, timeout: 60_000 },
+    );
     const path = `out/intro-${p}-${t}${phone ? '-phone' : ''}.png`;
     if (full) await page.screenshot({ path });
     else await page.locator('.intro-card').screenshot({ path });

@@ -35,5 +35,5 @@ export const SCENE_LAYOUT = {
   hill: { x: 53, y: 21 },
   hill2: { x: 16, y: 12 },
   /** The rain front of the 'water' scene: start, velocity (cells per step), size, lifetime (steps). */
-  front: { x: -6, y: 20, vx: 0.13, vy: 0.05, rx: 24, ry: 13, life: 700 },
+  front: { x: 14, y: 116, vx: 0.11, vy: -0.11, rx: 20, ry: 22, life: 760 },
 };

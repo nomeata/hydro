@@ -111,7 +111,8 @@ export class IntroScenes {
     container.append(this.canvas, this.overlay);
 
     const coarse = matchMedia('(pointer: coarse)').matches;
-    this.client = new SimClient({ scene: first, speed: SCRIPTS[first].speed, duty: coarse ? 0.45 : 1 });
+    // Paused until the renderer is up (then `restart` sets the scene's speed).
+    this.client = new SimClient({ scene: first, speed: 0, duty: coarse ? 0.45 : 1 });
     this.wantRun = this.client.sceneRun;
     this.client.ready.then(
       (data) => {
@@ -127,6 +128,8 @@ export class IntroScenes {
         this.layers = new WorldLayers(this.renderer, data, data.info.seed, null);
         this.renderer.setSun(0.56, 1.2);
         this.client.onSnapshot((s) => this.onSnapshot(s));
+        // The scene ran on while the renderer started up: begin it afresh.
+        this.restart();
         window.addEventListener('resize', this.onResize);
         this.raf = requestAnimationFrame(this.frame);
       },
