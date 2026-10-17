@@ -84,6 +84,17 @@ Player feedback: more direct progress hits; keep it all positive
   against a start-of-world baseline, saved; toasts, Achievements card in
   the menu, medals on the history chart
 
+## M3¾ — Player agency ☐
+See docs/GAMEPLAY.md §7 (prioritised list).
+- ☑ Design note: tools vs villager works, villager-operated gates, help,
+  agency diagnosis, unlock progression, climates (docs/GAMEPLAY.md)
+- River seasons, freshet and dry/wet years; live rain follows the
+  generation climate
+- Agency harness (unaided vs scripted plan), terrace start, flood memory
+  that forgets behind a dike, founding judged at the end of summer
+- Unlocks without the Lining tool (weir 15, gate 30, wheel 50);
+  villager-operated gates; hints that say why, unlock cards
+
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
   above), sluice gates (hold a reservoir closed, drain to the sill open;
