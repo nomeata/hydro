@@ -81,6 +81,9 @@ export interface WorldInfo {
  */
 export const LOOK_CHANNELS = 4;
 
+/** Side length (cells) of the blocks fish stocks are tracked in. */
+export const FISH_BLOCK = 8;
+
 /** Velocity packed as two signed bytes per cell; 127 ≙ VEL_SCALE m/s. */
 export const VEL_SCALE = 4;
 
@@ -191,6 +194,12 @@ export interface Snapshot {
   buildings?: BuildingInfo[];
   /** Land use and crop stage per cell (2 bytes each: LandUse, crop 0..255), when changed. */
   fields?: Uint8Array;
+  /**
+   * Fish per block of FISH_BLOCK² cells (row-major, ceil(width/FISH_BLOCK)
+   * wide): 0 = no fish habitat, 1..255 = habitat, from empty to fully
+   * stocked. Sent about daily.
+   */
+  fish?: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------

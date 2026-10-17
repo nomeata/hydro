@@ -12,6 +12,7 @@ import { attachCameraInput } from './render/camera';
 import { VegetationLayer } from './render/objects/vegetation';
 import { CrowdLayer } from './render/crowd/crowd';
 import { FakeCrowd } from './render/crowd/fakeCrowd';
+import { FishJumps } from './render/fishJumps';
 import type { EntityFrame } from './shared/protocol';
 import { Hud } from './ui/hud';
 import { ToolPalette } from './ui/tools';
@@ -68,9 +69,12 @@ async function main(): Promise<void> {
   const crowd = new CrowdLayer(renderer.scene, renderer.heights, { camera: renderer.camera.camera });
   // Created on the first snapshot, once water depths are known.
   let fakeCrowd: FakeCrowd | null = null;
+  const fishJumps = new FishJumps(renderer.scene, renderer.heights);
   renderer.addFrameListener((dt, now) => {
     fakeCrowd?.advance(dt);
     crowd.update(dt, now);
+    const cam = renderer.camera.getCurrentState();
+    fishJumps.update(dt, cam.x, cam.y, cam.viewHeight);
   });
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
@@ -101,6 +105,7 @@ async function main(): Promise<void> {
     if (s.plan) tools.planUpdated();
     if (s.terrain) vegetation.invalidate(0, s.terrain.y0, data.info.width, s.terrain.y1);
     if (s.fields) vegetation.setFields(s.fields);
+    if (s.fish) fishJumps.setFish(s.fish);
     if (s.time.season !== season) {
       season = s.time.season;
       vegetation.setSeason(season);

@@ -4,7 +4,7 @@
  * player's plans, and the agents doing all of it. Land grows crops, agents
  * collect them, the settlement only decides (see §2 of the design).
  */
-import { CarryKind, EntityAnim, type SimTime } from '../../shared/protocol';
+import { CarryKind, EntityAnim, FISH_BLOCK, type SimTime } from '../../shared/protocol';
 import { Rng } from '../../shared/rng';
 import { DAYS_PER_SEASON, STEPS_PER_DAY } from '../constants';
 import { applyEarthwork } from '../plans/plans';
@@ -28,8 +28,7 @@ const YIELD = 34;
 const DIG_PER_VISIT = 0.5;
 /** House construction progress per builder visit. */
 const BUILD_PER_VISIT = 0.12;
-/** Fish live per block of FISH_BLOCK² cells. */
-export const FISH_BLOCK = 8;
+export { FISH_BLOCK };
 /** Fish stock (person-days of food) per calm, deep water cell at capacity. */
 const FISH_PER_CELL = 8;
 /** Logistic growth rate of fish per day. */
@@ -400,6 +399,16 @@ export class PeopleSystem {
   }
 
   /** Fish need calm (< 0.4 m/s), not too shallow (> 0.5 m) water. */
+  /** Pack fish stocks for the renderer (see Snapshot.fish). */
+  packFish(): Uint8Array {
+    const out = new Uint8Array(this.fish.length);
+    for (let b = 0; b < out.length; b++) {
+      const K = this.fishCap[b]!;
+      out[b] = K > 0 ? 1 + Math.round(254 * Math.min(1, this.fish[b]! / K)) : 0;
+    }
+    return out;
+  }
+
   private updateFishCapacity(): void {
     const w = this.world;
     const { width: W, water, velX, velY } = w;
