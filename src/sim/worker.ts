@@ -61,6 +61,8 @@ function init(seed: number, size: number): void {
   fresh.run(SPINUP_STEPS);
   fresh.step = 0;
   fresh.resetHistory();
+  // The world as the player first sees it is the baseline for the achievements.
+  fresh.achievements.baseline(fresh);
   const t2 = performance.now();
   log('info', `worldgen ${(t1 - t0).toFixed(0)} ms, spin-up ${(t2 - t1).toFixed(0)} ms`);
   start(fresh, { startX: gen.startX, startY: gen.startY, riverScale: gen.riverScale });
@@ -292,6 +294,8 @@ function sendSnapshot(): boolean {
     sim.planDirty = false;
     transfer.push(snap.plan.buffer);
   }
+  // Achievements (not in the welcome panels' staged scenes).
+  if (sceneRun === null && sim.achievements.dirty) snap.achievements = sim.achievements.take();
   post({ type: 'snapshot', ...snap }, transfer);
   return true;
 }
@@ -330,7 +334,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         if (sim) post({ type: 'hash', hash: sim.stateHash() });
         break;
       case 'history':
-        if (sim) post({ type: 'history', history: sim.history.data() });
+        if (sim) post({ type: 'history', history: { ...sim.history.data(), achievements: sim.achievements.earned.map((e) => ({ ...e })) } });
         break;
       case 'load':
         if (msg.speed !== undefined) speed = msg.speed;

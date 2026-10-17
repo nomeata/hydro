@@ -3,11 +3,14 @@
  * stacked plots share the time axis (villagers on a log scale, prosperity
  * in %), over bands coloured by season; a weather strip below shows rain,
  * dry spells and floods; stars along the top mark the tool-unlock
- * milestones (filled once reached, outlined for the ones still ahead).
+ * milestones (filled once reached, outlined for the ones still ahead), and
+ * little medals between prosperity and weather mark the achievements.
  */
 import type { HistoryData, HistorySample } from '../shared/protocol';
 import { toolName, unlockMilestones } from '../shared/progress';
 import { STAR_PATH } from './icons';
+import { achievementInfo } from '../shared/achievements';
+import { CATEGORY_COLORS } from './achievementIcons';
 
 const DAYS_PER_SEASON = 12;
 const DAYS_PER_YEAR = 48;
@@ -142,7 +145,9 @@ export function buildChart(data: HistoryData, width: number): Chart {
   const prosTop = popBot + 20;
   const prosH = Math.round(popH * 0.6);
   const prosBot = prosTop + prosH;
-  const wxTop = prosBot + 4;
+  const medalTop = prosBot + 3;
+  const medalH = 20;
+  const wxTop = medalTop + medalH + 1;
   const wxH = 26;
   const wxBot = wxTop + wxH;
   const axisH = 30;
@@ -332,6 +337,27 @@ export function buildChart(data: HistoryData, width: number): Chart {
       const info = `${m.tools.map(toolName).join(' & ')} — unlocks at ${m.population} villagers`;
       parts.push(star(x, starY, starR - 1, false, `class="star ahead" data-info="${esc(info)}"`));
     });
+  }
+
+  // Achievement medals along the timeline; those close together share one (with a count).
+  const earned = [...(data.achievements ?? [])].sort((a, b) => a.day - b.day);
+  const groups: { x: number; day: number; ids: string[] }[] = [];
+  for (const e of earned) {
+    const x = Math.max(x0 + 8, Math.min(x1 - 8, dayToX(e.day + 0.5)));
+    const g = groups[groups.length - 1];
+    if (g && x - g.x < 17) g.ids.push(e.id);
+    else groups.push({ x, day: e.day, ids: [e.id] });
+  }
+  const my = medalTop + medalH / 2;
+  for (const g of groups) {
+    const names = g.ids.map((id) => achievementInfo(id)?.title ?? id);
+    const first = achievementInfo(g.ids[0]!);
+    const color = first ? CATEGORY_COLORS[first.category] : COLORS.star;
+    const info = `${names.join(', ')} — ${dayLabel(g.day)}`;
+    const rib = `<path d="M${f1(g.x - 4)} ${f1(my + 2)}l-2 7 3-1.5 2 2.5 1-7zM${f1(g.x + 4)} ${f1(my + 2)}l2 7-3-1.5-2 2.5-1-7z" fill="${color}" stroke="#fff" stroke-width="0.8"/>`;
+    const disc = `<circle cx="${f1(g.x)}" cy="${f1(my - 1)}" r="7" fill="#fff4d0" stroke="${color}" stroke-width="2.6"/><circle cx="${f1(g.x)}" cy="${f1(my - 1)}" r="3" fill="${COLORS.star}"/>`;
+    const count = g.ids.length > 1 ? `<text x="${f1(g.x + 7)}" y="${f1(my - 5)}" font-size="9" font-weight="700" fill="${COLORS.ink}" pointer-events="none">${g.ids.length}</text>` : '';
+    parts.push(`<g class="medal-mark" data-info="${esc(info)}"><rect x="${f1(g.x - 9)}" y="${medalTop}" width="18" height="${medalH}" fill="transparent"/>${rib}${disc}</g>${count}`);
   }
 
   const defs = `<defs><pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="${COLORS.dry}" fill-opacity="0.16"/><line x1="0" y1="0" x2="0" y2="7" stroke="${COLORS.dry}" stroke-opacity="0.5" stroke-width="2"/></pattern></defs>`;

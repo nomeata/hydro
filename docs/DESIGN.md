@@ -152,8 +152,14 @@ The player asked for "more direct endorphin hits". Decisions:
   milestones (filled with the day they were reached, outlined for the ones
   ahead). The sim records one sample per game day and saves it with the
   world (thinned for long games).
-- **Achievements, per world** (planned next): little goals like "first
-  harvest", "a village survives a flood", recorded on the world's history.
+- **Achievements, per world**: 25 little goals (docs/ACHIEVEMENTS.md),
+  from "First Spade" and "Lake Maker" to "Weathered the Storm", none
+  secret, all reachable in normal play. Earning one slides in a toast with
+  a sparkle (tap it for the list); the menu's Achievements card lists all,
+  earned ones with their day, the rest dimmed with what it takes; medals
+  mark them on the history chart. Water and land ones only count near the
+  player's own works, compared with a snapshot of the world at its start.
+  Loading a save shows no toasts.
 
 ## 5. Power (later milestones)
 - Purely hydro-powered society. Power = efficiency × ρ g × head × flow, with
