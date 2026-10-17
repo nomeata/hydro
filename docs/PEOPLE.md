@@ -58,8 +58,9 @@ land supports. One number carries both layers:
   (≈ 0.17–0.44; rock and sand carry little). Bare ground is colonised
   quickly in the growing season (12 % of the gap per day); drought browns
   and thins it (5 %/day of the excess), never quite to bare earth.
-- **Forest** above it, up to `cap` = grass + 0.62·suitability·patch:
-  moist (saturation 0.18 → 0.45), not steep, not waterlogged soil, inside
+- **Forest** above it, up to `cap` = grass + 0.7·suitability·patch:
+  moist (saturation 0.18 → 0.45), gentle slopes rather than open flats or
+  steep ones, not waterlogged soil, inside
   the world's forest patches (the same low-frequency noise worldgen used
   for the initial forests, so stands keep to their places). Forest grows
   only where a forested cell (≥ 0.55) is at hand, the cell itself or a
@@ -77,8 +78,11 @@ land supports. One number carries both layers:
   (`PARAMS.vegetationInfiltration`), erosion pickup ×(1 − 0.6·v)
   (`vegetationHold`). Grazing and woodcutting lower it, so overgrazed or
   cut land erodes more.
-- **Stationary:** a generated 128² world keeps its forest cover within a
-  few percent over 20 years (`tests/sim/life.test.ts`;
+- **Stationary:** on seed 3 (128², full simulation) forest cover goes
+  from 13.5 % to about 11.5 % in the first dry year, then fills the patches
+  the land supports and levels off around 16 % after ten years (more with
+  wetter soils); the test runs 20 years of the daily step on spun-up land
+  (`tests/sim/life.test.ts`, `HYDRO_LONG=1` for the full simulation;
   `npx tsx tools/vegetation-run.ts --seed 3 --years 20` prints yearly cover
   and writes maps). Fire is not modelled.
 
