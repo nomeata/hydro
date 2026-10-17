@@ -36,6 +36,10 @@ export class Weather {
   readonly tileElevation: Float32Array;
   /** Spawn random fronts (off in staged scenes, which place their own with `addFront`). */
   autoFronts = true;
+  /** Per-tile rain factor from the generation climate (wetness, rain shadow; 1 = nominal). */
+  readonly rainMap: Float32Array;
+  /** Multiplier on the front frequency (the year's wetness, climate.ts). */
+  frontFactor = 1;
 
   constructor(
     private readonly world: World,
@@ -45,6 +49,7 @@ export class Weather {
     this.th = Math.ceil(world.height / TILE);
     this.tileRain = new Float32Array(this.tw * this.th);
     this.tileElevation = new Float32Array(this.tw * this.th);
+    this.rainMap = new Float32Array(this.tw * this.th).fill(1);
     this.state = { windDir: rng.range(0, Math.PI * 2), windSpeed: 1, fronts: [] };
     this.updateElevation();
   }
@@ -75,7 +80,7 @@ export class Weather {
     s.windSpeed = 0.8 + 0.4 * Math.sin(time.yearFrac * Math.PI * 4);
 
     // Spawn new fronts upwind.
-    const rate = PARAMS.frontsPerDay[time.season]!;
+    const rate = PARAMS.frontsPerDay[time.season]! * this.frontFactor;
     const pSpawn = (rate * steps) / STEPS_PER_DAY;
     if (rng.next() < pSpawn && this.autoFronts) {
       const ext = Math.max(W, H);
@@ -126,7 +131,7 @@ export class Weather {
   }
 
   private computeRainField(): void {
-    const { tw, th, tileRain, tileElevation } = this;
+    const { tw, th, tileRain, tileElevation, rainMap } = this;
     tileRain.fill(0);
     const base = PARAMS.rainPerDay / STEPS_PER_DAY;
     for (const f of this.state.fronts) {
@@ -144,7 +149,7 @@ export class Weather {
           const t = ty * tw + tx;
           const shape = (1 - d2) * (1 - d2);
           const oro = 1 + (PARAMS.orographicPer100m * Math.max(0, tileElevation[t]!)) / 100;
-          tileRain[t]! += base * f.intensity * shape * oro;
+          tileRain[t]! += base * f.intensity * shape * oro * rainMap[t]!;
         }
       }
     }

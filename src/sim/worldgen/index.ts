@@ -8,7 +8,7 @@
  *  5. soils, groundwater, fertility, vegetation — soils.ts
  *  6. a starting focus point near a river on flat fertile land
  */
-import { World, CellFlag } from '../world';
+import { World, CellFlag, SOIL_PROPS } from '../world';
 import { TerrainGen } from './terrain';
 import { buildMacro, sampleMacro, type MacroResult } from './macro';
 import { carveRivers, type CarveResult } from './carve';
@@ -35,6 +35,13 @@ export interface GenResult {
   startY: number;
   /** The discharge multiplier used (see GenOptions.riverScale). */
   riverScale: number;
+  /**
+   * The generation climate's rain factor per cell (wetness, orography, rain
+   * shadow; ~1 nominal): soils were made with it, the live weather follows it.
+   */
+  rain: Float32Array;
+  /** How the start was chosen (terrace or meadow fallback). */
+  start: StartInfo;
 }
 
 /** Intermediate products, exposed for previews and tests. */
@@ -136,12 +143,167 @@ export function generateWorldDebug(opts: GenOptions): { result: GenResult; debug
   lap('start');
 
   return {
-    result: { world, startX: start.x, startY: start.y, riverScale: macro.riverScale },
+    result: { world, startX: start.x, startY: start.y, riverScale: macro.riverScale, rain, start },
     debug: { gen, macro, base, carve, soils, inflowCells, timings },
   };
 }
 
-function chooseStart(world: World, slope: Float32Array, carve: CarveResult): { x: number; y: number } {
+/**
+ * Terrace start (docs/GAMEPLAY.md §4.3 P2): flat, dry land 2–6 m above the
+ * nearest river and 8–20 cells from it, with a fertile, flood-prone
+ * floodplain between it and the water. The family settles with dry feet,
+ * farms the floodplain and the bank, and the player's first canal or dike
+ * has an obvious point. Falls back to the river meadow (`meadowStart`)
+ * when no terrace qualifies.
+ */
+export const TERRACE = {
+  minDist: 8,
+  maxDist: 20,
+  /** Height above the nearest water surface: allowed, and preferred (m). */
+  minHeight: 1.5,
+  maxHeight: 8,
+  goodHeight: [2, 6] as readonly number[],
+  /** Floodplain cells: at most this high above the water, at least this fertile, within this radius. */
+  plainHeight: 1.5,
+  plainFertility: 0.6,
+  plainRadius: 16,
+  /** Floodplain cells needed, and for a full score. */
+  plainMin: 60,
+  plainFull: 120,
+};
+
+export interface StartInfo {
+  x: number;
+  y: number;
+  terrace: boolean;
+  /** Height above the nearest water (m), distance to it (cells), floodplain cells. */
+  height: number;
+  dist: number;
+  plain: number;
+}
+
+/** Distance (cells) to the nearest water and that water's surface height, per cell. */
+function nearestWater(world: World, z: Float32Array): { dist: Float32Array; surf: Float32Array } {
+  const W = world.width;
+  const H = world.height;
+  const n = W * H;
+  const d = new Float32Array(n);
+  const near = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const wet = world.water[i]! > 0.05;
+    d[i] = wet ? 0 : 1e9;
+    near[i] = wet ? i : -1;
+  }
+  const relax = (i: number, j: number, c: number): void => {
+    if (d[j]! + c < d[i]!) {
+      d[i] = d[j]! + c;
+      near[i] = near[j]!;
+    }
+  };
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (x > 0) relax(i, i - 1, 1);
+      if (y > 0) {
+        relax(i, i - W, 1);
+        if (x > 0) relax(i, i - W - 1, 1.414);
+        if (x < W - 1) relax(i, i - W + 1, 1.414);
+      }
+    }
+  for (let y = H - 1; y >= 0; y--)
+    for (let x = W - 1; x >= 0; x--) {
+      const i = y * W + x;
+      if (x < W - 1) relax(i, i + 1, 1);
+      if (y < H - 1) {
+        relax(i, i + W, 1);
+        if (x < W - 1) relax(i, i + W + 1, 1.414);
+        if (x > 0) relax(i, i + W - 1, 1.414);
+      }
+    }
+  const surf = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const j = near[i]!;
+    surf[i] = j >= 0 ? z[j]! + world.water[j]! : -Infinity;
+  }
+  return { dist: d, surf };
+}
+
+export function chooseStart(world: World, slope: Float32Array, carve: CarveResult): StartInfo {
+  const W = world.width;
+  const H = world.height;
+  const n = W * H;
+  const z = new Float32Array(n);
+  for (let i = 0; i < n; i++) z[i] = world.terrain(i);
+  const { dist, surf } = nearestWater(world, z);
+  const moist = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const cap = world.soil[i]! * SOIL_PROPS[world.soilType[i]!]!.porosity;
+    moist[i] = cap > 0 ? world.ground[i]! / cap : 0;
+  }
+  const T = TERRACE;
+  const margin = Math.max(16, Math.floor(W / 8));
+  const cx = W / 2;
+  const cy = H / 2;
+  let best = -Infinity;
+  let pick: StartInfo | null = null;
+  const R = T.plainRadius;
+  for (let y = margin; y < H - margin; y += 2)
+    for (let x = margin; x < W - margin; x += 2) {
+      const i = y * W + x;
+      if (world.water[i]! > 0.01) continue;
+      const d = dist[i]!;
+      if (d < T.minDist || d > T.maxDist) continue;
+      // The nearest water is the river (not a pond or a bog).
+      if (carve.riverDist[i]! > d + 6) continue;
+      const h = z[i]! - surf[i]!;
+      if (h < T.minHeight || h > T.maxHeight) continue;
+      let s = 0;
+      let m = 0;
+      let k = 0;
+      let wet = 0;
+      for (let dy = -4; dy <= 4; dy += 2)
+        for (let dx = -4; dx <= 4; dx += 2) {
+          const j = (y + dy) * W + x + dx;
+          s += slope[j]!;
+          m += moist[j]!;
+          if (world.water[j]! > 0.01) wet++;
+          k++;
+        }
+      s /= k;
+      m /= k;
+      if (wet > 0 || s > 0.12) continue;
+      // The floodplain between the terrace and the water.
+      let plain = 0;
+      let fert = 0;
+      for (let yy = Math.max(0, y - R); yy <= Math.min(H - 1, y + R); yy++)
+        for (let xx = Math.max(0, x - R); xx <= Math.min(W - 1, x + R); xx++) {
+          if ((xx - x) ** 2 + (yy - y) ** 2 > R * R) continue;
+          const j = yy * W + xx;
+          if (world.water[j]! > 0.01 || dist[j]! >= d || z[j]! - surf[j]! > T.plainHeight) continue;
+          const f = world.fertility[j]!;
+          if (f < T.plainFertility) continue;
+          plain++;
+          fert += f;
+        }
+      if (plain < T.plainMin) continue;
+      const flat = Math.max(0, 1 - s / 0.12);
+      const plainScore = Math.min(1, plain / T.plainFull) * Math.min(1, fert / plain);
+      const good = h >= T.goodHeight[0]! && h <= T.goodHeight[1]! ? 1 : 0;
+      const centre = Math.hypot(x - cx, y - cy) / (0.5 * W);
+      const score = 1.0 * flat + 0.8 * plainScore - 1.5 * m + 0.5 * good - 0.5 * centre * centre;
+      if (score > best) {
+        best = score;
+        pick = { x, y, terrace: true, height: h, dist: d, plain };
+      }
+    }
+  if (pick) return pick;
+  const m = meadowStart(world, slope, carve);
+  const i = m.y * W + m.x;
+  return { ...m, terrace: false, height: z[i]! - surf[i]!, dist: dist[i]!, plain: 0 };
+}
+
+/** The old start: the best fertile meadow near the biggest river. */
+function meadowStart(world: World, slope: Float32Array, carve: CarveResult): { x: number; y: number } {
   const W = world.width;
   const H = world.height;
   const margin = Math.max(16, Math.floor(W / 8));

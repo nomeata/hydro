@@ -114,12 +114,19 @@ export const FOUNDING = {
   crowdedPopulation: 18,
   /** Minimum distance (cells) to every other settlement. */
   minSpacing: 26,
-  /** Block attractiveness (0..~1.15) needed. */
-  minScore: 0.55,
+  /**
+   * Block attractiveness (0..~1.15) needed, both now and at the end of last
+   * summer (migrants judge land at its worst; docs/GAMEPLAY.md §4.3 P6).
+   */
+  minScore: 0.6,
+  /** Day of the year of the end-of-summer survey. */
+  summerDay: 22,
   /** Food (person-days) the founders bring. */
   food: 300,
 };
 export const ATTRACT_BLOCK = 8;
+/** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
+export const FLOOD_FORGET = 120;
 
 export interface Building {
   id: number;
@@ -170,6 +177,8 @@ export interface PeopleState {
   animals?: Animal[];
   /** No animals are kept (staged welcome scenes draw their own). */
   noAnimals?: boolean;
+  /** Block attractiveness at the end of last summer (absent before the first, and in older saves). */
+  summerSurvey?: number[];
 }
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
@@ -221,6 +230,8 @@ export class PeopleSystem {
   floods = { cells: 0, ruined: 0 };
   /** Block attractiveness from the latest survey (debugging/tests; recomputed before use). */
   attractiveness: Float32Array | null = null;
+  /** Block attractiveness at the end of last summer (FOUNDING.summerDay), or null before the first. */
+  summerSurvey: Float32Array | null = null;
   /** Quay cells (lined lake fronts by the houses), derived daily; rendering only. */
   readonly quay: Uint8Array;
   /** Set when `quay` changed, and when a jetty changed (for snapshots). */
@@ -375,7 +386,8 @@ export class PeopleSystem {
 
   private found(): void {
     this.founded = true;
-    const site = this.bestSite(this.startX, this.startY, 30);
+    // The start point is chosen with care (worldgen chooseStart: a dry terrace); stay close.
+    const site = this.bestSite(this.startX, this.startY, 4);
     if (site < 0) return;
     // The founders bring enough food to last until the first harvest.
     this.foundAt(site, 400, 4, false);
@@ -525,7 +537,7 @@ export class PeopleSystem {
 
   private daily(time: SimTime, host: PeopleHost): void {
     this.updateMoisture();
-    this.updateFloodMemory();
+    this.updateFloodMemory(time);
     for (const [site, until] of this.blocked) if (until <= time.day) this.blocked.delete(site);
     const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
     this.growCrops(time, host);
@@ -545,6 +557,8 @@ export class PeopleSystem {
       this.manageFields(s);
     }
     this.peakPopulation = Math.max(this.peakPopulation, this.population);
+    // Migrants remember how the land looked at the end of summer.
+    if (doy === FOUNDING.summerDay) this.summerSurvey = this.surveyLand();
     if (time.day % FOUNDING.everyDays === 0) this.considerFounding(time);
     this.updateQuays();
   }
@@ -768,7 +782,10 @@ export class PeopleSystem {
 
   private considerFounding(time: SimTime): void {
     if (!this.wantsNewVillage(time.day)) return;
+    const summer = this.summerSurvey;
+    if (!summer) return;
     const a = this.surveyLand();
+    for (let b = 0; b < a.length; b++) a[b] = Math.min(a[b]!, summer[b] ?? 0);
     this.attractiveness = a;
     const B = ATTRACT_BLOCK;
     const bw = Math.ceil(this.world.width / B);
@@ -877,10 +894,21 @@ export class PeopleSystem {
     }
   }
 
-  /** Memories of floods fade over about five years. */
-  private updateFloodMemory(): void {
+  /**
+   * Memories of floods fade over about four years, and fast once the cause
+   * is gone: on the last day of spring, land that stayed dry all spring
+   * (no flood since its first day) forgets FLOOD_FORGET at once. So one dry
+   * spring behind a new dike frees the land for the next year.
+   */
+  private updateFloodMemory(time: SimTime): void {
     const w = this.world;
-    for (let i = 0; i < w.size; i++) if (w.floodMemory[i]! > 0 && w.water[i]! <= 0.3) w.floodMemory[i]!--;
+    const m = w.floodMemory;
+    for (let i = 0; i < w.size; i++) if (m[i]! > 0 && w.water[i]! <= 0.3) m[i]!--;
+    if (time.season === 0 && time.dayOfSeason === DAYS_PER_SEASON - 1) {
+      // Flooded this spring: set to 255 and decremented at most once a day since.
+      const wetThisSpring = 255 - DAYS_PER_SEASON;
+      for (let i = 0; i < w.size; i++) if (m[i]! > 0 && m[i]! <= wetThisSpring) m[i] = Math.max(0, m[i]! - FLOOD_FORGET);
+    }
   }
 
   /** Floods are noticed as they happen: houses in deep water are ruined, flooded land remembered. */
@@ -1853,6 +1881,7 @@ export class PeopleSystem {
       floods: this.floods,
       animals: this.herds.animals,
       noAnimals: this.noAnimals,
+      summerSurvey: this.summerSurvey ? Array.from(this.summerSurvey, (v) => Math.round(v * 1000) / 1000) : undefined,
     });
   }
 
@@ -1877,6 +1906,7 @@ export class PeopleSystem {
     this.floods = c.floods ?? { cells: 0, ruined: 0 };
     this.herds.animals = c.animals ?? [];
     this.noAnimals = c.noAnimals ?? false;
+    this.summerSurvey = c.summerSurvey ? Float32Array.from(c.summerSurvey) : null;
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.
     if (c.fishCap && c.fishCap.length === this.fishCap.length) this.fishCap.set(c.fishCap);
