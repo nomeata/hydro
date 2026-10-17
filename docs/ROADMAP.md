@@ -62,6 +62,10 @@ See docs/PEOPLE.md (phases §10).
 - M3-δ Herders, woodcutters, desire paths, vegetation dynamics (old M2)
 - ☑ Welcome panels illustrated by live scenes from the real engine
   (staged scene world, scripted timelines, SVG fallback)
+- ☑ Hidden economy made visible (PEOPLE.md §7): crop stress on fields
+  (dry / waterlogged), per-village mood with chimney smoke, laundry,
+  flowers and children playing; listless villagers by the store in hard
+  times; per-village store with sacks, hay and a fish-drying rack
 
 ## M3½ — Endorphins ◐
 Player feedback: more direct progress hits; keep it all positive
