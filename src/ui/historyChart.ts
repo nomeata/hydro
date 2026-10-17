@@ -228,7 +228,7 @@ export function buildChart(data: HistoryData, width: number): Chart {
   for (const s of samples) {
     if (s.r < rainy) continue;
     const x = dayToX(s.d + s.n / 2);
-    const r = 0.8 + 3.6 * Math.sqrt(s.r / maxR);
+    const r = 1 + 4 * Math.sqrt(s.r / maxR);
     if (x - lastX < (r + lastR) * 0.9) {
       continue;
     }
