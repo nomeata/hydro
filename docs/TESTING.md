@@ -26,6 +26,10 @@ Fast, exact, run on every change.
   tools/longrun.ts --seed 3 --years 20 --snap-every 5` (writes
   `out/longrun/`); look at the images when tuning.
 - **Fuzzing:** random command sequences never produce NaN or negatives.
+- **Welcome scenes** (`tests/sim/scenes.test.ts`): the scene world is
+  deterministic and fully known, clones run exactly like the original, the
+  river runs from inflow to outlet, the scripted trench fills the hollow,
+  and the staged village has its houses, fields, people and fishers.
 
 ## 2. Scenario tests (vitest, Node) — `tests/scenarios/*.test.ts`
 Gameplay-level checks run against the real sim with small worlds (64–128²).
@@ -65,6 +69,13 @@ time of day, and disabled random visual effects (no particle jitter).
     at phone viewport sizes (no overlap, tap targets ≥ 44 px).
 - **Persistence:** play a bit, reload ⇒ state restored (hash equal), export ⇒
   import round-trips.
+- **Welcome panels** (`e2e/intro.spec.ts`): `__hydro.showIntro()` opens
+  them; a second scene worker starts, the live canvas fades in and is not
+  blank, Next switches scenes (the scripted hand's trench reaches the
+  scene's sim), Skip closes the dialog, and the worker and canvas are gone
+  again (`SimClient.live`); no console errors. For visual review,
+  `npx tsx tools/shot-intro.ts [--phone] [--times 2,6]` screenshots each
+  panel at given scene times (needs a preview server, default port 4233).
 - **Picking correctness:** clicking a known screen position hits the expected
   world cell for several camera angles.
 

@@ -60,6 +60,8 @@ See docs/PEOPLE.md (phases §10).
   rendering, plans only on known land, camera bounds), more settlements
   founded on attractive land, tool unlocks by population
 - M3-δ Herders, woodcutters, desire paths, vegetation dynamics (old M2)
+- ☑ Welcome panels illustrated by live scenes from the real engine
+  (staged scene world, scripted timelines, SVG fallback)
 
 ## M4 — Structures ☐
 - Lining, sluice gates, weirs, wells, pumps (manual/animal), water wheels and
