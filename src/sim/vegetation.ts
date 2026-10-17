@@ -36,7 +36,7 @@ export const VEG = {
   /** Forest share by soil type. */
   forestSoil: [0.3, 0.6, 0.3, 1, 1, 1, 0.45],
   /** Forest share at full suitability inside a patch. */
-  forestShare: 0.62,
+  forestShare: 0.7,
   /** Fraction of the gap to the grass cap closed per growing day. */
   grassRate: 0.12,
   /** Fraction of the gap to the forest cap closed per growing day (with seed trees at hand). */
@@ -94,8 +94,13 @@ export class Vegetation {
     const w = this.world;
     const t = w.soilType[i]!;
     const g = grassCap(t, m);
+    // As in worldgen: woods favour gentle slopes over open flats (meadows), not cliffs.
     const suit =
-      smoothstep(0.18, 0.45, m) * (1 - smoothstep(0.5, 0.9, slope)) * VEG.forestSoil[t]! * (m > 0.95 ? 0.6 : 1);
+      smoothstep(0.18, 0.45, m) *
+      (1 - smoothstep(0.5, 0.9, slope)) *
+      (0.6 + 0.4 * smoothstep(0.02, 0.1, slope)) *
+      VEG.forestSoil[t]! *
+      (m > 0.95 ? 0.6 : 1);
     if (suit <= 0) return g;
     const patch = smoothstep(-0.1, 0.15, this.patch[i]! + 0.3 * (m - 0.4));
     return Math.min(1, g + VEG.forestShare * suit * patch);
@@ -142,9 +147,7 @@ export class Vegetation {
         const temp = seaLevelTemp - PARAMS.lapseRate * z;
         const grow = snow[i]! > 0.005 ? 0 : smoothstep(VEG.growMin, VEG.growFull, temp);
 
-        if (v < g) {
-          v += VEG.grassRate * grow * (g - v);
-        } else if (v < cap) {
+        if (v < cap && cap > g && grow > 0) {
           // Forest needs seed trees at hand.
           let seedV = v;
           if (seedV < VEG.seedLevel) {
@@ -154,6 +157,9 @@ export class Vegetation {
             if (y < H - 1) seedV = Math.max(seedV, veg[i + W]!);
           }
           if (seedV >= VEG.seedLevel) v += VEG.forestRate * grow * (cap - v);
+        }
+        if (v < g) {
+          v += VEG.grassRate * grow * (g - v);
         } else if (v > cap) {
           const rate = v > g + 0.1 ? VEG.forestDecline : VEG.grassDecline;
           v -= Math.max(rate * (v - cap), Math.min(0.002, v - cap));

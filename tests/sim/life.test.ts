@@ -112,9 +112,11 @@ describe('living vegetation', () => {
     const inf = (veg: number) => {
       const w = meadow(4, 0.1, veg);
       w.water.fill(0.05);
+      const g0 = w.ground[5]!;
       soilWaterStep(w, { tileRain: new Float32Array(1), tileElevation: new Float32Array(1), tilesWide: 1, seaLevelTemp: 10, steps: 4 }, newLedger());
-      return w.ground[5]!;
+      return w.ground[5]! - g0;
     };
+    expect(inf(0)).toBeGreaterThan(0);
     expect(inf(1)).toBeGreaterThan(inf(0) * 1.2);
     // Erosion: fast sheet flow over a slope, bare vs. grassed.
     const eroded = (veg: number) => {
@@ -252,14 +254,14 @@ describe('woodcutters and herds', () => {
           if (a.job === Job.Herder && a.carry === CarryKind.Bucket) milk++;
           if (a.job === Job.Woodcutter && a.anim === 9) chopping++;
         }
-        const s0 = p.settlements[0]!.state;
-        if (s0.herd?.out) {
+        const s0 = p.settlements[0]?.state;
+        if (s0?.herd?.out) {
           // Cows far out from the village while the herd is out.
           if (p.herds.animals.some((c) => c.settlement === 0 && c.kind === EntityKind.Cow && Math.hypot(c.x - s0.x, c.y - s0.y) > HERD.pastureMin - 1)) out++;
         }
         // Trees felled since the last look: never close to water.
         for (let i = 0; i < w.size; i++) {
-          if (lastV[i]! >= WOOD.minForest && w.vegetation[i] === WOOD.felled) {
+          if (lastV[i]! >= WOOD.minForest && w.vegetation[i] === Math.fround(WOOD.felled)) {
             felled++;
             const x = i % w.width;
             const y = (i / w.width) | 0;
