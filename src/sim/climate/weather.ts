@@ -34,6 +34,8 @@ export class Weather {
   readonly th: number;
   /** Mean terrain elevation per tile (m), for orographic effect and temperature. */
   readonly tileElevation: Float32Array;
+  /** Spawn random fronts (off in staged scenes, which place their own with `addFront`). */
+  autoFronts = true;
 
   constructor(
     private readonly world: World,
@@ -75,7 +77,7 @@ export class Weather {
     // Spawn new fronts upwind.
     const rate = PARAMS.frontsPerDay[time.season]!;
     const pSpawn = (rate * steps) / STEPS_PER_DAY;
-    if (rng.next() < pSpawn) {
+    if (rng.next() < pSpawn && this.autoFronts) {
       const ext = Math.max(W, H);
       const dir = s.windDir + rng.range(-0.4, 0.4);
       const cellsPerStep = (s.windSpeed * rng.range(60, 140)) / STEPS_PER_DAY; // ~1 map per 2–4 days
@@ -113,6 +115,14 @@ export class Weather {
     }
     s.fronts = s.fronts.filter((f) => f.life > 0);
     this.computeRainField();
+  }
+
+  /**
+   * Add a front moving at (vx, vy) cells per step for `life` steps, peaking
+   * at intensity `peak` (staged scenes; random fronts come from `advance`).
+   */
+  addFront(f: { x: number; y: number; rx: number; ry: number; angle: number; vx: number; vy: number; life: number; peak: number }): void {
+    this.state.fronts.push({ ...f, intensity: 0, snow: false, age: 0 });
   }
 
   private computeRainField(): void {
