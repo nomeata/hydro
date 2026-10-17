@@ -16,6 +16,7 @@ import { PARAMS } from './params';
 import { SpiritCrew, cancelPlans, planDike, planLevel, planTrench } from './plans/plans';
 import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
 import { SOIL_PROPS, type World } from './world';
+import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
 
 export interface SimOptions {
   /** Enable villages; founding happens near the start point. */
@@ -108,6 +109,12 @@ export class Simulation {
   /** Villages and their people (absent in pure-physics tests). */
   people: PeopleSystem | null = null;
   private fieldsDirty = true;
+  /**
+   * Fog of war (docs/PEOPLE.md §6): on with villages. Plans are only placed
+   * on revealed land; `revealDirty` asks the worker to send `revealed`.
+   */
+  fog = false;
+  revealDirty = true;
 
   constructor(world: World, seed: number, opts: SimOptions = {}) {
     this.world = world;
@@ -118,7 +125,32 @@ export class Simulation {
     this.erosionScratch = new ErosionScratch(world.size);
     this.talusScratch = new TalusScratch(world.size);
     this.weather = new Weather(world, this.rng);
-    if (opts.people) this.people = new PeopleSystem(world, seed, opts.people.startX, opts.people.startY);
+    if (opts.people) {
+      this.people = new PeopleSystem(world, seed, opts.people.startX, opts.people.startY);
+      this.fog = true;
+      revealDisc(world, opts.people.startX, opts.people.startY, START_REVEAL);
+    }
+  }
+
+  /** Grow the known land around every settlement (daily). */
+  private updateReveal(): void {
+    const p = this.people;
+    if (!p) return;
+    for (const s of p.settlements) {
+      if (revealDisc(this.world, s.state.x, s.state.y, revealRadius(s.state.population))) this.revealDirty = true;
+    }
+  }
+
+  /** Drop plan cells on unrevealed land (fog of war); returns the cells kept. */
+  private onlyRevealed(changed: number[]): number[] {
+    if (!this.fog) return changed;
+    const w = this.world;
+    const kept: number[] = [];
+    for (const i of changed) {
+      if (isRevealed(w, i)) kept.push(i);
+      else w.plan[i] = NaN;
+    }
+    return kept;
   }
 
   readonly seed: number;
@@ -225,6 +257,7 @@ export class Simulation {
       this.outflowLastDay = this.outflowToday;
       this.outflowToday = 0;
       this.weather.updateElevation();
+      this.updateReveal();
     }
     if (this.step % 30 === 0) this.lookDirty = true;
   }
@@ -237,19 +270,19 @@ export class Simulation {
     const w = this.world;
     switch (cmd.type) {
       case 'planTrench': {
-        const changed = planTrench(w, cmd.points, cmd.width, cmd.depth);
+        const changed = this.onlyRevealed(planTrench(w, cmd.points, cmd.width, cmd.depth));
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
       }
       case 'planDike': {
-        const changed = planDike(w, cmd.points, cmd.width, cmd.height);
+        const changed = this.onlyRevealed(planDike(w, cmd.points, cmd.width, cmd.height));
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
       }
       case 'planLevel': {
-        const changed = planLevel(w, cmd.points, cmd.width);
+        const changed = this.onlyRevealed(planLevel(w, cmd.points, cmd.width));
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
@@ -347,6 +380,13 @@ export class Simulation {
     if (st.people) {
       this.people ??= new PeopleSystem(this.world, this.seed, st.people.startX, st.people.startY);
       this.people.setState(st.people);
+      this.fog = true;
+      // Saves from before the fog of war: reveal the start and every village.
+      if (!this.world.revealed.some((v) => v > 0)) {
+        revealDisc(this.world, st.people.startX, st.people.startY, START_REVEAL);
+        this.updateReveal();
+      }
+      this.revealDirty = true;
     }
     this.fieldsDirty = true;
     if (st.geo) {
@@ -393,6 +433,7 @@ export class Simulation {
     mix(w.sediment);
     mix(w.landuse);
     mix(w.crop);
+    mix(w.revealed);
     if (this.people) {
       const json = JSON.stringify(this.people.getState());
       for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
