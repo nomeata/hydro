@@ -66,7 +66,7 @@ const stats = await page.evaluate(() => {
   const h = (window as any).__hydro;
   const r = h.renderer;
   const i = r.gl.info.render;
-  return { crowd: h.crowd?.stats, calls: i.calls, triangles: i.triangles, buildingMeshes: r.buildings?.meshCount, crops: r.crops?.instanceCount, flow: r.flow.count, puffs: r.weather.puffCount };
+  return { crowd: h.crowd?.stats, calls: i.calls, triangles: i.triangles, buildingMeshes: r.buildings?.meshCount, crops: r.crops?.instanceCount, cues: r.cues?.drawCalls, smoke: r.cues?.puffCount, flow: r.flow.count, puffs: r.weather.puffCount };
 });
 console.log('render stats', JSON.stringify(stats));
 for (let k = 0; k < shots; k++) {
