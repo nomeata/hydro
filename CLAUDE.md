@@ -15,7 +15,10 @@
 - Visual review: take screenshots (tools/shot.ts or e2e) and look at them.
 - This container's CPU is ~5× slower than a typical desktop; judge perf with
   that in mind (bench results are relative).
-- Commit with the user as author; end messages with the Co-Authored-By trailer.
+- Commit as Claude <noreply@anthropic.com> (the repo's git config); never
+  pass another --author. End messages with the Co-Authored-By trailer.
+- Agents merge their own finished branch into `main` (after merging `main`
+  into it and running all tests), push, and watch CI until it's green.
 - Parallel agents: run each in its own git worktree (`isolation: "worktree"`)
   on its own branch from current `main`; it commits there, and the lead
   reviews and merges. In a fresh worktree, symlink `node_modules` from the
