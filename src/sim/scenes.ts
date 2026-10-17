@@ -226,7 +226,7 @@ function stageVillage(sim: Simulation): void {
       { x: v.x - 3, y: v.y + 8, job: 'farmer' },
       { x: v.x - 1, y: v.y - 3, job: 'builder' },
       { x: v.x + 1, y: v.y - 4, job: 'builder' },
-      ...shoreSpots(sim.world, 2).map(([x, y]) => ({ x, y, job: 'fisher' as const, fishing: true })),
+      ...shoreSpots(sim.world, 2).map(([x, y]) => ({ x, y, job: 'fisher' as const, fishing: 700 })),
     ],
   });
 }

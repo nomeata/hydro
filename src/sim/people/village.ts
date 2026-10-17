@@ -85,8 +85,8 @@ export interface StagedVillage {
   houses: { x: number; y: number; progress?: number; rot?: number }[];
   /** Rectangles of field cells (inclusive) with their crop stage 0..255. */
   fields: { x0: number; y0: number; x1: number; y1: number; crop: number }[];
-  /** People; `fishing` ones start with a rod at their (shore) cell. */
-  people: { x: number; y: number; job: 'farmer' | 'fisher' | 'builder'; variant?: number; fishing?: boolean }[];
+  /** People; `fishing` ones sit at their (shore) cell with a rod for that many steps first. */
+  people: { x: number; y: number; job: 'farmer' | 'fisher' | 'builder'; variant?: number; fishing?: number }[];
 }
 
 export interface PeopleState {
@@ -271,7 +271,7 @@ export class PeopleSystem {
     const jobs = { farmer: Job.Farmer, fisher: Job.Fisher, builder: Job.Builder } as const;
     for (const p of spec.people) {
       const cell = w.idx(Math.round(p.x), Math.round(p.y));
-      this.agents.push({
+      const a: Agent = {
         id: this.nextId++,
         settlement: s.state.id,
         variant: p.variant ?? this.rng.int(0, 10),
@@ -279,11 +279,10 @@ export class PeopleSystem {
         y: p.y,
         heading: 0,
         job: jobs[p.job],
-        // Fishing: a zero-length walk to the spot; arriving starts the session.
-        task: p.fishing ? Task.Walk : Task.None,
-        siteKind: p.fishing ? SiteKind.Fish : SiteKind.None,
-        site: p.fishing ? cell : -1,
-        path: p.fishing ? [cell] : [],
+        task: Task.None,
+        siteKind: SiteKind.None,
+        site: -1,
+        path: [],
         pathPos: 0,
         timer: 0,
         carry: CarryKind.None,
@@ -291,7 +290,15 @@ export class PeopleSystem {
         anim: EntityAnim.Idle,
         vx: 0,
         vy: 0,
-      });
+      };
+      if (p.fishing) {
+        // Already at the shore: start the session as if just arrived.
+        a.siteKind = SiteKind.Fish;
+        a.site = cell;
+        this.arrive(a);
+        a.timer = p.fishing;
+      }
+      this.agents.push(a);
     }
     s.state.population = spec.people.length;
     this.peakPopulation = s.state.population;
