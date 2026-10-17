@@ -14,6 +14,7 @@
     "check": "tsc --noEmit && vitest run",
     "bench": "tsx tools/bench.ts",
     "preview-world": "tsx tools/preview.ts",
+    "playtest": "tsx tools/playtest.ts",
     "e2e": "playwright test",
     "e2e:update": "playwright test --update-snapshots"
   },
