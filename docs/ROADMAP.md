@@ -106,6 +106,13 @@ Player feedback: more direct progress hits; keep it all positive
 - Power-dependent professions and higher population caps
 
 ## M7 — Endless world ☐
+Proposal and staged plan: docs/ENDLESS.md.
+- ☐ Step 1: simulate only revealed land + margin (frozen halo, dry-tile
+  sleeping) inside the fixed map; 512² desktop default
+- ☐ Step 1b: catchment inflow model for rivers entering from the fog
+- ☐ Step 2: tiled world growing up to a fixed extent, consistent block
+  worldgen, chunk streaming, per-page saves, soft cap by active-cell budget
+- ☐ Step 3 (if needed): unbounded (hierarchical macro, far-land LOD sleeping)
 - Active-region growth with macro catchment model for boundary inflows
 - Performance: tile sleeping, possibly WASM/GPU kernels
 

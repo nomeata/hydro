@@ -77,6 +77,9 @@ Simulating an ever-growing grid is not affordable. The design is:
   short local spin-up. Because rivers come from the global macro network, a
   former boundary inflow continues seamlessly as an interior river.
 - Saves store fields per 64×64 chunk (from M7 on; M1 saves the whole window).
+- The M7 proposal (active set = revealed land + margin on 16² tiles, frozen
+  halo boundary, catchment inflow, consistent block worldgen, budgets,
+  soft cap) is in docs/ENDLESS.md.
 
 ## 3. Simulation
 
