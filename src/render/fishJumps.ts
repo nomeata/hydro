@@ -47,6 +47,8 @@ function fishGeometry(): THREE.BufferGeometry {
 
 export class FishJumps {
   private fish: Uint8Array | null = null;
+  /** Fog of war: whether a cell position is known land (no jumps in the fog). */
+  known: ((x: number, y: number) => boolean) | null = null;
   private readonly bw: number;
   private readonly jumps: Jump[] = [];
   private readonly mesh: THREE.InstancedMesh;
@@ -150,6 +152,7 @@ export class FishJumps {
       const x = bx * FISH_BLOCK + this.rand() * FISH_BLOCK;
       const y = by * FISH_BLOCK + this.rand() * FISH_BLOCK;
       if (hs.depthAt(x, y) < 0.6) continue;
+      if (this.known && !this.known(x, y)) continue;
       const ang = this.rand() * Math.PI * 2;
       const len = 0.4 + this.rand() * 0.4;
       const dx = Math.cos(ang) * len;

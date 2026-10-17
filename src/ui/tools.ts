@@ -7,6 +7,7 @@ import type { Command, Pt } from '../shared/protocol';
 import { planDike, planLevel, planTrench, type PlanGrid } from '../sim/plans/plans';
 import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
+import { isUnlocked, unlockPopulation } from '../shared/unlocks';
 
 export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'erase';
 
@@ -54,6 +55,9 @@ export class ToolPalette {
   private previewPending = false;
   /** Keep the preview until the sim confirms the plan. */
   private awaitingPlan = false;
+  /** Highest village population seen (drives tool unlocks). */
+  private population = 0;
+  private hintTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     root: HTMLElement,
@@ -91,7 +95,7 @@ export class ToolPalette {
     row.className = 'toolrow panel';
     for (const t of TOOLS) {
       const b = document.createElement('button');
-      b.innerHTML = `${t.icon}<span>${t.label}</span>`;
+      b.innerHTML = `${t.icon}<span>${t.label}</span><i class="lock">${ICONS.lock}</i>`;
       b.dataset.tool = t.id;
       b.setAttribute('aria-label', t.label);
       b.addEventListener('click', () => this.select(t.id));
@@ -110,9 +114,34 @@ export class ToolPalette {
       if (e.key === 'Escape') this.select('look');
     });
     this.select('look');
+    this.setPopulation(0);
+  }
+
+  /** Villagers in all villages (from snapshot stats): unlocks tools at milestones. */
+  setPopulation(population: number): void {
+    this.population = Math.max(this.population, population);
+    for (const [id, b] of this.buttons) {
+      const locked = !isUnlocked(id, this.population);
+      b.classList.toggle('locked', locked);
+      b.title = locked ? `Unlocks at ${unlockPopulation(id)} villagers` : '';
+    }
+  }
+
+  isLocked(id: ToolId): boolean {
+    return !isUnlocked(id, this.population);
   }
 
   select(id: ToolId): void {
+    if (this.isLocked(id)) {
+      // A locked tool only says when it will be ready.
+      this.hint.textContent = `Unlocks at ${unlockPopulation(id)} villagers`;
+      if (this.hintTimer) clearTimeout(this.hintTimer);
+      this.hintTimer = setTimeout(() => {
+        this.hintTimer = null;
+        this.hint.textContent = TOOLS.find((t) => t.id === this.tool)!.hint;
+      }, 2500);
+      return;
+    }
     this.tool = id;
     this.drawing = null;
     for (const [k, b] of this.buttons) b.setAttribute('aria-pressed', String(k === id));
@@ -212,6 +241,8 @@ export class ToolPalette {
       if (this.tool === 'trench') planTrench(grid, pts, this.width, this.depth);
       else if (this.tool === 'dike') planDike(grid, pts, this.width, this.height);
       else if (this.tool === 'level') planLevel(grid, pts, this.width);
+      // Plans only go on known land (the sim drops the rest too).
+      this.host.mirror.maskUnrevealed(grid.plan);
       this.host.setPreviewPlan(grid.plan);
     });
   }

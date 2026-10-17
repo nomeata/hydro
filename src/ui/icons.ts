@@ -30,6 +30,9 @@ export const ICONS = {
   snow: svg(
     '<path d="M9 17a6 6 0 0 1 1-12 8 8 0 0 1 15 3 5 5 0 0 1-1 9z" fill="#eef3f7" stroke="#7b8d9c" stroke-width="2" stroke-linejoin="round"/><g fill="#9cc7e6"><circle cx="10" cy="24" r="2"/><circle cx="17" cy="27" r="2"/><circle cx="23" cy="23" r="2"/></g>',
   ),
+  lock: svg(
+    '<path d="M10 14v-3a6 6 0 0 1 12 0v3" fill="none" stroke="#6b4a2b" stroke-width="2.8" stroke-linecap="round"/><rect x="7" y="14" width="18" height="14" rx="3" fill="#e8b84a" stroke="#6b4a2b" stroke-width="2.2"/><circle cx="16" cy="21" r="2" fill="#6b4a2b"/>',
+  ),
   cloud: svg(
     '<circle cx="12" cy="12" r="5" fill="#f7c948"/><path d="M9 25a6 6 0 0 1 1-12 8 8 0 0 1 15 3 5 5 0 0 1-1 9z" fill="#eef3f7" stroke="#7b8d9c" stroke-width="2" stroke-linejoin="round"/>',
   ),

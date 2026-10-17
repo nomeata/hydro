@@ -80,6 +80,8 @@ function start(s: Simulation, m: Record<string, unknown>): void {
   const look = new Uint8Array(w.size * 4);
   s.computeLook(look);
   const plan = w.plan.slice();
+  const revealed = s.fog ? w.revealed.slice() : undefined;
+  s.revealDirty = false;
   s.takeDirtyRows();
   s.lookDirty = false;
   s.planDirty = false;
@@ -97,8 +99,9 @@ function start(s: Simulation, m: Record<string, unknown>): void {
       terrain,
       look,
       plan,
+      revealed,
     },
-    [terrain.buffer, look.buffer, plan.buffer],
+    revealed ? [terrain.buffer, look.buffer, plan.buffer, revealed.buffer] : [terrain.buffer, look.buffer, plan.buffer],
   );
   lastTick = performance.now();
   schedule(0);
@@ -195,15 +198,26 @@ function sendSnapshot(): boolean {
       snap.buildings = sim.people.buildings.map(({ id, kind, x, y, rot, progress }) => ({ id, kind, x, y, rot, progress }));
       sim.people.buildingsDirty = false;
     }
-    const v = sim.people.settlements[0];
-    if (v) {
+    const vs = sim.people.settlements.map(({ state: v }) => ({
+      x: v.x,
+      y: v.y,
+      population: v.population,
+      houses: v.houses,
+      food: v.food,
+      wellbeing: v.wellbeing,
+    }));
+    if (vs.length) {
+      const pop = vs.reduce((n, v) => n + v.population, 0);
+      snap.stats.villages = vs;
       snap.stats.village = {
-        x: v.state.x,
-        y: v.state.y,
-        population: sim.people.population,
-        houses: v.state.houses,
-        food: v.state.food,
-        wellbeing: v.state.wellbeing,
+        x: vs[0]!.x,
+        y: vs[0]!.y,
+        population: pop,
+        houses: vs.reduce((n, v) => n + v.houses, 0),
+        food: vs.reduce((n, v) => n + v.food, 0),
+        wellbeing: pop > 0 ? vs.reduce((n, v) => n + v.wellbeing * v.population, 0) / pop : vs[0]!.wellbeing,
+        count: vs.length,
+        peak: Math.max(pop, sim.people.peakPopulation),
       };
     }
     const day = sim.time.day;
@@ -219,6 +233,11 @@ function sendSnapshot(): boolean {
       snap.fields = f;
       transfer.push(f.buffer);
     }
+  }
+  if (sim.fog && sim.revealDirty) {
+    snap.revealed = w.revealed.slice();
+    sim.revealDirty = false;
+    transfer.push(snap.revealed.buffer);
   }
   if (sim.planDirty) {
     snap.plan = w.plan.slice();

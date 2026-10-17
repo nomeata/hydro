@@ -122,6 +122,8 @@ export class FlowParticles {
   private readonly dir = new THREE.Vector3();
   /** Game speed (0 = paused); set from snapshot stats. */
   gameSpeed = 1;
+  /** Fog of war (revealed 0..255 per cell, live): no flecks on unknown water. */
+  revealed: Uint8Array | null = null;
   /** Particle size multiplier (zoom-dependent). */
   private sizeScale = 1;
   /** Desired particle count for the current view (for stats/tests). */
@@ -284,6 +286,7 @@ export class FlowParticles {
     if (this.cand.length < need) this.cand = new Int32Array(need);
     const d = this.heights.depth;
     const v = this.vel;
+    const rev = this.revealed;
     const min2 = MIN_SPEED * MIN_SPEED;
     // Zoomed far out the box is large: sample every other cell.
     const step = need > 40000 ? 2 : 1;
@@ -292,6 +295,7 @@ export class FlowParticles {
       for (let x = x0; x <= x1; x += step) {
         const i = y * W + x;
         if (d[i]! < MIN_DEPTH * 2) continue;
+        if (rev && rev[i]! < 200) continue;
         const vx = v[2 * i]!;
         const vy = v[2 * i + 1]!;
         if (vx * vx + vy * vy < min2) continue;
@@ -389,8 +393,9 @@ export class FlowParticles {
       let a = this.age[i]! + dt * ageRate;
       const ci = Math.min(this.H - 1, Math.max(0, Math.round(y))) * W + Math.min(W - 1, Math.max(0, Math.round(x)));
       const depth = d[ci]!;
-      // Stranded or still: shorten the life to fade out quickly.
-      if ((depth < MIN_DEPTH || sp < MIN_SPEED * 0.5) && this.life[i]! - a > 0.5) this.life[i] = a + 0.5;
+      // Stranded or still (or drifting into the fog): shorten the life to fade out quickly.
+      const fogged = this.revealed !== null && this.revealed[ci]! < 170;
+      if ((depth < MIN_DEPTH || sp < MIN_SPEED * 0.5 || fogged) && this.life[i]! - a > 0.5) this.life[i] = a + 0.5;
       const outside = x < x0 - margin || x > x1 + margin || y < y0 - margin || y > y1 + margin;
       if (a >= this.life[i]! || outside || x < 0 || y < 0 || x > W - 1 || y > this.H - 1 || (j >= target && i >= target)) continue;
       // Smoothed direction (avoid jitter on noisy cells).

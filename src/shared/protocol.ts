@@ -57,7 +57,10 @@ export interface SimStats {
   surfaceWater: number;
   /** Outflow through outlets in the last game day (m³). */
   outflowPerDay: number;
+  /** All villages together (centre: the first village). */
   village?: VillageStats;
+  /** Each village on its own (M3-γ: more settlements). */
+  villages?: VillageStats[];
 }
 
 /** Static information sent once when the world is ready. */
@@ -161,15 +164,19 @@ export interface BuildingInfo {
   progress: number;
 }
 
-/** Village statistics (hidden from players; shown with ?stats=1). */
+/** Village statistics (hidden from players; shown with ?stats=1; population drives tool unlocks). */
 export interface VillageStats {
-  /** Centre of the (first) village in cell coordinates. */
+  /** Centre of the village in cell coordinates (the first one for the aggregate). */
   x: number;
   y: number;
   population: number;
   houses: number;
   food: number;
   wellbeing: number;
+  /** Number of villages (aggregate only). */
+  count?: number;
+  /** Highest total population so far (aggregate only; tool unlocks). */
+  peak?: number;
 }
 
 export interface Snapshot {
@@ -194,6 +201,8 @@ export interface Snapshot {
   buildings?: BuildingInfo[];
   /** Land use and crop stage per cell (2 bytes each: LandUse, crop 0..255), when changed. */
   fields?: Uint8Array;
+  /** Fog of war: revealed 0..255 per cell (≥ 128 is known land), when changed. */
+  revealed?: Uint8Array;
   /**
    * Fish per block of FISH_BLOCK² cells (row-major, ceil(width/FISH_BLOCK)
    * wide): 0 = no fish habitat, 1..255 = habitat, from empty to fully
@@ -238,6 +247,8 @@ export type FromWorker =
       terrain: Float32Array;
       look: Uint8Array;
       plan: Float32Array;
+      /** Fog of war (absent: everything is revealed). */
+      revealed?: Uint8Array;
     }
   | ({ type: 'snapshot' } & Snapshot)
   | { type: 'saved'; bytes: ArrayBuffer }

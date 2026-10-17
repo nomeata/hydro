@@ -98,7 +98,12 @@ export interface ScatterInput {
   readonly seed: number;
   /** Land use per cell (LandUse enum), or null: built-up and farmed cells get no vegetation. */
   readonly landuse?: Uint8Array | null;
+  /** Fog of war (revealed 0..255 per cell), or null: nothing grows visibly on unknown land. */
+  readonly revealed?: Uint8Array | null;
 }
+
+/** Revealed value below which no objects are placed. */
+export const VEG_REVEALED = 128;
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -110,10 +115,11 @@ const smooth = (a: number, b: number, x: number) => {
  * input (no Math.random); used by the layer and by tests.
  */
 export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y1: number, out: Placement[] = []): Placement[] {
-  const { heights, look, width, height, seed, landuse } = inp;
+  const { heights, look, width, height, seed, landuse, revealed } = inp;
   const S = seed | 0;
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
+      if (revealed && revealed[y * width + x]! < VEG_REVEALED) continue;
       if (landuse) {
         const lu = landuse[y * width + x]!;
         if (lu !== LandUse.None && lu !== LandUse.Pasture) continue;
@@ -306,6 +312,7 @@ export class VegetationLayer {
   readonly ready: Promise<void>;
   private look: Uint8Array;
   private landuse: Uint8Array | null = null;
+  private revealed: Uint8Array | null = null;
   private readonly chunkSize: number;
   private readonly chunks: Chunk[] = [];
   private readonly nx: number;
@@ -417,6 +424,28 @@ export class VegetationLayer {
       const x = i % this.width;
       const y = (i / this.width) | 0;
       const ci = Math.floor(y / cs) * this.nx + Math.floor(x / cs);
+      if (!this.pending.has(ci)) {
+        this.chunks[ci]!.forced = true;
+        this.pending.add(ci);
+      }
+    }
+    this.schedule();
+  }
+
+  /**
+   * Fog of war: objects only stand on known land. Re-scatters the chunks
+   * where cells crossed the threshold.
+   */
+  setRevealed(revealed: Uint8Array): void {
+    const n = this.width * this.height;
+    const prev = this.revealed;
+    const next = revealed.slice(0, n);
+    this.revealed = next;
+    const cs = this.chunkSize;
+    for (let i = 0; i < n; i++) {
+      if (prev && (prev[i]! >= VEG_REVEALED) === (next[i]! >= VEG_REVEALED)) continue;
+      if (!prev && next[i]! >= VEG_REVEALED) continue;
+      const ci = Math.floor(((i / this.width) | 0) / cs) * this.nx + Math.floor((i % this.width) / cs);
       if (!this.pending.has(ci)) {
         this.chunks[ci]!.forced = true;
         this.pending.add(ci);
@@ -595,7 +624,15 @@ export class VegetationLayer {
     const x1 = Math.min(this.width, x0 + cs);
     const y1 = Math.min(this.height, y0 + cs);
     const placements = scatter(
-      { heights: this.heights, look: this.look, width: this.width, height: this.height, seed: this.seed, landuse: this.landuse },
+      {
+        heights: this.heights,
+        look: this.look,
+        width: this.width,
+        height: this.height,
+        seed: this.seed,
+        landuse: this.landuse,
+        revealed: this.revealed,
+      },
       x0,
       y0,
       x1,

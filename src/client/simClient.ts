@@ -9,6 +9,8 @@ export interface ReadyData {
   terrain: Float32Array;
   look: Uint8Array;
   plan: Float32Array;
+  /** Fog of war (absent: everything revealed). */
+  revealed?: Uint8Array;
 }
 
 export class SimClient {
@@ -30,7 +32,7 @@ export class SimClient {
         const msg = ev.data;
         switch (msg.type) {
           case 'ready':
-            resolve({ info: msg.info, terrain: msg.terrain, look: msg.look, plan: msg.plan });
+            resolve({ info: msg.info, terrain: msg.terrain, look: msg.look, plan: msg.plan, revealed: msg.revealed });
             break;
           case 'snapshot': {
             const { type: _type, ...snap } = msg;

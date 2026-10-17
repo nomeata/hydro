@@ -6,7 +6,8 @@
  */
 import { CarryKind, EntityAnim, FISH_BLOCK, type SimTime } from '../../shared/protocol';
 import { Rng } from '../../shared/rng';
-import { DAYS_PER_SEASON, STEPS_PER_DAY } from '../constants';
+import { DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../constants';
+import { REVEALED } from '../fog';
 import { PARAMS } from '../params';
 import { applyEarthwork } from '../plans/plans';
 import { LandUse, SOIL_PROPS, type World } from '../world';
@@ -39,6 +40,30 @@ const CATCH = 5;
 /** Water drawn by a growing field per day (m). */
 const FIELD_DRAW = 0.004;
 
+/**
+ * Founding of further villages (docs/PEOPLE.md §4). Attractiveness is
+ * computed per ATTRACT_BLOCK² block every `everyDays`; when the best block
+ * is attractive enough and the existing villages are big (or one is
+ * crowded), a migrant family walks in from the fog edge and founds a
+ * village there. Exported so tests can tweak it.
+ */
+export const FOUNDING = {
+  everyDays: 4,
+  /** Minimum days between two foundings. */
+  interval: DAYS_PER_YEAR,
+  /** Total population of all villages that makes people look for new land. */
+  minPopulation: 25,
+  /** A single village this big without free houses also sends people out. */
+  crowdedPopulation: 18,
+  /** Minimum distance (cells) to every other settlement. */
+  minSpacing: 26,
+  /** Block attractiveness (0..~1.15) needed. */
+  minScore: 0.55,
+  /** Food (person-days) the founders bring. */
+  food: 300,
+};
+export const ATTRACT_BLOCK = 8;
+
 export interface Building {
   id: number;
   kind: 'house' | 'store' | 'ruin';
@@ -62,6 +87,10 @@ export interface PeopleState {
   startY: number;
   lastDay: number;
   fish: number[];
+  /** Day of the latest founding (absent in older saves). */
+  lastFounding?: number;
+  /** Highest total population so far (tool unlocks). */
+  peak?: number;
 }
 
 export interface PeopleHost {
@@ -98,6 +127,11 @@ export class PeopleSystem {
   /** Cells currently targeted by someone. */
   private reserved = new Set<number>();
   private lastDay = -1;
+  private lastFounding = 0;
+  /** Highest total population so far: tools unlocked by it stay unlocked. */
+  peakPopulation = 0;
+  /** Block attractiveness from the latest survey (debugging/tests; recomputed before use). */
+  attractiveness: Float32Array | null = null;
 
   constructor(
     private readonly world: World,
@@ -136,15 +170,27 @@ export class PeopleSystem {
     return n >= 3;
   }
 
-  /** The settlement whose reach covers cell i, if any. */
+  /** The nearest settlement whose reach covers cell i, if any. */
   settlementNear(i: number): Settlement | null {
     const W = this.world.width;
     const x = i % W;
     const y = (i / W) | 0;
+    const s = this.ownerOf(x, y);
+    return s && Math.hypot(s.state.x - x, s.state.y - y) <= REACH ? s : null;
+  }
+
+  /** The settlement nearest to a cell: it owns the land there (ties go to the older one). */
+  ownerOf(x: number, y: number): Settlement | null {
+    let best: Settlement | null = null;
+    let bestD = Infinity;
     for (const s of this.settlements) {
-      if (Math.hypot(s.state.x - x, s.state.y - y) <= REACH) return s;
+      const d = (s.state.x - x) ** 2 + (s.state.y - y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = s;
+      }
     }
-    return null;
+    return best;
   }
 
   // ---------------------------------------------------------------------------
@@ -174,16 +220,8 @@ export class PeopleSystem {
     this.founded = true;
     const site = this.bestSite(this.startX, this.startY, 30);
     if (site < 0) return;
-    const W = this.world.width;
-    const sx = site % W;
-    const sy = (site / W) | 0;
     // The founders bring enough food to last until the first harvest.
-    const s = new Settlement(this.settlements.length, sx, sy, 0, 400);
-    this.settlements.push(s);
-    this.addBuilding('store', s.state.id, sx, sy);
-    this.buildings[this.buildings.length - 1]!.progress = 1;
-    s.state.population = 4;
-    this.syncPopulation(s);
+    this.foundAt(site, 400, 4, false);
   }
 
   /** Best place for a village centre near (cx, cy): flat, dry, fertile, near water. */
@@ -275,6 +313,124 @@ export class PeopleSystem {
       this.assignJobs(s, host);
       this.manageFields(s);
     }
+    this.peakPopulation = Math.max(this.peakPopulation, this.population);
+    if (time.day % FOUNDING.everyDays === 0) this.considerFounding(time);
+  }
+
+  // ---------------------------------------------------------------------------
+  // New villages
+
+  /** Whether the existing villages are big or crowded enough to send people out. */
+  private wantsNewVillage(day: number): boolean {
+    if (!this.settlements.length || day - this.lastFounding < FOUNDING.interval) return false;
+    if (this.population >= FOUNDING.minPopulation) return true;
+    return this.settlements.some((s) => s.state.population >= FOUNDING.crowdedPopulation && s.freeHouses <= 0);
+  }
+
+  /**
+   * Attractiveness of every ATTRACT_BLOCK² block for a new village: flat,
+   * fertile, moist but not flooded land near water, on or at the edge of
+   * known land, away from other settlements. 0 = unsuitable.
+   */
+  surveyLand(): Float32Array {
+    const w = this.world;
+    const W = w.width;
+    const B = ATTRACT_BLOCK;
+    const bw = Math.ceil(W / B);
+    const bh = Math.ceil(w.height / B);
+    const out = new Float32Array(bw * bh);
+    for (let by = 0; by < bh; by++)
+      for (let bx = 0; bx < bw; bx++) {
+        const cx = bx * B + B / 2;
+        const cy = by * B + B / 2;
+        if (cx < 6 || cy < 6 || cx > W - 7 || cy > w.height - 7) continue;
+        const c = cy * W + cx;
+        // Known land, or right at its soft edge.
+        if (w.revealed[c]! < REVEALED / 2) continue;
+        if (this.settlements.some((s) => Math.hypot(s.state.x - cx, s.state.y - cy) < FOUNDING.minSpacing)) continue;
+        let sum = 0;
+        let land = 0;
+        let n = 0;
+        for (let y = by * B; y < Math.min(w.height, by * B + B); y += 2)
+          for (let x = bx * B; x < Math.min(W, bx * B + B); x += 2) {
+            n++;
+            const i = y * W + x;
+            if (w.water[i]! > 0.05) continue;
+            land++;
+            if (w.floodMemory[i]! > 40 || w.landuse[i] !== LandUse.None) continue;
+            const sl = this.slope(i);
+            if (sl > 0.25) continue;
+            const m = this.fieldMoisture[i]!;
+            const wet = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
+            const forest = w.vegetation[i]! > 0.6 ? 0.6 : 1;
+            sum += w.fertility[i]! * wet * forest * (1 - sl * 2);
+          }
+        if (land < n * 0.6) continue;
+        const d = this.waterDist[c]!;
+        const nearWater = d >= 2 && d <= 14 ? 0.15 : d < 2 ? 0 : Math.max(0, 0.15 * (1 - (d - 14) / 16));
+        out[by * bw + bx] = sum / n + nearWater;
+      }
+    return out;
+  }
+
+  private considerFounding(time: SimTime): void {
+    if (!this.wantsNewVillage(time.day)) return;
+    const a = this.surveyLand();
+    this.attractiveness = a;
+    const B = ATTRACT_BLOCK;
+    const bw = Math.ceil(this.world.width / B);
+    let best = -1;
+    for (let b = 0; b < a.length; b++) if (a[b]! >= FOUNDING.minScore && (best < 0 || a[b]! > a[best]!)) best = b;
+    if (best < 0) return;
+    const site = this.bestSite((best % bw) * B + B / 2, Math.floor(best / bw) * B + B / 2, 6);
+    if (site < 0) return;
+    this.foundAt(site, FOUNDING.food, this.rng.int(3, 6), true);
+    this.lastFounding = time.day;
+  }
+
+  /**
+   * A new village at cell `site`: a store and a family. Migrants (`fromFog`)
+   * walk in with their bundles from the nearest edge of the known land.
+   */
+  private foundAt(site: number, food: number, people: number, fromFog: boolean): Settlement {
+    const W = this.world.width;
+    const sx = site % W;
+    const sy = (site / W) | 0;
+    const s = new Settlement(this.settlements.length, sx, sy, 0, food);
+    this.settlements.push(s);
+    this.addBuilding('store', s.state.id, sx, sy);
+    this.buildings[this.buildings.length - 1]!.progress = 1;
+    s.state.population = people;
+    const from = fromFog ? this.fogEdge(sx, sy) : -1;
+    if (from >= 0) for (let k = 0; k < people; k++) this.spawnAt(s, 0, from);
+    this.syncPopulation(s);
+    return s;
+  }
+
+  /** A dry cell just inside the known land, on the way from (x, y) to the nearest fog. */
+  private fogEdge(x: number, y: number): number {
+    const w = this.world;
+    let best = -1;
+    let bestR = Infinity;
+    for (let k = 0; k < 16; k++) {
+      const ang = (k / 16) * Math.PI * 2;
+      let lastDry = -1;
+      for (let r = 4; r <= 56 && r < bestR; r += 2) {
+        const cx = Math.round(x + Math.cos(ang) * r);
+        const cy = Math.round(y + Math.sin(ang) * r);
+        if (!w.inBounds(cx, cy)) break;
+        const i = w.idx(cx, cy);
+        if (w.revealed[i]! < REVEALED) {
+          if (lastDry >= 0) {
+            best = lastDry;
+            bestR = r;
+          }
+          break;
+        }
+        if (w.water[i]! < 0.05 && this.slope(i) < 0.6) lastDry = i;
+      }
+    }
+    return best;
   }
 
   /** Field moisture: own soil saturation, or capillary wetting from nearby water. */
@@ -503,9 +659,10 @@ export class PeopleSystem {
     }
   }
 
-  private spawnAt(s: Settlement, dist: number): Agent | null {
+  /** A newcomer walking to the village centre from `dist` cells away (or from cell `from`). */
+  private spawnAt(s: Settlement, dist: number, from = -1): Agent | null {
     const w = this.world;
-    const edge = this.edgePoint(s, dist, null);
+    const edge = from >= 0 ? from : this.edgePoint(s, dist, null);
     if (edge < 0) return null;
     const a: Agent = {
       id: this.nextId++,
@@ -528,7 +685,7 @@ export class PeopleSystem {
       vy: 0,
     };
     const centre = w.idx(Math.round(s.state.x), Math.round(s.state.y));
-    const path = this.pf.find(edge, centre, { window: 40 });
+    const path = this.pf.find(edge, centre, { window: from >= 0 ? 48 : 40 });
     if (path) {
       a.path = path;
       a.task = Task.Walk;
@@ -643,6 +800,7 @@ export class PeopleSystem {
         if (r > FIELD_RADIUS || r < 3) continue;
         const i = w.idx(x, y);
         if (!this.buildable(i) || !this.spacious(x, y)) continue;
+        if (this.settlements.length > 1 && this.ownerOf(x, y) !== s) continue;
         const m = this.fieldMoisture[i]!;
         const wet = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
         const forest = Math.max(0, w.vegetation[i]! - 0.45);
@@ -673,7 +831,7 @@ export class PeopleSystem {
     for (let y = Math.max(0, cy - FIELD_RADIUS); y <= Math.min(w.height - 1, cy + FIELD_RADIUS); y++)
       for (let x = Math.max(0, cx - FIELD_RADIUS); x <= Math.min(w.width - 1, cx + FIELD_RADIUS); x++) {
         const i = w.idx(x, y);
-        if (w.landuse[i] === LandUse.Field) out.push(i);
+        if (w.landuse[i] === LandUse.Field && (this.settlements.length < 2 || this.ownerOf(x, y) === s)) out.push(i);
       }
     return out;
   }
@@ -1008,6 +1166,8 @@ export class PeopleSystem {
       startY: this.startY,
       lastDay: this.lastDay,
       fish: Array.from(this.fish),
+      lastFounding: this.lastFounding,
+      peak: this.peakPopulation,
     });
   }
 
@@ -1027,6 +1187,8 @@ export class PeopleSystem {
     this.startX = c.startX;
     this.startY = c.startY;
     this.lastDay = c.lastDay;
+    this.lastFounding = c.lastFounding ?? 0;
+    this.peakPopulation = c.peak ?? 0;
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     this.buildingsDirty = true;
     this.updateMoisture();
