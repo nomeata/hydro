@@ -6,19 +6,34 @@
 import type { Pt } from '../shared/protocol';
 
 export const SCENE_LAYOUT = {
-  /** A side pond, open to the river (fish, the fisher's spot). */
-  pond: { x: 20, y: 41, r: 4.8 },
+  /** River centreline (Catmull-Rom through these), from the left edge to the bottom edge. */
+  river: [
+    [-3, 30],
+    [12, 32],
+    [24, 38],
+    [33, 46],
+    [44, 50],
+    [52, 56],
+    [58, 66],
+    [62, 78],
+    [66, 99],
+  ] as Pt[],
+  /** A pond near the village (fish, the fishers' spot). */
+  pond: { x: 33, y: 63, r: 5 },
   /** A dry hollow across the river, lower than the river's water surface. */
-  hollow: { x: 40, y: 25, r: 4.2 },
+  hollow: { x: 62, y: 46, r: 5.5 },
   /** The trench the intro draws: from the river bank into the hollow. */
   trench: [
-    [33.5, 33.5],
-    [35.5, 30],
-    [38, 27.5],
-    [40, 25.5],
+    [55.5, 56.5],
+    [57.5, 52.5],
+    [60, 49.5],
+    [62, 47],
   ] as Pt[],
   /** The village store. */
-  village: { x: 21, y: 50 },
+  village: { x: 34, y: 74 },
   /** The wooded hill. */
-  hill: { x: 47, y: 10 },
+  hill: { x: 53, y: 21 },
+  hill2: { x: 16, y: 12 },
+  /** The rain front of the 'water' scene: start, velocity (cells per step), size, lifetime (steps). */
+  front: { x: -6, y: 20, vx: 0.13, vy: 0.05, rx: 24, ry: 13, life: 700 },
 };

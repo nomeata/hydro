@@ -85,7 +85,8 @@ export interface StagedVillage {
   houses: { x: number; y: number; progress?: number; rot?: number }[];
   /** Rectangles of field cells (inclusive) with their crop stage 0..255. */
   fields: { x0: number; y0: number; x1: number; y1: number; crop: number }[];
-  people: { x: number; y: number; job: 'farmer' | 'fisher' | 'builder'; variant?: number }[];
+  /** People; `fishing` ones start with a rod at their (shore) cell. */
+  people: { x: number; y: number; job: 'farmer' | 'fisher' | 'builder'; variant?: number; fishing?: boolean }[];
 }
 
 export interface PeopleState {
@@ -269,6 +270,7 @@ export class PeopleSystem {
     }
     const jobs = { farmer: Job.Farmer, fisher: Job.Fisher, builder: Job.Builder } as const;
     for (const p of spec.people) {
+      const cell = w.idx(Math.round(p.x), Math.round(p.y));
       this.agents.push({
         id: this.nextId++,
         settlement: s.state.id,
@@ -277,10 +279,11 @@ export class PeopleSystem {
         y: p.y,
         heading: 0,
         job: jobs[p.job],
-        task: Task.None,
-        siteKind: SiteKind.None,
-        site: -1,
-        path: [],
+        // Fishing: a zero-length walk to the spot; arriving starts the session.
+        task: p.fishing ? Task.Walk : Task.None,
+        siteKind: p.fishing ? SiteKind.Fish : SiteKind.None,
+        site: p.fishing ? cell : -1,
+        path: p.fishing ? [cell] : [],
         pathPos: 0,
         timer: 0,
         carry: CarryKind.None,

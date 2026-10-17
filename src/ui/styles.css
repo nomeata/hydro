@@ -244,7 +244,7 @@ html, body {
 }
 .intro[hidden] { display: none; }
 .intro-card {
-  width: min(420px, 100%);
+  width: min(500px, 100%);
   padding: 16px 18px 12px;
   text-align: center;
   animation: intro-pop 0.35s ease-out;
@@ -284,10 +284,10 @@ html, body {
 .intro-hand svg { width: 100%; height: 100%; display: block; }
 .intro-tools {
   position: absolute;
-  left: 50%;
+  left: 6px;
   bottom: 6px;
-  transform: translateX(-50%) scale(0.72);
-  transform-origin: 50% 100%;
+  transform: scale(0.7);
+  transform-origin: 0 100%;
 }
 .intro-tools[hidden] { display: none; }
 .intro-tools button { appearance: none; border: 0; background: transparent; color: var(--ink); font: inherit; border-radius: 10px; }
@@ -315,3 +315,6 @@ html, body {
   background: transparent;
 }
 .intro-nav .dot[aria-current='true'] { background: var(--wood); }
+@media (max-width: 440px) {
+  .intro-tools { transform: scale(0.58); }
+}

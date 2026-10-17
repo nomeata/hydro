@@ -29,16 +29,18 @@ interface Script {
   duration: number;
   animals?: AnimalOptions;
   fishRate?: number;
+  /** Keep clouds visible at this zoom (WeatherLayer.zoomBias). */
+  clouds?: number;
 }
 
 const SCRIPTS: Record<SceneId, Script> = {
-  water: { camera: { x: 27, y: 30, yaw: 45 * DEG, pitch: 34 * DEG, viewHeight: 34 }, speed: 3, duration: 11 },
-  shape: { camera: { x: 36, y: 29, yaw: 30 * DEG, pitch: 40 * DEG, viewHeight: 22 }, speed: 3, duration: 13 },
+  water: { camera: { x: 46, y: 42, yaw: 45 * DEG, pitch: 30 * DEG, viewHeight: 30 }, speed: 3, duration: 11, clouds: 2.8 },
+  shape: { camera: { x: 58, y: 51, yaw: -39 * DEG, pitch: 38 * DEG, viewHeight: 22 }, speed: 3, duration: 13 },
   village: {
-    camera: { x: 23, y: 47, yaw: 40 * DEG, pitch: 38 * DEG, viewHeight: 24 },
+    camera: { x: 34, y: 71, yaw: 25 * DEG, pitch: 38 * DEG, viewHeight: 13 },
     speed: 2,
     duration: 14,
-    animals: { centerX: L.village.x - 6, centerY: L.village.y + 12, radius: 6, cows: 3, chicks: 4, pigs: 1, dogs: 1, searchRadius: 4 },
+    animals: { centerX: 26, centerY: 81, radius: 5, cows: 3, chicks: 4, pigs: 1, dogs: 1, searchRadius: 3 },
     fishRate: 8,
   },
 };
@@ -195,6 +197,7 @@ export class IntroScenes {
       r.camera.setState(sc.camera, true);
       this.layers.setAnimals(sc.animals ?? null);
       this.layers.fishJumps.rateScale = sc.fishRate ?? 1;
+      r.weather.zoomBias = sc.clouds ?? 1;
       this.resetScript();
       this.runStart = performance.now();
     }
