@@ -16,9 +16,11 @@ import { StatsBar } from './ui/statsbar';
 import { HistoryPanel } from './ui/historyPanel';
 import { AchievementsUi } from './ui/achievements';
 import { ToolPalette } from './ui/tools';
+import { setUnlockAll } from './shared/unlocks';
 
 const params = new URLSearchParams(location.search);
 const testMode = params.has('test');
+setUnlockAll(params.has('cheat'));
 const seed = Number(params.get('seed') ?? (testMode ? 1 : Math.floor(Math.random() * 1e9)));
 const size = Number(params.get('size') ?? 256);
 /** Saving is off in tests unless explicitly requested with ?persist=1. */

@@ -223,9 +223,8 @@ export class Achievements {
     }
   }
 
-  /** The spirit crew laid a planned stone lining on cell i. */
-  lined(i: number, day: number): void {
-    this.touch(i);
+  /** Villagers lined bank cell i with stone (their own works near home). */
+  lined(day: number): void {
     this.earn('stoneByStone', day);
   }
 

@@ -88,7 +88,9 @@ Player feedback: more direct progress hits; keep it all positive
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
   above), sluice gates (hold a reservoir closed, drain to the sill open;
   tap to toggle), built by the spirit crew; plans only on known land;
-  tools unlock at 15/30/50 villagers; digit-key hotkeys
+  tools unlock at 30/50 villagers; digit-key hotkeys
+- ☑ Player lining tool removed again: lining is left to the villagers near
+  their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
 - ☑ Villagers line banks by their homes and the player's canals near the
   village on their own; quays by the houses; a fishing jetty per village
 - Wells, pumps (manual/animal), water wheels and mills
