@@ -100,6 +100,8 @@ export const enum CellFlag {
   Outlet = 2,
   /** A structure occupies the cell. */
   Structure = 4,
+  /** Dug by a player's trench plan (villagers line such canals near home). */
+  Canal = 8,
 }
 
 export class World {

@@ -25,7 +25,8 @@ export function stepCost(world: World, i: number, j: number, dist: number, bridg
   const onBridge = bridge?.(j) ?? false;
   if (dj > MAX_WADE && !onBridge) return Infinity;
   const rise = Math.abs(world.terrain(j) - world.terrain(i)) / (5 * dist);
-  if (rise > MAX_SLOPE && !onBridge) return Infinity;
+  // Stepping on or off a bridge (or jetty) ignores the ground beneath it.
+  if (rise > MAX_SLOPE && !onBridge && !(bridge?.(i) ?? false)) return Infinity;
   let c = dist * (1 + 3 * rise * rise);
   if (!onBridge && dj > 0.05) c *= 1 + 6 * dj; // wading is slow
   return c;

@@ -1,6 +1,6 @@
 *.log
 dist/
-node_modules/
+node_modules
 out/
 playwright-report/
 test-results/

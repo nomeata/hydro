@@ -27,6 +27,8 @@ Early development. See [the roadmap](docs/ROADMAP.md).
 | Zoom | wheel | pinch |
 | Rotate | right-drag | two-finger twist |
 | Draw plan | left-drag with a tool | one finger with a tool |
+| Pick a tool | keys 1…9, 0 in palette order (Esc: Look) | tap |
+| Open/close a sluice gate | click it (Look tool) | tap it |
 
 URL options: `?seed=123` picks a world, `?size=512` a bigger map,
 `?stats=1` shows performance numbers.

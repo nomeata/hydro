@@ -5,11 +5,14 @@
  */
 import { TOOL_UNLOCKS } from './unlocks';
 
-/** Display names of tools that unlock (fallback: the id, capitalised). */
+/**
+ * Display names of tools that unlock (fallback: the id, capitalised). The
+ * tool palette labels its buttons with these too (one source of truth).
+ */
 const TOOL_NAMES: Readonly<Record<string, string>> = {
   line: 'Lining',
   weir: 'Weir',
-  gate: 'Sluice gate',
+  gate: 'Gate',
   well: 'Well',
   wheel: 'Water wheel',
 };

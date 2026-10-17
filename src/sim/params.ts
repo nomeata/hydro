@@ -39,6 +39,8 @@ export const PARAMS = {
   builderCells: 400,
   /** Whether village builders realise the player's plans (experiment; off). */
   villagersBuildPlans: false,
+  /** Stone lining: cells lined per day per worked site by the spirit crew (a gate is 4× the work of one cell). */
+  liningPerDay: 4,
 
   // --- Geomorphology (M1b): erosion, deposition, talus, weathering ---------
   // See hydro/erosion.ts and hydro/talus.ts. Hydraulic-time rates are per

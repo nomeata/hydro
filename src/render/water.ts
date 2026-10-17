@@ -9,6 +9,7 @@ import { HEIGHT_SCALE } from './coords';
 import { VEL_SCALE } from '../shared/protocol';
 import { CHUNK, GRID_VERTEX_GLSL, chunkOrigins } from './grid';
 import { PLAN_GLSL } from './planOverlay';
+import { LINING_GLSL } from './structures/lining';
 import { CLOUD_SHADOW_GLSL, type FrontUniforms } from './weather';
 import { FOG_GLSL, type FogUniforms } from './fog';
 
@@ -20,6 +21,8 @@ export interface WaterUniforms extends FrontUniforms {
   uPlan: { value: THREE.Texture };
   uPreview: { value: THREE.Texture };
   uPlanOn: { value: number };
+  uLining: { value: THREE.Texture | null };
+  uLiningOn: { value: number };
   uPreviewOn: { value: number };
   uTerrain: { value: THREE.Texture };
   uDepthA: { value: THREE.Texture };
@@ -133,6 +136,7 @@ varying vec3 vWorld;
 varying float vDepth;
 varying vec2 vVel;
 ${PLAN_GLSL}
+${LINING_GLSL}
 ${CLOUD_SHADOW_GLSL}
 ${FOG_GLSL}
 
@@ -201,8 +205,16 @@ void main() {
   alpha = max(alpha, foam * 0.85);
   col *= cloudShadow(vWorld.xz);
 
-  // Plans stay visible under water: stripes + outline drawn on the surface.
   vec2 cell = vWorld.xz - 0.5;
+  // A lined bed shows through: clearer water with the cobbles' mortar lines.
+  vec4 ln = liningColour(col, cell);
+  if (ln.a > 0.0) {
+    float clear = 1.0 - smoothstep(0.3, 2.5, vDepth);
+    vec3 bed = ln.rgb * (amb + uSunColor) * RECIPROCAL_PI;
+    col = mix(col, bed, 0.38 * clear * (1.0 - foam));
+    alpha = mix(alpha, max(alpha, 0.8), clear * 0.5);
+  }
+  // Plans stay visible under water: stripes + outline drawn on the surface.
   if (uPlanOn > 0.5) {
     vec4 t = planOverlay(uPlan, cell, 0.35, 1.0, 0.16);
     vec3 pc = t.rgb * (amb + uSunColor) * RECIPROCAL_PI;
@@ -245,6 +257,8 @@ export function createWaterUniforms(
     uPreview: { value: tex.preview },
     uPlanOn: { value: 0 },
     uPreviewOn: { value: 0 },
+    uLining: { value: null },
+    uLiningOn: { value: 0 },
     uTerrain: { value: tex.terrain },
     uDepthA: { value: tex.depthA },
     uDepthB: { value: tex.depthB },

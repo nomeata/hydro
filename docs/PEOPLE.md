@@ -148,7 +148,7 @@ list (`stats.villages`).
 
 | Job | Site | Activity | Effect |
 |---|---|---|---|
-| builder | plan cells, houses | dig, carry earth, hammer | `applyEarthwork`, buildings |
+| builder | houses, jetty, own lining | hammer, carry stones | buildings, `CellFlag.Lined` |
 | farmer | field/garden | plough, sow, tend, harvest | crop → food |
 | fisher | shore near fish | sit and cast | fish → food |
 | herder (later) | pasture | walks with cows | grass → food |
@@ -175,6 +175,31 @@ year; gardens give green within about one season.
 ### 5.3 Floods
 Rising water near people makes them run uphill. Crops drown,
 `floodMemory` marks the area, and nobody builds houses there for years.
+
+### 5.4 The villagers' own works (M4a, `people/works.ts`)
+Villagers never carry out the player's plans (the spirit crew does), but
+they look after the water by their homes on their own:
+- **Lining.** Daily, each village lists the cells it would like to line
+  (`lineSites`, best 24): banks (dry or shallow cells next to water) within
+  3 cells of its buildings, yards, fields and paths, and the beds and banks
+  of the player's canals (cells flagged `CellFlag.Canal` when a trench plan
+  lowered them) within 22 cells of the centre that carry water. Faster
+  water, flood memory, canals and banks right by a house rank higher. A
+  stone budget grows by 1.5 cells/day at full wellbeing (a fifth of that
+  when poor, capped at 4). Builders, or a small mason share of the
+  population (4–12 %, more when prosperous), fetch a stone at the store
+  (`CarryKind.Stone`) and lay it (Build animation): one cell per visit. So
+  banks get lined slowly over seasons, never far from home.
+- **Quays.** Lined, dry cells next to water deeper than 0.5 m within 3
+  cells of a house read as a quay / lake front: dressed-stone slabs with a
+  pale coping, a stone edge down to the water, and now and then a few
+  steps, a bollard, a bench or a lantern (derived daily; rendering only).
+- **Jetty.** A village with fishers picks its best fishing shore (calm
+  water ≥ 0.5 m deep for 2–3 cells straight out, fish, open water beyond)
+  and its builders build one wooden jetty there. Its deck cells become
+  `bridge` land use (walkable); a fisher then prefers its end.
+- Later: harbours, boats and shipping between villages on lakes and
+  canals (ports & shipping), village irrigation ditches and check dams.
 
 ## 6. Fog of war & progression (M3-γ)
 - `world.revealed` (u8, persisted): a disc of 40 cells around the start

@@ -5,6 +5,7 @@
  */
 import type { Rng } from '../../shared/rng';
 import { DAYS_PER_YEAR } from '../constants';
+import type { Jetty } from './works';
 
 export const ECONOMY = {
   /** Food eaten per person per day (person-days, by definition 1). */
@@ -48,6 +49,12 @@ export interface SettlementState {
   safety: number;
   /** Starving days in a row (for visible distress). */
   hungryDays: number;
+  /** Banks and canal cells the village wants to line, best first (works.ts; absent in old saves). */
+  lineSites?: number[];
+  /** Cells the village may line now (grows daily with wellbeing). */
+  lineBudget?: number;
+  /** The village's fishing jetty, once chosen. */
+  jetty?: Jetty;
 }
 
 export interface DayEvents {

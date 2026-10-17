@@ -115,16 +115,20 @@ cancelled.
 | Trench / canal | Lowers ground along a path to a floor that grades evenly from start to end | start |
 | Dike / wall | Raises ground along a path to a level crest | start |
 | Level | Flattens an area to a target height (basins, terraces) | start |
-| Lining | Stone lining: canal/dike does not erode or slump | early |
-| Sluice gate | Controllable opening in a dike | early |
-| Weir | Fixed overflow crest (controls river level) | early |
+| Lining | Stone lining: canal/dike does not erode or slump. Villagers also line banks by their homes and the player's canals near the village on their own; lined banks by the houses facing open water become quays (lake fronts) | 15 villagers |
+| Weir | Fixed, lined overflow crest drawn across a river: holds water to the crest, spills evenly above it | 30 villagers |
+| Sluice gate | Tap a dike or weir (or draw across a channel for a dam with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Tap it in Look mode to toggle | 50 villagers |
 | Well / pump | Lifts groundwater/river water into a canal | mid |
 | Water wheel / mill | Uses flow; mills grain (settlement benefit) | mid |
 | Dam + turbine | Generates power from head × flow | late |
 | Power line / pole | Distributes power within a radius of poles | late |
 | Pumped storage | Pump uphill when surplus, generate when deficit | late |
 
-Unlocks are driven by population/prosperity milestones, not by purchase.
+Unlocks are driven by population/prosperity milestones, not by purchase
+(`src/shared/unlocks.ts`). Stone work (lining, weirs, gates) is done by
+the quick spirit crew; villagers never carry out the player's plans, but do
+their own works (PEOPLE.md §5.4): lining near home, quays, a fishing jetty.
+On a keyboard, the digit keys 1…9, 0 pick the tools in palette order.
 
 ## 4a. Progress you can feel
 

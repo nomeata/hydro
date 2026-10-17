@@ -17,6 +17,15 @@ export const ICONS = {
   level: svg(
     '<path d="M3 24c4-6 7-9 10-6s5 2 7-1 6-3 9 1" fill="none" stroke="#b98a52" stroke-width="2" stroke-dasharray="2 2.5" stroke-linecap="round"/><path d="M3 22h26v5H3z" fill="#c49a62" stroke="#6b4a2b" stroke-width="2" stroke-linejoin="round"/><path d="M9 6h14l-2 9H11z" fill="#9aa3ad" stroke="#4b5560" stroke-width="1.6" stroke-linejoin="round"/><path d="M16 15v5" stroke="#6b4a2b" stroke-width="2.4" stroke-linecap="round"/>',
   ),
+  line: svg(
+    '<path d="M3 12l4 13h18l4-13" fill="none" stroke="#6b4a2b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><g fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.5"><rect x="5" y="17" width="7" height="5" rx="2"/><rect x="13" y="20" width="7" height="5" rx="2"/><rect x="20" y="17" width="7" height="5" rx="2"/><rect x="9" y="11" width="6" height="5" rx="2"/><rect x="17" y="11" width="6" height="5" rx="2"/></g><path d="M12 6c2-2 6-2 8 0" stroke="#59b3e6" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  ),
+  weir: svg(
+    '<path d="M2 14h9" stroke="#59b3e6" stroke-width="5" stroke-linecap="round"/><path d="M11 13c4 0 5 4 6 9" stroke="#8fd0f2" stroke-width="3.2" fill="none" stroke-linecap="round"/><g fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.5"><rect x="9" y="16" width="7" height="5" rx="1.5"/><rect x="9" y="21" width="7" height="5" rx="1.5"/></g><path d="M8 15h9" stroke="#8d6438" stroke-width="2.6" stroke-linecap="round"/><path d="M17 26h13" stroke="#59b3e6" stroke-width="3" stroke-linecap="round"/><path d="M2 27h28" stroke="#6b4a2b" stroke-width="2.2" stroke-linecap="round"/>',
+  ),
+  gate: svg(
+    '<rect x="4" y="9" width="6" height="19" rx="1.5" fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.6"/><rect x="22" y="9" width="6" height="19" rx="1.5" fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.6"/><rect x="3" y="7" width="26" height="3.5" rx="1.5" fill="#8d6438" stroke="#5b3d1f" stroke-width="1.4"/><rect x="10" y="12" width="12" height="11" fill="#c4935c" stroke="#6b4a2b" stroke-width="1.6"/><path d="M14 12v11M18 12v11M10 15.5h12" stroke="#7a5532" stroke-width="1.2"/><path d="M10 26c2 2 4 2 6 0s4-2 6 0" stroke="#59b3e6" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="16" cy="4.5" r="3" fill="none" stroke="#c0392b" stroke-width="1.8"/>',
+  ),
   erase: svg(
     '<circle cx="16" cy="16" r="11" fill="#fbe1d6" stroke="#b5482d" stroke-width="2.4"/><path d="M11 11l10 10M21 11L11 21" stroke="#b5482d" stroke-width="2.6" stroke-linecap="round"/>',
   ),

@@ -106,7 +106,7 @@ html, body {
   pointer-events: none;
 }
 .tools > * { pointer-events: auto; }
-.toolrow { display: flex; padding: 4px; gap: 4px; }
+.toolrow { display: flex; flex-wrap: wrap; justify-content: center; padding: 4px; gap: 4px; max-width: calc(100vw - 16px); box-sizing: border-box; }
 .toolrow button {
   width: 58px;
   height: 58px;
@@ -126,6 +126,13 @@ html, body {
 .toolrow button.locked > svg, .toolrow button.locked > span { filter: grayscale(1); opacity: 0.4; }
 .toolrow button.locked .lock { display: block; position: absolute; right: 3px; top: 3px; width: 16px; height: 16px; }
 .toolrow button.locked .lock svg { width: 16px; height: 16px; }
+.toolrow button .key { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .toolrow button .key {
+    display: block; position: absolute; left: 3px; top: 2px; font: 600 9px/1 system-ui, sans-serif;
+    color: var(--ink, #4a3b2a); opacity: 0.55; font-style: normal;
+  }
+}
 
 .options {
   display: flex;
@@ -186,7 +193,9 @@ html, body {
 @keyframes bob { 50% { transform: rotate(45deg) translate(-8px, -8px); } }
 
 @media (max-width: 480px) {
-  .toolrow button { width: 52px; height: 52px; }
+  .toolrow { gap: 3px; padding: 3px; }
+  .toolrow button { width: 44px; height: 50px; font-size: 10px; }
+  .toolrow button svg { width: 24px; height: 24px; }
   .options label { min-width: 92px; }
   .options input[type='range'] { width: 96px; }
   .date { font-size: 13px; }

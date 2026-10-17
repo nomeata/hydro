@@ -65,12 +65,13 @@ export const enum PropKind {
   Log = 4,
   Bundle = 5,
   Bucket = 6,
-  Hoe = 7,
-  Shovel = 8,
-  Hammer = 9,
-  Rod = 10,
+  Stone = 7,
+  Hoe = 8,
+  Shovel = 9,
+  Hammer = 10,
+  Rod = 11,
 }
-export const PROP_KINDS = 11;
+export const PROP_KINDS = 12;
 
 export const PEOPLE_MODELS: readonly ModelName[] = [
   'character_male_a',
