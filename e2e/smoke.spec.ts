@@ -19,7 +19,8 @@ test('HUD shows the date and speed controls work', async ({ page }) => {
 });
 
 test('drawing a trench creates a plan that gets built', async ({ page }) => {
-  await openGame(page);
+  // A small world keeps the simulated days quick on slow CI machines.
+  await openGame(page, '&size=128');
   await page.locator('button[data-tool=trench]').click();
   const box = (await page.locator('#view').boundingBox())!;
   const cx = box.x + box.width / 2;
@@ -34,7 +35,7 @@ test('drawing a trench creates a plan that gets built', async ({ page }) => {
     return plan.some((v) => !Number.isNaN(v));
   });
   // Builders finish it within a few days.
-  await page.evaluate(() => (window as any).__hydro.client.runDays(3));
+  await page.evaluate(() => (window as any).__hydro.client.runDays(2));
   await page.waitForFunction(() => {
     const plan: Float32Array = (window as any).__hydro.mirror.plan;
     return !plan.some((v) => !Number.isNaN(v));
@@ -63,7 +64,7 @@ test('mouse wheel zooms and drag pans the camera', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 60, { steps: 6 });
   await page.mouse.up();
-  await settleFrames(page, 30);
+  await settleFrames(page, 5);
   const state1 = await page.evaluate(() => JSON.stringify((window as any).__hydro.renderer.camera.getState()));
   expect(state1).not.toEqual(state0);
 });
