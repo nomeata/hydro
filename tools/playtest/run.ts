@@ -212,7 +212,7 @@ function planSnapshot(sim: Simulation): Float32Array {
   return Float32Array.from(sim.world.plan);
 }
 
-function pacing(events: GameEvent[], days: number): Pacing {
+export function pacing(events: GameEvent[], days: number): Pacing {
   const counts: Partial<Record<EventKind, number>> = {};
   for (const e of events) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
   const hours = realMinutes(days) / 60;
