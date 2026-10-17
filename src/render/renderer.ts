@@ -25,6 +25,8 @@ import { FlowParticles } from './flow';
 import { WeatherLayer, createFrontUniforms } from './weather';
 import { BuildingsLayer } from './village/buildings';
 import { CropLayer } from './village/crops';
+import { VillageCuesLayer } from './village/cues';
+import { fieldsToRgba } from './village/fields';
 import { StructuresLayer } from './structures/structures';
 import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
@@ -77,6 +79,8 @@ export class GameRenderer {
   readonly buildings: BuildingsLayer;
   /** Crop models on fields when zoomed in (the terrain shader paints the fields). */
   readonly crops: CropLayer;
+  /** Chimney smoke, laundry and flowers showing each village's mood. */
+  readonly cues: VillageCuesLayer;
   /** Sluice gates and weirs from the snapshot's structure list. */
   readonly structures: StructuresLayer;
   /** Lining per cell as last received, and cells previewed by a lining tool. */
@@ -150,7 +154,7 @@ export class GameRenderer {
       depthB: makeFloatTexture(W, H),
       vel: makeByteTexture(W, H, 2),
       noise: makeNoiseTexture(),
-      fields: makeByteTexture(W, H, 2),
+      fields: makeByteTexture(W, H, 4),
       lining: makeLiningTexture(W, H),
     };
     this.liningBase = new Uint8Array(W * H);
@@ -196,6 +200,7 @@ export class GameRenderer {
     this.buildings = new BuildingsLayer(this.scene, this.heights);
     this.buildings.setShadows(this.shadows);
     this.crops = new CropLayer(this.scene, this.heights);
+    this.cues = new VillageCuesLayer(this.scene, this.heights);
     this.structures = new StructuresLayer(this.scene, this.heights);
     this.updateBounds();
 
@@ -269,6 +274,7 @@ export class GameRenderer {
       uploadFloatRows(this.gl, this.tex.terrain, y0, y1);
       this.updateBounds();
       this.buildings.refreshHeights();
+      this.cues.refreshHeights();
       this.structures.refreshHeights();
       this.crops.invalidate();
     }
@@ -292,19 +298,29 @@ export class GameRenderer {
       this.fog.updateHeight(this.heights);
       this.updateFogChunks();
       this.updateCameraBounds();
-      if (!s.buildings) this.buildings.setBuildings(this.visibleBuildings(this.buildingList));
+      if (!s.buildings) {
+        const vis = this.visibleBuildings(this.buildingList);
+        this.buildings.setBuildings(vis);
+        this.cues.setBuildings(vis);
+      }
     }
     if (s.buildings) {
       this.buildingList = s.buildings;
-      this.buildings.setBuildings(this.visibleBuildings(s.buildings));
+      const vis = this.visibleBuildings(s.buildings);
+      this.buildings.setBuildings(vis);
+      this.cues.setBuildings(vis);
     }
-    const v = s.stats.village;
-    if (v) this.buildings.setFood(v.food, v.population);
+    const vs = s.stats.villages;
+    if (vs) {
+      this.buildings.setVillages(vs);
+      this.cues.setVillages(vs);
+    }
+    this.cues.setWind(s.climate.windDir, s.climate.windSpeed);
     if (s.fields) {
-      (this.tex.fields.image.data as Uint8Array).set(s.fields.subarray(0, n * 2));
+      fieldsToRgba(s.fields, this.tex.fields.image.data as Uint8Array, n);
       this.tex.fields.needsUpdate = true;
       this.terrain.uniforms.uFieldsOn.value = 1;
-      this.crops.setFields(this.tex.fields.image.data as Uint8Array);
+      this.crops.setFields(s.fields);
     }
     // Always daytime (a day/night cycle is distracting); the season drifts smoothly.
     if (this.followSimTime) this.setSun(DAY_TIME, s.time.yearFrac * 4);
@@ -417,6 +433,7 @@ export class GameRenderer {
     this.weather.update(dt, t, this.camera);
     const cs = this.camera.getCurrentState();
     this.crops.update(nowMs, cs.x, cs.y, cs.viewHeight);
+    this.cues.update(dt, cs.viewHeight);
     this.structures.update(dt);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;
@@ -466,6 +483,7 @@ export class GameRenderer {
     this.weather.dispose();
     this.buildings.dispose();
     this.crops.dispose();
+    this.cues.dispose();
     this.structures.dispose();
     this.fog.dispose();
     this.sky.dispose();

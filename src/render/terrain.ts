@@ -28,7 +28,7 @@ export interface TerrainTextures {
   look: THREE.DataTexture;
   plan: THREE.DataTexture;
   preview: THREE.DataTexture;
-  /** Land use and crop stage (RG8), see village/fields.ts. */
+  /** Land use, crop stage and crop stress (RGBA8), see village/fields.ts. */
   fields: THREE.DataTexture;
   /** Stone lining per cell (R8), see structures/lining.ts. */
   lining: THREE.DataTexture;

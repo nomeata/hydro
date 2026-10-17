@@ -70,6 +70,11 @@ export interface Agent {
   anim: EntityAnim;
   /** Running away from rising water. */
   flee?: boolean;
+  /**
+   * A child playing between the houses of a prosperous village (PEOPLE.md
+   * §7): cosmetic, never works, not counted in the population.
+   */
+  child?: boolean;
   /** Last movement velocity (cells per step), for extrapolation. */
   vx: number;
   vy: number;
@@ -82,9 +87,9 @@ export const WALK_SPEED = 1.5 / STEPS_PER_SECOND_1X;
  * Move an agent along its path for `steps` hydro steps. Returns true when it
  * has arrived at the end of the path.
  */
-export function walk(world: World, a: Agent, steps: number): boolean {
+export function walk(world: World, a: Agent, steps: number, speed = 1): boolean {
   const W = world.width;
-  let budget = steps * WALK_SPEED;
+  let budget = steps * WALK_SPEED * speed;
   const x0 = a.x;
   const y0 = a.y;
   while (budget > 0 && a.pathPos < a.path.length) {
@@ -126,7 +131,7 @@ export function packEntities(agents: readonly Agent[], speed: number): EntityFra
   for (let i = 0; i < n; i++) {
     const a = agents[i]!;
     id[i] = a.id;
-    info[i * 4] = EntityKind.Person;
+    info[i * 4] = a.child ? EntityKind.Child : EntityKind.Person;
     info[i * 4 + 1] = a.variant;
     info[i * 4 + 2] = a.anim;
     info[i * 4 + 3] = a.carry;

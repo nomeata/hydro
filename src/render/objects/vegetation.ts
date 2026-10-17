@@ -16,7 +16,7 @@ import { HEIGHT_SCALE, heightToY, type HeightSampler } from '../coords';
 import { hash2 } from '../../shared/rng';
 import { perlin } from '../../shared/noise';
 import { LandUse, SoilType } from '../../sim/world';
-import { LOOK_CHANNELS } from '../../shared/protocol';
+import { FIELD_BYTES, LOOK_CHANNELS } from '../../shared/protocol';
 import { modelLibrary, type StaticModel } from './loader';
 import type { ModelName } from './manifest';
 
@@ -397,7 +397,7 @@ export class VegetationLayer {
   }
 
   /**
-   * Land use from a snapshot's `fields` (2 bytes per cell: LandUse, crop).
+   * Land use from a snapshot's `fields` (FIELD_BYTES per cell: LandUse, crop, stress).
    * Re-scatters the chunks whose land use changed (vegetation is cleared on
    * fields, buildings, paths…).
    */
@@ -405,11 +405,11 @@ export class VegetationLayer {
     const n = this.width * this.height;
     const prev = this.landuse;
     const next = new Uint8Array(n);
-    for (let i = 0; i < n; i++) next[i] = fields[2 * i]!;
+    for (let i = 0; i < n; i++) next[i] = fields[FIELD_BYTES * i]!;
     // Keep the cells next to buildings clear too (a little yard around each house).
     const W = this.width;
     for (let i = 0; i < n; i++) {
-      if (fields[2 * i] !== LandUse.Building) continue;
+      if (fields[FIELD_BYTES * i] !== LandUse.Building) continue;
       const x = i % W;
       const y = (i / W) | 0;
       for (let dy = -1; dy <= 1; dy++)

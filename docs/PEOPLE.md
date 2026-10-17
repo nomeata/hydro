@@ -222,19 +222,52 @@ they look after the water by their homes on their own:
   greyed with a lock and say "Unlocks at N villagers".
 
 ## 7. Making the hidden economy visible ("watch and learn")
-- **Food:** haystacks, sacks in the granary, fish-drying racks. Their number
-  (0–6) follows the stock, quantised.
-- **Crops:** green → yellow-brown when dry; brown and patchy with puddles
-  when drowned; stubble after harvest; weedy when fallow.
-- **Prosperity:** above w ≈ 0.6, chimney smoke, laundry lines, flower boxes
-  and children playing appear. Below w ≈ 0.3, people idle at the store and
-  walk slowly without bounce.
+Implemented (☑) and planned cues. No text: the economy shows through props
+and behaviour.
+- ☑ **Food:** each store shows its own village's stock: 0–6 sacks (one per
+  20 days of food per head), one or two round hay bales beside it when it
+  is (nearly) full. A village with fishers has a fish-drying rack, hung
+  with fish unless the store is empty (`render/village/houses.ts`).
+- ☑ **Crops:** the sim sends a stress byte per field cell (third byte of
+  `Snapshot.fields`, `cropStress` in `people/village.ts`, mirroring the
+  growth factor of `growCrops`): 1..127 dry (moisture < 0.35 while
+  growing), 128..255 waterlogged (moisture ≥ 0.9) or drowned (255, under
+  water). The terrain shader paints dry fields pale with thin, patchy,
+  straw-yellow crop rows, waterlogged ones as dark mud with brown crops and
+  puddles with a sky sheen in the furrows; crop models thin out, shrink and
+  turn yellow-brown / dull brown. Healthy fields stay lush. Stubble after
+  harvest (autumn) as before. ☐ weedy when fallow.
+- ☑ **Mood:** each settlement has a visible `mood` from wellbeing with
+  hysteresis (`nextMood`, settlement.ts: prosperous above 0.62 until below
+  0.55; struggling below 0.28 until above 0.35), saved, sent per village
+  in `VillageStats.mood`. Render side (`render/village/cues.ts`):
+  - prosperous: every finished house smokes (soft instanced puffs rising
+    and drifting with the climate's wind), laundry lines across the gap
+    between neighbouring houses, flower patches by most doors;
+  - ordinary: about a third of the houses smoke a little;
+  - struggling: no smoke, no decor; idle villagers hang about the store
+    (resting longer, often sitting) and dawdle (0.6× speed) on idle walks.
+    Work trips keep full speed, so the mood never feeds back into
+    production (§4).
+- ☑ **Children:** a prosperous village has up to `MAX_CHILDREN` (4, at
+  most one per four people and one per finished house) child agents
+  (`Agent.child`, `EntityKind.Child`, drawn as small villagers). They come
+  out of a house, run between the houses (1.7× walking speed), pause, run
+  on, and go back in (vanish) when the mood drops. They are deterministic
+  sim agents, saved with the others, but cosmetic: no job, no food, not
+  counted in the population (`syncPopulation` and job quotas skip them).
 - **Migration:** families walk in from the fog edge with bundles and walk out
   again. Abandoned houses become ruins that stay for years: the visible
   memory of a setback.
 - **Building:** the crowd at a plan grows with wellbeing.
-- **Water:** carriers walking to the river mean there is no well nearby.
-- **Fish:** jumps follow fish density.
+- ☐ **Water:** carriers walking to the river mean there is no well nearby.
+- ☑ **Fish:** jumps follow fish density.
+- Cost: the cues add at most 2 draw calls (one InstancedMesh of smoke
+  puffs, one merged mesh for all laundry and flowers, rebuilt only when
+  houses or moods change); hay and fish racks are part of the store's
+  merged geometry; children share the people's instanced meshes.
+- Debugging: `Command` `debugVillage` forces a village's wellbeing/mood
+  and food or dries its fields' soil (screenshots, tests).
 
 ## 8. Protocol & rendering
 - **Snapshot entities:** every agent and animal, each `id u16, kind/anim u8,
@@ -243,8 +276,9 @@ they look after the water by their homes on their own:
   The renderer interpolates and extrapolates.
 - **Buildings and props:** a rarely changing list (id, kind, x, y, rotation,
   stage).
-- **Fields:** drawn by the terrain shader from a landuse/crop texture
-  (furrows, crop colour), plus instanced crop models when zoomed in.
+- **Fields:** drawn by the terrain shader from a landuse/crop/stress
+  texture (furrows, crop colour, stress; §7), plus instanced crop models
+  when zoomed in.
 - **Characters:** one `InstancedMesh` per model with **baked animation
   textures** (walk, walk-carry, work-swing, sit, run) from the start, plus
   procedural bobbing. Cows go the same way. The current per-character
