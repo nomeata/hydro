@@ -24,7 +24,7 @@ export const CLIMATE = {
   /** Inflow multiplier at the middle of spring, summer, autumn, winter. */
   inflowSeason: [1.6, 0.45, 0.8, 1.0] as readonly number[],
   /** Extra inflow at the freshet's peak (×base, scaled by the snow factor)... */
-  freshet: 1.0,
+  freshet: 2.0,
   /** ...lasting this many days from the first day of spring, peaking on this day. */
   freshetDays: 8,
   freshetPeak: 2,
@@ -61,6 +61,8 @@ export interface ClimateRunState {
   snowFactor: number;
   /** Per-tile rain factor from the generation climate (absent: uniform). */
   rainMap?: number[];
+  /** Steady rivers, no wet or dry years (staged scenes). */
+  steady?: boolean;
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -74,8 +76,16 @@ function innovation(seed: number, year: number): number {
 
 export class Climate {
   state: ClimateRunState;
-  /** Whether rivers follow the seasons and years (staged scenes keep them steady). */
-  seasonal = true;
+
+  /** Whether rivers follow the seasons and years (staged scenes keep them steady; saved). */
+  get seasonal(): boolean {
+    return !this.state.steady;
+  }
+
+  set seasonal(on: boolean) {
+    if (on) delete this.state.steady;
+    else this.state.steady = true;
+  }
 
   constructor(private readonly seed: number) {
     const a0 = clamp(CLIMATE.anomalyNoise * innovation(seed, 0) * 1.25, CLIMATE.firstYear[0]!, CLIMATE.firstYear[1]!);

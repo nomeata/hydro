@@ -268,6 +268,5 @@ export function cloneScene(src: Simulation): Simulation {
   sim.setState(src.getState());
   sim.fog = src.fog;
   sim.weather.autoFronts = src.weather.autoFronts;
-  sim.climate.seasonal = src.climate.seasonal;
   return sim;
 }

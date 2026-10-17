@@ -24,7 +24,7 @@ export const PEOPLE_TICK = 2;
 const FOUND_AFTER = STEPS_PER_DAY / 3;
 /** How far (cells) a settlement works: fields, houses, plans. */
 export const REACH = 40;
-const FIELD_RADIUS = 22;
+const FIELD_RADIUS = 18;
 const FIELDS_PER_FARMER = 6;
 const CROP_RIPE = 230;
 /** Food (person-days) per harvested cell at fertility 1 and good moisture. */
@@ -84,6 +84,22 @@ const TIRED_SPEED = 0.6;
 
 
 /**
+ * How crops respond to field moisture (docs/PEOPLE.md §3.1): nothing grows
+ * below `dry`, growth ramps up to full at `moist`, and waterlogged soil
+ * (≥ `soggy`) gives `soggyGrowth`. Exported so tools can tune it.
+ */
+/** Capillary wetting from nearby water: max · exp(−d / reach), d in cells. */
+export const CAPILLARY = { max: 0.8, reach: 2.5 };
+
+export const CROP_MOISTURE = { dry: 0.15, moist: 0.35, soggy: 0.9, soggyGrowth: 0.4 };
+
+/** Crop growth factor 0..1 for a field moisture. */
+export function cropGrowth(m: number): number {
+  const c = CROP_MOISTURE;
+  return m < c.dry ? 0 : m < c.moist ? (m - c.dry) / (c.moist - c.dry) : m < c.soggy ? 1 : c.soggyGrowth;
+}
+
+/**
  * Visible stress of a field cell (docs/PEOPLE.md §7), mirroring the growth
  * factor in `growCrops`: 0 healthy (or nothing growing), 1..127 how dry
  * (127 = too dry to grow), 128..255 how waterlogged (255 = under water).
@@ -92,8 +108,9 @@ export function cropStress(crop: number, moisture: number, water: number, growin
   if (crop <= 0) return 0;
   if (water > 0.05) return 255;
   if (!growing || crop >= 255) return 0;
-  if (moisture < 0.35) return Math.max(1, Math.round(127 * Math.min(1, (0.35 - moisture) / 0.2)));
-  if (moisture >= 0.9) return STRESS_WET + Math.round(127 * Math.min(1, 0.5 + (moisture - 0.9) * 5));
+  const c = CROP_MOISTURE;
+  if (moisture < c.moist) return Math.max(1, Math.round(127 * Math.min(1, (c.moist - moisture) / (c.moist - c.dry))));
+  if (moisture >= c.soggy) return STRESS_WET + Math.round(127 * Math.min(1, 0.5 + (moisture - c.soggy) * 5));
   return 0;
 }
 
@@ -768,7 +785,7 @@ export class PeopleSystem {
             const sl = this.slope(i);
             if (sl > 0.25) continue;
             const m = this.fieldMoisture[i]!;
-            const wet = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
+            const wet = cropGrowth(m);
             const forest = w.vegetation[i]! > 0.6 ? 0.6 : 1;
             sum += w.fertility[i]! * wet * forest * (1 - sl * 2);
           }
@@ -890,7 +907,7 @@ export class PeopleSystem {
     for (let i = 0; i < w.size; i++) {
       const cap = soil[i]! * SOIL_PROPS[soilType[i]!]!.porosity;
       const own = cap > 0 ? ground[i]! / cap : 0;
-      this.fieldMoisture[i] = Math.max(own, 0.8 * Math.exp(-d[i]! / 2.5));
+      this.fieldMoisture[i] = Math.max(own, CAPILLARY.max * Math.exp(-d[i]! / CAPILLARY.reach));
     }
   }
 
@@ -963,7 +980,7 @@ export class PeopleSystem {
         c = Math.max(0, c - 60); // drowning
       } else if (growing && c > 0 && c < 255) {
         const m = this.fieldMoisture[i]!;
-        const f = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
+        const f = cropGrowth(m);
         c = Math.min(255, c + Math.round(16 * f));
         // Growing crops draw water from the nearest water body, or the soil.
         const src = this.nearestWater[i]!;
@@ -1299,7 +1316,7 @@ export class PeopleSystem {
         if (!this.buildable(i) || !this.spacious(x, y)) continue;
         if (this.settlements.length > 1 && this.ownerOf(x, y) !== s) continue;
         const m = this.fieldMoisture[i]!;
-        const wet = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
+        const wet = cropGrowth(m);
         const forest = Math.max(0, w.vegetation[i]! - 0.45);
         // Grow fields in solid patches next to existing ones.
         const W = w.width;

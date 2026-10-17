@@ -90,8 +90,10 @@ land supports. One number carries both layers:
 New world fields:
 - `landuse` u8: none, field, garden, pasture, path, building, yard, bridge
 - `crop` u8: growth stage plus a health flag
-- `floodMemory` u8: set to 255 when depth exceeds 0.3 m; drops by 1 per day
-  (≈ 5 years)
+- `floodMemory` u8: set to 255 when depth exceeds 0.3 m on used land; drops
+  by 1 per day (≈ 4 years), and by `FLOOD_FORGET` (120) more on the last day
+  of a spring in which the cell stayed dry: one dry spring behind a new dike
+  frees the land for the next year (docs/GAMEPLAY.md §4.3 P3)
 - `traffic` u8: decaying footfall; high values become desire paths (☑ M3-δ,
   `people/desire.ts`): every walker (people and animals) adds 4 per cell it
   enters, a day takes 1/16 of it away; open land with traffic ≥ 180 becomes
@@ -136,7 +138,9 @@ garden crop in summer and autumn) flatten the yearly sawtooth.
 - **Migration is the main lever, rate-limited by housing:**
   - families arrive with probability ∝ `max(0, w − 0.6) × freeHouses`;
   - families leave with probability ∝ `max(0, 0.4 − w)`;
-  - births and deaths are small, about ±5 %/yr, and children are cosmetic.
+  - births and deaths are small, about ±5 %/yr, and children are cosmetic;
+  - families stop arriving and births pause while food security is below
+    0.5 (`ECONOMY.growFood`), so a village levels off fed, not hungry.
 - **Recovery floor:** if land is attractive, a trickle of migrants keeps
   arriving, even to an empty site.
 
@@ -157,12 +161,17 @@ switches it back on for experiments).
 - at least 26 cells (`FOUNDING.minSpacing`) from other settlements;
 - on known land or at its soft edge (revealed ≥ 64).
 
-The first family arrives within 1–2 game days of a new game. Further
+The first family arrives within 1–2 game days of a new game, at the start
+point: on most worlds a dry terrace 2–6 m above the river with a fertile,
+flood-prone floodplain below it (worldgen `chooseStart`, GAMEPLAY §4.3 P2;
+the old river meadow is the fallback). Further
 villages (code: `FOUNDING` in `village.ts`): once all villages together
 have ≥ 25 people, or one village has ≥ 18 people and no free house, and at
-most once per game year, the best block scoring ≥ 0.55 (0..~1.15:
-fertility × wetness × flatness, averaged, plus 0.15 near water) gets a
-migrant family of 3–5. They walk in with their bundles from the nearest
+most once per game year, the best block scoring ≥ 0.6 (0..~1.15:
+fertility × wetness × flatness, averaged, plus 0.15 near water) both now
+and at the end of last summer (a survey kept from day 22: migrants judge
+land at its worst, so river margins that dry out in the low water of late
+summer don't qualify) gets a migrant family of 3–5. They walk in with their bundles from the nearest
 edge of the fog and found a village there (store + houses, as the first).
 Typical natural land scores 0.4–0.55, good river meadows 0.7–0.85, so on
 many maps the player attracts new villages by irrigating a dry plain.
@@ -217,7 +226,8 @@ Villagers never carry out the player's plans (the spirit crew does), but
 they look after the water by their homes on their own:
 - **Lining.** Daily, each village lists the cells it would like to line
   (`lineSites`, best 24): banks (dry or shallow cells next to water) within
-  3 cells of its buildings, yards, fields and paths, and the beds and banks
+  3 cells of its houses and yards (not by fields: a meander may take a
+  field, and that is for the player to answer), and the beds and banks
   of the player's canals (cells flagged `CellFlag.Canal` when a trench plan
   lowered them) within 22 cells of the centre that carry water. Faster
   water, flood memory, canals and banks right by a house rank higher. A

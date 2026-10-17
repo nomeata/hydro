@@ -164,7 +164,7 @@ export const TERRACE = {
   maxHeight: 8,
   goodHeight: [2, 6] as readonly number[],
   /** Floodplain cells: at most this high above the water, at least this fertile, within this radius. */
-  plainHeight: 1.5,
+  plainHeight: 0.9,
   plainFertility: 0.6,
   plainRadius: 16,
   /** Floodplain cells needed, and for a full score. */

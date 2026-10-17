@@ -69,8 +69,13 @@
 - Weather: rain fronts drift across the map with the wind; orographic
   enhancement makes mountains wetter. Winter precipitation falls as snow above
   the snow line and melts in spring ⇒ spring floods.
-- Slow random climate variability (wet years, droughts) so the landscape is
-  never quite in equilibrium. River courses slowly change.
+- Rivers have seasons: high water and a snowmelt freshet in spring, low
+  water in late summer. Slow random climate variability (wet years,
+  droughts: a yearly factor 0.55–1.6 on rivers and rain fronts, about one
+  dry year in six) keeps the landscape never quite in equilibrium. Dry
+  years and floods are setbacks, never failure. The live weather keeps the
+  generated climate (dry and wet worlds, rain shadows). River courses
+  slowly change.
 
 ### 2.4 Soil & vegetation
 - Per cell: moisture (from groundwater/surface), fertility (nutrients),
