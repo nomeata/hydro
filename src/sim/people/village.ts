@@ -4,7 +4,7 @@
  * player's plans, and the agents doing all of it. Land grows crops, agents
  * collect them, the settlement only decides (see §2 of the design).
  */
-import { CarryKind, EntityAnim, FISH_BLOCK, type SimTime, type StructureInfo } from '../../shared/protocol';
+import { CarryKind, EntityAnim, FISH_BLOCK, STRESS_WET, type SimTime, type StructureInfo } from '../../shared/protocol';
 import { Rng } from '../../shared/rng';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../constants';
 import { REVEALED } from '../fog';
@@ -42,6 +42,26 @@ const FISH_GROWTH = 0.06;
 const CATCH = 5;
 /** Water drawn by a growing field per day (m). */
 const FIELD_DRAW = 0.004;
+/** Children playing per prosperous village at most (PEOPLE.md §7). */
+export const MAX_CHILDREN = 4;
+/** Children run this much faster than adults walk; struggling villagers dawdle. */
+const CHILD_SPEED = 1.7;
+const TIRED_SPEED = 0.6;
+
+
+/**
+ * Visible stress of a field cell (docs/PEOPLE.md §7), mirroring the growth
+ * factor in `growCrops`: 0 healthy (or nothing growing), 1..127 how dry
+ * (127 = too dry to grow), 128..255 how waterlogged (255 = under water).
+ */
+export function cropStress(crop: number, moisture: number, water: number, growing: boolean): number {
+  if (crop <= 0) return 0;
+  if (water > 0.05) return 255;
+  if (!growing || crop >= 255) return 0;
+  if (moisture < 0.35) return Math.max(1, Math.round(127 * Math.min(1, (0.35 - moisture) / 0.2)));
+  if (moisture >= 0.9) return STRESS_WET + Math.round(127 * Math.min(1, 0.5 + (moisture - 0.9) * 5));
+  return 0;
+}
 
 /**
  * Founding of further villages (docs/PEOPLE.md §4). Attractiveness is
@@ -189,6 +209,44 @@ export class PeopleSystem {
 
   get population(): number {
     return this.settlements.reduce((n, s) => n + s.state.population, 0);
+  }
+
+  /** Stress byte of cell i for the renderer (see cropStress). */
+  stressAt(i: number, season: number): number {
+    const w = this.world;
+    if (w.landuse[i] !== LandUse.Field) return 0;
+    return cropStress(w.crop[i]!, this.fieldMoisture[i]!, w.water[i]!, season === 0 || season === 1);
+  }
+
+  /** Fishers of a settlement (the store shows a fish-drying rack). */
+  fishersOf(id: number): number {
+    let n = 0;
+    for (const a of this.agents) if (a.settlement === id && a.job === Job.Fisher && a.task !== Task.Leave) n++;
+    return n;
+  }
+
+  /**
+   * Debugging and screenshots (Command 'debugVillage'): force a village's
+   * wellbeing (and with it its mood) or food, or dry out the soil around it.
+   */
+  debugVillage(index: number, opts: { wellbeing?: number; food?: number; dry?: boolean }): void {
+    const s = this.settlements[index];
+    if (!s) return;
+    const st = s.state;
+    if (opts.wellbeing !== undefined) {
+      st.wellbeing = opts.wellbeing;
+      st.mood = opts.wellbeing > 0.62 ? 1 : opts.wellbeing < 0.28 ? -1 : 0;
+    }
+    if (opts.food !== undefined) st.food = opts.food;
+    if (opts.dry) {
+      const w = this.world;
+      for (let y = Math.max(0, Math.round(st.y - REACH)); y <= Math.min(w.height - 1, Math.round(st.y + REACH)); y++)
+        for (let x = Math.max(0, Math.round(st.x - REACH)); x <= Math.min(w.width - 1, Math.round(st.x + REACH)); x++) {
+          const i = w.idx(x, y);
+          if (w.landuse[i] === LandUse.Field) w.ground[i] = 0;
+        }
+      this.updateMoisture();
+    }
   }
 
   /**
@@ -410,6 +468,7 @@ export class PeopleSystem {
       this.updateSafety(s);
       s.day(doy, this.rng);
       this.syncPopulation(s);
+      this.syncChildren(s);
       this.planHouses(s);
       this.planWorks(s);
       this.assignJobs(s, host);
@@ -855,9 +914,62 @@ export class PeopleSystem {
     return total * FISH_GROWTH * 0.25; // a sustainable share of the growth at mid stock
   }
 
+  /**
+   * Children playing between the houses while the village prospers: they
+   * come out of a house, and go back in (vanish) when times get harder.
+   */
+  private syncChildren(s: Settlement): void {
+    const st = s.state;
+    const houses = this.buildings.filter((b) => b.settlement === st.id && b.kind === 'house' && b.progress >= 1);
+    const want = st.mood === 1 ? Math.min(MAX_CHILDREN, Math.floor(st.population / 4), houses.length) : 0;
+    const kids = this.agents.filter((a) => a.settlement === st.id && a.child && a.task !== Task.Leave);
+    const w = this.world;
+    for (let n = kids.length; n < want; n++) {
+      const h = houses[this.rng.int(0, houses.length)]!;
+      this.agents.push({
+        id: this.nextId++,
+        settlement: st.id,
+        variant: this.rng.int(0, 10),
+        x: h.x,
+        y: h.y,
+        heading: this.rng.range(0, Math.PI * 2),
+        job: Job.Idle,
+        task: Task.None,
+        siteKind: SiteKind.None,
+        site: -1,
+        path: [],
+        pathPos: 0,
+        timer: 0,
+        carry: CarryKind.None,
+        load: 0,
+        anim: EntityAnim.Idle,
+        vx: 0,
+        vy: 0,
+        child: true,
+      });
+    }
+    for (let k = kids.length - 1; k >= want; k--) {
+      const a = kids[k]!;
+      // Home: the nearest house (or gone at once if there is none to walk to).
+      let best: Building | null = null;
+      let bestD = Infinity;
+      for (const h of houses) {
+        const d = Math.hypot(h.x - a.x, h.y - a.y);
+        if (d < bestD) {
+          bestD = d;
+          best = h;
+        }
+      }
+      const path = best ? this.pf.find(this.cellOf(a), w.idx(best.x, best.y), { window: 24, maxExpand: 2000 }) : null;
+      a.task = Task.Leave;
+      a.path = path ?? [];
+      a.pathPos = 0;
+    }
+  }
+
   /** Spawn arrivals / send away leavers so agents match the settlement's population. */
   private syncPopulation(s: Settlement): void {
-    const mine = this.agents.filter((a) => a.settlement === s.state.id && a.task !== Task.Leave);
+    const mine = this.agents.filter((a) => a.settlement === s.state.id && a.task !== Task.Leave && !a.child);
     let diff = s.state.population - mine.length;
     while (diff > 0) {
       const a = this.spawnAt(s, 12);
@@ -971,7 +1083,7 @@ export class PeopleSystem {
   }
 
   private assignJobs(s: Settlement, host: PeopleHost): void {
-    const mine = this.agents.filter((a) => a.settlement === s.state.id && a.task !== Task.Leave);
+    const mine = this.agents.filter((a) => a.settlement === s.state.id && a.task !== Task.Leave && !a.child);
     const n = mine.length;
     const houseWork = this.buildings.some((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
     const planWork =
@@ -1072,8 +1184,10 @@ export class PeopleSystem {
     switch (a.task) {
       case Task.Leave:
       case Task.Walk: {
-        const arrived = walk(this.world, a, PEOPLE_TICK);
-        a.anim = a.flee ? EntityAnim.Run : a.carry !== CarryKind.None ? EntityAnim.Carry : EntityAnim.Walk;
+        // Children run; in a struggling village people dawdle when idle (never on the way to work: PEOPLE.md §7).
+        const tired = !a.flee && a.siteKind === SiteKind.Wander && a.task === Task.Walk && this.settlements[a.settlement]?.state.mood === -1;
+        const arrived = walk(this.world, a, PEOPLE_TICK, a.child ? CHILD_SPEED : tired ? TIRED_SPEED : 1);
+        a.anim = a.flee || a.child ? EntityAnim.Run : a.carry !== CarryKind.None ? EntityAnim.Carry : EntityAnim.Walk;
         if (arrived && a.task === Task.Walk) {
           a.flee = false;
           this.arrive(a);
@@ -1153,6 +1267,19 @@ export class PeopleSystem {
       }
       default:
         a.task = Task.Rest;
+        if (a.child) {
+          // A short pause in the game, then off again.
+          a.timer = 6 + this.rng.int(0, 30);
+          a.anim = this.rng.next() < 0.2 ? EntityAnim.Sit : EntityAnim.Idle;
+          break;
+        }
+        if (this.settlements[a.settlement]?.state.mood === -1) {
+          // Hanging about the store, listless.
+          a.timer = 80 + this.rng.int(0, 160);
+          a.anim = this.rng.next() < 0.25 ? EntityAnim.Sit : EntityAnim.Idle;
+          if (a.carry === CarryKind.Bundle) a.carry = CarryKind.None;
+          break;
+        }
         a.timer = 30 + this.rng.int(0, 80);
         a.anim = this.rng.next() < 0.4 ? EntityAnim.Sit : EntityAnim.Idle;
         if (a.carry === CarryKind.Bundle) a.carry = CarryKind.None;
@@ -1272,6 +1399,10 @@ export class PeopleSystem {
     const s = this.settlements[a.settlement];
     if (!s) return;
     const w = this.world;
+    if (a.child) {
+      this.play(a, s, time);
+      return;
+    }
     // Deliver what you carry first.
     if ((a.carry === CarryKind.Sack || a.carry === CarryKind.Fish) && a.load > 0) {
       const store = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store');
@@ -1320,14 +1451,34 @@ export class PeopleSystem {
         return;
       }
     }
-    // Nothing to do: wander near home and rest.
-    const r = 2 + this.rng.int(0, 6);
+    // Nothing to do: wander near home and rest (in hard times: by the store).
+    const tired = s.state.mood === -1;
+    const store = tired ? this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store') : undefined;
+    const r = store ? 1 + this.rng.int(0, 2) : 2 + this.rng.int(0, 6);
     const ang = this.rng.range(0, Math.PI * 2);
-    const x = Math.round(s.state.x + Math.cos(ang) * r);
-    const y = Math.round(s.state.y + Math.sin(ang) * r);
+    const x = Math.round((store?.x ?? s.state.x) + Math.cos(ang) * r);
+    const y = Math.round((store?.y ?? s.state.y) + Math.sin(ang) * r);
     if (w.inBounds(x, y) && w.water[w.idx(x, y)]! < 0.05 && this.goTo(a, w.idx(x, y), SiteKind.Wander, time)) return;
     a.task = Task.Rest;
     a.timer = 40;
+    a.anim = EntityAnim.Idle;
+  }
+
+  /** Children: run to a spot between the houses, pause, run on. */
+  private play(a: Agent, s: Settlement, time: SimTime): void {
+    const w = this.world;
+    const homes = this.buildings.filter((b) => b.settlement === s.state.id && b.kind !== 'ruin' && b.progress >= 1);
+    const h = homes.length ? homes[this.rng.int(0, homes.length)]! : { x: s.state.x, y: s.state.y };
+    const r = 1.5 + this.rng.range(0, 2.5);
+    const ang = this.rng.range(0, Math.PI * 2);
+    const x = Math.round(h.x + Math.cos(ang) * r);
+    const y = Math.round(h.y + Math.sin(ang) * r);
+    if (w.inBounds(x, y)) {
+      const i = w.idx(x, y);
+      if (w.water[i]! < 0.02 && w.landuse[i] !== LandUse.Building && this.goTo(a, i, SiteKind.Wander, time)) return;
+    }
+    a.task = Task.Rest;
+    a.timer = 20;
     a.anim = EntityAnim.Idle;
   }
 

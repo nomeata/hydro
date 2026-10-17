@@ -25,6 +25,7 @@ import { FlowParticles } from './flow';
 import { WeatherLayer, createFrontUniforms } from './weather';
 import { BuildingsLayer } from './village/buildings';
 import { CropLayer } from './village/crops';
+import { fieldsToRgba } from './village/fields';
 import { StructuresLayer } from './structures/structures';
 import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
@@ -150,7 +151,7 @@ export class GameRenderer {
       depthB: makeFloatTexture(W, H),
       vel: makeByteTexture(W, H, 2),
       noise: makeNoiseTexture(),
-      fields: makeByteTexture(W, H, 2),
+      fields: makeByteTexture(W, H, 4),
       lining: makeLiningTexture(W, H),
     };
     this.liningBase = new Uint8Array(W * H);
@@ -301,10 +302,10 @@ export class GameRenderer {
     const v = s.stats.village;
     if (v) this.buildings.setFood(v.food, v.population);
     if (s.fields) {
-      (this.tex.fields.image.data as Uint8Array).set(s.fields.subarray(0, n * 2));
+      fieldsToRgba(s.fields, this.tex.fields.image.data as Uint8Array, n);
       this.tex.fields.needsUpdate = true;
       this.terrain.uniforms.uFieldsOn.value = 1;
-      this.crops.setFields(this.tex.fields.image.data as Uint8Array);
+      this.crops.setFields(s.fields);
     }
     // Always daytime (a day/night cycle is distracting); the season drifts smoothly.
     if (this.followSimTime) this.setSun(DAY_TIME, s.time.yearFrac * 4);

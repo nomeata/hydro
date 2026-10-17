@@ -154,10 +154,10 @@ describe('fields', () => {
 
   it('places crop models only on sown field cells, inside the cell', () => {
     const n = 16;
-    const f = new Uint8Array(n * n * 2);
+    const f = new Uint8Array(n * n * 3);
     const set = (x: number, y: number, lu: number, crop: number) => {
-      f[2 * (y * n + x)] = lu;
-      f[2 * (y * n + x) + 1] = crop;
+      f[3 * (y * n + x)] = lu;
+      f[3 * (y * n + x) + 1] = crop;
     };
     set(2, 2, LandUse.Field, 0); // ploughed: no plants
     set(3, 2, LandUse.Field, 120);
@@ -205,9 +205,9 @@ describe('vegetation and land use', () => {
     const layer = new VegetationLayer(scene, heights, look, n, n, 3, { library: stub, autoCull: false });
     await layer.ready;
     const before = layer.instanceCount;
-    const fields = new Uint8Array(n * n * 2);
-    for (let i = 0; i < n * n; i++) fields[2 * i] = landuse[i]!;
-    fields[2 * (40 * n + 40)] = LandUse.Building;
+    const fields = new Uint8Array(n * n * 3);
+    for (let i = 0; i < n * n; i++) fields[3 * i] = landuse[i]!;
+    fields[3 * (40 * n + 40)] = LandUse.Building;
     layer.setFields(fields);
     layer.flush();
     const after = layer.instanceCount;

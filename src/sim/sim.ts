@@ -364,6 +364,10 @@ export class Simulation {
         this.structures.cancel(cmd.x, cmd.y, cmd.radius);
         break;
       }
+      case 'debugVillage':
+        this.people?.debugVillage(cmd.index, cmd);
+        this.fieldsDirty = true;
+        break;
       case 'debugWater': {
         const r = cmd.radius;
         for (let y = Math.max(0, Math.floor(cmd.y - r)); y <= Math.min(w.height - 1, Math.ceil(cmd.y + r)); y++)
@@ -486,12 +490,15 @@ export class Simulation {
     return d;
   }
 
-  /** Pack land use and crop stage (2 bytes per cell). */
+  /** Pack land use, crop stage and crop stress (FIELD_BYTES per cell, see Snapshot.fields). */
   packFields(out: Uint8Array): void {
     const { landuse, crop, size } = this.world;
+    const p = this.people;
+    const season = this.time.season;
     for (let i = 0; i < size; i++) {
-      out[2 * i] = landuse[i]!;
-      out[2 * i + 1] = crop[i]!;
+      out[3 * i] = landuse[i]!;
+      out[3 * i + 1] = crop[i]!;
+      out[3 * i + 2] = p ? p.stressAt(i, season) : 0;
     }
   }
 

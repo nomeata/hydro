@@ -34,7 +34,8 @@ describe('first village', () => {
     expect(s.houses).toBeGreaterThanOrEqual(1);
     expect(fields).toBeGreaterThan(10);
     expect(s.population).toBeGreaterThanOrEqual(4);
-    expect(p.agents.length).toBe(s.population + p.agents.filter((a) => a.task === 4).length);
+    const adults = p.agents.filter((a) => !a.child);
+    expect(adults.length).toBe(s.population + adults.filter((a) => a.task === 4).length);
   }, 240_000);
 
   it('fishers go fishing when there is stocked water nearby', async () => {
