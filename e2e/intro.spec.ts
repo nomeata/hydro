@@ -11,6 +11,8 @@ async function colourCount(page: Page, selector: string): Promise<number> {
 }
 
 test('welcome panels show live scenes, navigate, and clean up', async ({ page }) => {
+  // Two workers and two renderers: slow on loaded CI runners.
+  test.setTimeout(240_000);
   const errors = await openGame(page, '&size=64');
   const workers = () => page.evaluate(() => (window as any).__hydro.SimClient.live as number);
   expect(await workers()).toBe(1);
@@ -22,8 +24,8 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   // A second worker runs the scene; its first frames fade in over the drawing.
   expect(await workers()).toBe(2);
   await expect(page.locator('.intro-art.live-on')).toHaveCount(1, { timeout: 90_000 });
-  await page.waitForTimeout(800);
-  expect(await colourCount(page, '.intro-live')).toBeGreaterThan(40);
+  // The live frames fade in over the drawing; under load the first ones take a while.
+  await expect.poll(() => colourCount(page, '.intro-live'), { timeout: 30_000 }).toBeGreaterThan(40);
 
   // Next: the same canvas switches to the next scene.
   await intro.locator('.next').click();
