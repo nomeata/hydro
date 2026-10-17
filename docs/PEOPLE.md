@@ -51,11 +51,36 @@ ledger. In a dry spell, rivers below heavily irrigated land visibly shrink.
 Too wet is bad too: saturation above 0.9, or standing water over 5 cm for
 more than 2 days, drowns crops.
 
-### 3.2 Vegetation (M2, kept simple at first)
-First version: grass greenness follows moisture and season; forests are
-static apart from being cut. Later: per-cell growth/decline from moisture,
-fertility and temperature, slow forest spread, vegetation slowing erosion
-and raising infiltration. Fire and windthrow come last, if at all.
+### 3.2 Vegetation (M3-δ, `sim/vegetation.ts`)
+Once a game day every cell's `vegetation` (0..1) moves towards what the
+land supports. One number carries both layers:
+- **Grass** up to `grassCap` = 0.55·(0.3 + 0.5·moisture)·soil share
+  (≈ 0.17–0.44; rock and sand carry little). Bare ground is colonised
+  quickly in the growing season (12 % of the gap per day); drought browns
+  and thins it (5 %/day of the excess), never quite to bare earth.
+- **Forest** above it, up to `cap` = grass + 0.62·suitability·patch:
+  moist (saturation 0.18 → 0.45), not steep, not waterlogged soil, inside
+  the world's forest patches (the same low-frequency noise worldgen used
+  for the initial forests, so stands keep to their places). Forest grows
+  only where a forested cell (≥ 0.55) is at hand, the cell itself or a
+  neighbour, at 2.5 % of the gap per growing day: cleared land is won back
+  from the edges, about two cells a year. Drought thins it slowly (0.8 %
+  of the excess per day).
+- Growth follows the daily mean temperature (none below 3 °C, full from
+  14 °C) and stops under snow; standing water deeper than 10 cm drowns
+  plants. Now and then wind throws an old tree (0.4 % of forest cells a
+  year, a hash per cell and day): small clearings that grow back, so the
+  woods stay alive rather than frozen.
+- Used land caps it: paths 0.12, yards 0.25, buildings 0.1, lining 0.05;
+  fields and gardens belong to the crops.
+- **Feedbacks** (moderate): infiltration ×(1 + 0.4·v)
+  (`PARAMS.vegetationInfiltration`), erosion pickup ×(1 − 0.6·v)
+  (`vegetationHold`). Grazing and woodcutting lower it, so overgrazed or
+  cut land erodes more.
+- **Stationary:** a generated 128² world keeps its forest cover within a
+  few percent over 20 years (`tests/sim/life.test.ts`;
+  `npx tsx tools/vegetation-run.ts --seed 3 --years 20` prints yearly cover
+  and writes maps). Fire is not modelled.
 
 ### 3.3 Land use (M3)
 New world fields:
@@ -63,7 +88,14 @@ New world fields:
 - `crop` u8: growth stage plus a health flag
 - `floodMemory` u8: set to 255 when depth exceeds 0.3 m; drops by 1 per day
   (≈ 5 years)
-- `traffic` u8: decaying footfall; high values become desire paths (late)
+- `traffic` u8: decaying footfall; high values become desire paths (☑ M3-δ,
+  `people/desire.ts`): every walker (people and animals) adds 4 per cell it
+  enters, a day takes 1/16 of it away; open land with traffic ≥ 180 becomes
+  `LandUse.Path` (a few walks a day), a path below 24 fades back to meadow
+  (a month or two unused). Paths are 1.2× quicker to walk, cheaper for
+  A* (×0.8, so people keep to them), seal the soil a little (infiltration
+  ×0.6) and are drawn by the terrain shader as soft trodden earth with an
+  organic edge and tufts of grass (`pathColour` in `render/village/fields.ts`).
 
 Ownership is not stored per cell. It is derived from the nearest settlement
 (per 8×8 block).
@@ -151,8 +183,8 @@ list (`stats.villages`).
 | builder | houses, jetty, own lining | hammer, carry stones | buildings, `CellFlag.Lined` |
 | farmer | field/garden | plough, sow, tend, harvest | crop → food |
 | fisher | shore near fish | sit and cast | fish → food |
-| herder (later) | pasture | walks with cows | grass → food |
-| woodcutter (later) | forest edge | chop, carry | vegetation ↓ |
+| herder | pasture | leads the herd out, watches it graze, brings the milk | grass → dairy food |
+| woodcutter | forest edge | chop (axe), carry a log | vegetation ↓, woodpile |
 | idle | village | sit, chat; children play when w > 0.6 | — |
 
 Fields are claimed and ploughed in any season but winter. Grain follows the
@@ -200,6 +232,41 @@ they look after the water by their homes on their own:
   `bridge` land use (walkable); a fisher then prefers its end.
 - Later: harbours, boats and shipping between villages on lakes and
   canals (ports & shipping), village irrigation ditches and check dams.
+
+### 5.5 Woodcutters and herds (M3-δ)
+- **Woodcutters** (`WOOD` in `people/village.ts`): villages of 10+ people
+  send a small share (5 %, at most 3) while the woodpile holds fewer than 8
+  logs. Daily, each village lists its forest edge cells (vegetation ≥ 0.6,
+  dense around, an open dry neighbour to stand on), nearest first, never
+  within 5 cells of water: no clear-cutting by rivers and lakes. A
+  woodcutter walks there, chops (Build swing with an axe, `EntityAnim.Chop`),
+  the cell drops to stump and grass (0.18), and carries the log home to the
+  woodpile by the store (`SettlementState.wood`, at most 10). Logs are
+  burnt (0.15 a day, 0.6 in winter); in winter a warm hearth (wood on the
+  pile) adds 0.05 to the wellbeing target. No other economy. The forest
+  grows back from the stand around it within a year or two.
+- **Herds** (`people/herds.ts`): a village of 6+ people with grassy meadow
+  (vegetation 0.12–0.62) in the ring 7–24 cells around it keeps cows: at
+  most one per 4 people, per 60 pasture cells and 10 in all, scaled by
+  wellbeing (0.4 + 0.6·w); sheep (half the cows, 3+ cows), a pig or two
+  (10+ people) and chicks (2 + houses/2, 2+ houses). The first pair comes at
+  once, then the herd grows (or is sold off) one animal at a time. Animals
+  are sim entities (`Animal` in `agents.ts`: deterministic, saved, sent in
+  the entity frame like people). Cows and sheep stay at the fold (open
+  ground 5 cells from the store, towards the pasture) and go out when the
+  herder leads them; they graze (Eat), each mouthful crops the grass a
+  little (−0.012 down to 0.08). Pigs root about the store, chicks peck
+  around the houses.
+- **Herders** (one for a herd, two for 8+): the first leads the herd to the
+  best meadow of the day at its pace, sits and watches it graze for 420
+  steps, then the herd heads home and the herder carries a bucket of milk
+  to the store: 0.5 person-days per cow (sheep half) at pasture, booked on
+  delivery ("land grows it, people collect it"). In winter the herd stays
+  in the fold and gives half. Then he rests a while before the next
+  outing. Dairy is a small year-round food source.
+- The renderer's ambient "fake crowd" of animals is gone from the game;
+  the welcome scenes still use it (their staged village keeps no animals,
+  `PeopleSystem.noAnimals`).
 
 ## 6. Fog of war & progression (M3-γ)
 - `world.revealed` (u8, persisted): a disc of 40 cells around the start
@@ -260,6 +327,8 @@ and behaviour.
   again. Abandoned houses become ruins that stay for years: the visible
   memory of a setback.
 - **Building:** the crowd at a plan grows with wellbeing.
+- ☑ **Wood:** a woodpile behind the store grows with the logs (three
+  sizes); cows, sheep, pigs and chicks show a village's herd.
 - ☐ **Water:** carriers walking to the river mean there is no well nearby.
 - ☑ **Fish:** jumps follow fish density.
 - Cost: the cues add at most 2 draw calls (one InstancedMesh of smoke
@@ -308,8 +377,8 @@ and behaviour.
 - **M3-β:** fishers (reservoirs reward the player), flood flight and flood
   memory, ruins.
 - **M3-γ:** fog of war, more settlements founded, tool unlocks.
-- **M3-δ:** herders with cows, woodcutters, desire paths, vegetation
-  dynamics (M2).
+- ☑ **M3-δ:** herders with cows (and sheep, pigs, chicks), woodcutters,
+  desire paths, vegetation dynamics (M2) — §3.2, §3.3, §5.5.
 - **Later:** the pollution tracer (sewage) rides on the same upwind fluxes as
   sediment (reserve a slot in the flow kernel); NPCs dig their own furrows
   and check dams (M4); power (M6).

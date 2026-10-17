@@ -152,7 +152,7 @@ The player asked for "more direct endorphin hits". Decisions:
   milestones (filled with the day they were reached, outlined for the ones
   ahead). The sim records one sample per game day and saves it with the
   world (thinned for long games).
-- **Achievements, per world**: 25 little goals (docs/ACHIEVEMENTS.md),
+- **Achievements, per world**: 28 little goals (docs/ACHIEVEMENTS.md),
   from "First Spade" and "Lake Maker" to "Weathered the Storm", none
   secret, all reachable in normal play. Earning one slides in a toast with
   a sparkle (tap it for the list); the menu's Achievements card lists all,
