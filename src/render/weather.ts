@@ -445,9 +445,13 @@ export class WeatherLayer {
 
     // Precipitation box around the camera target.
     const pu = this.precipMat.uniforms;
-    const scale = Math.max(1, vh / 36) ** 0.8;
+    // Flakes live on a lattice anchored in world coordinates. The box size
+    // and the flake scale are snapped to powers of two, so panning and
+    // zooming within a level leave every flake where it is in the world
+    // (continuous scaling made them drift and jump while zooming).
     const cw = camera.camera.right - camera.camera.left;
-    const box = Math.max(st.viewHeight, cw) * 2.2;
+    const box = 2 ** Math.ceil(Math.log2(Math.max(st.viewHeight, cw) * 2.2));
+    const scale = Math.max(1, box / 128) ** 0.8;
     pu.uBoxSize!.value = box;
     (pu.uBoxOrigin!.value as THREE.Vector2).set(st.x + 0.5 - box / 2, st.y + 0.5 - box / 2);
     pu.uScale!.value = scale;
