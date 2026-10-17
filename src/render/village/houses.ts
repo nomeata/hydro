@@ -343,12 +343,18 @@ const SACK_SPOTS: readonly (readonly [number, number, number])[] = [
 /** Food level from which round hay bales stand by the store (one, then two at the maximum). */
 export const HAY_LEVEL = 4;
 
+/** Woodpile size 0..3 for a number of logs (VillageStats.wood). */
+export function woodLevel(logs: number): number {
+  return logs <= 0 ? 0 : logs < 4 ? 1 : logs < 7 ? 2 : 3;
+}
+
 /**
  * The village store: an open shed on posts with barrels, a cart and `level`
  * sacks of food; hay bales beside it when full. A village with fishers has
- * a fish-drying rack, hung with fish unless the store is empty.
+ * a fish-drying rack, hung with fish unless the store is empty; one with
+ * woodcutters a woodpile behind it (`wood` 0..3, see woodLevel).
  */
-export function storeDesign(level: number, fish = false): Design {
+export function storeDesign(level: number, fish = false, wood = 0): Design {
   const parts: Part[] = [
     { m: 'plinth', x: 0, y: -0.35, z: 0, s: [1.12, 0.42, 1.12], stages: ALL },
     { m: 'board', x: 0, y: 0.07, z: 0, s: [1.0, 0.03, 1.0], stages: ALL },
@@ -381,7 +387,14 @@ export function storeDesign(level: number, fish = false): Design {
     const hung = n === 0 ? 0 : Math.min(5, 2 + n);
     for (let k = 0; k < hung; k++) parts.push({ m: 'fish', x: -0.24 + (0.48 * k) / 4, y: 0.57, z, s: [0.05, 0.24, 0.1], stages: ALL });
   }
-  return { name: `store-${n}${fish ? '-fish' : ''}`, scale: 1.3, vscale: 1.0, roof: ROOF_THATCH, plaster: GABLE_WOOD, parts };
+  if (wood > 0) {
+    // Woodpile behind the back wall: a stack of logs that grows, a log or two leaning by it.
+    const k = Math.min(3, wood);
+    parts.push({ m: 'log_stack', x: -0.86, y: 0, z: 0.05, rot: 1, s: [0.32 + 0.08 * k, 0.28 + 0.12 * k, 0.4], stages: ALL });
+    if (k >= 2) parts.push({ m: 'log', x: -0.9, y: 0, z: -0.42, rot: 0, s: [0.45, 0.45, 0.45], stages: ALL });
+    if (k >= 3) parts.push({ m: 'log_stack', x: -0.86, y: 0, z: 0.5, rot: 1, s: [0.36, 0.3, 0.3], stages: ALL });
+  }
+  return { name: `store-${n}${fish ? '-fish' : ''}${wood > 0 ? `-wood${wood}` : ''}`, scale: 1.3, vscale: 1.0, roof: ROOF_THATCH, plaster: GABLE_WOOD, parts };
 }
 
 /** Parts of a design present at a stage. */
@@ -396,7 +409,7 @@ export function villageModels(): ModelName[] {
     for (const p of d.parts) if (!isProc(p.m)) s.add(p.m);
   };
   HOUSE_DESIGNS.forEach(add);
-  add(storeDesign(MAX_FOOD_PROPS, true));
+  add(storeDesign(MAX_FOOD_PROPS, true, 3));
   return [...s];
 }
 

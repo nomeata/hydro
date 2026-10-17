@@ -12,7 +12,8 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 - When the world is created (after the worker's spin-up) the sim takes a
   compact **baseline**: where the world's own water was (≥ 0.1 m) and which
   land was too dry to farm (field moisture < 0.15). Both are saved as
-  run-length encoded bitsets.
+  run-length encoded bitsets; so is where the forest stood (Forest Keeper;
+  older saves take the forest when loaded).
 - **The player's works**: every cell the spirit crew digs, heaps or lines is
   marked; "near the works" means in or next to an 8×8 block with a marked
   cell. Land and water achievements only count near the works, so natural
@@ -41,6 +42,8 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | **The land** | |
 | New Ground | A field on land that was too dry to farm at the start, near the works |
 | Green Desert | ≥ 150 cells that were too dry at the start are now well watered (field moisture ≥ 0.35), near the works, two days in a row |
+| Forest Keeper | ≥ 40 cells of forest (vegetation ≥ 0.6) where there was none at the start, near the works, two days in a row |
+| Well Trodden | A connected desire path (8-neighbours) of ≥ 30 cells |
 | **The people** | |
 | Founders | The first village |
 | First Harvest | The first field harvested |
@@ -50,6 +53,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | Golden Year | 250 field harvests in one calendar year |
 | Quayside | Villagers have a quay (lined lake front by the houses) |
 | Fishing Jetty | A village's jetty is finished |
+| Cattle Country | A village keeps a herd of ≥ 5 cows |
 | Hamlet, Village Life, Bustling Valley, Little Town | 10, 50, 100, 250 villagers (highest population so far) |
 | **Seasons** | |
 | Weathered the Storm | In a spring, ≥ 10 cells of village land were flooded on one day, and no house was ruined that spring |

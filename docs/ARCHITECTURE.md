@@ -54,6 +54,8 @@ WebGL2 GPU pass (>10×) stays a local change if the phone bench demands it.
 | `inflow` | f32 | prescribed inflow (m³/s), boundary rivers and springs |
 | `flowAvg` | f32 | slow moving average of discharge (river detection) |
 | `revealed` | u8 | fog of war (used from M3) |
+| `landuse`, `crop`, `floodMemory` | u8 | villages (PEOPLE.md §3.3) |
+| `traffic` | u8 | decaying footfall; desire paths (M3-δ) |
 
 ### 2.2 Bounded active window and the endless world
 Simulating an ever-growing grid is not affordable. The design is:
@@ -162,6 +164,15 @@ change). Erosion runs every 8 steps, talus every 16, weathering 4× a day.
   at centimetres and grows ever more slowly, rivers persist and migrate,
   sediment in ≈ sediment out. The default test runs one year at MORFAC ×6;
   `HYDRO_LONG=1` runs ten years at the normal MORFAC.
+
+### 3.3b Living vegetation (M3-δ)
+`sim/vegetation.ts`, run once per game day by the Simulation (also
+without villages; `Simulation.vegetationOn` switches it off): grass and
+forest grow towards what moisture, soil, slope, temperature and the
+world's forest patches support, forest spreads only from forested cells,
+drought thins, water drowns, wind opens small gaps (hashes, no RNG
+state). It raises infiltration and lowers erosion pickup. See PEOPLE.md
+§3.2.
 
 ### 3.4 Groundwater (M1a: bucket; M1c: lateral flow)
 - M1a: each cell's soil is a bucket of capacity `soil × porosity`.

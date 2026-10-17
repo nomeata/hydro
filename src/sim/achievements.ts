@@ -12,6 +12,8 @@ import { ACH, POPULATION_ACHIEVEMENTS } from '../shared/achievements';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR } from './constants';
 import { CellFlag, LandUse, SOIL_PROPS, type World } from './world';
 import type { PeopleEvent, PeopleSystem } from './people/village';
+import { longestPath } from './people/desire';
+import { VEG } from './vegetation';
 import type { Structures } from './structures/structures';
 
 /** What the checks look at (the Simulation). */
@@ -60,6 +62,8 @@ interface Counters {
   springRuined: number;
   lakeStreak: number;
   greenStreak: number;
+  /** Days in a row with enough new forest near the works (absent in older saves). */
+  forestStreak?: number;
 }
 
 export interface AchievementsState {
@@ -67,6 +71,8 @@ export interface AchievementsState {
   /** Run-length encoded bitsets: [start, length, …]. */
   wet0: number[];
   dry0: number[];
+  /** Forest at the start (absent in older saves: the forest when loaded). */
+  forest0?: number[];
   touched: number[];
   strokes: Stroke[];
   counters: Counters;
@@ -93,7 +99,7 @@ export function unrle(a: Uint8Array, runs: readonly number[]): void {
   for (let k = 0; k + 1 < runs.length; k += 2) a.fill(1, runs[k]!, Math.min(a.length, runs[k]! + runs[k + 1]!));
 }
 
-const freshCounters = (): Counters => ({ harvests: 0, year: 0, springFlood: false, springRuined: -1, lakeStreak: 0, greenStreak: 0 });
+const freshCounters = (): Counters => ({ harvests: 0, year: 0, springFlood: false, springRuined: -1, lakeStreak: 0, greenStreak: 0, forestStreak: 0 });
 
 export class Achievements {
   earned: AchievementEarned[] = [];
@@ -104,6 +110,8 @@ export class Achievements {
   /** The world's own water and its too-dry land at the start. */
   readonly wet0: Uint8Array;
   readonly dry0: Uint8Array;
+  /** Forest (vegetation ≥ VEG.forestLevel) at the start. */
+  readonly forest0: Uint8Array;
   /** Cells the player's works have changed, and per block whether any did. */
   readonly touched: Uint8Array;
   private readonly blocks: Uint8Array;
@@ -117,6 +125,7 @@ export class Achievements {
     const n = width * height;
     this.wet0 = new Uint8Array(n);
     this.dry0 = new Uint8Array(n);
+    this.forest0 = new Uint8Array(n);
     this.touched = new Uint8Array(n);
     this.bw = Math.ceil(width / BLOCK);
     this.bh = Math.ceil(height / BLOCK);
@@ -138,6 +147,12 @@ export class Achievements {
       this.wet0[i] = w.water[i]! >= WET0 ? 1 : 0;
       this.dry0[i] = !this.wet0[i] && moisture(h, i) < DRY0 ? 1 : 0;
     }
+    this.forestBaseline(w);
+  }
+
+  /** Take the forest as it is now as the forest at the start. */
+  private forestBaseline(w: World): void {
+    for (let i = 0; i < w.size; i++) this.forest0[i] = w.vegetation[i]! >= VEG.forestLevel ? 1 : 0;
   }
 
   /**
@@ -288,6 +303,7 @@ export class Achievements {
       if (n >= 3) this.earn('threeVillages', day);
       const peak = Math.max(p.peakPopulation, p.population);
       for (const [id, pop] of POPULATION_ACHIEVEMENTS) if (peak >= pop) this.earn(id, day);
+      if (!this.has.has('cattleCountry') && p.settlements.some((s) => p.herds.cows(s.state.id) >= ACH.herdCows)) this.earn('cattleCountry', day);
     }
   }
 
@@ -302,14 +318,17 @@ export class Achievements {
     const needLake = !this.has.has('lakeMaker');
     const needGreen = !this.has.has('greenDesert') && p !== null;
     const needField = !this.has.has('newGround') && p !== null;
+    const needForest = !this.has.has('forestKeeper');
     let lake = 0;
     let green = 0;
+    let forest = 0;
     let flooded = 0;
     const { water, velX, velY, landuse } = w;
     const fm = p ? w.floodMemory : null;
     for (let i = 0; i < w.size; i++) {
       const d = water[i]!;
       if (fm && fm[i]! >= 254 && landuse[i] !== LandUse.None) flooded++;
+      if (needForest && w.vegetation[i]! >= VEG.forestLevel && !this.forest0[i] && this.near(i)) forest++;
       if (needLake && d >= ACH.lakeDepth && !this.wet0[i] && velX[i]! ** 2 + velY[i]! ** 2 < STANDING * STANDING && this.near(i)) lake++;
       if (!this.dry0[i]) continue;
       if (needField && landuse[i] === LandUse.Field && this.near(i)) this.earn('newGround', day);
@@ -319,6 +338,8 @@ export class Achievements {
     if (this.c.lakeStreak >= STREAK) this.earn('lakeMaker', day);
     this.c.greenStreak = green >= ACH.greenCells ? this.c.greenStreak + 1 : 0;
     if (this.c.greenStreak >= STREAK) this.earn('greenDesert', day);
+    this.c.forestStreak = forest >= ACH.forestCells ? (this.c.forestStreak ?? 0) + 1 : 0;
+    if (this.c.forestStreak >= STREAK) this.earn('forestKeeper', day);
 
     // Structures.
     if (!this.has.has('weirBuilder')) {
@@ -327,6 +348,7 @@ export class Achievements {
     }
 
     if (p) {
+      if (!this.has.has('wellTrodden') && longestPath(w) >= ACH.pathCells) this.earn('wellTrodden', day);
       if (!this.has.has('quayside') && p.quay.some((q) => q > 0)) this.earn('quayside', day);
       if (!this.has.has('jetty') && p.settlements.some((s) => (s.state.jetty?.progress ?? 0) >= 1)) this.earn('jetty', day);
       // A spring flood that every house weathers.
@@ -375,18 +397,21 @@ export class Achievements {
       earned: this.earned.map((e) => ({ ...e })),
       wet0: rle(this.wet0),
       dry0: rle(this.dry0),
+      forest0: rle(this.forest0),
       touched: rle(this.touched),
       strokes: this.strokes.map((s) => ({ ...s, c: [...s.c] })),
       counters: { ...this.c },
     };
   }
 
-  setState(st: AchievementsState): void {
+  setState(st: AchievementsState, w?: World): void {
     this.earned = st.earned.map((e) => ({ ...e }));
     this.has.clear();
     for (const e of this.earned) this.has.add(e.id);
     unrle(this.wet0, st.wet0);
     unrle(this.dry0, st.dry0);
+    if (st.forest0) unrle(this.forest0, st.forest0);
+    else if (w) this.forestBaseline(w);
     unrle(this.touched, st.touched);
     this.blocks.fill(0);
     for (let i = 0; i < this.touched.length; i++) {

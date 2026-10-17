@@ -44,6 +44,8 @@ export interface GeoParams {
   looseRepose: number;
   looseErodibility: number;
   looseDays: number;
+  /** Vegetation holds the soil: pickup erodibility × (1 − vegetationHold · vegetation). */
+  vegetationHold: number;
   talusPerDay: number;
   reposeWet: number[];
   wetSaturation: number;
@@ -78,6 +80,7 @@ export function defaultGeoParams(): GeoParams {
     looseRepose: p.looseRepose,
     looseErodibility: p.looseErodibility,
     looseDays: p.looseDays,
+    vegetationHold: p.vegetationHold,
     talusPerDay: p.talusPerDay,
     reposeWet: [...p.reposeWet],
     wetSaturation: p.wetSaturation,
@@ -319,8 +322,9 @@ export function erosionStep(
   ledger: SedimentLedger,
   dirty: RowRange,
 ): void {
-  const { width: W, height: H, bedrock, soil, soilType, water, sediment, velX, velY, flags, inflow, fertility } = world;
+  const { width: W, height: H, bedrock, soil, soilType, water, sediment, velX, velY, flags, inflow, fertility, vegetation } = world;
   const { bedAcc, transport, inflowConc, reach, loose } = scratch;
+  const vegHold = p.vegetationHold;
   const t0 = scratch.time;
   scratch.time = t0 + dt;
   if (!scratch.sources) scratch.sources = buildSources(world, scratch);
@@ -425,7 +429,7 @@ export function erosionStep(
         if (room > 0) {
           const demand = ((kp - s) * pickup) / A;
           const so = soil[i]!;
-          const er = props.erodibility * (1 + looseK * loose[i]!);
+          const er = props.erodibility * (1 + looseK * loose[i]!) * (1 - vegHold * vegetation[i]!);
           let e = Math.min(demand * er, maxFrac * so, room);
           if (e < 0) e = 0;
           let eb = 0;

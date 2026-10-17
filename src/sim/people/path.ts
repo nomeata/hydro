@@ -3,12 +3,14 @@
  * from slope and wading depth, restricted to a window to bound the work.
  * Deterministic: ties are broken by insertion order.
  */
-import type { World } from '../world';
+import { LandUse, type World } from '../world';
 
 /** Deepest water people will wade through (m). */
 export const MAX_WADE = 0.4;
 /** Steepest slope (rise over run, both in metres) people will walk. */
 export const MAX_SLOPE = 0.9;
+/** Cost factor for stepping onto a trodden path (they are quicker, and people like them). */
+export const PATH_COST = 0.8;
 
 export interface PathOptions {
   /** Search window half-size in cells around the midpoint of start/goal. */
@@ -29,6 +31,7 @@ export function stepCost(world: World, i: number, j: number, dist: number, bridg
   if (rise > MAX_SLOPE && !onBridge && !(bridge?.(i) ?? false)) return Infinity;
   let c = dist * (1 + 3 * rise * rise);
   if (!onBridge && dj > 0.05) c *= 1 + 6 * dj; // wading is slow
+  else if (world.landuse[j] === LandUse.Path) c *= PATH_COST; // people keep to the trodden paths
   return c;
 }
 

@@ -128,6 +128,8 @@ export const enum EntityAnim {
   Fish = 7,
   /** Animals: grazing / pecking. */
   Eat = 8,
+  /** Felling a tree with an axe. */
+  Chop = 9,
 }
 
 /** What a person carries (rendered as a small prop). */
@@ -226,6 +228,8 @@ export interface VillageStats {
   mood?: number;
   /** Fishers (per village): the store gets a fish-drying rack. */
   fishers?: number;
+  /** Logs on the woodpile by the store (per village, 0..10). */
+  wood?: number;
   /** Number of villages (aggregate only). */
   count?: number;
   /** Highest total population so far (aggregate only; tool unlocks). */

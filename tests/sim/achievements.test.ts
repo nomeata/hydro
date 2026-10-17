@@ -54,6 +54,7 @@ function fakePeople(w: World, over: Record<string, unknown> = {}): PeopleSystem 
     quay: new Uint8Array(w.size),
     floods: { cells: 0, ruined: 0 },
     buildings: [],
+    herds: { cows: () => 0 },
     ...over,
   } as unknown as PeopleSystem;
 }

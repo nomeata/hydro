@@ -70,8 +70,9 @@ export const enum PropKind {
   Shovel = 9,
   Hammer = 10,
   Rod = 11,
+  Axe = 12,
 }
-export const PROP_KINDS = 12;
+export const PROP_KINDS = 13;
 
 export const PEOPLE_MODELS: readonly ModelName[] = [
   'character_male_a',
@@ -156,6 +157,8 @@ export function personClip(anim: number, carry: number, seed: number): ClipChoic
       return { clip: PersonClip.Work, rate: 0.42, gait: 0, prop: seed & 1 ? PropKind.Shovel : PropKind.Hoe };
     case EntityAnim.Build:
       return { clip: PersonClip.Build, rate: 1.1, gait: 0, prop: PropKind.Hammer };
+    case EntityAnim.Chop:
+      return { clip: PersonClip.Build, rate: 0.75, gait: 0, prop: PropKind.Axe };
     case EntityAnim.Sit:
       return { clip: PersonClip.Sit, rate: 1, gait: 0, prop: PropKind.None };
     case EntityAnim.Fish:

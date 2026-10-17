@@ -35,6 +35,7 @@ export const FIELD_SPECS = [
   { name: 'landuse', kind: 'u8', persist: true },
   { name: 'crop', kind: 'u8', persist: true },
   { name: 'floodMemory', kind: 'u8', persist: true },
+  { name: 'traffic', kind: 'u8', persist: true },
 ] as const satisfies readonly { name: string; kind: FieldKind; persist: boolean }[];
 
 export type FieldName = (typeof FIELD_SPECS)[number]['name'];
@@ -142,6 +143,8 @@ export class World {
   declare readonly crop: Uint8Array;
   /** Recent flooding: 255 when flooded, decays by 1 per day. */
   declare readonly floodMemory: Uint8Array;
+  /** Footfall: raised by every walker entering the cell, decays daily; high values become desire paths. */
+  declare readonly traffic: Uint8Array;
 
   constructor(width: number, height: number, seed: number) {
     this.width = width;

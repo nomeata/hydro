@@ -20,6 +20,7 @@ import { CellFlag, SOIL_PROPS, type World } from './world';
 import { History, type HistoryState } from './history';
 import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
 import { Achievements, type AchievementsState } from './achievements';
+import { Vegetation } from './vegetation';
 
 export interface SimOptions {
   /** Enable villages; founding happens near the start point. */
@@ -136,6 +137,10 @@ export class Simulation {
   readonly history = new History();
   /** Achievements: an observer of the world, saved with it. */
   readonly achievements: Achievements;
+  /** Living vegetation (daily growth and decline; sim/vegetation.ts). */
+  readonly vegetation: Vegetation;
+  /** Whether vegetation grows and declines (pure-physics tests may switch it off). */
+  vegetationOn = true;
 
   constructor(world: World, seed: number, opts: SimOptions = {}) {
     this.world = world;
@@ -146,6 +151,7 @@ export class Simulation {
     this.erosionScratch = new ErosionScratch(world.size);
     this.talusScratch = new TalusScratch(world.size);
     this.weather = new Weather(world, this.rng);
+    this.vegetation = new Vegetation(world);
     this.structures = new Structures(world);
     this.structures.allow = (i) => !this.fog || isRevealed(this.world, i);
     if (opts.people) {
@@ -322,6 +328,11 @@ export class Simulation {
     this.step++;
     const today = timeAt(this.step).day;
     if (today !== timeAt(this.step - 1).day) {
+      if (this.vegetationOn) {
+        const t = timeAt(this.step - STEPS_PER_DAY / 2);
+        this.vegetation.daily(seaLevelTemperature({ ...t, timeOfDay: 0.375 }), today - 1);
+        this.lookDirty = true;
+      }
       this.recordHistory(today - 1);
       this.achievements.daily(this, today - 1);
     }
@@ -513,7 +524,7 @@ export class Simulation {
     }
     if (st.history) this.history.setState(st.history);
     else this.resetHistory();
-    if (st.achievements) this.achievements.setState(st.achievements);
+    if (st.achievements) this.achievements.setState(st.achievements, this.world);
     else this.achievements.catchUp(this, Math.max(0, this.time.day - 1));
     this.lookDirty = true;
     this.planDirty = true;
@@ -555,6 +566,8 @@ export class Simulation {
     mix(w.landuse);
     mix(w.crop);
     mix(w.flags);
+    mix(w.vegetation);
+    mix(w.traffic);
     {
       const json = JSON.stringify(this.structures.getState());
       for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);

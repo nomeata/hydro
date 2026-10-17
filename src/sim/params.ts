@@ -98,6 +98,12 @@ export const PARAMS = {
   looseErodibility: 2,
   /** ...and the e-folding time (game days) in which it settles. */
   looseDays: 48,
+  /** Vegetation holds the soil: erosion pickup × (1 − vegetationHold · vegetation). */
+  vegetationHold: 0.6,
+  /** Vegetation opens the soil: infiltration × (1 + vegetationInfiltration · vegetation). */
+  vegetationInfiltration: 0.4,
+  /** Trodden desire paths seal the soil a little: infiltration × this. */
+  pathInfiltration: 0.6,
   /** Fertility gained per metre of deposit. */
   fertilityPerMetre: 3,
 

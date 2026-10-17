@@ -11,9 +11,11 @@ import { REVEALED } from '../fog';
 import { PARAMS } from '../params';
 import { applyEarthwork } from '../plans/plans';
 import { CellFlag, LandUse, SOIL_PROPS, type World } from '../world';
-import { Job, SiteKind, Task, packEntities, walk, type Agent } from './agents';
+import { Job, SiteKind, Task, packEntities, walk, type Agent, type Animal } from './agents';
+import { updateDesirePaths } from './desire';
+import { Herds, type HerdHome } from './herds';
 import { PathFinder } from './path';
-import { Settlement, type SettlementState } from './settlement';
+import { ECONOMY, Settlement, type SettlementState } from './settlement';
 import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works';
 
 /** Hydro steps between agent updates. */
@@ -44,6 +46,38 @@ const CATCH = 5;
 const FIELD_DRAW = 0.004;
 /** Children playing per prosperous village at most (PEOPLE.md §7). */
 export const MAX_CHILDREN = 4;
+/**
+ * Woodcutters (M3-δ): a small share of bigger villages fells trees at the
+ * forest edge near home (never by the water) and carries the logs to the
+ * woodpile by the store.
+ */
+export const WOOD = {
+  /** Villages smaller than this have no woodcutter. */
+  minPeople: 10,
+  /** Share of the people, and most woodcutters per village. */
+  share: 0.05,
+  max: 3,
+  /** Woodcutters stop when the pile holds this many logs. */
+  enough: 8,
+  /** Vegetation a felled tree leaves (stump and grass), and the least a cell must have to be felled. */
+  felled: 0.18,
+  minForest: 0.6,
+  /** Forest within this many cells of water (rivers, lakes) is never cut. */
+  waterMargin: 5,
+  /** Forest edge cells kept on the list per village. */
+  sites: 12,
+};
+/** Herders (M3-δ): an outing at pasture lasts this many steps; they rest this long at home between outings. */
+export const HERDING = {
+  outing: 420,
+  rest: 180,
+  /** Milk per cow per outing (person-days); sheep count half. Winter: the herd stays in and gives less. */
+  dairy: 0.5,
+  winterDairy: 0.5,
+  /** The herder leads at the herd's pace. */
+  leadSpeed: 0.6,
+};
+
 /** Children run this much faster than adults walk; struggling villagers dawdle. */
 const CHILD_SPEED = 1.7;
 const TIRED_SPEED = 0.6;
@@ -132,6 +166,10 @@ export interface PeopleState {
   peak?: number;
   /** Cumulative flood counters (history; absent in older saves). */
   floods?: { cells: number; ruined: number };
+  /** Village animals (M3-δ; absent in older saves). */
+  animals?: Animal[];
+  /** No animals are kept (staged welcome scenes draw their own). */
+  noAnimals?: boolean;
 }
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
@@ -188,6 +226,10 @@ export class PeopleSystem {
   /** Set when `quay` changed, and when a jetty changed (for snapshots). */
   quayDirty = true;
   jettyDirty = true;
+  /** Cows, sheep, pigs and chicks (herds.ts). */
+  readonly herds: Herds;
+  /** Staged scenes keep no animals (their ambient animals are drawn by the renderer). */
+  noAnimals = false;
   /** Told of harvests, catches (at the water cell) and rebuilt ruins; an observer only (not saved). */
   onEvent: ((e: PeopleEvent, cell: number) => void) | null = null;
   private readonly onBridge = (i: number): boolean => this.world.landuse[i] === LandUse.Bridge;
@@ -200,6 +242,7 @@ export class PeopleSystem {
   ) {
     this.rng = new Rng(seed ^ 0x9e0b1e);
     this.pf = new PathFinder(world);
+    this.herds = new Herds(world, this.pf, this.rng, () => this.nextId++, this.onBridge);
     this.fieldMoisture = new Float32Array(world.size);
     this.nearestWater = new Int32Array(world.size).fill(-1);
     this.waterDist = new Float32Array(world.size);
@@ -305,10 +348,26 @@ export class PeopleSystem {
     for (const a of this.agents) this.updateAgent(a, time, host);
     // Remove agents who have left.
     this.agents = this.agents.filter((a) => !(a.task === Task.Leave && a.pathPos >= a.path.length));
+    this.herds.tick(PEOPLE_TICK, this.settlements, (s) => this.herdHome(s));
   }
 
   entities(speed: number) {
-    return packEntities(this.agents, speed);
+    return packEntities(this.agents, speed, this.herds.animals);
+  }
+
+  /** Where a village's animals live. */
+  private herdHome(s: Settlement): HerdHome {
+    const id = s.state.id;
+    const store = this.buildings.find((b) => b.settlement === id && b.kind === 'store') ?? null;
+    const houses = this.buildings.filter((b) => b.settlement === id && b.kind === 'house' && b.progress >= 1);
+    return { store, houses, owns: (x, y) => this.settlements.length < 2 || this.ownerOf(x, y) === s };
+  }
+
+  /** Woodcutters, herders and the like of a village. */
+  workersOf(id: number, job: Job): number {
+    let n = 0;
+    for (const a of this.agents) if (a.settlement === id && a.job === job && a.task !== Task.Leave) n++;
+    return n;
   }
 
   // ---------------------------------------------------------------------------
@@ -330,6 +389,7 @@ export class PeopleSystem {
    */
   stage(spec: StagedVillage | null): void {
     this.founded = true;
+    this.noAnimals = true;
     if (!spec) return;
     const w = this.world;
     const s = new Settlement(this.settlements.length, spec.x, spec.y, 0, spec.food);
@@ -471,6 +531,7 @@ export class PeopleSystem {
     this.growCrops(time, host);
     this.updateFishCapacity();
     this.growFish(time);
+    updateDesirePaths(this.world);
     for (const s of this.settlements) {
       this.updateSafety(s);
       s.day(doy, this.rng);
@@ -478,6 +539,8 @@ export class PeopleSystem {
       this.syncChildren(s);
       this.planHouses(s);
       this.planWorks(s);
+      this.planWoods(s);
+      this.herds.daily(s, this.herdHome(s), time.season === 3, !this.noAnimals);
       this.assignJobs(s, host);
       this.manageFields(s);
     }
@@ -524,6 +587,65 @@ export class PeopleSystem {
         this.jettyDirty = true;
       }
     }
+  }
+
+  /**
+   * Daily: the forest edge cells the woodcutters may fell, nearest first:
+   * dense forest (not a lone tree) next to open ground, away from the water.
+   */
+  private planWoods(s: Settlement): void {
+    const st = s.state;
+    if (st.population < WOOD.minPeople) {
+      st.chopSites = [];
+      return;
+    }
+    const w = this.world;
+    const W = w.width;
+    const v = w.vegetation;
+    const cx = Math.round(st.x);
+    const cy = Math.round(st.y);
+    const R = REACH - 6;
+    const cands: [number, number][] = [];
+    for (let y = Math.max(2, cy - R); y <= Math.min(w.height - 3, cy + R); y++)
+      for (let x = Math.max(2, cx - R); x <= Math.min(W - 3, cx + R); x++) {
+        const i = y * W + x;
+        if (v[i]! < WOOD.minForest || w.landuse[i] !== LandUse.None || this.waterDist[i]! < WOOD.waterMargin) continue;
+        const r = Math.hypot(x - cx, y - cy);
+        if (r > R || (this.settlements.length > 1 && this.ownerOf(x, y) !== s)) continue;
+        // At the edge: an open, dry neighbour to stand on.
+        let edge = false;
+        for (const j of [i - 1, i + 1, i - W, i + W]) if (v[j]! < 0.5 && w.water[j]! < 0.02 && w.landuse[j] !== LandUse.Building) edge = true;
+        if (!edge) continue;
+        // Dense: most of the 3×3 block is forest.
+        let dense = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (v[i + dy * W + dx]! >= 0.5) dense++;
+        if (dense < 6) continue;
+        cands.push([r, i]);
+      }
+    cands.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    st.chopSites = cands.slice(0, WOOD.sites).map((c) => c[1]);
+    st.wood ??= 0;
+  }
+
+  /** The next tree a woodcutter can fell (and where to stand), or null. */
+  private chopSite(a: Agent, s: Settlement): [number, number] | null {
+    const w = this.world;
+    const W = w.width;
+    for (const i of s.state.chopSites ?? []) {
+      if (this.reserved.has(i) || this.blocked.has(i) || w.vegetation[i]! < WOOD.minForest) continue;
+      let stand = -1;
+      let bestD = Infinity;
+      for (const j of [i - 1, i + 1, i - W, i + W]) {
+        if (w.vegetation[j]! >= 0.5 || w.water[j]! >= 0.02 || w.landuse[j] === LandUse.Building) continue;
+        const d = Math.hypot((j % W) - a.x, ((j / W) | 0) - a.y);
+        if (d < bestD) {
+          bestD = d;
+          stand = j;
+        }
+      }
+      if (stand >= 0) return [i, stand];
+    }
+    return null;
   }
 
   /** Lined banks by the houses that face open water read as quays. */
@@ -1105,6 +1227,12 @@ export class PeopleSystem {
     want.set(Job.Builder, Math.max(masons, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0));
     // Fishers: as many as the waters sustain (one landing ≈ CATCH a day), up to a quarter.
     want.set(Job.Fisher, n >= 3 ? Math.min(Math.round(n * 0.25), Math.round(this.fishSupply(s) / CATCH)) : 0);
+    // Herders: one for a herd, two for a big one.
+    const grazers = this.herds.grazers(st.id);
+    want.set(Job.Herder, grazers >= 2 ? (grazers >= 8 ? 2 : 1) : 0);
+    // Woodcutters: a small share of bigger villages, while the woodpile needs logs.
+    const wood = n >= WOOD.minPeople && (st.chopSites?.length ?? 0) > 0 && (st.wood ?? 0) < WOOD.enough;
+    want.set(Job.Woodcutter, wood ? Math.min(WOOD.max, Math.max(1, Math.round(n * WOOD.share))) : 0);
     // Move at most two people per day, lowest ids first (deterministic, no flip-flop).
     let moves = 2;
     for (const [job, target] of want) {
@@ -1194,7 +1322,8 @@ export class PeopleSystem {
       case Task.Walk: {
         // Children run; in a struggling village people dawdle when idle (never on the way to work: PEOPLE.md §7).
         const tired = !a.flee && a.siteKind === SiteKind.Wander && a.task === Task.Walk && this.settlements[a.settlement]?.state.mood === -1;
-        const arrived = walk(this.world, a, PEOPLE_TICK, a.child ? CHILD_SPEED : tired ? TIRED_SPEED : 1);
+        const leading = a.siteKind === SiteKind.Herd && a.task === Task.Walk;
+        const arrived = walk(this.world, a, PEOPLE_TICK, a.child ? CHILD_SPEED : tired ? TIRED_SPEED : leading ? HERDING.leadSpeed : 1);
         a.anim = a.flee || a.child ? EntityAnim.Run : a.carry !== CarryKind.None ? EntityAnim.Carry : EntityAnim.Walk;
         if (arrived && a.task === Task.Walk) {
           a.flee = false;
@@ -1257,6 +1386,19 @@ export class PeopleSystem {
       case SiteKind.Jetty:
         a.timer = 60;
         a.anim = EntityAnim.Build;
+        break;
+      case SiteKind.Chop: {
+        a.timer = 90;
+        a.anim = EntityAnim.Chop;
+        const W = this.world.width;
+        const here = this.cellOf(a);
+        if (here !== a.site) a.heading = Math.atan2(((a.site / W) | 0) - ((here / W) | 0), (a.site % W) - (here % W));
+        break;
+      }
+      case SiteKind.Herd:
+        // Watch the herd graze: mostly sitting in the grass.
+        a.timer = HERDING.outing;
+        a.anim = this.rng.next() < 0.6 ? EntityAnim.Sit : EntityAnim.Idle;
         break;
       case SiteKind.Fish: {
         a.timer = 160;
@@ -1365,10 +1507,36 @@ export class PeopleSystem {
         break;
       }
       case SiteKind.Deliver:
-        if (s && a.load > 0) s.bookFood(a.load);
+        if (s && a.carry === CarryKind.Log) s.state.wood = Math.min(ECONOMY.woodMax, (s.state.wood ?? 0) + 1);
+        else if (s && a.load > 0) s.bookFood(a.load);
         a.load = 0;
         a.carry = CarryKind.None;
         break;
+      case SiteKind.Chop: {
+        const i = a.site;
+        if (w.vegetation[i]! >= WOOD.minForest) {
+          w.vegetation[i] = WOOD.felled;
+          a.carry = CarryKind.Log;
+          a.load = 1;
+          if (s) s.state.chopSites = s.state.chopSites?.filter((c) => c !== i);
+        }
+        break;
+      }
+      case SiteKind.Herd: {
+        // Home time: the herd heads back to the fold, the herder brings the milk.
+        const h = s?.state.herd;
+        if (s && h) {
+          const winter = time.season === 3 || !h.out;
+          const milk = HERDING.dairy * this.herds.near(s.state.id, a.site, 8) * (winter ? HERDING.winterDairy : 1);
+          this.herds.setOut(s, false);
+          h.restUntil = time.step + HERDING.rest;
+          if (milk > 0) {
+            a.carry = CarryKind.Bucket;
+            a.load = milk;
+          }
+        }
+        break;
+      }
       case SiteKind.Quarry:
         a.carry = CarryKind.Stone;
         break;
@@ -1414,7 +1582,10 @@ export class PeopleSystem {
       return;
     }
     // Deliver what you carry first.
-    if ((a.carry === CarryKind.Sack || a.carry === CarryKind.Fish) && a.load > 0) {
+    const delivering =
+      ((a.carry === CarryKind.Sack || a.carry === CarryKind.Fish || a.carry === CarryKind.Bucket) && a.load > 0) ||
+      (a.carry === CarryKind.Log && a.job === Job.Woodcutter);
+    if (delivering) {
       const store = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store');
       if (store && this.goTo(a, w.idx(store.x, store.y), SiteKind.Deliver, time)) return;
     }
@@ -1447,6 +1618,14 @@ export class PeopleSystem {
         return;
       }
     }
+    if (a.job === Job.Woodcutter) {
+      const site = this.chopSite(a, s);
+      if (site && this.goTo(a, site[1], SiteKind.Chop, time, site[0])) {
+        this.reserved.add(site[0]);
+        return;
+      }
+    }
+    if (a.job === Job.Herder && this.herd(a, s, time)) return;
     if (a.job === Job.Fisher && time.season !== 3) {
       const spot = this.fishingSpot(a, s);
       if (spot >= 0 && this.goTo(a, spot, SiteKind.Fish, time)) {
@@ -1472,6 +1651,50 @@ export class PeopleSystem {
     a.task = Task.Rest;
     a.timer = 40;
     a.anim = EntityAnim.Idle;
+  }
+
+  /**
+   * Herders: the first herder of a village leads the herd out to pasture
+   * (cows and sheep follow), watches it graze, and brings the milk home
+   * when they all head back; a second one goes along. In winter the herd
+   * stays in the fold. Returns whether a task was set.
+   */
+  private herd(a: Agent, s: Settlement, time: SimTime): boolean {
+    const st = s.state;
+    const h = st.herd;
+    if (!h || h.fold < 0 || this.herds.grazers(st.id) <= 0) return false;
+    const lead = this.agents.find((b) => b.settlement === st.id && b.job === Job.Herder && b.task !== Task.Leave);
+    if (lead !== a) {
+      // Along with the herd: to the pasture while it is out, else by the fold.
+      if (h.out && h.pasture >= 0 && this.goTo(a, this.near(h.pasture, 2), SiteKind.Wander, time)) return true;
+      return false;
+    }
+    if (h.out) {
+      // Interrupted while out (flood flight…): bring them home.
+      this.herds.setOut(s, false);
+      h.restUntil = time.step + HERDING.rest;
+      return false;
+    }
+    if (time.step < h.restUntil) return false;
+    const winter = time.season === 3 || h.pasture < 0;
+    const to = winter ? h.fold : h.pasture;
+    if (!this.goTo(a, this.near(to, 1), SiteKind.Herd, time, to)) return false;
+    this.herds.setOut(s, !winter);
+    return true;
+  }
+
+  /** A dry cell near cell c (within r), or c itself. */
+  private near(c: number, r: number): number {
+    const w = this.world;
+    const W = w.width;
+    for (let k = 0; k < 6; k++) {
+      const x = (c % W) + this.rng.int(-r, r + 1);
+      const y = ((c / W) | 0) + this.rng.int(-r, r + 1);
+      if (!w.inBounds(x, y)) continue;
+      const i = w.idx(x, y);
+      if (w.water[i]! < 0.02 && w.landuse[i] !== LandUse.Building) return i;
+    }
+    return c;
   }
 
   /** Children: run to a spot between the houses, pause, run on. */
@@ -1600,6 +1823,7 @@ export class PeopleSystem {
         k === SiteKind.Tend ||
         k === SiteKind.Harvest ||
         k === SiteKind.Fish ||
+        k === SiteKind.Chop ||
         k === SiteKind.Line;
       if ((a.task === Task.Walk || a.task === Task.Work) && claims) {
         this.reserved.add(a.site);
@@ -1627,6 +1851,8 @@ export class PeopleSystem {
       lastFounding: this.lastFounding,
       peak: this.peakPopulation,
       floods: this.floods,
+      animals: this.herds.animals,
+      noAnimals: this.noAnimals,
     });
   }
 
@@ -1649,6 +1875,8 @@ export class PeopleSystem {
     this.lastFounding = c.lastFounding ?? 0;
     this.peakPopulation = c.peak ?? 0;
     this.floods = c.floods ?? { cells: 0, ruined: 0 };
+    this.herds.animals = c.animals ?? [];
+    this.noAnimals = c.noAnimals ?? false;
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.
     if (c.fishCap && c.fishCap.length === this.fishCap.length) this.fishCap.set(c.fishCap);
