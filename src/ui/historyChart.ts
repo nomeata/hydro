@@ -25,11 +25,15 @@ export const COLORS = {
   muted: '#7a6c58',
   grid: 'rgba(90, 70, 40, 0.14)',
 };
-/** A day counts as dry below this precipitation (mm), and warm above this temperature (°C). */
-const DRY_MM = 0.3;
+/**
+ * A day counts as dry below this fraction of the record's mean
+ * precipitation (map means are rarely zero: some front is always about),
+ * and warm above WARM_C.
+ */
+const DRY_FRACTION = 0.3;
 const WARM_C = 10;
 /** Dry warm runs at least this long are shaded as dry spells. */
-const DRY_SPELL_DAYS = 8;
+const DRY_SPELL_DAYS = 6;
 
 export interface ChartLayout {
   width: number;
@@ -67,6 +71,9 @@ export function dayLabel(d: number, n = 1): string {
 /** Runs of dry warm days (as [startDay, endDay)) of at least DRY_SPELL_DAYS. */
 export function drySpells(samples: readonly HistorySample[]): [number, number][] {
   const out: [number, number][] = [];
+  const days = samples.reduce((n, s) => n + s.n, 0);
+  const mean = days ? samples.reduce((r, s) => r + s.r * s.n, 0) / days : 0;
+  const dryMM = Math.max(0.2, mean * DRY_FRACTION);
   let start = -1;
   let end = -1;
   const flush = () => {
@@ -74,7 +81,7 @@ export function drySpells(samples: readonly HistorySample[]): [number, number][]
     start = -1;
   };
   for (const s of samples) {
-    const dry = s.r < DRY_MM && s.t > WARM_C;
+    const dry = s.r < dryMM && s.t > WARM_C;
     if (dry) {
       if (start < 0 || s.d > end) {
         flush();
@@ -132,7 +139,7 @@ export function buildChart(data: HistoryData, width: number): Chart {
   const popTop = starTop + starH;
   const popH = Math.round(Math.min(170, Math.max(110, W * 0.26)));
   const popBot = popTop + popH;
-  const prosTop = popBot + 14;
+  const prosTop = popBot + 20;
   const prosH = Math.round(popH * 0.6);
   const prosBot = prosTop + prosH;
   const wxTop = prosBot + 4;
@@ -210,15 +217,23 @@ export function buildChart(data: HistoryData, width: number): Chart {
     );
   }
 
-  // Rain drops, sized by the amount (mm/day).
-  const minGap = 3.2;
+  // Rain drops for the rainier days, sized by the amount relative to the
+  // wettest day; thinned so they never merge into a blob.
+  const maxR = Math.max(5, ...samples.map((s) => s.r));
+  const rainDays = samples.reduce((n, s) => n + s.n, 0);
+  const meanR = rainDays ? samples.reduce((a, s) => a + s.r * s.n, 0) / rainDays : 0;
+  const rainy = Math.max(1, meanR * 1.25);
   let lastX = -Infinity;
+  let lastR = 0;
   for (const s of samples) {
-    if (s.r < 1) continue;
+    if (s.r < rainy) continue;
     const x = dayToX(s.d + s.n / 2);
-    const r = Math.min(4.2, 1.3 + Math.sqrt(s.r) * 0.55);
-    if (x - lastX < minGap && r < 3) continue;
+    const r = 0.8 + 3.6 * Math.sqrt(s.r / maxR);
+    if (x - lastX < (r + lastR) * 0.9) {
+      continue;
+    }
     lastX = x;
+    lastR = r;
     parts.push(drop(x, wxTop + 1, r));
   }
 
@@ -248,7 +263,7 @@ export function buildChart(data: HistoryData, width: number): Chart {
     return segs;
   };
   for (const seg of line((s) => (s.p > 0 ? popY(s.p) : null), popBot))
-    parts.push(`<path d="${seg}" fill="${COLORS.pop}" fill-opacity="0.12"/>`);
+    parts.push(`<path d="${seg}" fill="${COLORS.pop}" fill-opacity="0.08"/>`);
   for (const seg of line((s) => (s.p > 0 ? popY(s.p) : null), null))
     parts.push(`<path d="${seg}" fill="none" stroke="${COLORS.pop}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`);
   for (const seg of line((s) => (s.p > 0 ? prosY(s.w) : null), null))
@@ -297,10 +312,13 @@ export function buildChart(data: HistoryData, width: number): Chart {
   // Stars along the top: reached at their day, upcoming in the future zone.
   const starY = starTop + starH / 2;
   const starR = 10;
+  let prevStar = -Infinity;
   for (const m of milestones) {
     const day = reached.get(m.population);
     if (day === undefined) continue;
-    const x = Math.max(x0 + starR, Math.min(x1 - starR, dayToX(day)));
+    // Keep close stars (and their labels) apart.
+    const x = Math.max(prevStar + 2 * starR + 18, Math.max(x0 + starR, Math.min(x1 - starR, dayToX(day))));
+    prevStar = x;
     const info = `${m.population} villagers on ${dayLabel(day)} — ${m.tools.map(toolName).join(' & ')} unlocked`;
     parts.push(`<line x1="${f1(dayToX(day))}" x2="${f1(dayToX(day))}" y1="${starY + starR}" y2="${f1(popY(m.population))}" stroke="${COLORS.starInk}" stroke-opacity="0.35" stroke-dasharray="2 3"/>`);
     parts.push(star(x, starY, starR, true, `class="star reached" data-info="${esc(info)}"`));
