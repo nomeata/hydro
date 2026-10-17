@@ -112,6 +112,9 @@ export interface PeopleState {
   floods?: { cells: number; ruined: number };
 }
 
+/** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
+export type PeopleEvent = 'harvest' | 'catch' | 'rebuilt';
+
 export interface PeopleHost {
   /** Called when a cell's terrain changed. */
   terrainChanged(i: number): void;
@@ -163,6 +166,8 @@ export class PeopleSystem {
   /** Set when `quay` changed, and when a jetty changed (for snapshots). */
   quayDirty = true;
   jettyDirty = true;
+  /** Told of harvests, catches (at the water cell) and rebuilt ruins; an observer only (not saved). */
+  onEvent: ((e: PeopleEvent, cell: number) => void) | null = null;
   private readonly onBridge = (i: number): boolean => this.world.landuse[i] === LandUse.Bridge;
 
   constructor(
@@ -938,6 +943,7 @@ export class PeopleSystem {
     if (ruin) {
       ruin.kind = 'house';
       ruin.progress = 0.3; // the walls still stand
+      this.onEvent?.('rebuilt', w0.idx(ruin.x, ruin.y));
       this.buildingsDirty = true;
       return;
     }
@@ -1205,6 +1211,7 @@ export class PeopleSystem {
           a.carry = CarryKind.Sack;
           w.crop[i] = 0;
           w.fertility[i] = Math.max(0.1, w.fertility[i]! * 0.985);
+          this.onEvent?.('harvest', i);
         }
         break;
       }
@@ -1219,6 +1226,7 @@ export class PeopleSystem {
           if (K <= 0) continue;
           caught = Math.min(this.fish[b]!, CATCH * (this.fish[b]! / K));
           this.fish[b]! -= caught;
+          if (caught > 0.3) this.onEvent?.('catch', j);
           break;
         }
         if (caught > 0.3) {
