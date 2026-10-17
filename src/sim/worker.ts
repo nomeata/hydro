@@ -35,6 +35,8 @@ let lastSnapshot = 0;
 let msPerStep = 1;
 let achieved = 0;
 let ticking = false;
+/** Fish stocks are sent once per game day. */
+let fishDay = -1;
 /** Fraction of one core the sim may use (lower on phones to save battery and heat). */
 let duty = 1;
 
@@ -69,6 +71,7 @@ async function load(bytes: ArrayBuffer): Promise<void> {
 /** Begin running `s`, announcing it to the main thread. */
 function start(s: Simulation, m: Record<string, unknown>): void {
   sim = s;
+  fishDay = -1;
   meta = m;
   const w = s.world;
   pool = [0, 1, 2].map((id) => ({ id, depth: new Float32Array(w.size), vel: new Int8Array(w.size * 2) }));
@@ -216,6 +219,13 @@ function sendSnapshot(): boolean {
         count: vs.length,
         peak: Math.max(pop, sim.people.peakPopulation),
       };
+    }
+    const day = sim.time.day;
+    if (day !== fishDay) {
+      fishDay = day;
+      const f = sim.people.packFish();
+      snap.fish = f;
+      transfer.push(f.buffer);
     }
     if (sim.takeFieldsDirty()) {
       const f = new Uint8Array(w.size * 2);

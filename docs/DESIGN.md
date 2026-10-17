@@ -8,10 +8,12 @@
 1. **Water is the protagonist.** Rain, snow, rivers, groundwater, floods and
    droughts are simulated, not scripted. Everything interesting follows from
    where water goes.
-2. **The player plans, the people build.** The player is a "god hand" that only
-   *marks plans* (trenches, dikes, reservoirs, pumps, turbines, power lines).
-   Little NPCs walk over and carry them out, at a pace that depends on how well
-   the settlement is doing.
+2. **The player plans, the land responds.** The player is a "god hand" that
+   marks plans (trenches, dikes, reservoirs, gates, …). They are realised
+   quickly and on their own, so that the interesting wait is for the *water*
+   and the *people* to respond, not for construction. (Having villagers do
+   the earthworks was tried and felt odd; it is off, see
+   `PARAMS.villagersBuildPlans`.)
 3. **No control over people.** NPCs settle, farm, fish, graze, build houses and
    occasionally a little dam of their own, entirely on their own initiative.
    The player only shapes circumstances.

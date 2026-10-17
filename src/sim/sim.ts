@@ -237,7 +237,7 @@ export class Simulation {
     if (this.step % BUILD_EVERY === 0 && this.crew.pending > 0) {
       const rate = (PARAMS.builderRatePerDay * BUILD_EVERY) / STEPS_PER_DAY;
       // The spirit crew leaves plans to a village once it has enough builders.
-      const skip = people ? (i: number) => people.handledByVillage(i) : undefined;
+      const skip = people && PARAMS.villagersBuildPlans ? (i: number) => people.handledByVillage(i) : undefined;
       const loose = this.erosionScratch.loose;
       this.crew.work(
         w,

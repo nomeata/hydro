@@ -56,7 +56,7 @@ describe('first village', () => {
     expect(stock).toBeLessThan(cap); // they have caught something
   }, 240_000);
 
-  it('builders realise a plan near the village', async () => {
+  it('plans near the village get built', async () => {
     const sim = village(3);
     sim.run(STEPS_PER_DAY);
     const s = sim.people!.settlements[0]!.state;
