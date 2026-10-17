@@ -89,6 +89,8 @@ export interface PeopleState {
   fish: number[];
   /** Day of the latest founding (absent in older saves). */
   lastFounding?: number;
+  /** Highest total population so far (tool unlocks). */
+  peak?: number;
 }
 
 export interface PeopleHost {
@@ -126,6 +128,8 @@ export class PeopleSystem {
   private reserved = new Set<number>();
   private lastDay = -1;
   private lastFounding = 0;
+  /** Highest total population so far: tools unlocked by it stay unlocked. */
+  peakPopulation = 0;
   /** Block attractiveness from the latest survey (debugging/tests; recomputed before use). */
   attractiveness: Float32Array | null = null;
 
@@ -309,6 +313,7 @@ export class PeopleSystem {
       this.assignJobs(s, host);
       this.manageFields(s);
     }
+    this.peakPopulation = Math.max(this.peakPopulation, this.population);
     if (time.day % FOUNDING.everyDays === 0) this.considerFounding(time);
   }
 
@@ -1151,6 +1156,7 @@ export class PeopleSystem {
       lastDay: this.lastDay,
       fish: Array.from(this.fish),
       lastFounding: this.lastFounding,
+      peak: this.peakPopulation,
     });
   }
 
@@ -1171,6 +1177,7 @@ export class PeopleSystem {
     this.startY = c.startY;
     this.lastDay = c.lastDay;
     this.lastFounding = c.lastFounding ?? 0;
+    this.peakPopulation = c.peak ?? 0;
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     this.buildingsDirty = true;
     this.updateMoisture();

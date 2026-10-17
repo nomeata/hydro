@@ -43,6 +43,8 @@ export class CameraController {
   private viewportLeft = 0;
   private viewportTop = 0;
   private readonly distance: number;
+  /** Optional pan limits (cells), e.g. the known land under the fog of war. */
+  private panBounds: { x0: number; y0: number; x1: number; y1: number } | null = null;
 
   constructor(
     private readonly heights: HeightSampler,
@@ -69,6 +71,12 @@ export class CameraController {
     this.cur = { ...s };
     this.targetY = heightToY(heights.terrainAt(s.x, s.y));
     this.apply();
+  }
+
+  /** Limit panning to a rectangle of cells (intersected with the map), or lift the limit. */
+  setPanBounds(b: { x0: number; y0: number; x1: number; y1: number } | null): void {
+    this.panBounds = b;
+    this.clamp(this.goal);
   }
 
   /** Viewport in CSS pixels (client rect of the canvas). */
@@ -218,8 +226,9 @@ export class CameraController {
 
   private clamp(s: CameraState): void {
     const L = this.limits;
-    s.x = clampN(s.x, 0, this.heights.width - 1);
-    s.y = clampN(s.y, 0, this.heights.height - 1);
+    const b = this.panBounds;
+    s.x = clampN(s.x, Math.max(0, b?.x0 ?? 0), Math.min(this.heights.width - 1, b?.x1 ?? Infinity));
+    s.y = clampN(s.y, Math.max(0, b?.y0 ?? 0), Math.min(this.heights.height - 1, b?.y1 ?? Infinity));
     s.pitch = clampN(s.pitch, L.minPitch, L.maxPitch);
     s.viewHeight = clampN(s.viewHeight, L.minViewHeight, L.maxViewHeight);
     if (!Number.isFinite(s.yaw)) s.yaw = 0;

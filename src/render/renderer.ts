@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import type { Snapshot, WorldInfo } from '../shared/protocol';
 import { CameraController } from './camera';
 import { HEIGHT_SCALE, heightToY } from './coords';
-import { makeChunkGeometry, setChunkBounds } from './grid';
+import { CHUNK, makeChunkGeometry, setChunkBounds } from './grid';
 import { HeightField } from './heights';
 import { rayMarchHeightfield } from './picking';
 import { SkyLighting } from './sky';
@@ -25,6 +25,8 @@ import { FlowParticles } from './flow';
 import { WeatherLayer, createFrontUniforms } from './weather';
 import { BuildingsLayer } from './village/buildings';
 import { CropLayer } from './village/crops';
+import { FogField } from './fog';
+import type { BuildingInfo } from '../shared/protocol';
 
 /** Fixed time of day used for lighting: a pleasant early afternoon. */
 const DAY_TIME = 0.56;
@@ -34,6 +36,8 @@ export interface InitialData {
   terrain: Float32Array;
   look: Uint8Array;
   plan: Float32Array;
+  /** Fog of war (absent: everything known). */
+  revealed?: Uint8Array;
 }
 
 export interface GameRendererOptions {
@@ -71,6 +75,10 @@ export class GameRenderer {
   readonly buildings: BuildingsLayer;
   /** Crop models on fields when zoomed in (the terrain shader paints the fields). */
   readonly crops: CropLayer;
+  /** Fog of war: what the player knows of the land. */
+  readonly fog: FogField;
+  /** Latest building list (unfiltered; buildings in the fog are not drawn). */
+  private buildingList: readonly BuildingInfo[] = [];
   private season = 1;
   private readonly tex: {
     terrain: THREE.DataTexture;
@@ -139,8 +147,10 @@ export class GameRenderer {
 
     // Layers.
     this.geometry = makeChunkGeometry();
+    this.fog = new FogField(W, H, data.revealed);
+    this.fog.updateHeight(this.heights);
     const fronts = createFrontUniforms();
-    const tu = createTerrainUniforms(this.tex, W, H, fronts);
+    const tu = createTerrainUniforms(this.tex, W, H, fronts, this.fog.uniforms);
     tu.uPlanOn.value = anyPlan ? 1 : 0;
     this.terrain = new TerrainLayer(this.geometry, tu, W, H);
     this.terrain.setCastShadow(this.shadows);
@@ -158,14 +168,16 @@ export class GameRenderer {
       W,
       H,
       fronts,
+      this.fog.uniforms,
     );
     // Plan flags are shared with the terrain so both overlays switch together.
     wu.uPlanOn = tu.uPlanOn;
     wu.uPreviewOn = tu.uPreviewOn;
     this.water = new WaterLayer(this.geometry, wu, W, H);
-    this.water.updateVisibility(this.depthBuf(true), this.depthBuf(false));
+    this.updateFogChunks();
     this.scene.add(this.water.group);
     this.flow = new FlowParticles(this.heights);
+    this.flow.revealed = this.fog.enabled ? this.fog.revealed : null;
     this.scene.add(this.flow.mesh);
     this.weather = new WeatherLayer(fronts, this.tex.terrain, W, H, HEIGHT_SCALE);
     this.scene.add(this.weather.group);
@@ -186,6 +198,7 @@ export class GameRenderer {
 
     // Camera.
     this.camera = new CameraController(this.heights);
+    this.updateCameraBounds();
     this.resize();
     // Default zoom: ~64 cells across the shorter screen side (portrait phones too).
     const cw = canvas.clientWidth || canvas.width || 1;
@@ -254,7 +267,17 @@ export class GameRenderer {
       this.terrain.uniforms.uPlanOn.value = any ? 1 : 0;
       this.tex.plan.needsUpdate = true;
     }
-    if (s.buildings) this.buildings.setBuildings(s.buildings);
+    if (s.revealed) {
+      this.fog.setRevealed(s.revealed);
+      this.fog.updateHeight(this.heights);
+      this.updateFogChunks();
+      this.updateCameraBounds();
+      if (!s.buildings) this.buildings.setBuildings(this.visibleBuildings(this.buildingList));
+    }
+    if (s.buildings) {
+      this.buildingList = s.buildings;
+      this.buildings.setBuildings(this.visibleBuildings(s.buildings));
+    }
     const v = s.stats.village;
     if (v) this.buildings.setFood(v.food, v.population);
     if (s.fields) {
@@ -396,6 +419,7 @@ export class GameRenderer {
     this.weather.dispose();
     this.buildings.dispose();
     this.crops.dispose();
+    this.fog.dispose();
     this.sky.dispose();
     this.geometry.dispose();
     for (const t of Object.values(this.tex)) t.dispose();
@@ -404,6 +428,28 @@ export class GameRenderer {
   }
 
   // -------------------------------------------------------------------------
+
+  /** Water chunks entirely in the fog are never drawn. */
+  private updateFogChunks(): void {
+    const C = CHUNK;
+    const w = this.water;
+    let k = 0;
+    w.hiddenChunks = [];
+    for (let oy = 0; oy < this.info.height; oy += C)
+      for (let ox = 0; ox < this.info.width; ox += C) w.hiddenChunks[k++] = this.fog.hidden(ox, oy, ox + C, oy + C);
+    w.updateVisibility(this.depthBuf(true), this.depthBuf(false));
+  }
+
+  /** Panning stays over known land (plus a margin of fog). */
+  private updateCameraBounds(): void {
+    const b = this.fog.enabled ? this.fog.bounds : null;
+    const m = 12;
+    this.camera.setPanBounds(b ? { x0: b.x0 - m, y0: b.y0 - m, x1: b.x1 + m, y1: b.y1 + m } : null);
+  }
+
+  private visibleBuildings(list: readonly BuildingInfo[]): BuildingInfo[] {
+    return this.fog.enabled ? list.filter((b) => this.fog.known(b.x, b.y)) : list.slice();
+  }
 
   private depthBuf(prev: boolean): Float32Array {
     const useA = prev === this.depthPrevIsA;

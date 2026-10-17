@@ -10,6 +10,7 @@ import { VEL_SCALE } from '../shared/protocol';
 import { CHUNK, GRID_VERTEX_GLSL, chunkOrigins } from './grid';
 import { PLAN_GLSL } from './planOverlay';
 import { CLOUD_SHADOW_GLSL, type FrontUniforms } from './weather';
+import { FOG_GLSL, type FogUniforms } from './fog';
 
 /** Depth (m) above which a cell counts as wet for rendering. */
 export const WET_DEPTH = 0.01;
@@ -51,6 +52,7 @@ uniform float uTime;
 varying vec3 vWorld;
 varying float vDepth;
 varying vec2 vVel;
+${FOG_GLSL}
 
 float depthAt(ivec2 c) {
   return mix(texelFetch(uDepthA, c, 0).r, texelFetch(uDepthB, c, 0).r, uMix);
@@ -70,6 +72,8 @@ void main() {
   float surf;
   float dep;
   vec2 vel = vec2(0.0);
+  // Fog of war: no water on unknown land.
+  if (revealAt(vec2(C)) < 0.4) d = 0.0;
   if (d > ${WET_DEPTH}) {
     surf = h + d;
     dep = d;
@@ -130,9 +134,16 @@ varying float vDepth;
 varying vec2 vVel;
 ${PLAN_GLSL}
 ${CLOUD_SHADOW_GLSL}
+${FOG_GLSL}
 
 void main() {
   if (vDepth <= 0.0) discard;
+  float fogA = 1.0;
+  if (uFogOn > 0.5) {
+    vec2 fc = vWorld.xz - 0.5;
+    fogA = smoothstep(0.45, 0.8, revealAt(fc) + (fogBillow(fc, uTime) - 0.5) * 0.3);
+    if (fogA <= 0.0) discard;
+  }
   vec3 fn = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   if (fn.y < 0.0) fn = -fn;
 
@@ -206,7 +217,7 @@ void main() {
     col = mix(col, pc, pa);
     alpha = max(alpha, pa);
   }
-  alpha *= smoothstep(0.0, 0.05, vDepth);
+  alpha *= smoothstep(0.0, 0.05, vDepth) * fogA;
   gl_FragColor = vec4(col, alpha);
   #include <colorspace_fragment>
 }
@@ -225,9 +236,11 @@ export function createWaterUniforms(
   width: number,
   height: number,
   fronts: FrontUniforms,
+  fog: FogUniforms,
 ): WaterUniforms {
   return {
     ...fronts,
+    ...fog,
     uPlan: { value: tex.plan },
     uPreview: { value: tex.preview },
     uPlanOn: { value: 0 },
@@ -288,12 +301,19 @@ export class WaterLayer {
     }
   }
 
-  /** Hide chunks with no wet cell (including a one-cell margin) in either depth buffer. */
+  /** Chunks entirely under the fog of war (never drawn). */
+  hiddenChunks: boolean[] = [];
+
+  /** Hide chunks with no wet cell (including a one-cell margin) in either depth buffer, or under fog. */
   updateVisibility(a: Float32Array, b: Float32Array): void {
     const w = this.width;
     const h = this.height;
     for (let k = 0; k < this.origins.length; k++) {
       const [ox, oy] = this.origins[k]!;
+      if (this.hiddenChunks[k]) {
+        this.meshes[k]!.visible = false;
+        continue;
+      }
       const x0 = Math.max(0, ox - 1);
       const y0 = Math.max(0, oy - 1);
       const x1 = Math.min(w, ox + CHUNK + 2);

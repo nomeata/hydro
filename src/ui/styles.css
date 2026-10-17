@@ -120,6 +120,12 @@ html, body {
 }
 .toolrow button svg { width: 28px; height: 28px; }
 .toolrow button[aria-pressed='true'] { background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--wood); }
+/* Tools unlock as the villages grow (src/shared/unlocks.ts). */
+.toolrow button { position: relative; }
+.toolrow button .lock { display: none; }
+.toolrow button.locked > svg, .toolrow button.locked > span { filter: grayscale(1); opacity: 0.4; }
+.toolrow button.locked .lock { display: block; position: absolute; right: 3px; top: 3px; width: 16px; height: 16px; }
+.toolrow button.locked .lock svg { width: 16px; height: 16px; }
 
 .options {
   display: flex;

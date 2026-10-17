@@ -87,7 +87,7 @@ export class Hud {
         `outflow ${(s.stats.outflowPerDay / 1e3).toFixed(0)} k m³/day\n` +
         `fronts ${s.climate.fronts.length}` +
         (s.stats.village
-          ? `\nvillage ${s.stats.village.population} ppl, ${s.stats.village.houses} houses\n` +
+          ? `\n${(s.stats.village.count ?? 1) > 1 ? `${s.stats.village.count} villages` : 'village'} ${s.stats.village.population} ppl, ${s.stats.village.houses} houses\n` +
             `food ${s.stats.village.food.toFixed(0)}, w ${s.stats.village.wellbeing.toFixed(2)}`
           : '');
     }

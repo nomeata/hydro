@@ -214,6 +214,7 @@ function sendSnapshot(): boolean {
         food: vs.reduce((n, v) => n + v.food, 0),
         wellbeing: pop > 0 ? vs.reduce((n, v) => n + v.wellbeing * v.population, 0) / pop : vs[0]!.wellbeing,
         count: vs.length,
+        peak: Math.max(pop, sim.people.peakPopulation),
       };
     }
     if (sim.takeFieldsDirty()) {

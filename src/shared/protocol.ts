@@ -172,6 +172,8 @@ export interface VillageStats {
   wellbeing: number;
   /** Number of villages (aggregate only). */
   count?: number;
+  /** Highest total population so far (aggregate only; tool unlocks). */
+  peak?: number;
 }
 
 export interface Snapshot {

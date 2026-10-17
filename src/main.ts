@@ -62,6 +62,7 @@ async function main(): Promise<void> {
   const vegetation = new VegetationLayer(renderer.scene, renderer.heights, data.look, data.info.width, data.info.height, seed, {
     sunDir: renderer.sky.state.dir,
   });
+  if (data.revealed) vegetation.setRevealed(data.revealed);
   // People come from the sim. Until herders exist (M3-δ), a main-thread
   // "fake crowd" of grazing animals adds ambient life; its latest frame is
   // merged into every snapshot's entities.
@@ -96,8 +97,11 @@ async function main(): Promise<void> {
       people: 0,
       dogs: 0,
     });
-    crowd.setFrame(mergeFrames(s.entities, fakeCrowd.frame()), performance.now());
+    crowd.setFrame(hideInFog(mergeFrames(s.entities, fakeCrowd.frame()), renderer), performance.now());
     hud.update(s);
+    const v = s.stats.village;
+    if (v) tools.setPopulation(v.peak ?? v.population);
+    if (s.revealed) vegetation.setRevealed(s.revealed);
     if (s.plan) tools.planUpdated();
     if (s.terrain) vegetation.invalidate(0, s.terrain.y0, data.info.width, s.terrain.y1);
     if (s.fields) vegetation.setFields(s.fields);
@@ -170,6 +174,27 @@ if (params.has('bench')) {
   void import('./benchPage').then((m) => m.runBenchPage());
 } else {
   main().catch(fail);
+}
+
+/** Drop entities standing on unknown land (they walk out of the fog, not on it). */
+function hideInFog(f: EntityFrame, renderer: GameRenderer): EntityFrame {
+  const fog = renderer.fog;
+  if (!fog.enabled || f.count === 0) return f;
+  let n = 0;
+  for (let k = 0; k < f.count; k++) if (fog.known(f.pos[k * 5]!, f.pos[k * 5 + 1]!)) n++;
+  if (n === f.count) return f;
+  const id = new Uint16Array(n);
+  const info = new Uint8Array(n * 4);
+  const pos = new Float32Array(n * 5);
+  let o = 0;
+  for (let k = 0; k < f.count; k++) {
+    if (!fog.known(f.pos[k * 5]!, f.pos[k * 5 + 1]!)) continue;
+    id[o] = f.id[k]!;
+    info.set(f.info.subarray(k * 4, k * 4 + 4), o * 4);
+    pos.set(f.pos.subarray(k * 5, k * 5 + 5), o * 5);
+    o++;
+  }
+  return { count: n, id, info, pos };
 }
 
 /** Concatenate two entity frames; ids of the second are offset to stay distinct. */
