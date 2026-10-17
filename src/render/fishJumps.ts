@@ -49,6 +49,8 @@ export class FishJumps {
   private fish: Uint8Array | null = null;
   /** Fog of war: whether a cell position is known land (no jumps in the fog). */
   known: ((x: number, y: number) => boolean) | null = null;
+  /** Multiplies the jump rate (the welcome scenes show off a little). */
+  rateScale = 1;
   private readonly bw: number;
   private readonly jumps: Jump[] = [];
   private readonly mesh: THREE.InstancedMesh;
@@ -101,7 +103,7 @@ export class FishJumps {
           const v = fish[by * this.bw + bx]!;
           if (v <= 1 || this.jumps.length >= MAX_JUMPS) continue;
           const full = (v - 1) / 254;
-          if (this.rand() > RATE * full * full * dt) continue;
+          if (this.rand() > RATE * this.rateScale * full * full * dt) continue;
           this.spawn(bx, by);
         }
       }
@@ -181,5 +183,19 @@ export class FishJumps {
     mesh.scale.setScalar(0.08);
     this.scene.add(mesh);
     this.rings.push({ mesh, t: 0 });
+  }
+
+  dispose(): void {
+    for (const r of this.rings) {
+      this.scene.remove(r.mesh);
+      (r.mesh.material as THREE.Material).dispose();
+    }
+    this.rings.length = 0;
+    this.jumps.length = 0;
+    this.scene.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+    this.mesh.dispose();
+    this.ringGeo.dispose();
   }
 }

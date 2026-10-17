@@ -2,7 +2,7 @@
  * Main-thread wrapper around the simulation worker: typed messages, snapshot
  * delivery and buffer return, and promise-based test hooks.
  */
-import type { Command, FromWorker, Snapshot, ToWorker, WorldInfo } from '../shared/protocol';
+import type { Command, FromWorker, SceneId, Snapshot, ToWorker, WorldInfo } from '../shared/protocol';
 
 export interface ReadyData {
   info: WorldInfo;
@@ -22,9 +22,10 @@ export class SimClient {
   readonly ready: Promise<ReadyData>;
   private speed = 1;
 
-  /** Start a new world, or resume from save-game bytes. */
-  constructor(start: ({ seed: number; size: number } | { bytes: ArrayBuffer }) & { speed?: number; duty?: number }) {
+  /** Start a new world, resume from save-game bytes, or run a staged scene (welcome panels). */
+  constructor(start: ({ seed: number; size: number } | { bytes: ArrayBuffer } | { scene: SceneId }) & { speed?: number; duty?: number }) {
     this.worker = new Worker(new URL('../sim/worker.ts', import.meta.url), { type: 'module' });
+    SimClient.live++;
     this.ready = new Promise((resolve, reject) => {
       this.worker.onerror = (e) => reject(new Error(e.message));
       this.rejectReady = reject;
@@ -65,7 +66,8 @@ export class SimClient {
     });
     this.speed = start.speed ?? 1;
     const duty = start.duty;
-    if ('bytes' in start) this.post({ type: 'load', bytes: start.bytes, speed: this.speed, duty }, [start.bytes]);
+    if ('scene' in start) this.post({ type: 'scene', scene: start.scene, run: this.sceneRun, speed: this.speed, duty });
+    else if ('bytes' in start) this.post({ type: 'load', bytes: start.bytes, speed: this.speed, duty }, [start.bytes]);
     else this.post({ type: 'init', seed: start.seed, size: start.size, speed: this.speed, duty });
   }
 
@@ -83,6 +85,19 @@ export class SimClient {
   onSnapshot(fn: (s: Snapshot) => void): void {
     this.snapshotListeners.push(fn);
   }
+
+  /**
+   * Switch to (or restart) a staged scene. All scenes share one grid size, so
+   * no new `ready` follows: the next snapshot carries the whole new state.
+   */
+  scene(id: SceneId, speed?: number): number {
+    if (speed !== undefined) this.speed = speed;
+    this.post({ type: 'scene', scene: id, run: ++this.sceneRun, speed });
+    return this.sceneRun;
+  }
+
+  /** The latest scene run requested (snapshots carry it as `sceneRun`). */
+  sceneRun = 0;
 
   setSpeed(speed: number): void {
     this.speed = speed;
@@ -125,6 +140,13 @@ export class SimClient {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    SimClient.live--;
     this.worker.terminate();
   }
+
+  private disposed = false;
+  /** Workers currently running (tests check that the welcome scenes clean up). */
+  static live = 0;
 }

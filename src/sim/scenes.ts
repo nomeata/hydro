@@ -10,13 +10,15 @@
  * Everything here is deterministic (no Math.random / Date). Coordinates are
  * cells; see SCENE_LAYOUT for the landmarks the UI points the camera at.
  */
-import type { Pt } from '../shared/protocol';
+import type { Pt, SceneId } from '../shared/protocol';
 import { perlin } from '../shared/noise';
 import { STEPS_PER_DAY } from './constants';
 import { Simulation } from './sim';
-import { CellFlag, SOIL_PROPS, SoilType, World } from './world';
+import { SCENE_LAYOUT } from './sceneLayout';
+import { CellFlag, FIELD_SPECS, SOIL_PROPS, SoilType, World } from './world';
 
-export type SceneId = 'water' | 'shape' | 'village';
+export type { SceneId };
+export { SCENE_LAYOUT };
 export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village'];
 
 export const SCENE_SIZE = 64;
@@ -49,25 +51,6 @@ const RIVER_Q = 22;
 
 /** Floor of the dry hollow (m): a metre below the river surface next to it. */
 const HOLLOW_FLOOR = BED0 - BED_SLOPE * 45 - 0.1;
-
-/** Landmarks (cells) for cameras and the scripted trench. */
-export const SCENE_LAYOUT = {
-  /** A side pond, open to the river (fish, the fisher's spot). */
-  pond: { x: 20, y: 41, r: 4.8 },
-  /** A dry hollow across the river, lower than the river's water surface. */
-  hollow: { x: 40, y: 25, r: 4.2 },
-  /** The trench the intro draws: from the river bank into the hollow. */
-  trench: [
-    [33.5, 33.5],
-    [35.5, 30],
-    [38, 27.5],
-    [40, 25.5],
-  ] as Pt[],
-  /** The village store. */
-  village: { x: 21, y: 50 },
-  /** The wooded hill. */
-  hill: { x: 47, y: 10 },
-};
 
 interface RiverSample {
   x: number;
@@ -248,5 +231,17 @@ export function buildScene(id: SceneId): Simulation {
     // A rain front drifting in from the left, over the land in a few seconds.
     sim.weather.addFront({ x: -26, y: 22, rx: 26, ry: 13, angle: 0.35 + Math.PI / 2, vx: 0.19, vy: 0.07, life: 640, peak: 1.1 });
   }
+  return sim;
+}
+
+/** An independent copy of a scene simulation (restarting a scene without rebuilding it). */
+export function cloneScene(src: Simulation): Simulation {
+  const w0 = src.world;
+  const w = new World(w0.width, w0.height, w0.seed);
+  for (const spec of FIELD_SPECS) w.field(spec.name).set(w0.field(spec.name) as never);
+  const sim = new Simulation(w, src.seed);
+  sim.setState(src.getState());
+  sim.fog = src.fog;
+  sim.weather.autoFronts = src.weather.autoFronts;
   return sim;
 }
