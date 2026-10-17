@@ -8,7 +8,7 @@ import { FIELD_BYTES, VEL_SCALE, type FromWorker, type Snapshot, type ToWorker }
 import { CELL, STEPS_PER_DAY, STEPS_PER_SECOND_1X } from './constants';
 import { loadGame, saveGame } from './persist';
 import { Simulation } from './sim';
-import { generateWorld } from './worldgen';
+import { newGame } from './newgame';
 import { SCENE_LAYOUT, buildScene, cloneScene } from './scenes';
 import type { SceneId } from '../shared/protocol';
 
@@ -17,8 +17,6 @@ declare const self: DedicatedWorkerGlobalScope;
 const SNAPSHOT_INTERVAL_MS = 100;
 /** Max time per work slice before yielding to the message loop. */
 const SLICE_MS = 8;
-/** Steps run at startup so that rivers are flowing when the player arrives. */
-const SPINUP_STEPS = 600;
 
 interface BufferSet {
   id: number;
@@ -55,14 +53,8 @@ function log(level: 'info' | 'warn' | 'error', message: string): void {
 
 function init(seed: number, size: number): void {
   const t0 = performance.now();
-  const gen = generateWorld({ seed, size });
-  const t1 = performance.now();
-  const fresh = new Simulation(gen.world, seed, { people: { startX: gen.startX, startY: gen.startY } });
-  fresh.run(SPINUP_STEPS);
-  fresh.step = 0;
-  fresh.resetHistory();
-  // The world as the player first sees it is the baseline for the achievements.
-  fresh.achievements.baseline(fresh);
+  let t1 = t0;
+  const { sim: fresh, gen } = newGame(seed, size, () => (t1 = performance.now()));
   const t2 = performance.now();
   log('info', `worldgen ${(t1 - t0).toFixed(0)} ms, spin-up ${(t2 - t1).toFixed(0)} ms`);
   start(fresh, { startX: gen.startX, startY: gen.startY, riverScale: gen.riverScale });
