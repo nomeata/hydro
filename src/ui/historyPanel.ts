@@ -6,6 +6,7 @@
 import type { HistoryData } from '../shared/protocol';
 import { COLORS, SEASON_COLORS, buildChart, describeSample, sampleAt, type ChartLayout } from './historyChart';
 import { STAR_PATH } from './icons';
+import { CATEGORY_COLORS } from './achievementIcons';
 
 const REFRESH_MS = 3000;
 const HINT = 'Tap or hover the chart for details.';
@@ -32,6 +33,14 @@ const LEGEND: [string, string][] = [
       28,
     ),
     'New tools (reached · ahead)',
+  ],
+  [
+    mini(
+      `<path d="M7 9l-2 5 2.5-1 1.5 2 1-5zM15 9l2 5-2.5-1-1.5 2-1-5z" fill="${CATEGORY_COLORS.water}"/><circle cx="11" cy="6.5" r="5" fill="#fff4d0" stroke="${CATEGORY_COLORS.people}" stroke-width="2"/><circle cx="11" cy="6.5" r="2" fill="${COLORS.star}"/>`,
+      22,
+      16,
+    ),
+    'Achievements',
   ],
 ];
 
@@ -128,7 +137,7 @@ export class HistoryPanel {
     if (!L) return;
     const svg = this.chartEl.querySelector('svg');
     if (!svg) return;
-    const target = (e.target as Element).closest?.('.star');
+    const target = (e.target as Element).closest?.('.star, .medal-mark');
     if (target) {
       this.day = null;
       this.clearCursor();

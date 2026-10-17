@@ -14,6 +14,7 @@ import { WorldLayers } from './render/worldLayers';
 import { Hud } from './ui/hud';
 import { StatsBar } from './ui/statsbar';
 import { HistoryPanel } from './ui/historyPanel';
+import { AchievementsUi } from './ui/achievements';
 import { ToolPalette } from './ui/tools';
 
 const params = new URLSearchParams(location.search);
@@ -65,6 +66,7 @@ async function main(): Promise<void> {
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
   const historyPanel = new HistoryPanel(uiRoot, () => client.history());
+  const achievements = new AchievementsUi(uiRoot);
   const statsBar = new StatsBar(uiRoot.querySelector('.topbar')!, () => historyPanel.open());
   const tools = new ToolPalette(uiRoot, {
     canvas,
@@ -83,6 +85,7 @@ async function main(): Promise<void> {
     layers.applySnapshot(s);
     hud.update(s);
     statsBar.update(s.stats);
+    achievements.update(s.achievements);
     const v = s.stats.village;
     if (v) tools.setPopulation(v.peak ?? v.population);
     if (s.plan || s.lining) tools.planUpdated();
@@ -134,6 +137,7 @@ async function main(): Promise<void> {
 
   new Menu(uiRoot, {
     howToPlay: showIntro,
+    achievements: () => achievements.panel.open(),
     newWorld: () => {
       location.search = '?new=1';
     },
@@ -155,7 +159,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, SimClient, statsBar, historyPanel };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, SimClient, statsBar, historyPanel, achievements };
   }
   document.getElementById('loading')?.classList.add('done');
 }
