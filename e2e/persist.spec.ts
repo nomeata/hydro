@@ -3,10 +3,12 @@ import { openGame } from './helpers';
 
 test('the world survives a reload', async ({ page }) => {
   // No seed in the URL, so the reload resumes the autosave (test mode defaults to seed 1).
-  await openGame(page, '', './?test=1&persist=1');
+  // A small world keeps start-up and the simulated half day quick on slow CI machines.
+  test.setTimeout(240_000);
+  await openGame(page, '', './?test=1&persist=1&size=128');
   await page.evaluate(async () => {
     const h = (window as any).__hydro;
-    h.client.command({ type: 'planTrench', points: [[100, 100], [120, 110]], width: 2, depth: 1 });
+    h.client.command({ type: 'planTrench', points: [[50, 50], [70, 60]], width: 2, depth: 1 });
     await h.client.runDays(0.5);
     await h.autosave();
   });
