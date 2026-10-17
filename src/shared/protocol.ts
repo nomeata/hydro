@@ -245,7 +245,9 @@ export type ToWorker =
   | { type: 'save' }
   /** Test hook: run n days as fast as possible, then reply `ranDays`. */
   | { type: 'runDays'; days: number }
-  | { type: 'hash' };
+  | { type: 'hash' }
+  /** Ask for the game's history (stats bar chart); replied with `history`. */
+  | { type: 'history' };
 
 export type FromWorker =
   | {
@@ -262,4 +264,42 @@ export type FromWorker =
   | { type: 'loadFailed'; message: string }
   | { type: 'ranDays'; days: number }
   | { type: 'hash'; hash: string }
-  | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string };
+  | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string }
+  | { type: 'history'; history: HistoryData };
+
+// ---------------------------------------------------------------------------
+// History (stats bar & history chart). One sample per game day; older
+// samples are merged into bins of several days (`n` > 1).
+
+export interface HistorySample {
+  /** First game day covered. */
+  d: number;
+  /** Days covered (1 for a daily sample). */
+  n: number;
+  /** Total population (end of the period). */
+  p: number;
+  /** Prosperity: population-weighted wellbeing, 0..100 (mean over the period). */
+  w: number;
+  /** Precipitation (rain + snow water), map mean in mm per day (mean over the period). */
+  r: number;
+  /** Daily mean sea-level temperature, °C (mean over the period). */
+  t: number;
+  /** Land cells newly flooded (sum over the period). */
+  f: number;
+  /** Houses ruined by floods (sum over the period). */
+  h: number;
+  /** Number of villages (end of the period). */
+  v: number;
+}
+
+export interface HistoryMilestone {
+  /** Population milestone (src/shared/unlocks.ts). */
+  population: number;
+  /** Game day it was first reached. */
+  day: number;
+}
+
+export interface HistoryData {
+  samples: HistorySample[];
+  milestones: HistoryMilestone[];
+}

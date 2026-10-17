@@ -60,6 +60,7 @@ function init(seed: number, size: number): void {
   const fresh = new Simulation(gen.world, seed, { people: { startX: gen.startX, startY: gen.startY } });
   fresh.run(SPINUP_STEPS);
   fresh.step = 0;
+  fresh.resetHistory();
   const t2 = performance.now();
   log('info', `worldgen ${(t1 - t0).toFixed(0)} ms, spin-up ${(t2 - t1).toFixed(0)} ms`);
   start(fresh, { startX: gen.startX, startY: gen.startY, riverScale: gen.riverScale });
@@ -312,6 +313,9 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         break;
       case 'hash':
         if (sim) post({ type: 'hash', hash: sim.stateHash() });
+        break;
+      case 'history':
+        if (sim) post({ type: 'history', history: sim.history.data() });
         break;
       case 'load':
         if (msg.speed !== undefined) speed = msg.speed;
