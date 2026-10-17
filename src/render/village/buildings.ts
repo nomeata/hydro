@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { BuildingInfo } from '../../shared/protocol';
+import type { BuildingInfo, VillageStats } from '../../shared/protocol';
 import { heightToY, type HeightSampler } from '../coords';
 import { modelLibrary, vertexColorMaterial, type StaticModel } from '../objects/loader';
 import { MODELS, TOWN_SCALE, type ModelName } from '../objects/manifest';
@@ -40,6 +40,7 @@ const PROC_COLOURS: Record<ProcKind, number> = {
   sack: 0xe0cfa6,
   hay: 0xe2c25a,
   soil: 0x6e4e32,
+  fish: 0x8fb3c9,
 };
 
 function procGeometry(kind: ProcKind): THREE.BufferGeometry {
@@ -56,6 +57,16 @@ function procGeometry(kind: ProcKind): THREE.BufferGeometry {
       p.setXYZ(i, p.getX(i) * pinch, yy + 0.38, p.getZ(i) * pinch);
     }
     g.scale(1, 1 / 0.88, 1);
+  } else if (kind === 'fish') {
+    // A slim fish hanging head down: a stretched octahedron with a tail fin.
+    g = new THREE.OctahedronGeometry(0.5, 0);
+    g.translate(0, 0.5, 0);
+    const tail = new THREE.ConeGeometry(0.45, 0.35, 4);
+    tail.rotateX(Math.PI);
+    tail.translate(0, 1.1, 0);
+    g = mergeGeometries([g.index ? g.toNonIndexed() : g, tail.index ? tail.toNonIndexed() : tail], false);
+    // Hangs down from its tail at the origin.
+    g.translate(0, -1.27, 0);
   } else if (kind === 'hay') {
     g = new THREE.CylinderGeometry(0.5, 0.5, 1, 8, 1);
     g.translate(0, 0.5, 0);
@@ -158,9 +169,9 @@ export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap
   return merged;
 }
 
-/** Geometry/mesh key of a building given the current food level. */
-export function buildingKey(b: BuildingInfo, food: number): string {
-  if (b.kind === 'store') return `store:${food}`;
+/** Geometry/mesh key of a building given its village's food level (and whether it fishes). */
+export function buildingKey(b: BuildingInfo, food: number, fish = false): string {
+  if (b.kind === 'store') return `store:${food}:${fish ? 1 : 0}`;
   // Ruins: the walls still stand, the roof is gone.
   if (b.kind === 'ruin') return `house:${houseVariant(b.id)}:${Stage.Walls}`;
   return `house:${houseVariant(b.id)}:${buildStage(b.progress)}`;
@@ -168,7 +179,7 @@ export function buildingKey(b: BuildingInfo, food: number): string {
 
 function designFor(key: string): { design: Design; stage: Stage } {
   const parts = key.split(':');
-  if (parts[0] === 'store') return { design: storeDesign(Number(parts[1])), stage: Stage.Done };
+  if (parts[0] === 'store') return { design: storeDesign(Number(parts[1]), parts[2] === '1'), stage: Stage.Done };
   return { design: HOUSE_DESIGNS[Number(parts[1])]!, stage: Number(parts[2]) as Stage };
 }
 
@@ -188,7 +199,9 @@ export class BuildingsLayer {
   private readonly geometries = new Map<string, THREE.BufferGeometry>();
   private readonly batches = new Map<string, Batch>();
   private list: BuildingInfo[] = [];
-  private food = 0;
+  /** Food level and fishing per village (index into the stats' village list). */
+  private villages: { x: number; y: number; food: number; fish: boolean }[] = [];
+  private villageSig = '';
   private loaded = false;
   private layoutSig = '';
   private shadows = false;
@@ -235,12 +248,31 @@ export class BuildingsLayer {
     this.layout(false);
   }
 
-  /** Village food stock (person-days) and population: the store shows 0–6 sacks. */
-  setFood(food: number, population: number): void {
-    const lvl = foodLevel(food, population);
-    if (lvl === this.food) return;
-    this.food = lvl;
+  /**
+   * Per-village food stock (person-days), population and fishers: each
+   * store shows 0–6 sacks (and hay, and a fish rack) for its own village,
+   * the one nearest to it.
+   */
+  setVillages(vs: readonly VillageStats[]): void {
+    const next = vs.map((v) => ({ x: v.x, y: v.y, food: foodLevel(v.food, v.population), fish: (v.fishers ?? 0) > 0 }));
+    const sig = next.map((v) => `${v.x},${v.y},${v.food},${v.fish}`).join(';');
+    if (sig === this.villageSig) return;
+    this.villageSig = sig;
+    this.villages = next;
     this.layout(false);
+  }
+
+  private storeKey(b: BuildingInfo): string {
+    let best: { food: number; fish: boolean } | null = null;
+    let bestD = Infinity;
+    for (const v of this.villages) {
+      const d = (v.x - b.x) ** 2 + (v.y - b.y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = v;
+      }
+    }
+    return buildingKey(b, best?.food ?? 0, best?.fish ?? false);
   }
 
   /** Re-place everything on the terrain (after terrain edits). */
@@ -271,7 +303,7 @@ export class BuildingsLayer {
     const byKey = new Map<string, BuildingInfo[]>();
     let sig = '';
     for (const b of this.list) {
-      const k = buildingKey(b, this.food);
+      const k = b.kind === 'store' ? this.storeKey(b) : buildingKey(b, 0);
       sig += `${b.id},${k},${b.x},${b.y},${b.rot};`;
       let arr = byKey.get(k);
       if (!arr) byKey.set(k, (arr = []));

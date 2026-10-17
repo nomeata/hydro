@@ -32,7 +32,7 @@ export function buildStage(progress: number): Stage {
 }
 
 /** Procedural pieces (boxes and blobs with a flat colour). */
-export type ProcKind = 'plinth' | 'stake' | 'pole' | 'beam' | 'board' | 'sack' | 'hay' | 'soil';
+export type ProcKind = 'plinth' | 'stake' | 'pole' | 'beam' | 'board' | 'sack' | 'hay' | 'soil' | 'fish';
 
 export interface Part {
   /** A static model, or a procedural piece. */
@@ -274,6 +274,43 @@ export const HOUSE_DESIGNS: readonly Design[] = [
   },
 ];
 
+/** Shells of the house designs (same order as HOUSE_DESIGNS). */
+const HOUSE_SHELLS: readonly Shell[] = [COTTAGE, LONG_WOOD, LONG_PLASTER, COTTAGE_WOOD];
+
+export interface HouseSpots {
+  /** The chimney part's origin (tile units; the model's own extent is added by the caller). */
+  chimney: { x: number; y: number; z: number };
+  /** In front of the door (tile units), with the outward direction (ox, oz). */
+  door: { x: number; z: number; ox: number; oz: number };
+  scale: number;
+  vscale: number;
+}
+
+/** Where a house design's chimney and door are (for smoke, flowers; village/cues.ts). */
+export function houseSpots(variant: number): HouseSpots {
+  const d = HOUSE_DESIGNS[variant % HOUSE_DESIGNS.length]!;
+  const sh = HOUSE_SHELLS[variant % HOUSE_SHELLS.length]!;
+  const c = d.parts.find((p) => p.m === 'town_chimney')!;
+  const [idx, dir] = sh.doorAt;
+  const hx = (sh.nx - 1) / 2;
+  const hz = (sh.nz - 1) / 2;
+  // Wall pieces sit on the tile's edge facing `dir` (0 = +x, 1 = −z, 2 = −x, 3 = +z).
+  const o = [
+    [1, 0],
+    [0, -1],
+    [-1, 0],
+    [0, 1],
+  ][dir]!;
+  const tx = dir === 0 ? hx : dir === 2 ? -hx : idx - hx;
+  const tz = dir === 1 ? -hz : dir === 3 ? hz : idx - hz;
+  return {
+    chimney: { x: c.x, y: c.y, z: c.z },
+    door: { x: tx + o[0]! * 0.5, z: tz + o[1]! * 0.5, ox: o[0]!, oz: o[1]! },
+    scale: d.scale,
+    vscale: d.vscale,
+  };
+}
+
 /** Deterministic variant for a building id. */
 export function houseVariant(id: number): number {
   let h = Math.imul(id ^ 0x9e3779b9, 0x85ebca6b);
@@ -303,8 +340,15 @@ const SACK_SPOTS: readonly (readonly [number, number, number])[] = [
   [-0.25, 0.47, 0.02],
 ];
 
-/** The village store: an open shed on posts with barrels, a cart and `level` sacks of food. */
-export function storeDesign(level: number): Design {
+/** Food level from which round hay bales stand by the store (one, then two at the maximum). */
+export const HAY_LEVEL = 4;
+
+/**
+ * The village store: an open shed on posts with barrels, a cart and `level`
+ * sacks of food; hay bales beside it when full. A village with fishers has
+ * a fish-drying rack, hung with fish unless the store is empty.
+ */
+export function storeDesign(level: number, fish = false): Design {
   const parts: Part[] = [
     { m: 'plinth', x: 0, y: -0.35, z: 0, s: [1.12, 0.42, 1.12], stages: ALL },
     { m: 'board', x: 0, y: 0.07, z: 0, s: [1.0, 0.03, 1.0], stages: ALL },
@@ -326,7 +370,18 @@ export function storeDesign(level: number): Design {
     const [x, y, z] = SACK_SPOTS[k]!;
     parts.push({ m: 'sack', x, y, z, rot: k % 4, s: [0.24, 0.26, 0.22], stages: ALL });
   }
-  return { name: `store-${n}`, scale: 1.3, vscale: 1.0, roof: ROOF_THATCH, plaster: GABLE_WOOD, parts };
+  if (n >= HAY_LEVEL) parts.push({ m: 'hay', x: -0.2, y: 0, z: 0.9, s: [0.36, 0.3, 0.36], stages: ALL });
+  if (n >= MAX_FOOD_PROPS) parts.push({ m: 'hay', x: 0.22, y: 0, z: 0.98, s: [0.32, 0.27, 0.32], stages: ALL });
+  if (fish) {
+    // Drying rack: two posts and a pole, fish hanging from it.
+    const z = -0.92;
+    parts.push({ m: 'pole', x: -0.32, y: 0, z, s: [0.04, 0.62, 0.04], stages: ALL });
+    parts.push({ m: 'pole', x: 0.32, y: 0, z, s: [0.04, 0.62, 0.04], stages: ALL });
+    parts.push({ m: 'beam', x: 0, y: 0.58, z, s: [0.72, 0.035, 0.035], stages: ALL });
+    const hung = n === 0 ? 0 : Math.min(5, 2 + n);
+    for (let k = 0; k < hung; k++) parts.push({ m: 'fish', x: -0.24 + (0.48 * k) / 4, y: 0.57, z, s: [0.05, 0.24, 0.1], stages: ALL });
+  }
+  return { name: `store-${n}${fish ? '-fish' : ''}`, scale: 1.3, vscale: 1.0, roof: ROOF_THATCH, plaster: GABLE_WOOD, parts };
 }
 
 /** Parts of a design present at a stage. */
@@ -341,11 +396,11 @@ export function villageModels(): ModelName[] {
     for (const p of d.parts) if (!isProc(p.m)) s.add(p.m);
   };
   HOUSE_DESIGNS.forEach(add);
-  add(storeDesign(0));
+  add(storeDesign(MAX_FOOD_PROPS, true));
   return [...s];
 }
 
-const PROC: ReadonlySet<string> = new Set<ProcKind>(['plinth', 'stake', 'pole', 'beam', 'board', 'sack', 'hay', 'soil']);
+const PROC: ReadonlySet<string> = new Set<ProcKind>(['plinth', 'stake', 'pole', 'beam', 'board', 'sack', 'hay', 'soil', 'fish']);
 export function isProc(m: string): m is ProcKind {
   return PROC.has(m);
 }

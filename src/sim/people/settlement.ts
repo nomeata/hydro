@@ -55,6 +55,31 @@ export interface SettlementState {
   lineBudget?: number;
   /** The village's fishing jetty, once chosen. */
   jetty?: Jetty;
+  /**
+   * Visible mood (docs/PEOPLE.md §7), from wellbeing with hysteresis so the
+   * props it drives don't flicker: 1 prosperous, 0 ordinary, −1 struggling
+   * (absent in old saves: 0).
+   */
+  mood?: Mood;
+}
+
+export type Mood = -1 | 0 | 1;
+
+/** Wellbeing thresholds of the visible mood: enter above/below the first, leave past the second. */
+export const MOOD = {
+  prosperousEnter: 0.62,
+  prosperousLeave: 0.55,
+  strugglingEnter: 0.28,
+  strugglingLeave: 0.35,
+};
+
+/** The next mood for a wellbeing, given the current one (hysteresis). */
+export function nextMood(mood: Mood, w: number): Mood {
+  if (mood === 1) return w < MOOD.prosperousLeave ? nextMood(0, w) : 1;
+  if (mood === -1) return w > MOOD.strugglingLeave ? nextMood(0, w) : -1;
+  if (w > MOOD.prosperousEnter) return 1;
+  if (w < MOOD.strugglingEnter) return -1;
+  return 0;
 }
 
 export interface DayEvents {
@@ -128,6 +153,7 @@ export class Settlement {
     const target =
       0.55 * Math.min(1, this.foodSecurity(dayOfYear)) + 0.2 * housing + 0.15 * s.waterAccess + 0.1 * s.safety;
     s.wellbeing += (target - s.wellbeing) / ECONOMY.wellbeingTau;
+    s.mood = nextMood(s.mood ?? 0, s.wellbeing);
 
     // Natural change (small, mostly cosmetic).
     const perDay = 1 / DAYS_PER_YEAR;

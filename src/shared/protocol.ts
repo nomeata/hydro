@@ -84,6 +84,14 @@ export interface WorldInfo {
  */
 export const LOOK_CHANNELS = 4;
 
+/** Bytes per cell in Snapshot.fields: LandUse, crop stage, crop stress. */
+export const FIELD_BYTES = 3;
+/**
+ * Crop stress byte: 0 healthy (or nothing growing), 1..127 dry (127: too dry
+ * to grow), STRESS_WET..255 waterlogged (255: under water, drowning).
+ */
+export const STRESS_WET = 128;
+
 /** Side length (cells) of the blocks fish stocks are tracked in. */
 export const FISH_BLOCK = 8;
 
@@ -210,6 +218,14 @@ export interface VillageStats {
   houses: number;
   food: number;
   wellbeing: number;
+  /**
+   * Visible mood from wellbeing with hysteresis (per village; docs/PEOPLE.md
+   * §7): 1 prosperous (chimney smoke, laundry, flowers, children), 0
+   * ordinary, −1 struggling (no smoke, people idle by the store).
+   */
+  mood?: number;
+  /** Fishers (per village): the store gets a fish-drying rack. */
+  fishers?: number;
   /** Number of villages (aggregate only). */
   count?: number;
   /** Highest total population so far (aggregate only; tool unlocks). */
@@ -236,7 +252,10 @@ export interface Snapshot {
   entities?: EntityFrame;
   /** All buildings, when changed. */
   buildings?: BuildingInfo[];
-  /** Land use and crop stage per cell (2 bytes each: LandUse, crop 0..255), when changed. */
+  /**
+   * Land use, crop stage and crop stress per cell (FIELD_BYTES each:
+   * LandUse, crop 0..255, stress — see STRESS_WET), when changed.
+   */
   fields?: Uint8Array;
   /** Water structures (gates, weirs), when changed. */
   structures?: StructureInfo[];
@@ -281,7 +300,9 @@ export type Command =
   /** Remove plans within a radius. */
   | { type: 'cancelPlan'; x: number; y: number; radius: number }
   /** Debug: pour water. */
-  | { type: 'debugWater'; x: number; y: number; radius: number; depth: number };
+  | { type: 'debugWater'; x: number; y: number; radius: number; depth: number }
+  /** Debug/screenshots: force village `index`'s wellbeing (and mood) or food, or dry out its fields' soil. */
+  | { type: 'debugVillage'; index: number; wellbeing?: number; food?: number; dry?: boolean };
 
 // ---------------------------------------------------------------------------
 // Messages.

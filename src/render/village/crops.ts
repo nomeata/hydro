@@ -10,7 +10,8 @@ import { heightToY, type HeightSampler } from '../coords';
 import { modelLibrary, type StaticModel } from '../objects/loader';
 import type { ModelName } from '../objects/manifest';
 import type { StaticModelSource } from '../objects/vegetation';
-import { CROP_RIPE, CROP_SOWN, CropKind, ROWS_PER_CELL, cropKind, furrowsAlongX } from './fields';
+import { FIELD_BYTES } from '../../shared/protocol';
+import { CROP_RIPE, CROP_SOWN, CropKind, ROWS_PER_CELL, cropKind, decodeStress, furrowsAlongX } from './fields';
 
 /** LandUse.Field (see sim/world.ts). */
 const FIELD = 1;
@@ -76,8 +77,10 @@ function cropLook(kind: CropKind, crop: number): { model: ModelName; scale: numb
 
 /**
  * Crop models for the field cells in [x0,x1)×[y0,y1). `fields` is the
- * snapshot layout (2 bytes per cell: LandUse, crop). Plants sit on the
- * shader's crop rows (two of the four rows per cell, two plants each).
+ * snapshot layout (FIELD_BYTES per cell: LandUse, crop, stress). Plants sit
+ * on the shader's crop rows (two of the four rows per cell, two plants
+ * each). Stressed crops are patchy, smaller and discoloured: yellow-brown
+ * when dry, dull brown when waterlogged.
  */
 export function cropPlacements(
   fields: Uint8Array,
@@ -96,19 +99,35 @@ export function cropPlacements(
   for (let y = y0; y < y1; y++)
     for (let x = x0; x < x1; x++) {
       const i = y * width + x;
-      if (fields[2 * i] !== FIELD) continue;
-      const crop = fields[2 * i + 1]!;
+      if (fields[FIELD_BYTES * i] !== FIELD) continue;
+      const crop = fields[FIELD_BYTES * i + 1]!;
       if (crop < CROP_SOWN) continue;
       const kind = cropKind(x, y);
       const look = cropLook(kind, crop);
+      const { dry, wet } = decodeStress(fields[FIELD_BYTES * i + 2]!);
+      const gap = dry * 0.55 + wet * 0.35;
+      const shrink = 1 - 0.3 * dry - 0.15 * wet;
+      let [tr, tg, tb] = look.tint;
+      if (dry > 0) {
+        const k = dry * 0.85;
+        tr += (1.05 - tr) * k;
+        tg += (0.8 - tg) * k;
+        tb += (0.4 - tb) * k;
+      } else if (wet > 0) {
+        const k = wet * 0.8;
+        tr += (0.62 - tr) * k;
+        tg += (0.5 - tg) * k;
+        tb += (0.32 - tb) * k;
+      }
       const alongX = furrowsAlongX(x, y);
       // The shader's ridges lie at world k / ROWS_PER_CELL, i.e. cell offsets −0.5, −0.25, 0, 0.25: use ±0.25.
       for (let r = 0; r < 2; r++) {
         const across = (r ? 1 : -1) / ROWS_PER_CELL;
         for (let p = 0; p < 2; p++) {
           const k = r * 2 + p;
+          if (gap > 0 && hash3(x, y, k + 32) < gap) continue;
           const along = (p + 0.5) / 2 - 0.5 + (hash3(x, y, k) - 0.5) * 0.18 + (r ? 0.12 : -0.12);
-          const s = look.scale * (0.85 + 0.3 * hash3(x, y, k + 8));
+          const s = look.scale * shrink * (0.85 + 0.3 * hash3(x, y, k + 8));
           const v = 0.92 + 0.16 * hash3(x, y, k + 16);
           out.push({
             model: look.model,
@@ -116,9 +135,9 @@ export function cropPlacements(
             y: y + (alongX ? across : along),
             yaw: kind === CropKind.Wheat ? (alongX ? 0 : Math.PI / 2) + (hash3(x, y, k + 24) - 0.5) * 0.6 : hash3(x, y, k + 24) * Math.PI * 2,
             scale: s,
-            r: look.tint[0] * v,
-            g: look.tint[1] * v,
-            b: look.tint[2] * v,
+            r: tr * v,
+            g: tg * v,
+            b: tb * v,
           });
         }
       }

@@ -4,7 +4,7 @@
  * snapshots using a small pool of transferable buffers. When no buffer set
  * is free (the main thread hasn't acked), the snapshot is skipped.
  */
-import { VEL_SCALE, type FromWorker, type Snapshot, type ToWorker } from '../shared/protocol';
+import { FIELD_BYTES, VEL_SCALE, type FromWorker, type Snapshot, type ToWorker } from '../shared/protocol';
 import { CELL, STEPS_PER_DAY, STEPS_PER_SECOND_1X } from './constants';
 import { loadGame, saveGame } from './persist';
 import { Simulation } from './sim';
@@ -240,6 +240,8 @@ function sendSnapshot(): boolean {
       houses: v.houses,
       food: v.food,
       wellbeing: v.wellbeing,
+      mood: v.mood ?? 0,
+      fishers: sim!.people!.fishersOf(v.id),
     }));
     if (vs.length) {
       const pop = vs.reduce((n, v) => n + v.population, 0);
@@ -263,7 +265,7 @@ function sendSnapshot(): boolean {
       transfer.push(f.buffer);
     }
     if (sim.takeFieldsDirty()) {
-      const f = new Uint8Array(w.size * 2);
+      const f = new Uint8Array(w.size * FIELD_BYTES);
       sim.packFields(f);
       snap.fields = f;
       transfer.push(f.buffer);
