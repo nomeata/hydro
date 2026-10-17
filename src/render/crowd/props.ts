@@ -118,6 +118,7 @@ const SIZES: Record<number, number> = {
   [PropKind.Shovel]: 0.42,
   [PropKind.Hammer]: 0.2,
   [PropKind.Rod]: 0.7,
+  [PropKind.Axe]: 0.3,
 };
 
 const KENNEY: Partial<Record<number, ModelName>> = {
@@ -127,6 +128,7 @@ const KENNEY: Partial<Record<number, ModelName>> = {
   [PropKind.Hoe]: 'survival_tool_hoe',
   [PropKind.Shovel]: 'survival_tool_shovel',
   [PropKind.Hammer]: 'survival_tool_hammer',
+  [PropKind.Axe]: 'survival_tool_axe',
 };
 
 export function isTool(kind: number): boolean {

@@ -57,6 +57,15 @@ export const ACHIEVEMENT_ICONS: Readonly<Record<string, string>> = {
     `<path d="M2 21h28v9H2z" fill="${WATER}"/><path d="M4 25q3-2 6 0t6 0 6 0 6 0" stroke="#d8f1fc" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M2 16h6l-2 5H2z" fill="#7fbf5a" stroke="${INK}" stroke-width="1.4"/><rect x="6" y="14" width="22" height="3" rx="1" fill="#c4935c" stroke="${INK}" stroke-width="1.4"/><path d="M11 17v9M18 17v9M25 17v9" stroke="#8d6438" stroke-width="2.2" stroke-linecap="round"/><path d="M24 14l4-9" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/><path d="M28 5c1 5 0 9 0 12" stroke="#7b8d9c" stroke-width=".9" fill="none"/>`,
   ),
   pop: ICONS.faces,
+  cow: svg(
+    `<path d="M3 27h26" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/><path d="M7 13h15a4 4 0 0 1 4 4v4H7z" fill="#fbf7ef" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M11 13c1 3 4 4 6 2M19 21c0-2 2-3 4-3" fill="#3b3328"/><path d="M9 21v5M13 21v5M20 21v5M24 21v5" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><rect x="23" y="9" width="7" height="7" rx="2" fill="#fbf7ef" stroke="${INK}" stroke-width="1.6"/><path d="M24 9l-1-3M29 9l1-3" stroke="#c9a66b" stroke-width="1.6" stroke-linecap="round"/><rect x="26" y="13" width="4" height="3" rx="1.2" fill="#f2a7a0"/><circle cx="25.5" cy="11.5" r=".9" fill="#3b3328"/><path d="M7 15q-3 2-3 6" stroke="${INK}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+  ),
+  path: svg(
+    `<rect x="2" y="3" width="28" height="26" rx="5" fill="${GREEN}" stroke="#3f7a2e" stroke-width="1.6"/><path d="M8 29c0-6 9-6 9-12s-7-6-5-14" fill="none" stroke="#c49a62" stroke-width="5.5" stroke-linecap="round"/><path d="M8 29c0-6 9-6 9-12s-7-6-5-14" fill="none" stroke="#dcbb8a" stroke-width="2" stroke-linecap="round" stroke-dasharray="1.5 3"/>${house(24, 12, 0.7)}<path d="M22 24l2-3 2 3M5 10l2-3 2 3" stroke="#3f7a2e" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+  ),
+  forest: svg(
+    `<path d="M3 27h26" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/><path d="M9 27v-5M17 27v-6M24 27v-4" stroke="#8d6438" stroke-width="2" stroke-linecap="round"/><path d="M9 4l6 10h-3l4 8H2l4-8H3z" fill="#4e9a3c" stroke="#2f6a25" stroke-width="1.4" stroke-linejoin="round"/><circle cx="18" cy="15" r="6.5" fill="${GREEN}" stroke="#3f7a2e" stroke-width="1.4"/><circle cx="25" cy="19" r="4.5" fill="#6aae4a" stroke="#3f7a2e" stroke-width="1.4"/><path d="M26 6q2 2 4 0M26 6q2-2 4 0" stroke="${WATER}" stroke-width="1.6" fill="none"/><path d="M28 7v4" stroke="${WATER}" stroke-width="1.6" stroke-linecap="round"/>`,
+  ),
   storm: svg(
     `<path d="M8 15a6 6 0 0 1 1-11 8 8 0 0 1 15 3 5 5 0 0 1-1 8z" fill="#c9d6e0" stroke="#6f8292" stroke-width="1.8" stroke-linejoin="round"/><path d="M11 17l-2 4M16 17l-2 4M21 17l-2 4" stroke="#3d9bd6" stroke-width="2" stroke-linecap="round"/><path d="M2 29q4-3 8 0t8 0 8 0 6 0" stroke="${WATER}" stroke-width="2.4" fill="none" stroke-linecap="round"/>${house(24, 27, 0.8)}`,
   ),

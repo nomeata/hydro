@@ -60,9 +60,9 @@ async function main(): Promise<void> {
   renderer.camera.focus(data.info.startX, data.info.startY);
   const cameraInput = attachCameraInput(canvas, renderer.camera);
 
-  // Vegetation, people and fish. Until herders exist (M3-δ), a main-thread
-  // "fake crowd" of grazing animals adds ambient life.
-  const layers = new WorldLayers(renderer, data, seed, { centerX: data.info.startX, centerY: data.info.startY, dogs: 0 });
+  // Vegetation, people, their animals and fish (the village herds are sim
+  // entities since M3-δ; only the welcome scenes add ambient animals).
+  const layers = new WorldLayers(renderer, data, seed, null);
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
   const historyPanel = new HistoryPanel(uiRoot, () => client.history());

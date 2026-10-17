@@ -242,6 +242,44 @@ export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y
   return out;
 }
 
+/** Moisture and snow bands the scatter distinguishes (look bytes; see `scatter`). */
+const MOIST_BANDS = [77, 102, 153];
+const band = (v: number, edges: readonly number[]) => {
+  let k = 0;
+  for (const e of edges) if (v >= e) k++;
+  return k;
+};
+
+/**
+ * Indices of the chunks (row-major, `chunkSize` cells) in which a look byte
+ * the scatter depends on differs between two looks: soil, vegetation, the
+ * moisture bands and snow cover.
+ */
+export function changedChunks(prev: Uint8Array, next: Uint8Array, width: number, height: number, chunkSize: number): number[] {
+  const nx = Math.ceil(width / chunkSize);
+  const ny = Math.ceil(height / chunkSize);
+  const out: number[] = [];
+  for (let cy = 0; cy < ny; cy++)
+    for (let cx = 0; cx < nx; cx++) {
+      let changed = false;
+      for (let y = cy * chunkSize; y < Math.min(height, (cy + 1) * chunkSize) && !changed; y++)
+        for (let x = cx * chunkSize; x < Math.min(width, (cx + 1) * chunkSize); x++) {
+          const o = (y * width + x) * LOOK_CHANNELS;
+          if (
+            prev[o] !== next[o] ||
+            prev[o + 2] !== next[o + 2] ||
+            band(prev[o + 1]!, MOIST_BANDS) !== band(next[o + 1]!, MOIST_BANDS) ||
+            prev[o + 3]! > 102 !== next[o + 3]! > 102
+          ) {
+            changed = true;
+            break;
+          }
+        }
+      if (changed) out.push(cy * nx + cx);
+    }
+  return out;
+}
+
 /** Order-dependent 32-bit hash of placements (cheap change detection). */
 function signature(ps: readonly Placement[], palette: readonly (readonly ModelName[])[]): number {
   let s = 0x811c9dc5;
@@ -387,11 +425,18 @@ export class VegetationLayer {
     });
   }
 
-  /** New look data (or none: just continue pending work). Rebuilds only chunks whose scatter changed. */
+  /**
+   * New look data (or none: just continue pending work). Only the chunks
+   * where something the scatter reads changed are re-scattered (the
+   * vegetation grows and declines daily, mostly in a few places), and of
+   * those only the ones whose placements differ are rebuilt.
+   */
   update(look?: Uint8Array): void {
     if (look) {
+      const prev = this.look;
       this.look = look;
-      this.chunks.forEach((_, i) => this.pending.add(i));
+      if (prev.length !== look.length) this.chunks.forEach((_, i) => this.pending.add(i));
+      else for (const i of changedChunks(prev, look, this.width, this.height, this.chunkSize)) this.pending.add(i);
     }
     this.schedule();
   }

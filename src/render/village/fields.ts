@@ -77,6 +77,8 @@ uniform vec3 uCropYoung;
 uniform vec3 uCropGreen;
 uniform vec3 uCropRipe;
 uniform vec3 uYard;
+/** Trodden earth of desire paths (LandUse.Path). */
+uniform vec3 uPath;
 /** 1 in autumn: harvested (bare) fields show straw stubble rows. */
 uniform float uStubble;
 
@@ -118,6 +120,31 @@ vec2 stressAt(vec2 p) {
   return mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
 }
 
+float pathAt(ivec2 c) {
+  return abs(fieldAt(c).r - 4.0) < 0.5 ? 1.0 : 0.0;
+}
+
+// Desire paths: trodden earth, blended between cell centres with a noisy,
+// organic edge and a little grass still showing along the middle.
+vec3 pathColour(vec3 ground, vec3 world) {
+  vec2 q = world.xz - 0.5;
+  ivec2 c = ivec2(floor(q));
+  vec2 f = fract(q);
+  float a = pathAt(c);
+  float b = pathAt(c + ivec2(1, 0));
+  float d = pathAt(c + ivec2(0, 1));
+  float e = pathAt(c + ivec2(1, 1));
+  if (a + b + d + e < 0.5) return ground;
+  f = f * f * (3.0 - 2.0 * f);
+  float p = mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
+  float n = fieldNoise(world.xz * 2.1 + 7.3) * 0.6 + fieldNoise(world.xz * 6.5) * 0.4;
+  float m = smoothstep(0.32, 0.62, p + (n - 0.5) * 0.45);
+  vec3 earth = uPath * mix(0.9, 1.08, fieldNoise(world.xz * 4.7 + 1.9));
+  // Tufts of grass survive where fewer feet go.
+  float tuft = smoothstep(0.62, 0.8, fieldNoise(world.xz * 9.0 + 3.3)) * (1.0 - smoothstep(0.75, 1.0, p));
+  return mix(ground, earth, m * (0.85 - 0.6 * tuft));
+}
+
 bool isField(ivec2 c) {
   return int(fieldAt(c).r + 0.5) == 1;
 }
@@ -138,6 +165,7 @@ vec3 fieldColour(vec3 ground, vec3 world) {
   // Cell (cx, cy) covers world [cx, cx+1) x [cy, cy+1) (centre at cx + 0.5).
   ivec2 c = ivec2(floor(world.xz));
   vec2 f = fract(world.xz);
+  ground = pathColour(ground, world);
   vec3 fd = fieldAt(c);
   int lu = int(fd.r + 0.5);
   if (lu == 5) {

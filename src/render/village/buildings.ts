@@ -23,6 +23,7 @@ import {
   isProc,
   partsAt,
   storeDesign,
+  woodLevel,
   villageModels,
   Stage,
   STONE,
@@ -170,8 +171,8 @@ export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap
 }
 
 /** Geometry/mesh key of a building given its village's food level (and whether it fishes). */
-export function buildingKey(b: BuildingInfo, food: number, fish = false): string {
-  if (b.kind === 'store') return `store:${food}:${fish ? 1 : 0}`;
+export function buildingKey(b: BuildingInfo, food: number, fish = false, wood = 0): string {
+  if (b.kind === 'store') return `store:${food}:${fish ? 1 : 0}:${wood}`;
   // Ruins: the walls still stand, the roof is gone.
   if (b.kind === 'ruin') return `house:${houseVariant(b.id)}:${Stage.Walls}`;
   return `house:${houseVariant(b.id)}:${buildStage(b.progress)}`;
@@ -179,7 +180,7 @@ export function buildingKey(b: BuildingInfo, food: number, fish = false): string
 
 function designFor(key: string): { design: Design; stage: Stage } {
   const parts = key.split(':');
-  if (parts[0] === 'store') return { design: storeDesign(Number(parts[1]), parts[2] === '1'), stage: Stage.Done };
+  if (parts[0] === 'store') return { design: storeDesign(Number(parts[1]), parts[2] === '1', Number(parts[3] ?? 0)), stage: Stage.Done };
   return { design: HOUSE_DESIGNS[Number(parts[1])]!, stage: Number(parts[2]) as Stage };
 }
 
@@ -200,7 +201,7 @@ export class BuildingsLayer {
   private readonly batches = new Map<string, Batch>();
   private list: BuildingInfo[] = [];
   /** Food level and fishing per village (index into the stats' village list). */
-  private villages: { x: number; y: number; food: number; fish: boolean }[] = [];
+  private villages: { x: number; y: number; food: number; fish: boolean; wood: number }[] = [];
   private villageSig = '';
   private loaded = false;
   private layoutSig = '';
@@ -254,8 +255,8 @@ export class BuildingsLayer {
    * the one nearest to it.
    */
   setVillages(vs: readonly VillageStats[]): void {
-    const next = vs.map((v) => ({ x: v.x, y: v.y, food: foodLevel(v.food, v.population), fish: (v.fishers ?? 0) > 0 }));
-    const sig = next.map((v) => `${v.x},${v.y},${v.food},${v.fish}`).join(';');
+    const next = vs.map((v) => ({ x: v.x, y: v.y, food: foodLevel(v.food, v.population), fish: (v.fishers ?? 0) > 0, wood: woodLevel(v.wood ?? 0) }));
+    const sig = next.map((v) => `${v.x},${v.y},${v.food},${v.fish},${v.wood}`).join(';');
     if (sig === this.villageSig) return;
     this.villageSig = sig;
     this.villages = next;
@@ -263,7 +264,7 @@ export class BuildingsLayer {
   }
 
   private storeKey(b: BuildingInfo): string {
-    let best: { food: number; fish: boolean } | null = null;
+    let best: { food: number; fish: boolean; wood: number } | null = null;
     let bestD = Infinity;
     for (const v of this.villages) {
       const d = (v.x - b.x) ** 2 + (v.y - b.y) ** 2;
@@ -272,7 +273,7 @@ export class BuildingsLayer {
         best = v;
       }
     }
-    return buildingKey(b, best?.food ?? 0, best?.fish ?? false);
+    return buildingKey(b, best?.food ?? 0, best?.fish ?? false, best?.wood ?? 0);
   }
 
   /** Re-place everything on the terrain (after terrain edits). */

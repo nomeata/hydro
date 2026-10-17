@@ -10,7 +10,7 @@ import { FishJumps } from './fishJumps';
 import { VegetationLayer } from './objects/vegetation';
 import type { GameRenderer, InitialData } from './renderer';
 
-/** Ambient animals (until herders exist): a FakeCrowd without people. */
+/** Ambient animals for the welcome scenes (the game's herds are sim entities): a FakeCrowd without people. */
 export type AnimalOptions = Omit<FakeCrowdOptions, 'seed' | 'look' | 'people'>;
 
 export class WorldLayers {

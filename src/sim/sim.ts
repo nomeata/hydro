@@ -524,7 +524,7 @@ export class Simulation {
     }
     if (st.history) this.history.setState(st.history);
     else this.resetHistory();
-    if (st.achievements) this.achievements.setState(st.achievements);
+    if (st.achievements) this.achievements.setState(st.achievements, this.world);
     else this.achievements.catchUp(this, Math.max(0, this.time.day - 1));
     this.lookDirty = true;
     this.planDirty = true;

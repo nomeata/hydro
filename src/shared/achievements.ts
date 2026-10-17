@@ -40,6 +40,12 @@ export const ACH = {
   harvests: 250,
   /** Weathered the Storm: village land cells under water on one spring day. */
   floodCells: 10,
+  /** Cattle Country: cows in one village's herd. */
+  herdCows: 5,
+  /** Well Trodden: cells of one connected desire path. */
+  pathCells: 30,
+  /** Forest Keeper: new forest cells near the works. */
+  forestCells: 40,
 } as const;
 
 export const ACHIEVEMENTS: readonly AchievementInfo[] = [
@@ -54,6 +60,8 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   // The land
   { id: 'newGround', title: 'New Ground', description: 'Villagers farm land that was too dry for fields at first.', icon: 'sprout', category: 'land' },
   { id: 'greenDesert', title: 'Green Desert', description: `Bring water to ${ACH.greenCells} cells of dry land.`, icon: 'green', category: 'land' },
+  { id: 'forestKeeper', title: 'Forest Keeper', description: 'New woods grow up by your works.', icon: 'forest', category: 'land' },
+  { id: 'wellTrodden', title: 'Well Trodden', description: `Villagers wear a path ${ACH.pathCells * 5} m long.`, icon: 'path', category: 'land' },
   // The people
   { id: 'founders', title: 'Founders', description: 'The first family settles in your valley.', icon: 'house', category: 'people' },
   { id: 'firstHarvest', title: 'First Harvest', description: 'A field is brought in.', icon: 'wheat', category: 'people' },
@@ -62,6 +70,7 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'goneFishing', title: 'Gone Fishing', description: 'A fish is caught in water that you made.', icon: 'fish', category: 'people' },
   { id: 'goldenYear', title: 'Golden Year', description: `${ACH.harvests} harvests in a single year.`, icon: 'sheaf', category: 'people' },
   { id: 'quayside', title: 'Quayside', description: 'Villagers line a quay by their houses.', icon: 'quay', category: 'people' },
+  { id: 'cattleCountry', title: 'Cattle Country', description: `A village keeps a herd of ${ACH.herdCows} cows.`, icon: 'cow', category: 'people' },
   { id: 'jetty', title: 'Fishing Jetty', description: 'Villagers build a jetty out over the water.', icon: 'jetty', category: 'people' },
   { id: 'pop10', title: 'Hamlet', description: '10 villagers live in the valley.', icon: 'pop', category: 'people' },
   { id: 'pop50', title: 'Village Life', description: '50 villagers live in the valley.', icon: 'pop', category: 'people' },

@@ -57,6 +57,7 @@ export interface TerrainUniforms extends FrontUniforms, FogUniforms {
   uCropGreen: { value: THREE.Color };
   uCropRipe: { value: THREE.Color };
   uYard: { value: THREE.Color };
+  uPath: { value: THREE.Color };
   uStubble: { value: number };
   uLining: { value: THREE.Texture };
   uLiningOn: { value: number };
@@ -247,6 +248,7 @@ export function createTerrainUniforms(
     uCropGreen: { value: new THREE.Color(0x5e9e3a) },
     uCropRipe: { value: new THREE.Color(0xe8c050) },
     uYard: { value: new THREE.Color(0xa08060) },
+    uPath: { value: new THREE.Color(0xb59a72) },
     uStubble: { value: 0 },
     uLining: { value: tex.lining },
     uLiningOn: { value: 0 },

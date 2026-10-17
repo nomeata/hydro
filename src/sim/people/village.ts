@@ -223,8 +223,6 @@ export class PeopleSystem {
   attractiveness: Float32Array | null = null;
   /** Quay cells (lined lake fronts by the houses), derived daily; rendering only. */
   readonly quay: Uint8Array;
-  /** Set when desire paths appeared or faded (achievements read it; cleared by the reader). */
-  pathsChanged = false;
   /** Set when `quay` changed, and when a jetty changed (for snapshots). */
   quayDirty = true;
   jettyDirty = true;
@@ -533,7 +531,7 @@ export class PeopleSystem {
     this.growCrops(time, host);
     this.updateFishCapacity();
     this.growFish(time);
-    if (updateDesirePaths(this.world)) this.pathsChanged = true;
+    updateDesirePaths(this.world);
     for (const s of this.settlements) {
       this.updateSafety(s);
       s.day(doy, this.rng);
