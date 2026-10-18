@@ -24,7 +24,8 @@ npm run playtest -- --seeds 1..8 --years 10 --bot-years 4 --summary-only
 | `--years` / `--days` | 5 years | length of the hands-off runs |
 | `--bot-years` | = years | length of the bot runs (their effects show within a few years) |
 | `--size` | 128 | map size; the game uses 256, but that is ~4–10× slower |
-| `--bots` | all | `baseline` always runs; bots: `irrigate,dike,weir,drain,vandal` |
+| `--bots` | all | `baseline` always runs; bots: `weircanal,wheel,dike,drain,vandal,undo,good,irrigate` |
+| `--budget` | 6000 | earth each bot may move over the run (m³, dug plus raised) |
 | `--jobs` | CPU count | child processes at a time |
 | `--act-day` / `--check-every` | 16 / 12 | the first day the bots look at the world, and how often they look again |
 | `--window` | 36 | days the untouched control copy runs alongside after a bot's first action |
@@ -81,31 +82,56 @@ harness wraps that method to count them (observer only).
 **Player bots** (`tools/playtest/bots.ts`) look at the world like a
 player: villages, their fields and field moisture, water and flow
 direction, flood memory, known land. They respect the tool unlocks
-(population peak), act from `--act-day` and look again each season, once
-per village (new villages get theirs later). Since the brush rework
-(DESIGN §4) their earthworks are `shapeLine` commands: the old trench /
-dike profiles shaped at once, with the brushes' rules, the earth moved
-counted in `Simulation.brush.moved.script` (for a later budget):
-- `irrigate`: a trench (2 wide, 1–3 m deep, as deep as gravity feed
-  needs) from the nearest shore whose water can reach them to the middle
-  of the driest quarter of a village's fields, with a dogleg around the
-  houses if needed (round 2: aimed at the driest quarter of the dry fields
-  *and fertile open land* within 17 cells, preferring an intake up to 70
-  cells away whose water stands near field level, never onto land below
-  the intake's water; else as before);
-- `dike`: dikes (1.5 m) 3 cells inside the water's edge on rays from the
-  village where the land is low (< 2.5 m above the water) or remembers
-  floods; looks again when new flood memory appears;
-- `weir`: once the weir is unlocked (15 villagers), a weir across the
-  river 12–40 cells upstream of the biggest village, crest 1 m above the
-  water, banks high enough on both sides;
-- `drain`: a ditch (0.8 m) from the wettest patch near a village (soil
-  saturation or field moisture ≥ 0.9, or puddles) down to lower water;
-- `vandal`: a canal from the shore with the most head straight into the
-  first village's store, and a dam across the river just below the intake;
-- `undo` (round 2): the vandal's works, and a year later a trench through
-  the dam down to the river bed and a dike across the canal by its intake,
-  as a player would undo them: does the village recover?
+(population peak), act from `--act-day` and look again every
+`--check-every` days. Since round 3 every bot has the **same earth
+budget** (`--budget`, default 6000 m³ dug plus raised over the run;
+`canal.ts earthOf` prices a plan before it is issued, the run records
+what `Simulation.brush.moved.script` actually counted); weirs (stone,
+built by the crew) and wheels do not count against it. Earthworks are
+`shapeLine` commands (the brushes' rules, at once); a dig may give
+absolute floor heights, so a canal is graded to a water level in one
+stroke. Canals are laid out by `canal.ts planCanal`: a Dijkstra over the
+land from the water's edge whose water surface falls 6 mm a cell and
+never stands above the ground beside it (no spills), that keeps off lower
+water (or it becomes the river's bypass), costs cut depth and fields
+crossed, and ends where it waters most dry land outside its own
+footprint for its cost.
+- `weircanal` (a): once the weir is unlocked, a stone weir (1.5–4 m) across
+  flowing water 8–45 cells from the village whose pool fills within 12
+  days and reaches no house, with a graded canal from the pool's shore onto
+  the dry land (fields and fertile open land the river does not keep
+  moist); only if the canal waters clearly more than the pool drowns;
+- `wheel` (b): a water wheel at one of `wheelSites()`, its trough drawn up
+  the bank (≤ 6 cells, the stroke that gives the best canal), and a canal
+  from its head, no longer than the wheel's water keeps wet (perDay/2.5
+  cells). The wheel unlocks at 50, which few valleys reach in four years,
+  so this bot builds it from the start: it measures the mechanic;
+- `dike` (c): once the land near a village remembers a flood, a dike
+  2.5–3.5 cells back from the river along the stretch in front of the low
+  fields and houses, its crest 0.4 m above the highest flooded ground
+  (1.5–2.5 m above the river), ends tied into higher ground; again when new
+  flood memory appears;
+- `drain` (d): up to three drains per village, from the wettest patches
+  (soil saturation or field moisture ≥ 0.9, or puddles) down to lower
+  water, floor 0.8 m under the patch graded to just under the outlet;
+- `vandal` (e): a canal from the shore with the most head straight into the
+  first village's store, and a dam across the river just below the intake
+  (no budget);
+- `undo` (e): the vandal's works, then 48 days later the dam trenched to
+  the river bed and the canal filled back to the ground it was dug into
+  (in 3-cell pieces), and on the next two looks a drain from what is still
+  wet by the village;
+- `good`: a sensible player combining (a), (c) and (d): drains and dikes
+  where needed from the first look (at most 20 % and 25 % of the budget),
+  the weir + canal once unlocked with the rest;
+- `irrigate`: round 2's bot (a trench from the nearest usable shore to the
+  driest land), kept for comparison.
+
+Dev tools: `tools/playtest/try-bot.ts` (a bot's first look at a cached
+game day and the response a few days on), `exp.ts` (jobs in-process with
+tunables overridden: `--set FARMING.yield=12`), `diag-map.ts` (ASCII map
+of a village after a bot's works), `diag-crops.ts` (fields sown, ripe,
+who does what), `table.ts` (the round tables below).
 
 **Agency and response latency.** The day a bot first acts, the game is
 forked (save → load; the state hashes are compared) and the untouched copy
