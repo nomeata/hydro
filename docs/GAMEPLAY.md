@@ -166,8 +166,9 @@ richer.
   hydraulic second with `gain = 10` (`PARAMS.wheelGain`, standing for
   the fast hydraulic clock; a hydraulic day is only 300 s), so the
   reference case lifts ≈ 0.13 m³/s ≈ 38 m³ per game day: a thin stream
-  that wets a trench and its fields; the race below a 1.5 m weir lifts
-  more than twice that. The trough stops while 0.5 m of water stands at its
+  that wets a trench and its fields; on a low river the race below a
+  1.5 m weir lifts more than twice what the open reach does (up to the
+  cap, ≈ 60 m³ per day). The trough stops while 0.5 m of water stands at its
   outlet. Ledger: `lifted`. Achievement **Uphill** (100 m³ lifted).
   Site survey (`tools/wheel-sites.ts`, seeds 1–8 at 256², after spin-up):
   revealed wet cells at the banks are mostly quick enough (slow ones
