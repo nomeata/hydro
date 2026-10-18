@@ -13,7 +13,8 @@ const port = Number(process.env.HYDRO_PW_PORT ?? 4173);
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 120_000,
+  // Generous: on CI two software-GL pages share a runner and slow each other.
+  timeout: 240_000,
   // Every test is independent: spread single tests (not whole files) over
   // workers and CI shards.
   fullyParallel: true,
