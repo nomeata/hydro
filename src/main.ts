@@ -21,6 +21,8 @@ import { isUnlocked, setUnlockAll } from './shared/unlocks';
 import { AreaHighlight } from './ui/areaHighlight';
 import { heightToY } from './render/coords';
 import * as THREE from 'three';
+import { SoundSystem } from './audio/sound';
+import { cameraView, setSoundSink } from './audio/bus';
 
 const params = new URLSearchParams(location.search);
 const testMode = params.has('test');
@@ -39,6 +41,9 @@ const initialSpeed = testMode || introDue ? 0 : 1;
 const AUTOSAVE_MS = 60_000;
 /** Phones: let the sim use at most ~45% of a core (battery, heat); ?duty= overrides. */
 const duty = Number(params.get('duty') ?? (matchMedia('(pointer: coarse)').matches ? 0.45 : 1));
+/** Sound (docs/SOUND.md): on by default, starting at the first gesture; off in tests unless ?sound=1. */
+const sound = new SoundSystem({ enabled: !testMode || params.has('sound'), base: import.meta.env.BASE_URL });
+setSoundSink(sound);
 
 async function startClient(): Promise<{ client: SimClient; data: ReadyData }> {
   if (resume) {
@@ -71,6 +76,16 @@ async function main(): Promise<void> {
   // Vegetation, people, their animals and fish (the village herds are sim
   // entities since M3-δ; only the welcome scenes add ambient animals).
   const layers = new WorldLayers(renderer, data, seed, null);
+  sound.attachMain({ width: data.info.width, look: data.look, revealed: data.revealed, plan: data.plan }, () =>
+    cameraView(renderer.camera.getCurrentState(), canvas.clientWidth, canvas.clientHeight),
+  );
+  layers.fishJumps.onSplash = (x, y) => sound.splash(x, y);
+  // Soft clicks for the HUD's buttons; tools have their own.
+  uiRoot.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('button');
+    if (!b || b.closest('.menu-sound')) return;
+    sound.ui(b.dataset.tool ? 'tool' : 'click');
+  });
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
   const historyPanel = new HistoryPanel(uiRoot, () => client.history());
@@ -127,11 +142,15 @@ async function main(): Promise<void> {
     setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
     setWheelSites: (sites) => renderer.wheelPreview.setSites(sites),
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),
-    command: (cmd) => client.command(cmd),
+    command: (cmd) => {
+      client.command(cmd);
+      sound.ui('place');
+    },
   });
 
   client.onSnapshot((s) => {
     mirror.apply(s);
+    sound.feedMain(s);
     renderer.applySnapshot(s);
     layers.applySnapshot(s);
     hud.update(s);
@@ -211,13 +230,14 @@ async function main(): Promise<void> {
       await writeSave(AUTOSAVE, bytes, { savedAt: Date.now(), seed: 0, day: 0 });
       location.search = '';
     },
+    sound,
   });
   achievements.updateIdeas();
 
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements, sound };
   }
   document.getElementById('loading')?.classList.add('done');
 }
