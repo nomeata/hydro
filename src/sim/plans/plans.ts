@@ -161,23 +161,23 @@ export function planLevel(world: PlanGrid, points: readonly Pt[], width: number)
 }
 
 /**
- * A weir's cross-section for a crest `height` m above the ground: a level
- * crest WEIR_CREST cells either side of the line, then sloped faces whose
- * run follows from the height (taller weirs have broader feet), then a
- * strip of stone apron (WEIR_APRON). The whole footprint is lined.
+ * A weir is a stone wall on the ground as it is (no earthworks): the wall
+ * cells, within WEIR_CREST of the line, stand straight up to the crest; a
+ * strip of stone apron (WEIR_APRON beyond) is laid on the ground either side
+ * so the falling water does not scour its foot. The whole footprint is lined.
  */
-export const WEIR_CREST = 1;
-export function weirBank(height: number): number {
-  return Math.max(1, Math.min(3, 0.6 + 0.4 * height));
-}
-/** Width (cells) of the stone apron beyond the faces. */
-export const WEIR_APRON = 0.6;
+export const WEIR_CREST = 0.6;
+/** Width (cells) of the stone apron beside the wall. */
+export const WEIR_APRON = 1;
+/** Highest crest above the ground on the wall's lower side (m). */
+export const WEIR_MAX_WALL = 4;
 
 /**
  * Weir along the straight line a→b with its crest at `top` (absolute, m):
- * returns cell → target height for every cell of the crest and faces, the
- * crest's lowest ground and the lined cells. `ground(i)` is the ground before
- * the weir (an edited weir passes the ground it was built on).
+ * returns cell → target height for every wall cell, the lowest ground under
+ * the wall, the lowest ground at its foot (the lower side, apron included)
+ * and the lined cells. `ground(i)` is the ground before the weir (an edited
+ * weir passes the ground it was built on).
  */
 export function weirShape(
   world: PlanGrid,
@@ -185,29 +185,35 @@ export function weirShape(
   b: Pt,
   top: number,
   ground: (i: number) => number = (i) => world.terrain(i),
-): { targets: Map<number, number>; lowest: number; lined: number[] } {
+): { targets: Map<number, number>; lowest: number; foot: number; lined: number[] } {
   const line: Pt[] = [a, b];
   let lowest = Infinity;
   for (const i of rasterisePath(world, line, WEIR_CREST).keys()) lowest = Math.min(lowest, ground(i));
   const targets = new Map<number, number>();
-  if (!Number.isFinite(lowest)) return { targets, lowest, lined: [] };
-  const bank = weirBank(top - lowest);
-  const reach = WEIR_CREST + bank + WEIR_APRON;
+  if (!Number.isFinite(lowest)) return { targets, lowest, foot: lowest, lined: [] };
   const lined: number[] = [];
-  for (const [i, h] of rasterisePath(world, line, reach)) {
+  let foot = Infinity;
+  for (const [i, h] of rasterisePath(world, line, WEIR_CREST + WEIR_APRON)) {
     lined.push(i);
-    if (h.dist > WEIR_CREST + bank) continue;
     const g = ground(i);
-    let t = top;
-    if (h.dist > WEIR_CREST) t = top + (g - top) * ((h.dist - WEIR_CREST) / bank);
-    if (t > g + 0.01) targets.set(i, t);
+    foot = Math.min(foot, g);
+    if (h.dist > WEIR_CREST) continue;
+    if (top > g + 0.01) targets.set(i, top);
   }
-  return { targets, lowest, lined };
+  return { targets, lowest, foot, lined };
 }
 
-/** Preview of a new weir (the UI): raise the plan to the weir's shape, as planDike does. Returns the lined cells. */
+/** The crest a weir may have (m): at least WEIR_MIN above the ground under it, at most WEIR_MAX_WALL above its lower side. */
+export function weirCrest(lowest: number, foot: number, top: number): number {
+  return Math.max(lowest + 0.5, Math.min(foot + WEIR_MAX_WALL, top));
+}
+
+/** Preview of a new weir (the UI): raise the plan to the wall's shape (its crest clamped as the sim does). Returns the lined cells. */
 export function planWeirPreview(world: PlanGrid, a: Pt, b: Pt, top: number): number[] {
-  const { targets, lined } = weirShape(world, a, b, top);
+  const probe = weirShape(world, a, b, top);
+  if (!Number.isFinite(probe.lowest)) return [];
+  const crest = weirCrest(probe.lowest, probe.foot, top);
+  const { targets, lined } = crest === top ? probe : weirShape(world, a, b, crest);
   for (const [i, t] of targets) if (t > current(world, i) + 0.01) world.plan[i] = t;
   return lined;
 }

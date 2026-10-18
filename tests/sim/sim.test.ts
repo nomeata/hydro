@@ -48,14 +48,12 @@ describe('Simulation', () => {
     expect(a.stateHash()).toBe(b.stateHash());
   });
 
-  it('builds a planned trench over time', () => {
+  it('shapes a trench at once (no plan, no crew)', () => {
     const w = valley();
     const sim = new Simulation(w, 1);
-    sim.command({ type: 'planTrench', points: [[10, 10], [40, 10]], width: 2, depth: 1.5 });
     const i = w.idx(25, 10);
     const before = w.terrain(i);
-    expect(Number.isNaN(w.plan[i]!)).toBe(false);
-    sim.run(STEPS_PER_DAY * 2);
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[10, 10], [40, 10]], width: 2, amount: 1.5 });
     expect(w.terrain(i)).toBeLessThan(before - 1.3);
     expect(Number.isNaN(w.plan[i]!)).toBe(true);
     expect(sim.crew.pending).toBe(0);
@@ -64,7 +62,7 @@ describe('Simulation', () => {
   it('builds a dike with a level crest', () => {
     const w = valley();
     const sim = new Simulation(w, 1);
-    sim.command({ type: 'planDike', points: [[30, 20], [30, 44]], width: 2, height: 3 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[30, 20], [30, 44]], width: 2, amount: 3 });
     sim.run(STEPS_PER_DAY * 4);
     const crest = [24, 28, 32, 36, 40].map((y) => w.terrain(w.idx(30, y)));
     const lowest = Math.min(...crest);
@@ -79,7 +77,7 @@ describe('level tool', () => {
     const w = valley();
     const sim = new Simulation(w, 1);
     const start = w.terrain(w.idx(10, 12));
-    sim.command({ type: 'planLevel', points: [[10, 12], [20, 12], [20, 20]], width: 4 });
+    sim.command({ type: 'shapeLine', tool: 'even', points: [[10, 12], [20, 12], [20, 20]], width: 4 });
     sim.run(STEPS_PER_DAY * 4);
     for (const [x, y] of [[15, 12], [20, 16], [19, 19]] as const) {
       expect(Math.abs(w.terrain(w.idx(x, y)) - start)).toBeLessThan(0.05);

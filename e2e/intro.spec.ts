@@ -87,8 +87,7 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   await expect(intro).toHaveAttribute('data-page', '1');
   await expectLive(page, '.intro .intro-art', fallbacks, 60_000);
   await expect(page.locator('.intro-tools')).toBeVisible();
-  // The scripted hand draws a real trench: the scene's sim gets a plan.
-  // (It is built within seconds, so look for the plan or the dug ground.)
+  // The scripted hand brushes a real channel with Dig: the scene's ground drops.
   const t0 = await page.evaluate(() => {
     const m = (window as any).__hydro.intro.scenes.mirror;
     return m.terrainH[m.idx(58, 51)] as number;
@@ -164,7 +163,7 @@ test('achievement toasts wait while the welcome panels are open', async ({ page 
   await page.evaluate(async () => {
     const h = (window as any).__hydro;
     const { startX: x, startY: y } = h.data.info;
-    h.client.command({ type: 'planTrench', points: [[x - 6, y + 8], [x + 6, y + 8]], width: 2, depth: 1.5 });
+    h.client.command({ type: 'shapeLine', tool: 'dig', points: [[x - 6, y + 8], [x + 6, y + 8]], width: 2, amount: 1.5 });
     await h.client.runDays(1.2);
   });
   await page.waitForFunction(() => (window as any).__hydro.achievements.list.some((e: { id: string }) => e.id === 'firstSpade'), null, { timeout: 30_000 });

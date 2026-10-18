@@ -325,8 +325,17 @@ export interface Snapshot {
   terrain?: { y0: number; y1: number; data: Float32Array };
   /** Full ground look (RGBA8), when changed. Not pooled. */
   look?: Uint8Array;
-  /** Full plan target heights (NaN = none), when changed. Not pooled. */
+  /** Full plan target heights (NaN = none; the crew's structure work), when changed. Not pooled. */
   plan?: Float32Array;
+  /** The last sculpt command (its `seq`) applied before this snapshot. */
+  sculptSeq?: number;
+  /** Sculpt strokes that can be undone. */
+  undoable?: number;
+  /**
+   * Cells the brushes leave alone (1): houses, mills, wells, stores, ruins,
+   * footbridges, structures and their works in progress. When changed.
+   */
+  fixed?: Uint8Array;
   /** People and animals. Not pooled (small). */
   entities?: EntityFrame;
   /** All buildings, when changed. */
@@ -361,13 +370,28 @@ export interface Snapshot {
 // ---------------------------------------------------------------------------
 // Commands (player actions), main → worker.
 
+/** The sculpting brushes (DESIGN.md §4). */
+export type BrushTool = 'raise' | 'dig' | 'even';
+
 export type Command =
-  /** Dig a trench along a polyline; floor grades evenly from start to end. */
-  | { type: 'planTrench'; points: Pt[]; width: number; depth: number }
-  /** Raise a dike along a polyline to a level crest `height` above the lowest ground on the path. */
-  | { type: 'planDike'; points: Pt[]; width: number; height: number }
-  /** Flatten the brushed area to the ground height at the stroke's start. */
-  | { type: 'planLevel'; points: Pt[]; width: number }
+  /**
+   * Sculpting brushes (sim/plans/sculpt.ts): samples of stroke `stroke`
+   * (a new id starts a new stroke for undo), flat [x, y, dt, …] — the brush
+   * of `radius` cells held at (x, y) for dt real seconds. Applied at once,
+   * also while paused. `seq` (increasing) is echoed in Snapshot.sculptSeq so
+   * the client's prediction knows when the sim has caught up.
+   */
+  | { type: 'sculpt'; tool: BrushTool; radius: number; stroke: number; seq?: number; samples: number[] }
+  /** Undo the last sculpt stroke (or shaped line). */
+  | { type: 'undoSculpt' }
+  /**
+   * A whole line shaped at once (scripted strokes: tests, scenes): dig grades
+   * a floor evenly from `amount` below the ground at the start to `amount`
+   * below it at the end; raise heaps a level bank `amount` above the lowest
+   * ground on the line; even flattens to the height at the start. `width`
+   * in cells; banks slope over 1.5 cells. Applied at once, one undo stroke.
+   */
+  | { type: 'shapeLine'; tool: BrushTool; points: Pt[]; width: number; amount?: number }
   /** Stone lining on the cells brushed by a path (built after any earthworks there). */
   | { type: 'planLining'; points: Pt[]; width: number }
   /**
@@ -456,6 +480,8 @@ export type FromWorker =
       plan: Float32Array;
       /** Fog of war (absent: everything is revealed). */
       revealed?: Uint8Array;
+      /** Cells the brushes leave alone (see Snapshot.fixed). */
+      fixed?: Uint8Array;
     }
   | ({ type: 'snapshot' } & Snapshot)
   | { type: 'saved'; bytes: ArrayBuffer }

@@ -14,7 +14,8 @@ import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { ErosionScratch, defaultGeoParams, erosionStep, overtopStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
 import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
-import { SpiritCrew, cancelPlans, keepsPlan, planDike, planLevel, planTrench, takenGround } from './plans/plans';
+import { SpiritCrew, applyEarthwork, cancelPlans, keepsPlan, takenGround } from './plans/plans';
+import { Brushwork } from './plans/brushwork';
 import { Structures, type StructuresState } from './structures/structures';
 import { Gatekeeper } from './structures/gatekeeper';
 import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
@@ -59,6 +60,8 @@ export interface SimState {
   climate?: ClimateRunState;
   /** The power grid (M6; absent in older saves). */
   power?: PowerState;
+  /** Earth moved by the brushes and by scripted lines (m³; absent in older saves). */
+  earthMoved?: { brush: number; script: number };
 }
 
 /** Erosion state that must survive save/load: the ledger and sparse per-cell accumulators. */
@@ -87,11 +90,6 @@ function unsparse(a: Float32Array, pairs: number[]): void {
 /** Steps between soil-water/weather updates. */
 const SOILWATER_EVERY = 4;
 
-function pathLength(points: readonly (readonly [number, number])[]): number {
-  let l = 0;
-  for (let k = 0; k + 1 < points.length; k++) l += Math.hypot(points[k + 1]![0] - points[k]![0], points[k + 1]![1] - points[k]![1]);
-  return l;
-}
 /** Steps between builder updates. */
 const BUILD_EVERY = 10;
 /** Steps between erosion/deposition passes (offset from soil-water). */
@@ -119,6 +117,10 @@ export class Simulation {
   readonly gatekeeper: Gatekeeper;
   /** Turbines, poles and electric pumps (M6; power/grid.ts). */
   readonly power: PowerGrid;
+  /** The sculpting brushes (plans/brushwork.ts): applied at once, the last strokes kept for undo. */
+  readonly brush: Brushwork;
+  /** Ids of scripted strokes (shapeLine): negative, apart from the client's. */
+  private scriptStroke = 0;
   /** Sediment budget (m³). */
   readonly sedLedger: SedimentLedger = newSedimentLedger();
   /** Geomorphology tunables (a copy of PARAMS; tools and tests may change it). */
@@ -205,6 +207,21 @@ export class Simulation {
     this.structures.onLined = (i) => this.achievements.touch(i);
     this.gatekeeper.onEvent = (e) => this.achievements.gateEvent(e, this.time.day);
     this.achievements.baseline(this);
+    this.brush = new Brushwork(world, {
+      fixed: (i) => this.isFixed(i),
+      original: (i) => this.achievements.original(i),
+      willChange: (i) => this.achievements.planned(this.world, [i]),
+      changed: (i) => {
+        // Sculpted earth is loose: it slumps and erodes readily.
+        this.erosionScratch.loose[i] = 1;
+        this.achievements.touch(i);
+        this.markTerrainDirty(i);
+      },
+      cleared: (_i, lining) => {
+        this.fieldsDirty = true;
+        if (lining) this.structures.liningDirty = true;
+      },
+    });
   }
 
   /** Derive the active tiles from the revealed land (all tiles without fog). */
@@ -276,25 +293,21 @@ export class Simulation {
   }
 
   /**
-   * Drop plan cells on unrevealed land (fog of war) and under houses and
-   * footbridges (plans go round them); returns the cells kept.
+   * Whether the brushes must leave cell i alone: houses (and mills, wells,
+   * stores, ruins), footbridges, structures and their works in progress
+   * (the crew's plans), and land not yet revealed.
    */
-  private onlyRevealed(changed: number[]): number[] {
+  isFixed(i: number): boolean {
     const w = this.world;
-    const kept: number[] = [];
-    for (const i of changed) {
-      if ((!this.fog || isRevealed(w, i)) && keepsPlan(w.landuse[i]!)) kept.push(i);
-      else w.plan[i] = NaN;
-    }
-    return kept;
+    if (!keepsPlan(w.landuse[i]!) || (w.flags[i]! & CellFlag.Structure) !== 0 || !Number.isNaN(w.plan[i]!)) return true;
+    return this.fog && !isRevealed(w, i);
   }
 
-  /** Earthworks planned over structures take them down (Structures.dismantle, PowerGrid.dismantle). */
-  private dismantle(cells: readonly number[]): void {
-    if (!cells.length) return;
-    const set = new Set(cells);
-    if (this.structures.dismantle(set)) this.lookDirty = true;
-    this.power.dismantle(set);
+  /** The brushes' fixed cells for the client (Snapshot.fixed; fog is the client's own). */
+  packFixed(out: Uint8Array): void {
+    const w = this.world;
+    const { landuse, flags, plan } = w;
+    for (let i = 0; i < out.length; i++) out[i] = !keepsPlan(landuse[i]!) || (flags[i]! & CellFlag.Structure) !== 0 || !Number.isNaN(plan[i]!) ? 1 : 0;
   }
 
   /**
@@ -547,35 +560,27 @@ export class Simulation {
   private applyCommand(cmd: Command): void {
     const w = this.world;
     switch (cmd.type) {
-      case 'planTrench': {
-        const changed = this.onlyRevealed(planTrench(w, cmd.points, cmd.width, cmd.depth));
-        this.achievements.planned(w, changed);
-        this.achievements.stroke('trench', changed, pathLength(cmd.points));
-        // Remember the player's canals (villagers line those near home).
-        for (const i of changed) if (w.plan[i]! < w.terrain(i)) w.flags[i]! |= CellFlag.Canal;
-        this.dismantle(changed);
-        this.crew.enqueue(changed);
-        if (changed.length) this.planDirty = true;
+      case 'sculpt': {
+        const r = this.brush.sculpt(cmd.tool, cmd.radius, cmd.stroke, cmd.samples);
+        if (cmd.seq !== undefined && cmd.seq > this.brush.seq) this.brush.seq = cmd.seq;
+        if (r) {
+          // The whole brush's rows: the client predicted them, the sim's word is final.
+          if (r.y0 < this.dirtyY0) this.dirtyY0 = r.y0;
+          if (r.y1 > this.dirtyY1) this.dirtyY1 = r.y1;
+          this.lookDirty = true;
+          this.achievements.sculpted(w, this.time.day);
+        }
         break;
       }
-      case 'planDike': {
-        const changed = this.onlyRevealed(planDike(w, cmd.points, cmd.width, cmd.height));
-        this.achievements.planned(w, changed);
-        this.achievements.stroke('dike', changed, pathLength(cmd.points));
-        this.dismantle(changed);
-        this.crew.enqueue(changed);
-        if (changed.length) this.planDirty = true;
+      case 'undoSculpt':
+        if (this.brush.undo()) this.lookDirty = true;
         break;
-      }
-      case 'planLevel': {
-        const changed = this.onlyRevealed(planLevel(w, cmd.points, cmd.width));
-        this.achievements.planned(w, changed);
-        this.achievements.stroke('level', changed, pathLength(cmd.points));
-        this.dismantle(changed);
-        this.crew.enqueue(changed);
-        if (changed.length) this.planDirty = true;
+      case 'shapeLine':
+        if (this.brush.shapeLine(cmd.tool, cmd.points, cmd.width, cmd.amount ?? 1, --this.scriptStroke).length) {
+          this.lookDirty = true;
+          this.achievements.sculpted(w, this.time.day);
+        }
         break;
-      }
       case 'planLining':
         if (this.structures.planLining(cmd.points, cmd.width).length) this.lookDirty = true;
         break;
@@ -723,6 +728,7 @@ export class Simulation {
       ideas: this.ideas.getState(),
       climate: this.climate.getState(),
       power: this.power.empty ? undefined : this.power.getState(),
+      earthMoved: { ...this.brush.moved },
     };
   }
 
@@ -751,6 +757,9 @@ export class Simulation {
     this.fieldsDirty = true;
     if (st.structures) this.structures.setState(st.structures);
     if (st.power) this.power.setState(st.power);
+    this.finishOldPlans();
+    this.brush.reset();
+    Object.assign(this.brush.moved, st.earthMoved ?? { brush: 0, script: 0 });
     this.syncStructureFlags();
     if (st.geo) {
       Object.assign(this.sedLedger, st.geo.sedLedger);
@@ -776,6 +785,33 @@ export class Simulation {
     this.ideas.setState(st.ideas);
     this.lookDirty = true;
     this.planDirty = true;
+  }
+
+  /**
+   * Saves from before the brushes may hold the player's trench, dike and
+   * level plans: there is no crew for earthworks any more, so they are done
+   * at once (the player asked for them). The crew's structure work (weirs,
+   * gates, taking them down) stays planned.
+   */
+  private finishOldPlans(): void {
+    const w = this.world;
+    const st = this.structures;
+    const owned = new Set<number>(st.restoring);
+    for (const wr of st.weirs) for (const c of wr.cells) owned.add(c);
+    for (const g of st.gates) {
+      for (const c of g.passage) owned.add(c);
+      for (const c of g.cells) owned.add(c);
+    }
+    const loose = this.erosionScratch.loose;
+    for (let i = 0; i < w.size; i++) {
+      const p = w.plan[i]!;
+      if (Number.isNaN(p) || owned.has(i)) continue;
+      applyEarthwork(w, i, p - w.terrain(i));
+      w.plan[i] = NaN;
+      loose[i] = 1;
+      this.achievements.touch(i);
+      this.markTerrainDirty(i);
+    }
   }
 
   /** Returns and clears whether land use/crops changed. */

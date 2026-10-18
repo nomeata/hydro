@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { strokeSamples } from '../../src/sim/plans/sculpt';
 import { SCENE_LAYOUT, SCENE_SIZE, buildScene, buildSceneWorld, cloneScene, wheelCells } from '../../src/sim/scenes';
 import { CellFlag, FIELD_SPECS, LandUse } from '../../src/sim/world';
 import { Job, SiteKind } from '../../src/sim/people/agents';
@@ -59,9 +60,25 @@ describe('welcome scenes', () => {
     const w = sim.world;
     const h = w.idx(SCENE_LAYOUT.hollow.x, SCENE_LAYOUT.hollow.y);
     expect(w.water[h]).toBeLessThan(0.05);
-    sim.command({ type: 'planTrench', points: SCENE_LAYOUT.trench, width: 3, depth: 1.5 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: SCENE_LAYOUT.trench, width: 3, amount: 1.5 });
     sim.run(900);
     expect(w.water[h]).toBeGreaterThan(0.4);
+  });
+
+  it("fills the hollow once the intro's hand has brushed the channel with Dig", () => {
+    const sim = buildScene('shape');
+    const w = sim.world;
+    const h = w.idx(SCENE_LAYOUT.hollow.x, SCENE_LAYOUT.hollow.y);
+    // As ui/introScenes.ts: the medium brush out along the line and back in 3.2 s, pressing 4× harder.
+    const pts = SCENE_LAYOUT.trench;
+    const there = [...pts, ...pts.slice(0, -1).reverse()];
+    let len = 0;
+    for (let k = 0; k + 1 < there.length; k++) len += Math.hypot(there[k + 1]![0] - there[k]![0], there[k + 1]![1] - there[k]![1]);
+    const samples = strokeSamples(there, len / 3.2, 1 / 60);
+    for (let k = 2; k < samples.length; k += 3) samples[k] = samples[k]! * 4;
+    sim.command({ type: 'sculpt', tool: 'dig', radius: 2.5, stroke: 1, samples });
+    sim.run(900);
+    expect(w.water[h]).toBeGreaterThan(0.3);
   });
 
   it('stages a living village without fast-forwarding', () => {

@@ -31,7 +31,7 @@ test('ideas for this valley: a flood by the village suggests a dike, with a dot 
   const items = ideas.locator('.idea');
   expect(await items.count()).toBeLessThanOrEqual(3);
   const flood = ideas.locator('.idea[data-kind=flood]');
-  await expect(flood).toContainText('a dike could keep it dry');
+  await expect(flood).toContainText('a bank of raised earth could keep it dry');
   await expect(flood).toContainText('Towards Weathered the Storm');
   // Seen: the dot goes.
   await expect(page.locator('.menu-button')).not.toHaveClass(/news/);

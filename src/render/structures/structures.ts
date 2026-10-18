@@ -530,8 +530,9 @@ export class StructuresLayer {
 
   /**
    * A weir: a dressed-stone crest along the overflow section, with a coping
-   * of big blocks (alternating, so it reads as masonry) and stone end posts.
-   * Its body and apron are the lined terrain (cobbles). Where water runs
+   * of big blocks (alternating, so it reads as masonry) and stone end posts:
+   * a wall of dressed stone from the ground at its foot up to the crest
+   * (round the gates set into it). Its apron is the lined terrain (cobbles). Where water runs
    * over the crest, a translucent sheet of water falls down its downstream
    * face into a band of white foam at the foot.
    */
@@ -561,9 +562,17 @@ export class StructuresLayer {
     const blocks = Math.max(1, Math.round(span / 0.7));
     const bl = span / blocks;
     const laid = prog >= 0.999 ? blocks : Math.floor(blocks * prog);
+    // Gates set into the wall: their opening stays open.
+    const gates = this.list.filter((g) => g.kind === 'gate');
+    const inGate = (px: number, py: number) => gates.some((g) => Math.hypot(g.x - px, g.y - py) < g.width / 2 + 0.4);
     for (let k = 0; k < laid; k++) {
       const u = u0 + bl * (k + 0.5);
-      const g = Math.min(y, heightToY(hs.terrainAt(w.x + c * u, w.y + sn * u)));
+      const px = w.x + c * u;
+      const py = w.y + sn * u;
+      if (inGate(px, py)) continue;
+      // The wall stands on the ground at its foot (the lower side).
+      const foot = Math.min(hs.terrainAt(px, py), hs.terrainAt(px - sn * 1.2, py + c * 1.2), hs.terrainAt(px + sn * 1.2, py - c * 1.2));
+      const g = Math.min(y, heightToY(foot));
       this.put(P.ashlar, w.x, w.y, w.rot, u, g - 0.25, bl * 0.98, y - g + 0.25 - 0.08, 1.15);
       this.put(P.coping, w.x, w.y, w.rot, u, y - 0.09, bl * 0.94, 0.13, k % 2 ? 0.95 : 1.05);
     }

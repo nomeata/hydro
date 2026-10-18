@@ -102,7 +102,7 @@ describe("villagers' own works", () => {
     ]);
     const w = sim.world;
     // A canal from the river south towards the pond, past the village.
-    sim.command({ type: 'planTrench', points: [[38, 22], [38, 40]], width: 2, depth: 3.5 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[38, 22], [38, 40]], width: 2, amount: 3.5 });
     let canal = 0;
     for (let i = 0; i < w.size; i++) if (w.flags[i]! & CellFlag.Canal) canal++;
     expect(canal).toBeGreaterThan(20);

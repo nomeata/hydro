@@ -17,6 +17,22 @@ export const ICONS = {
   level: svg(
     '<path d="M3 24c4-6 7-9 10-6s5 2 7-1 6-3 9 1" fill="none" stroke="#b98a52" stroke-width="2" stroke-dasharray="2 2.5" stroke-linecap="round"/><path d="M3 22h26v5H3z" fill="#c49a62" stroke="#6b4a2b" stroke-width="2" stroke-linejoin="round"/><path d="M9 6h14l-2 9H11z" fill="#9aa3ad" stroke="#4b5560" stroke-width="1.6" stroke-linejoin="round"/><path d="M16 15v5" stroke="#6b4a2b" stroke-width="2.4" stroke-linecap="round"/>',
   ),
+  /** Raise: a heap of earth, an arrow up, a spade. */
+  raise: svg(
+    '<path d="M2 27h28" stroke="#6b4a2b" stroke-width="2.4" stroke-linecap="round"/><path d="M4 27c3-8 7-11 12-11s9 3 12 11z" fill="#c49a62" stroke="#6b4a2b" stroke-width="2" stroke-linejoin="round"/><path d="M11 18c2 -1 4-1 6 0" stroke="#7fbf5a" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M9 11V4M5.5 7.5L9 4l3.5 3.5" fill="none" stroke="#3d9bd6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M26 3l3 3-6 6-3-3z" fill="#9aa3ad" stroke="#4b5560" stroke-width="1.5"/><path d="M20 9l3 3-3 3c-1 1-3 0-3-1v-2z" fill="#b98a52" stroke="#6b4a2b" stroke-width="1.5"/>',
+  ),
+  /** Dig: a channel cut into the ground with water in it, a spade digging. */
+  dig: svg(
+    '<path d="M3 22h7l3 5h6l3-5h7" fill="none" stroke="#6b4a2b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 27h6l3-5H10z" fill="#59b3e6"/><path d="M5 22c2-2 3-2 5 0" stroke="#c49a62" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M21 3l3 3-9 9-3-3z" fill="#9aa3ad" stroke="#4b5560" stroke-width="1.5"/><path d="M12 12l3 3-5 5c-1 1-3 0-3-1v-2z" fill="#b98a52" stroke="#6b4a2b" stroke-width="1.5"/><path d="M25 12v6M22 15l3 3 3-3" fill="none" stroke="#3d9bd6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+  ),
+  /** Even: a float smoothing bumpy ground flat. */
+  even: svg(
+    '<path d="M3 22c3-5 6-6 8-3" fill="none" stroke="#b98a52" stroke-width="2" stroke-dasharray="2 2.5" stroke-linecap="round"/><path d="M3 22h26v5H3z" fill="#c49a62" stroke="#6b4a2b" stroke-width="2" stroke-linejoin="round"/><path d="M12 16h16l-1 4H13z" fill="#9aa3ad" stroke="#4b5560" stroke-width="1.6" stroke-linejoin="round"/><path d="M20 16V9c0-2 2-3 4-3" fill="none" stroke="#8d6438" stroke-width="2.6" stroke-linecap="round"/><path d="M5 10c2-2 4-2 6 0" stroke="#7fbf5a" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  ),
+  /** Undo: a curved arrow back. */
+  undo: svg(
+    '<path d="M9 13h12a6 6 0 0 1 0 12h-7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M13 7l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>',
+  ),
   line: svg(
     '<path d="M3 12l4 13h18l4-13" fill="none" stroke="#6b4a2b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><g fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.5"><rect x="5" y="17" width="7" height="5" rx="2"/><rect x="13" y="20" width="7" height="5" rx="2"/><rect x="20" y="17" width="7" height="5" rx="2"/><rect x="9" y="11" width="6" height="5" rx="2"/><rect x="17" y="11" width="6" height="5" rx="2"/></g><path d="M12 6c2-2 6-2 8 0" stroke="#59b3e6" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
   ),

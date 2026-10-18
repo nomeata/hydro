@@ -44,6 +44,11 @@ Each scenario sets up a handcrafted or seeded world, issues *player commands*
 through the same command API the UI uses, fast-forwards game days and asserts
 outcomes. For example:
 - dig a trench from a river into a dry basin ⇒ the basin holds water after N days;
+- sculpting (`tests/sim/sculpt.test.ts`): the brush kernel (rate × hold
+  time, falloff, fixed cells masked smoothly, Even levels), immediate
+  changes with no time passing, water conservation under the brush,
+  houses/bridges/structures untouched and fields cleared, undo, determinism
+  and save/resume, old saves' earthwork plans finished on load;
 - build a dike across a valley ⇒ a reservoir forms upstream, outflow drops;
 - an unlined trench in sand slumps over time; a lined one doesn't;
 - a spring flood deposits silt ⇒ floodplain fertility increases;
@@ -76,8 +81,12 @@ unlocks), for trying late tools by hand or in a test.
 - **Smoke:** page loads, WebGL context exists, worker reports ready, no
   console errors, frames are rendered (canvas not blank).
 - **Interaction tests:** drive real input events:
-  - mouse: select the trench tool, drag on the canvas, release ⇒ assert via
-    `__hydro` that plan cells exist along the path; cancel ⇒ they are gone;
+  - mouse: select the Dig brush, hold and drag on the canvas (paused) ⇒
+    the mirror's and the sim's terrain drop along the path at once, the
+    tool stays selected; Undo (button and Ctrl+Z) brings the ground back
+    (`e2e/sculpt.spec.ts`); a structure tool's stroke places a plan;
+  - touch (phone profile): one finger brushes, a second finger turns the
+    stroke into a pan/zoom (the brush bites only after 90 ms);
   - camera: wheel zooms, drag pans, right-drag rotates (assert camera state);
   - touch (emulated Pixel device profile): one-finger pan, pinch zoom,
     two-finger rotate, tap to use tools. Multi-touch is dispatched via CDP
@@ -88,7 +97,7 @@ unlocks), for trying late tools by hand or in a test.
   import round-trips.
 - **Welcome panels** (`e2e/intro.spec.ts`): `__hydro.showIntro()` opens
   them; a second scene worker starts, the live canvas fades in and is not
-  blank, Next switches scenes (the scripted hand's trench reaches the
+  blank, Next switches scenes (the scripted hand's Dig brush reaches the
   scene's sim), Skip closes the dialog, and the worker and canvas are gone
   again (`SimClient.live`); no console errors. For visual review,
   `npx tsx tools/shot-intro.ts [--phone] [--times 2,6]` screenshots each

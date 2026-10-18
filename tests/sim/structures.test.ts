@@ -108,7 +108,7 @@ describe('stone lining', () => {
         [30, c + 2],
         [30, c + 22],
       ];
-      sim.command({ type: 'planTrench', points: pts, width: 2, depth: 2.5 });
+      sim.command({ type: 'shapeLine', tool: 'dig', points: pts, width: 2, amount: 2.5 });
       if (line) sim.command({ type: 'planLining', points: pts, width: 7 });
       await build(sim, 10);
       const floor: number[] = [];
@@ -160,7 +160,7 @@ describe('sluice gate', () => {
   async function reservoir(seed = 1): Promise<Simulation> {
     const w = channel();
     const sim = new Simulation(w, seed);
-    sim.command({ type: 'planDike', points: [[32, 6], [32, 26]], width: 2, height: 3 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[32, 6], [32, 26]], width: 2, amount: 3 });
     await build(sim, 10);
     sim.command({ type: 'placeGate', points: [[32, 16]], width: 1, height: 0 });
     expect(sim.structures.gates.length).toBe(1);

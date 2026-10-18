@@ -116,7 +116,7 @@ const PANELS: Panel[] = [
   },
   {
     title: 'You shape the water',
-    text: 'Draw trenches, dikes and level ground to guide where it goes. Your plans build themselves, then watch what the water makes of them.',
+    text: 'Raise, dig and even the ground with your own hand to guide where it goes: hold to shape it, Undo if you change your mind. Then watch what the water makes of it.',
     art: ART_SHAPE,
     scene: 'shape',
   },

@@ -103,9 +103,10 @@ test('the electric pump: drawn from the river up the bank, it lifts water on the
         for (let dx = -r; dx <= r; dx++) {
           const i = (ty! + dy) * W + tx! + dx;
           if (!m.isRevealed(tx! + dx, ty! + dy)) continue;
-          if (!wet && depth[i]! > 0.4) wet = [tx! + dx, ty! + dy];
+          // (Not right by the wall: the turbine's own intake is there.)
+          if (!wet && r >= 2 && depth[i]! > 0.4) wet = [tx! + dx, ty! + dy];
           // Up on the bank, above the water.
-          if (wet && !dry && r >= 3 && depth[i]! < 0.01 && m.terrain(i) > m.terrain(wet[1] * W + wet[0]) + depth[wet[1] * W + wet[0]]! + 0.5) dry = [tx! + dx, ty! + dy];
+          if (wet && !dry && r >= 3 && Math.hypot(tx! + dx - wet[0], ty! + dy - wet[1]) >= 2.5 && depth[i]! < 0.01 && m.terrain(i) > m.terrain(wet[1] * W + wet[0]) + depth[wet[1] * W + wet[0]]! + 0.5) dry = [tx! + dx, ty! + dy];
         }
     return wet && dry ? [wet, dry] : null;
   }, [t.x, t.y]);

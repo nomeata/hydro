@@ -18,35 +18,38 @@ test('HUD shows the date and speed controls work', async ({ page }) => {
   expect(await page.evaluate(() => (window as any).__hydro.client.getSpeed())).toBe(3);
 });
 
-test('drawing a trench creates a plan that gets built', async ({ page }) => {
-  // A small world keeps the simulated days quick on slow CI machines.
+test('brushing with Dig lowers the ground at once, and the brush stays selected', async ({ page }) => {
+  // A small world keeps start-up quick on slow CI machines.
   await openGame(page, '&size=128');
-  await page.locator('button[data-tool=trench]').click();
+  await page.locator('button[data-tool=dig]').click();
+  const before = await page.evaluate(() => Float32Array.from((window as any).__hydro.mirror.terrainH));
   const box = (await page.locator('#view').boundingBox())!;
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
   await page.mouse.move(cx - 80, cy);
   await page.mouse.down();
-  for (let k = 1; k <= 16; k++) await page.mouse.move(cx - 80 + k * 10, cy + k * 2);
+  for (let k = 1; k <= 16; k++) {
+    await page.mouse.move(cx - 80 + k * 10, cy + k * 2);
+    await page.waitForTimeout(30);
+  }
   await page.mouse.up();
-  // The sim confirms the plan in the next snapshot.
-  await page.waitForFunction(() => {
-    const plan: Float32Array = (window as any).__hydro.mirror.plan;
-    return plan.some((v) => !Number.isNaN(v));
-  });
-  // Builders finish it within a few days.
-  await page.evaluate(() => (window as any).__hydro.client.runDays(2));
-  await page.waitForFunction(() => {
-    const plan: Float32Array = (window as any).__hydro.mirror.plan;
-    return !plan.some((v) => !Number.isNaN(v));
-  });
+  // The sim confirms it in the next snapshots (the game is paused: no time needed).
+  await page.waitForTimeout(500);
+  const dug = await page.evaluate((b) => {
+    const t: Float32Array = (window as any).__hydro.mirror.terrainH;
+    let n = 0;
+    for (let i = 0; i < t.length; i++) if (t[i]! < b[i]! - 0.05) n++;
+    return n;
+  }, Array.from(before));
+  expect(dug).toBeGreaterThan(5);
+  await expect(page.locator('button[data-tool=dig]')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('digit keys pick tools, Escape returns to Look', async ({ page }) => {
   await openGame(page);
   await page.keyboard.press('2');
-  await expect(page.locator('button[data-tool=trench]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('button[data-tool=trench]')).toHaveAttribute('title', 'Trench (2)');
+  await expect(page.locator('button[data-tool=raise]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('button[data-tool=raise]')).toHaveAttribute('title', 'Raise (2)');
   await page.keyboard.press('Escape');
   await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
   // A locked tool (Gate, 6) only says when it unlocks, for a moment.
@@ -74,7 +77,7 @@ test('mouse wheel zooms and drag pans the camera', async ({ page }) => {
 
 test('tool hints say why; a tool card shows at unlock and again from the ⓘ', async ({ page }) => {
   await openGame(page, '&size=64&cards=1');
-  await page.locator('button[data-tool=dike]').click();
+  await page.locator('button[data-tool=raise]').click();
   await expect(page.locator('.tools .hint')).toContainText('flood');
   await expect(page.locator('.tools .hint-info')).toBeHidden();
   // Reaching 15 villagers unlocks the weir: the next pick of a tool opens its card.
