@@ -21,8 +21,11 @@ export class StatsBar {
   private peak: number | null = null;
   private lastKey = '';
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A milestone reached while a dialog was open: celebrated once it closes. */
+  private pending: { population: number; tools: string[] } | null = null;
 
-  constructor(topbar: HTMLElement, onOpen: () => void) {
+  /** `quiet`: while true (a welcome panel or tool card is open), milestone notes wait. */
+  constructor(topbar: HTMLElement, onOpen: () => void, private readonly quiet: () => boolean = () => false) {
     const el = document.createElement('button');
     el.className = 'statsbar panel';
     el.dataset.testid = 'statsbar';
@@ -90,7 +93,11 @@ export class StatsBar {
     } else if (peak > this.peak) {
       const crossed = milestonesBetween(this.peak, peak);
       this.peak = peak;
-      if (crossed.length) this.celebrate(crossed[crossed.length - 1]!);
+      if (crossed.length) this.pending = crossed[crossed.length - 1]!;
+    }
+    if (this.pending && !this.quiet()) {
+      this.celebrate(this.pending);
+      this.pending = null;
     }
   }
 
