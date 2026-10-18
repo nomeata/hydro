@@ -281,6 +281,9 @@ export interface Building {
 /** Steps between updates of the mills' wheels. */
 const MILL_EVERY = 30;
 /** Water carriers: share of idle moments spent fetching a bucket, and how far (cells) they walk for it at most. */
+/** People run from water deeper than this (m); they plan walks through water up to MAX_WADE. */
+const FLEE_DEPTH = MAX_WADE + 0.25;
+
 const CARRY = { chance: 0.2, maxDist: 32, fetchSteps: 36, pourSteps: 12 };
 
 /** A ready-made village (PeopleSystem.stage). Coordinates are cells. */
@@ -1990,8 +1993,10 @@ export class PeopleSystem {
 
   private updateAgent(a: Agent, time: SimTime, host: PeopleHost): void {
     // Check for rising water every 10 ticks per person (staggered by id): people wade
-    // through fords up to MAX_WADE, and run only from water deeper than that.
-    if (!a.flee && a.task !== Task.Leave && (time.step / PEOPLE_TICK + a.id) % 10 === 0 && this.world.water[this.cellOf(a)]! > MAX_WADE) {
+    // through fords up to MAX_WADE when they plan a walk, and run only from water clearly
+    // deeper than that (FLEE_DEPTH: a ford or a canal a few cm deeper than when they set
+    // out is no flood; round 3 found farmers fleeing a 0.4 m canal all day instead of sowing).
+    if (!a.flee && a.task !== Task.Leave && (time.step / PEOPLE_TICK + a.id) % 10 === 0 && this.world.water[this.cellOf(a)]! > FLEE_DEPTH && !this.onBridge(this.cellOf(a))) {
       this.flee(a, time);
     }
     switch (a.task) {
