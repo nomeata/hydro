@@ -296,3 +296,108 @@ kept for comparison where it says something about the retune.
 
 Re-run after a change and compare `out/playtest/summary.md` (keep the
 old results dir to compare against).
+
+## Round 2 (tune2, October 2026)
+
+The findings above, addressed on branch `tune2` (lead's decisions 1–8),
+measured with the same command (`--seeds 1..8 --years 10 --bot-years 4`,
+128²). "Before" is main at 336195b (wells and mills, revealed-land
+simulation); "after" is tune2 at 89a0300, before main's footbridges and
+fields-by-walking-distance (b70fa7f) were merged in: the runs on top of
+those were cut short by container restarts and a heavily loaded machine
+(load 25–30), so they still need a re-run. Bot runs after: `irrigate` and
+`dike`; `vandal`/`undo` only as a short check (below).
+
+### What changed
+1. **Hunger has consequences.** Wellbeing multiplies food in:
+   `(0.1 + 0.9·min(1, S)) · (0.6 + 0.4·comfort)`; departures 0.05 per
+   household and day per unit below 0.4 (was 0.02), never the last four
+   people. Growth needs food for `max(daysToHarvest, 40) + 6` days (without
+   the horizon, arrivals poured in just before the harvest day and starved
+   through the spring: a yearly boom and bust). Villages under 12 take
+   migrants from wellbeing 0.45 and build for them from 0.4.
+2. **Player canals.** Farmers dig field ditches off the player's canals
+   (`people/ditches.ts`); canal and ditch water wets 4 cells (rivers 2.5).
+   To make water the limit at all, the economy was retuned so that land,
+   not hands, bounds a village: crops need moisture 0.22/0.46 (was
+   0.2/0.4) and grow 11 a day (was 16; late harvest of what stands in
+   autumn), 28 fields a farmer at yield 10 (was 14 at 8). Shallow standing
+   water (≤ 0.15 m) only slows crops; fields standing in water at sowing
+   are given up; a starving village that lost its land farms poorer land.
+   The irrigate bot aims at dry land, not just dry fields.
+3. **Big freshets** from the third year, about one year in four (likelier
+   when wet), 3–4.5× the usual freshet for 12 days.
+4. **The second year is dry** (anomaly ≤ −0.35).
+5. **Start**: the meadow fallback penalises steep land, water farther than
+   14 cells or > 5 m below, and wants a river with water in it (a lake
+   shore start on seed 7 drowned in the first big freshet).
+6. **Flight** only from water deeper than `MAX_WADE`.
+7./8. Measured below; an `undo` bot was added.
+
+### Hands-off (baseline), before → after
+
+| seed | pop y2 | pop y4 | pop y10 | prosp. y10 % | left | fled | flooded cells | ruined | day to 15 / 30 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 48 → 30 | 55 → 37 | 60 → 33 | 61 → 84 | 0 → 0 | 11928 → 274 | 32 → 24 | 0 → 0 | 10/27 → 32/86 |
+| 2 | 30 → 25 | 87 → 64 | 234 → 163 | 76 → 85 | 0 → 5 | 4243 → 114 | 169 → 1213 | 7 → 13 | 11/82 → 36/122 |
+| 3 | 33 → 26 | 78 → 52 | 277 → 179 | 65 → 84 | 0 → 16 | 6598 → 155 | 99 → 63 | 2 → 0 | 20/72 → 36/132 |
+| 4 | 36 → 28 | 78 → 49 | 112 → 63 | 57 → 86 | 0 → 0 | 514 → 159 | 20 → 240 | 0 → 3 | 15/70 → 33/133 |
+| 5 | 21 → 23 | 32 → 29 | 42 → 19 | 58 → 56 | 0 → 8 | 131 → 6 | 14 → 7 | 0 → 0 | 66/172 → 39/316 |
+| 6 | 24 → 24 | 47 → 33 | 104 → 35 | 62 → 92 | 0 → 0 | 267 → 57 | 28 → 9 | 0 → 0 | 25/118 → 78/178 |
+| 7 | 16 → 6 | 14 → 5 | 13 → 6 | 57 → 72 | 0 → 4 | 1420 → 1191 | 3 → 3 | 0 → 0 | 16/– → –/– |
+| 8 | 18 → 10 | 17 → 9 | 25 → 11 | 61 → 61 | 0 → 0 | 748 → 6 | 50 → 1 | 1 → 0 | 22/– → –/– |
+
+- Villages are smaller and better fed: year-10 prosperity 56–92 % (was
+  57–76 %, always "so-so"), and it now swings with the years (a dry year
+  or a flood takes a village to 20–40 % for a season, then back). Families
+  leave in hard times (0–16 per run; before never). Year 2–3 populations
+  (23–30) sit in GAMEPLAY §4.2's unaided target of 15–30.
+- "Fled" counts are now floods (6–274 on most seeds; seed 7's village
+  stands by a ford it crosses often, still to be checked).
+- Big freshets make floods events: seeds 2 and 4 lose 240–1213 flooded
+  cells and 3–13 houses in ten years (rebuilt), the others little.
+- **Regressions:** the unlocks come later (weir 15 at day 32–39 on most
+  seeds, 16–20 real minutes, was 5–33 min; gate 30 at day 86–316); the
+  steep seeds 7 and 8 hold only 5–11 people (seed 7 below the "≥ 8
+  unaided" floor of §4.2).
+
+### Agency
+
+| bot | Δ pop at 4 y (mean of per-seed %, before → after) | Δ prosperity | Δ flooded cells | Δ houses ruined |
+|---|---|---|---|---|
+| irrigate | −10 % → −7 % (after: seeds 1–5; −12 % over 8 seeds in a run of nearly the same code) | +2 … +41 pts (seeds 1–5) | fewer | 0 → 0 |
+| dike (after: a run of the code before the last start/field fixes) | −5 % → −23 % | ±15 pts | −80 % (e.g. seed 2: 1247 → 351, seed 4: 492 → 34) | after: 24 in the hands-off runs vs 1 with dikes (8 seeds, 4 years) |
+
+- **Irrigation does not reach the +30 % target.** It raises prosperity
+  (seed 5: 97 vs 56 %, seed 4: 99 vs 86 %) and, on the dry seeds 6 and 8,
+  population (+15 %, +11 %), but not elsewhere. Why: (a) terrace starts lie
+  2–6 m above the river, so no intake within 70 cells feeds the dry
+  terrace by gravity; the bot falls back to a 1–3 m deep canal whose water
+  stands far below the fields (no ditch can leave it, maxCut 0.9 m) and
+  which takes more land than it waters; (b) for the first years growth is
+  limited by how fast families come and houses are built, not food, so
+  more food shows as prosperity, not people; (c) the second village is
+  founded by chance a year earlier or later, ±20 people. What should work:
+  a weir to raise the river so a short intake reaches the terrace (the
+  intended weir + canal play), or a wheel; a bot that does this is the
+  next step, as is founding new villages on irrigated land.
+- **Dikes now have a job:** with big freshets, ruined houses fall from 24
+  to 1 over 8 seeds and flooded land by ~80 %; population is lower in the
+  dike runs (land behind/under the dikes, divergence), which needs a look.
+- Ditches are dug as designed (3–4 per village within a season of the
+  canal, 3–10 cells each).
+
+### Unlocks and vandal (findings 7, 8)
+- Gate (30): reached hands-off on 6/8 seeds after year 2 (days 86–316);
+  the irrigate runs reached it on the same seeds, not earlier.
+- Vandal: before, −78 % population after 4 years (every seed 4–34 people
+  against 14–87). Vandal/undo on the final code: see below if the short
+  check finished; otherwise not measured (runs lost to restarts).
+  The mechanisms for recovery are in: departures shrink a ruined village,
+  small villages take migrants from 0.45 and build from 0.4, fields in
+  standing water are given up and dry land claimed instead.
+
+### Open
+Re-run on main with footbridges and walking-distance fields; a weir +
+canal bot; the dike runs' lower population; seed 7/8 floor; unlock pacing
+(weir 15 now comes at ~16–20 min).
