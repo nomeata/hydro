@@ -19,7 +19,7 @@ interface CardDef {
 export const TOOL_CARDS: Readonly<Record<string, CardDef>> = {
   weir: {
     scene: 'weir',
-    text: 'In a dry summer the river shrinks and its fields go yellow. A weir holds a pool behind it all summer, spilling evenly over its crest.',
+    text: 'A dike must never be overtopped: water pouring over it cuts through. A weir is built for it: a stone crest that holds the pool at its height all summer and spills the rest safely, a fall for a mill. Tap a weir later to move its ends or change its crest.',
   },
   gate: {
     scene: 'gate',
