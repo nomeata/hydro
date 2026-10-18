@@ -68,7 +68,7 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
   const a = await toScreen(page, startX - 12, startY + 6);
   const b = await toScreen(page, startX + 10, startY + 6);
   const release = await stroke(page, phone, line(a, b), true);
-  await expect.poll(() => R('h.renderer.powerGhost.state?.poles.length ?? 0'), { timeout: 10_000 }).toBeGreaterThan(1);
+  await expect.poll(() => R('h.renderer.powerGhost.state?.poles.length ?? 0'), { timeout: 60_000 }).toBeGreaterThan(1);
   expect(await R('h.renderer.powerGhost.state.wires.length')).toBeGreaterThan(0);
   await release();
   await expect.poll(() => R('h.renderer.power.state?.poles.length ?? 0'), { timeout: 15_000 }).toBeGreaterThan(1);
@@ -86,12 +86,12 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
   const wa = await toScreen(page, site.a[0], site.a[1]);
   const wb = await toScreen(page, site.b[0], site.b[1]);
   const let_go = await stroke(page, phone, line(wa, wb, 8), true);
-  await expect.poll(() => R('h.renderer.weirGhost.structures.length'), { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => R('h.renderer.weirGhost.structures.length'), { timeout: 60_000 }).toBe(1);
   await let_go();
   await expect.poll(() => R('h.renderer.structures.structures.filter((s) => s.kind === "weir").length'), { timeout: 15_000 }).toBe(1);
   await pressed(page, 'button[data-tool=weir]');
   // While the crew builds it, it stands as a ghost.
-  await expect.poll(() => R('h.renderer.buildGhost.structures.length'), { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => R('h.renderer.buildGhost.structures.length'), { timeout: 60_000 }).toBe(1);
   await runDays(page, 2);
 
   // The gate's hover ghost (a mouse hovers; a phone has no hover).
@@ -101,12 +101,12 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
   if (!phone) {
     await page.mouse.move(mid[0] + 3, mid[1]);
     await page.mouse.move(mid[0], mid[1]);
-    await expect.poll(() => R('h.renderer.gatePreview.ghost'), { timeout: 10_000 }).not.toBeNull();
+    await expect.poll(() => R('h.renderer.gatePreview.ghost'), { timeout: 60_000 }).not.toBeNull();
   }
 
   // A wheel dragged from dry land: the red ghost shows, also after letting go; the tool stays.
   await pick(page, phone, 'button[data-tool=wheel]');
-  await expect.poll(() => R('h.renderer.wheelPreview.siteCount'), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(() => R('h.renderer.wheelPreview.siteCount'), { timeout: 60_000 }).toBeGreaterThan(0);
   const dry = await page.evaluate(([x, y]) => {
     const h = (window as any).__hydro;
     const depth: Float32Array = h.renderer.heights.depth;

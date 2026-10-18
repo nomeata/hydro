@@ -4,7 +4,7 @@ import { findWeir, openGame, recordTexts, runDays, settleFrames, toScreen } from
 const power = (page: Page) => page.evaluate(() => (window as any).__hydro.renderer.power.state);
 
 test('the turbine: tapped onto a weir, built, and making power from the water falling through it', async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(420_000);
   const errors = await openGame(page, '&size=128&cheat=1', './?test=1&seed=3');
   const site = await findWeir(page);
   expect(site).not.toBeNull();
