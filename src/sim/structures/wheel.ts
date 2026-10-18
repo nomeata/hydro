@@ -106,10 +106,11 @@ export function wheelSite(g: WheelGrid, points: readonly (readonly [number, numb
         }
       }
   } else {
-    // A stroke: the first dry cell along it, at most WHEEL_REACH from the wheel.
+    // A stroke: the first dry cell along it, at most WHEEL_REACH from the wheel
     const ux = (b[0] - x) / len;
     const uy = (b[1] - y) / len;
-    for (let t = 1; t <= Math.min(len, WHEEL_REACH) + 0.01; t += 0.25) {
+    // (Half a cell past the stroke's end: drawing to the edge of the bank is enough.)
+    for (let t = 1; t <= Math.min(len + 0.5, WHEEL_REACH + 0.49); t += 0.25) {
       const nx = Math.round(x + ux * t);
       const ny = Math.round(y + uy * t);
       if (!inb(nx, ny) || (nx === x && ny === y)) continue;

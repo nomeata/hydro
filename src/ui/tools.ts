@@ -332,6 +332,11 @@ export class ToolPalette {
     const d = this.drawing;
     if (!d || d.id !== e.pointerId) return;
     this.drawing = null;
+    if (this.tool === 'wheel') {
+      // The wheel's stroke is short: count where it was let go, however close to the last point.
+      const p = this.host.pick(e.clientX, e.clientY);
+      if (p) d.points.push([p.x, p.y]);
+    }
     const points = simplify(d.points);
     const ends: Pt[] = [points[0]!, points[points.length - 1]!];
     const width = this.width;
