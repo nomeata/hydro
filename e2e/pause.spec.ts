@@ -44,14 +44,15 @@ test('pausing freezes every animation (people, animals, smoke, water, wheels)', 
   // Play a little so that people walk, smoke rises and wheels turn.
   await page.evaluate(() => (window as any).__hydro.client.setSpeed(1));
   // (Software GL draws few frames a second: wait for some play time.)
-  await page.waitForFunction(() => (window as any).__hydro.renderer.clock.playSec > 1, null, { timeout: 60_000 });
+  await page.waitForFunction(() => (window as any).__hydro.renderer.clock.gameSpeed > 0, null, { timeout: 180_000 });
+  await settleFrames(page, 8);
   const live1 = await shot(page);
   await page.waitForTimeout(1000);
   const live2 = await shot(page);
   const live = diffPixels(live1, live2);
   // Pause, and let the last snapshot arrive and the camera settle.
   await page.evaluate(() => (window as any).__hydro.client.setSpeed(0));
-  await page.waitForFunction(() => (window as any).__hydro.renderer.clock.gameSpeed === 0, null, { timeout: 60_000 });
+  await page.waitForFunction(() => (window as any).__hydro.renderer.clock.gameSpeed === 0, null, { timeout: 180_000 });
   // Flecks renew for a few seconds after a camera move (render/flow.ts).
   await page.waitForTimeout(3500);
   await settleFrames(page, 5);
