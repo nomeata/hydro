@@ -189,7 +189,7 @@ describe('ideas point at the growth limit', () => {
 });
 
 describe('houses and fields', () => {
-  it('build houses on open ground, and on the poorest field only when the fields have closed in', () => {
+  it('build a house on a field next to the village when the fields have closed in (no stall for room)', () => {
     const sim = village();
     sim.run(STEPS_PER_DAY);
     const p = sim.people!;
@@ -209,7 +209,7 @@ describe('houses and fields', () => {
     expect(fresh.length).toBe(1);
     expect(fieldsBefore.has(w.idx(fresh[0]!.x, fresh[0]!.y))).toBe(false);
     expect(houses().length).toBeLessThanOrEqual(n0 + 1);
-    // Finish it, fill it, and farm every open cell around the village; one corner is poor land.
+    // Finish it, fill it, and farm every open cell around the village.
     fresh[0]!.progress = 1;
     st.houses++;
     st.population = st.houses * ECONOMY.houseCapacity;
@@ -217,7 +217,6 @@ describe('houses and fields', () => {
       for (let x = 15; x <= 45; x++) {
         const i = w.idx(x, y);
         if (w.landuse[i] === LandUse.None && w.water[i]! < 0.01) w.landuse[i] = LandUse.Field;
-        if (x >= 38 && y >= 34) w.fertility[i] = 0.2;
       }
     const before = p.housesOnFields;
     hooks.planHouses(s);
@@ -225,7 +224,7 @@ describe('houses and fields', () => {
     expect(onField.length).toBe(1);
     expect(p.housesOnFields).toBe(before + 1);
     const b = onField[0]!;
-    expect(w.fertility[w.idx(b.x, b.y)]).toBeCloseTo(0.2, 5);
+    expect(Math.hypot(b.x - st.x, b.y - st.y)).toBeLessThanOrEqual(6);
     expect(w.landuse[w.idx(b.x, b.y)]).toBe(LandUse.Building);
   });
 });

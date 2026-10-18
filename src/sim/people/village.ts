@@ -1741,10 +1741,9 @@ export class PeopleSystem {
       this.buildingsDirty = true;
       return;
     }
-    // Look for a free, safe spot near the centre, not hugging other buildings. Houses never
-    // take a field while open ground is left; when the fields have closed in on the
-    // village, the poorest field nearest the centre gives way (else growth would stall
-    // for want of room while the land around is farmed).
+    // Look for a free, safe spot near the centre, not hugging other buildings. When the
+    // fields have closed in on the village and no open ground is left, a field next to
+    // the village gives way to the house (else growth would stall for want of room).
     const w = this.world;
     let best = -1;
     let bestScore = -Infinity;
@@ -1765,7 +1764,7 @@ export class PeopleSystem {
             best = i;
           }
         } else if (best < 0 && w.landuse[i] === LandUse.Field && this.houseOnField(i)) {
-          const score = -w.fertility[i]! * 10 - r * 0.3 - this.slope(i) * 4;
+          const score = -r - this.slope(i) * 4 - w.floodMemory[i]! / 50 + this.rng.next() * 0.5;
           if (score > fieldScore) {
             fieldScore = score;
             field = i;
