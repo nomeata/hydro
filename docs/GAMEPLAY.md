@@ -201,6 +201,16 @@ village's daily lit share gives up to +0.05 wellbeing (no capacity
 change). Energy is booked per network (J): produced = houses + pumps +
 unused. The tools share one palette button, **Power**, with its modes
 on the options line.
+**Poles**: a stroke places poles every 6 cells (beside a house or a
+bridge, never in water), a stroke starting or ending at a turbine or pole
+joins it; wires join consecutive poles (a skipped wet spot leaves a longer
+span). **Electric pump**: a stroke from water (inlet) to the outlet (≤ 24
+cells, ≤ 30 m up); its pump house (the first dry cell along the pipe) must
+be within 8 cells of a pole or turbine. Pumps take only the surplus of the
+free turbines after the houses (20 kW each, `Q = 0.7 P/(ρgH)`), so a pump
+filling a basin whose turbine is on the same network makes **pumped
+storage**: that turbine (its intake within 12 cells of the pump's outlet,
+at the same level) never runs free, only to cover the evening peak.
 
 ---
 

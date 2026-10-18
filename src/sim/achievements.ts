@@ -321,6 +321,8 @@ export class Achievements {
       const st = pw.stats();
       if (st.houses > 0 && st.supplied > 0) this.earn('brightWindows', day);
       if (st.houses >= ACH.gridHouses) this.earn('villageLights', day);
+      const d = pw.lastDay;
+      if (d.storage >= ACH.storageKWh * 3.6e6 && d.pumps >= ACH.storageKWh * 3.6e6) this.earn('nightAndDay', day);
     }
     const p = h.people;
     if (p) {

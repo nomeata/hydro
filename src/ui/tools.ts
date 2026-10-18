@@ -41,6 +41,11 @@ const POWER_MODES: ModeDef[] = [
     icon: ICONS.pole,
     hint: 'The village too far from the turbine? Draw a line of poles from it to the houses: every house near a pole gets light.',
   },
+  {
+    id: 'pump',
+    icon: ICONS.pump,
+    hint: 'Water up onto a plateau or into a high basin: draw from the water to where it should go. It runs on the turbines’ spare power; a turbine below a pumped basin gives it back in the evening.',
+  },
 ];
 
 export interface ToolHost {

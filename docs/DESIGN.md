@@ -123,14 +123,13 @@ cancelled.
 | Weir | Fixed, lined overflow crest drawn across a river: holds water to the crest, spills evenly above it | 15 villagers |
 | Sluice gate | Tap a dike or weir (or draw across a channel for a dam with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Worked by the villagers (GAMEPLAY.md §2): released in summer to water their fields, opened before the water spills over; with no village near it opens by itself as flood relief | 30 villagers |
 | Water wheel | Draw from fast river water onto the bank: the current turns a noria that lifts water up to 5 m into the head cell, and on along the player's trench (GAMEPLAY.md §1.3; wells and mills are villager creations) | 50 villagers |
-| Turbine | Generates power from head × flow in a gate or weir | 100 (planned) |
-| Power line / pole | Distributes power within a radius of poles | 150 (planned) |
-| Electric pump, pumped storage | Pump uphill when surplus, generate when deficit | 250 (planned) |
+| Turbine | Tap the crest of a weir or dam: power from the real head × flow through it (the Power tool's first mode) | 100 |
+| Power line / pole | Draw a line of poles from a turbine: houses within 8 cells of a pole are lit | 150 |
+| Electric pump, pumped storage | Draw from water to an outlet: lifts water on spare power; a turbine below a pumped basin generates when the houses want more | 250 |
 
 Unlocks are driven by population milestones, not by purchase: one
-progression table in `src/shared/unlocks.ts` (`PROGRESSION`; the planned
-steps 100/150/250 are already milestones, waiting for their tools;
-`?cheat=1` unlocks everything for testing). Each tool's hint line names the
+progression table in `src/shared/unlocks.ts` (`PROGRESSION`; the power tools
+share one palette button whose modes unlock at 100/150/250; `?cheat=1` unlocks everything for testing). Each tool's hint line names the
 problem of the land it solves (GAMEPLAY.md §3).
 Stone work (weirs, gates) is done by the quick spirit crew; villagers never
 carry out the player's plans, but do their own works (PEOPLE.md §5.4).
@@ -174,7 +173,7 @@ The player asked for "more direct endorphin hits". Decisions:
   player's own works, compared with a snapshot of the world at its start.
   Loading a save shows no toasts.
 
-## 5. Power (later milestones)
+## 5. Power (M6; as built in GAMEPLAY.md §1.5)
 - Purely hydro-powered society. Power = efficiency × ρ g × head × flow, with
   head and flow taken from the actual simulated water.
 - Poles carry power; every building within a radius of a pole is supplied.
