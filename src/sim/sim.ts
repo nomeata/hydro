@@ -11,10 +11,10 @@ import { CELL_AREA, DT, STEPS_PER_DAY, TILE } from './constants';
 import { GroundwaterScratch, groundwaterStep } from './hydro/groundwater';
 import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
 import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
-import { ErosionScratch, defaultGeoParams, erosionStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
+import { ErosionScratch, defaultGeoParams, erosionStep, overtopStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
 import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
-import { SpiritCrew, cancelPlans, planDike, planLevel, planTrench } from './plans/plans';
+import { SpiritCrew, cancelPlans, keepsPlan, planDike, planLevel, planTrench } from './plans/plans';
 import { Structures, type StructuresState } from './structures/structures';
 import { Gatekeeper } from './structures/gatekeeper';
 import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
@@ -275,16 +275,48 @@ export class Simulation {
     }
   }
 
-  /** Drop plan cells on unrevealed land (fog of war); returns the cells kept. */
+  /**
+   * Drop plan cells on unrevealed land (fog of war) and under houses and
+   * footbridges (plans go round them); returns the cells kept.
+   */
   private onlyRevealed(changed: number[]): number[] {
-    if (!this.fog) return changed;
     const w = this.world;
     const kept: number[] = [];
     for (const i of changed) {
-      if (isRevealed(w, i)) kept.push(i);
+      if ((!this.fog || isRevealed(w, i)) && keepsPlan(w.landuse[i]!)) kept.push(i);
       else w.plan[i] = NaN;
     }
     return kept;
+  }
+
+  /** Earthworks planned over structures take them down (Structures.dismantle, PowerGrid.dismantle). */
+  private dismantle(cells: readonly number[]): void {
+    if (!cells.length) return;
+    const set = new Set(cells);
+    if (this.structures.dismantle(set)) this.lookDirty = true;
+    this.power.dismantle(set);
+  }
+
+  /** The selection's Remove (ui/selection.ts). */
+  private removeStructure(kind: string, id: number): void {
+    const st = this.structures;
+    let changed: number[] | null = null;
+    if (kind === 'weir') {
+      const wr = st.weirs.find((o) => o.id === id);
+      if (!wr) return;
+      const cells = new Set(wr.cells);
+      changed = st.removeWeir(id);
+      // Gates and turbines in the weir go with it.
+      st.dismantle(cells);
+      this.power.dismantle(cells);
+    } else if (kind === 'gate') changed = st.removeGate(id);
+    else if (kind === 'wheel') st.removeWheel(id);
+    else this.power.remove(id);
+    if (changed?.length) {
+      this.crew.enqueue(changed);
+      this.planDirty = true;
+    }
+    this.lookDirty = true;
   }
 
   readonly seed: number;
@@ -375,6 +407,7 @@ export class Simulation {
 
     if (this.step % EROSION_EVERY === EROSION_EVERY / 2) {
       erosionStep(w, this.erosionScratch, EROSION_EVERY * DT, geo, this.sedLedger, this.geoDirty, act);
+      overtopStep(w, this.erosionScratch, EROSION_EVERY * DT, geo, this.sedLedger, this.geoDirty, act);
     }
     if (this.step % TALUS_EVERY === TALUS_EVERY - 1) {
       const frac = (geo.talusPerDay * geo.morfac * TALUS_EVERY) / STEPS_PER_DAY / PARAMS.morfac;
@@ -459,6 +492,7 @@ export class Simulation {
         this.achievements.stroke('trench', changed, pathLength(cmd.points));
         // Remember the player's canals (villagers line those near home).
         for (const i of changed) if (w.plan[i]! < w.terrain(i)) w.flags[i]! |= CellFlag.Canal;
+        this.dismantle(changed);
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
@@ -466,6 +500,7 @@ export class Simulation {
       case 'planDike': {
         const changed = this.onlyRevealed(planDike(w, cmd.points, cmd.width, cmd.height));
         this.achievements.stroke('dike', changed, pathLength(cmd.points));
+        this.dismantle(changed);
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
@@ -473,6 +508,7 @@ export class Simulation {
       case 'planLevel': {
         const changed = this.onlyRevealed(planLevel(w, cmd.points, cmd.width));
         this.achievements.stroke('level', changed, pathLength(cmd.points));
+        this.dismantle(changed);
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
         break;
@@ -487,6 +523,18 @@ export class Simulation {
         if (changed.length) this.planDirty = true;
         break;
       }
+      case 'editWeir': {
+        if (cmd.points.length < 2) break;
+        const changed = this.structures.editWeir(cmd.id, cmd.points[0]!, cmd.points[cmd.points.length - 1]!, cmd.top);
+        if (!changed) break;
+        this.crew.enqueue(changed);
+        this.lookDirty = true;
+        this.planDirty = true;
+        break;
+      }
+      case 'removeStructure':
+        this.removeStructure(cmd.kind, cmd.id);
+        break;
       case 'placeGate': {
         const r = this.structures.placeGate(cmd.points, Math.max(1, Math.min(3, cmd.width)), cmd.height);
         if (r) {

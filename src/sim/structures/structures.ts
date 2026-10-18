@@ -23,7 +23,7 @@
 import type { Pt, StructureInfo } from '../../shared/protocol';
 import { LINING_DONE, LINING_QUAY } from '../../shared/protocol';
 import type { Walls } from '../hydro/inertial';
-import { planDike, rasterisePath } from '../plans/plans';
+import { clearGround, keepsPlan, planDike, rasterisePath, weirShape } from '../plans/plans';
 import { CELL_AREA, DT } from '../constants';
 import { CellFlag, type World } from '../world';
 import { WHEEL_MIN_SPEED, wheelLift, wheelSite } from './wheel';
@@ -78,10 +78,23 @@ export interface Weir {
   x2: number;
   y2: number;
   top: number;
+  /** Crest width when drawn (cells; kept for old saves, the shape is fixed now: plans.ts weirShape). */
   width: number;
   /** Cells lined for this weir. */
   cells: number[];
+  /**
+   * The ground each of `cells` had before the weir (m), so an edited or
+   * removed weir can be taken back down to it (absent in older saves:
+   * their ground stays as it is).
+   */
+  base?: number[];
 }
+
+/** Lowest and highest crest a weir may have above the ground under it (m). */
+export const WEIR_MIN_HEIGHT = 0.5;
+export const WEIR_MAX_HEIGHT = 6;
+/** Height assumed for weirs from saves without their ground (m). */
+const OLD_WEIR_HEIGHT = 1;
 
 /** A water wheel (structures/wheel.ts): in the river at `cell`, lifting into `head`. */
 export interface Wheel {
@@ -180,35 +193,288 @@ export class Structures {
     this.lining.set(i, 0);
     // The site is cleared for the stone work.
     this.world.vegetation[i] = Math.min(this.world.vegetation[i]!, 0.05);
+    clearGround(this.world, i);
     this.liningDirty = true;
     return true;
   }
 
   /**
-   * Weir along the straight line from the first to the last point: a dike
-   * with a level crest `height` above the lowest ground on the line, lined.
-   * Returns the earthwork plan cells (for the builders' queue).
+   * Weir along the straight line from the first to the last point: a lined
+   * stone wall whose crest stands `height` above the lowest ground on the
+   * line, its faces and apron following from the height (plans.ts
+   * weirShape; `_width` is ignored, old commands still pass it). Returns
+   * the earthwork plan cells (for the builders' queue).
    */
-  planWeir(points: readonly Pt[], width: number, height: number): number[] {
+  planWeir(points: readonly Pt[], _width: number | undefined, height: number): number[] {
     if (points.length === 0) return [];
     const w = this.world;
     const a = points[0]!;
     const b = points[points.length - 1]!;
-    const line: Pt[] = [a, b];
-    const half = width / 2;
-    if (!this.allowedAlong(line, half + 1)) return [];
     let lowest = Infinity;
-    for (const i of rasterisePath(w, line, half).keys()) lowest = Math.min(lowest, w.terrain(i));
+    for (const i of rasterisePath(w, [a, b], 1).keys()) lowest = Math.min(lowest, w.terrain(i));
     if (!Number.isFinite(lowest)) return [];
-    const changed = planDike(w, line, width, height);
+    const h = Math.max(WEIR_MIN_HEIGHT, Math.min(WEIR_MAX_HEIGHT, height));
+    return this.layWeir(null, a, b, lowest + h) ?? [];
+  }
+
+  /**
+   * Edit a weir (the selection's handles and crest buttons): its line now
+   * runs a→b with the crest at `top` (m). The crew takes the stone off what
+   * no longer belongs to it and lowers that back to the ground it had,
+   * raises or lowers the rest to the new shape and lines it again. Returns
+   * the earthwork plan cells, or null if the weir does not exist or does
+   * not fit.
+   */
+  editWeir(id: number, a: Pt, b: Pt, top: number): number[] | null {
+    const wr = this.weirs.find((o) => o.id === id);
+    if (!wr) return null;
+    return this.layWeir(wr, a, b, top);
+  }
+
+  /** The ground a weir was built on, per cell (its own cells), or null if unknown (old saves). */
+  private weirGround(wr: Weir | null): Map<number, number> {
+    const g = new Map<number, number>();
+    if (wr?.base) wr.cells.forEach((c, k) => g.set(c, wr.base![k]!));
+    return g;
+  }
+
+  /** Lowest ground under the crest of a weir (m). */
+  weirLowest(wr: Weir): number {
+    const g = this.weirGround(wr);
+    if (!g.size) return wr.top - OLD_WEIR_HEIGHT;
+    let lowest = Infinity;
+    for (const i of rasterisePath(this.world, [[wr.x, wr.y], [wr.x2, wr.y2]], 1).keys()) {
+      const v = g.get(i);
+      if (v !== undefined) lowest = Math.min(lowest, v);
+    }
+    return Number.isFinite(lowest) ? lowest : wr.top - OLD_WEIR_HEIGHT;
+  }
+
+  /** Cells the gates' passages hold (a weir edit leaves them alone). */
+  private gateCells(): Set<number> {
+    const s = new Set<number>();
+    for (const g of this.gates) for (const c of g.passage) s.add(c);
+    return s;
+  }
+
+  /** Take the stone off cell i (built or planned). */
+  private unline(i: number): void {
+    const w = this.world;
+    if ((w.flags[i]! & CellFlag.Lined) !== 0) w.flags[i]! &= ~CellFlag.Lined;
+    this.lining.delete(i);
+    this.liningDirty = true;
+  }
+
+  /**
+   * Lay out weir `wr` (null: a new one) along a→b with its crest at `top`.
+   * Returns the changed plan cells, or null if it does not fit.
+   */
+  private layWeir(wr: Weir | null, a: Pt, b: Pt, top: number): number[] | null {
+    const w = this.world;
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) return null;
+    const known = this.weirGround(wr);
+    const ground = (i: number): number => known.get(i) ?? w.terrain(i);
+    const probe = weirShape(w, a, b, top, ground);
+    if (!Number.isFinite(probe.lowest)) return null;
+    const crest = Math.max(probe.lowest + WEIR_MIN_HEIGHT, Math.min(probe.lowest + WEIR_MAX_HEIGHT, top));
+    const shape = crest === top ? probe : weirShape(w, a, b, crest, ground);
+    if (this.allow && !shape.lined.every((i) => this.allow!(i))) return null;
+    const gates = this.gateCells();
+    const changed: number[] = [];
+    const plan = (i: number, target: number) => {
+      const cur = current(w, i);
+      if (Math.abs(target - cur) <= 0.01) return false;
+      w.plan[i] = target;
+      changed.push(i);
+      return true;
+    };
+    const keep = new Set(shape.lined);
+    // What no longer belongs to the weir goes back down to its ground, without its stone.
+    if (wr) {
+      for (const c of wr.cells) {
+        if (keep.has(c) || gates.has(c)) continue;
+        this.unline(c);
+        const g = known.get(c);
+        if (g !== undefined && w.terrain(c) > g + 0.01) plan(c, g);
+        else if (!Number.isNaN(w.plan[c]!) && w.plan[c]! > w.terrain(c)) w.plan[c] = NaN;
+      }
+    }
     const cells: number[] = [];
-    for (const i of rasterisePath(w, line, half + 1).keys()) {
+    const base: number[] = [];
+    for (const i of shape.lined) {
+      // Not through a gate's passage, nor over a house or a footbridge.
+      if (gates.has(i) || !keepsPlan(w.landuse[i]!)) continue;
+      // The weir's own ground (an edit) follows its new shape; elsewhere it only ever raises, like a dike.
+      const target = shape.targets.get(i) ?? (known.has(i) ? ground(i) : NaN);
+      let moved = false;
+      if (!Number.isNaN(target)) {
+        if (known.has(i)) moved = plan(i, target) || w.terrain(i) > target + 0.01;
+        else if (target > current(w, i) + 0.01) moved = plan(i, target);
+      }
+      // Stone that has to come off for the earthwork is laid again after it.
+      if (moved && wr) this.unline(i);
       this.addLining(i);
       cells.push(i);
+      base.push(ground(i));
     }
-    this.weirs.push({ id: this.nextId++, x: a[0], y: a[1], x2: b[0], y2: b[1], top: lowest + height, width, cells });
+    const rec: Weir = wr ?? { id: this.nextId++, x: 0, y: 0, x2: 0, y2: 0, top: 0, width: 2, cells: [] };
+    rec.x = a[0];
+    rec.y = a[1];
+    rec.x2 = b[0];
+    rec.y2 = b[1];
+    rec.top = crest;
+    rec.cells = cells;
+    rec.base = base;
+    if (!wr) this.weirs.push(rec);
     this.structuresDirty = true;
     return changed;
+  }
+
+  /**
+   * Take a weir down (the selection's Remove): the crew lifts its stone and
+   * lowers its cells back to the ground they had. Returns the plan cells.
+   */
+  removeWeir(id: number): number[] | null {
+    const wr = this.weirs.find((o) => o.id === id);
+    if (!wr) return null;
+    const w = this.world;
+    const known = this.weirGround(wr);
+    const gates = this.gateCells();
+    const changed: number[] = [];
+    for (const c of wr.cells) {
+      if (gates.has(c)) continue;
+      this.unline(c);
+      const g = known.get(c);
+      if (g !== undefined && w.terrain(c) > g + 0.01) {
+        w.plan[c] = g;
+        changed.push(c);
+      } else if (!Number.isNaN(w.plan[c]!) && w.plan[c]! > w.terrain(c)) w.plan[c] = NaN;
+    }
+    this.weirs = this.weirs.filter((o) => o !== wr);
+    this.structuresDirty = true;
+    return changed;
+  }
+
+  /**
+   * Remove a gate (the selection's Remove): the leaf and posts go, and the
+   * crew plugs the opening back up to the dam's crest, so the dike holds
+   * again. Returns the plan cells.
+   */
+  removeGate(id: number): number[] | null {
+    const g = this.gates.find((o) => o.id === id);
+    if (!g) return null;
+    const w = this.world;
+    const changed: number[] = [];
+    for (const c of g.passage) {
+      this.lining.delete(c);
+      if (!Number.isNaN(w.plan[c]!) && w.plan[c]! < w.terrain(c)) w.plan[c] = NaN;
+    }
+    for (const c of g.cells) {
+      if (w.terrain(c) < g.top - 0.01) {
+        this.unline(c);
+        w.plan[c] = g.top;
+        changed.push(c);
+      }
+    }
+    this.gates = this.gates.filter((o) => o !== g);
+    this.liningDirty = true;
+    this.structuresDirty = true;
+    this.updateWalls();
+    return changed;
+  }
+
+  /** Remove a water wheel (the selection's Remove). */
+  removeWheel(id: number): boolean {
+    const wh = this.wheels.find((o) => o.id === id);
+    if (!wh) return false;
+    this.lining.delete(wh.head);
+    this.wheels = this.wheels.filter((o) => o !== wh);
+    this.liningDirty = true;
+    this.structuresDirty = true;
+    return true;
+  }
+
+  /**
+   * Earthworks planned through structures take them down (a trench, dike or
+   * level over them): gates and wheels on those cells go; a weir loses the
+   * part the plan crosses (its stone there comes off) and what is left on
+   * either side stays a weir of its own if it is long enough.
+   */
+  dismantle(cells: ReadonlySet<number>): boolean {
+    if (cells.size === 0) return false;
+    const w = this.world;
+    const W = w.width;
+    let any = false;
+    const gates = this.gates.filter((g) => !g.passage.some((c) => cells.has(c)));
+    if (gates.length !== this.gates.length) {
+      for (const g of this.gates) if (!gates.includes(g)) for (const c of g.passage) this.lining.delete(c);
+      this.gates = gates;
+      this.updateWalls();
+      any = true;
+    }
+    const wheels = this.wheels.filter((wh) => !cells.has(wh.cell) && !cells.has(wh.head));
+    if (wheels.length !== this.wheels.length) {
+      for (const wh of this.wheels) if (!wheels.includes(wh)) this.lining.delete(wh.head);
+      this.wheels = wheels;
+      any = true;
+    }
+    const weirs: Weir[] = [];
+    for (const wr of this.weirs) {
+      if (!wr.cells.some((c) => cells.has(c))) {
+        weirs.push(wr);
+        continue;
+      }
+      any = true;
+      const len = Math.hypot(wr.x2 - wr.x, wr.y2 - wr.y);
+      const ux = len > 0 ? (wr.x2 - wr.x) / len : 1;
+      const uy = len > 0 ? (wr.y2 - wr.y) / len : 0;
+      const n = Math.max(0, Math.round(len));
+      const bin = (c: number) => Math.max(0, Math.min(n, Math.round(((c % W) - wr.x) * ux + (((c / W) | 0) - wr.y) * uy)));
+      const cut = new Uint8Array(n + 1);
+      for (const c of wr.cells) {
+        if (!cells.has(c)) continue;
+        cut[bin(c)] = 1;
+        this.unline(c);
+      }
+      // The pieces left: runs of uncut bins at least two cells long.
+      let first = true;
+      for (let k = 0; k <= n; ) {
+        if (cut[k]) {
+          k++;
+          continue;
+        }
+        let e = k;
+        while (e + 1 <= n && !cut[e + 1]) e++;
+        if (e - k >= 2) {
+          const piece: Weir = {
+            id: first ? wr.id : this.nextId++,
+            x: wr.x + ux * k,
+            y: wr.y + uy * k,
+            x2: wr.x + ux * e,
+            y2: wr.y + uy * e,
+            top: wr.top,
+            width: wr.width,
+            cells: [],
+            base: wr.base ? [] : undefined,
+          };
+          wr.cells.forEach((c, j) => {
+            const bk = bin(c);
+            if (cells.has(c) || bk < k || bk > e) return;
+            piece.cells.push(c);
+            piece.base?.push(wr.base![j]!);
+          });
+          weirs.push(piece);
+          first = false;
+        }
+        k = e + 1;
+      }
+    }
+    if (any) {
+      this.weirs = weirs;
+      this.liningDirty = true;
+      this.structuresDirty = true;
+    }
+    return any;
   }
 
   private allowedAlong(line: readonly Pt[], half: number): boolean {
@@ -643,7 +909,8 @@ export class Structures {
         rot: Math.atan2(wr.y2 - wr.y, wr.x2 - wr.x),
         width: Math.hypot(wr.x2 - wr.x, wr.y2 - wr.y),
         top: wr.top,
-        sill: wr.top,
+        // The lowest ground under the crest: the crest's height above it is what the player sets.
+        sill: this.weirLowest(wr),
         open: false,
         progress: wr.cells.length ? done / wr.cells.length : 1,
       });
