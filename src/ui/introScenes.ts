@@ -16,6 +16,7 @@ import type { Pt, SceneId, Snapshot } from '../shared/protocol';
 import { planTrench } from '../sim/plans/plans';
 import { SCENE_LAYOUT as L } from '../sim/sceneLayout';
 import { ICONS } from './icons';
+import { cameraView, sound } from '../audio/bus';
 
 const DEG = Math.PI / 180;
 /** Trench the hand draws (the real tool's defaults would be 2 wide; a bit wider reads better). */
@@ -133,6 +134,7 @@ export class IntroScenes {
         }
         this.mirror = new WorldMirror(data);
         this.layers = new WorldLayers(this.renderer, data, data.info.seed, null);
+        this.layers.fishJumps.onSplash = (x, y) => sound.sceneSplash(x, y);
         this.renderer.setSun(0.56, 1.2);
         this.client.onSnapshot((s) => this.onSnapshot(s));
         // The scene ran on while the renderer started up: begin it afresh.
@@ -157,6 +159,7 @@ export class IntroScenes {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    sound.sceneEnd();
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.onResize);
     this.client.dispose();
@@ -212,6 +215,8 @@ export class IntroScenes {
       this.runStart = performance.now();
     }
     this.mirror.apply(s);
+    // The scene's own soft ambience, from its camera (audio/bus.ts).
+    sound.scene(s, cameraView(r.camera.getCurrentState(), this.canvas.clientWidth, this.canvas.clientHeight), r.info.width);
     r.applySnapshot(s);
     this.layers.applySnapshot(s);
     if (s.plan && this.awaitingPlan) {

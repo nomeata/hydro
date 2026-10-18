@@ -65,6 +65,8 @@ export const enum SiteKind {
   Grind = 18,
   /** Build or rebuild a footbridge (site = the bridge's id; bridges.ts). */
   Bridge = 19,
+  /** Dig a field ditch off the player's canal (site = the ditch cell; people/ditches.ts). */
+  Ditch = 20,
 }
 
 export interface Agent {

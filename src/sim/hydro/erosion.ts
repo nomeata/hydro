@@ -47,6 +47,9 @@ export interface GeoParams {
   looseDays: number;
   /** Vegetation holds the soil: pickup erodibility × (1 − vegetationHold · vegetation). */
   vegetationHold: number;
+  overtopK: number;
+  overtopMinDrop: number;
+  overtopMaxDrop: number;
   talusPerDay: number;
   reposeWet: number[];
   wetSaturation: number;
@@ -82,6 +85,9 @@ export function defaultGeoParams(): GeoParams {
     looseErodibility: p.looseErodibility,
     looseDays: p.looseDays,
     vegetationHold: p.vegetationHold,
+    overtopK: p.overtopK,
+    overtopMinDrop: p.overtopMinDrop,
+    overtopMaxDrop: p.overtopMaxDrop,
     talusPerDay: p.talusPerDay,
     reposeWet: [...p.reposeWet],
     wetSaturation: p.wetSaturation,
@@ -309,6 +315,68 @@ function takeSoil(world: World, i: number, dz: number): void {
     world.water[i]! += g - cap;
     world.ground[i] = cap;
   }
+}
+
+/**
+ * Overtopping: an unlined earthen bank (CellFlag.Fill, heaped by a plan)
+ * that water pours over is scoured where it pours off its edge, i.e. where
+ * water flows out of the cell into a neighbour whose ground is lower and
+ * whose water surface stands clearly lower (the water falls; a submerged
+ * toe beside a river does not scour this way). The cut deepens where most water goes, so an overtopped
+ * dike notches and breaches, back from its downstream face. The soil goes
+ * into the water as sediment (conserved; it settles downstream). Lined
+ * cells (weirs, gates) do not scour. Standing for `dt` hydraulic seconds.
+ */
+export function overtopStep(world: World, scratch: ErosionScratch, dt: number, p: GeoParams, ledger: SedimentLedger, dirty: RowRange, active?: ActiveSet | null): void {
+  const { width: W, height: H, bedrock, soil, soilType, water, sediment, qx, qy, flags, vegetation } = world;
+  const rows = rowsOf(active, W, H);
+  const k = p.overtopK * p.morfac * dt;
+  const minDrop = p.overtopMinDrop;
+  const maxDrop = p.overtopMaxDrop;
+  /** The water must fall this much (m): a submerged toe beside a river does not scour this way. */
+  const minFall = 0.1;
+  const maxFrac = p.maxSoilFraction;
+  const loose = scratch.loose;
+  let eroded = 0;
+  let y0 = dirty.y0;
+  let y1 = dirty.y1;
+  for (let r = 0; r < rows.length; r += 3) {
+    const y = rows[r]!;
+    const row = y * W;
+    for (let x = rows[r + 1]!; x < rows[r + 2]!; x++) {
+      const i = row + x;
+      const f = flags[i]!;
+      if ((f & CellFlag.Fill) === 0 || (f & NO_EXCHANGE) !== 0 || water[i]! < 0.01) continue;
+      const zi = bedrock[i]! + soil[i]!;
+      const si = zi + water[i]!;
+      let drive = 0;
+      let floor = -Infinity;
+      const face = (j: number, q: number) => {
+        if (q <= 0) return;
+        const zj = bedrock[j]! + soil[j]!;
+        const drop = zi - zj;
+        if (drop < minDrop || zj + water[j]! > si - minFall) return;
+        drive += q * Math.min(drop, maxDrop);
+        floor = Math.max(floor, zj);
+      };
+      if (x < W - 1) face(i + 1, qx[i]!);
+      if (x > 0) face(i - 1, -qx[i - 1]!);
+      if (y < H - 1) face(i + W, qy[i]!);
+      if (y > 0) face(i - W, -qy[i - W]!);
+      if (drive <= 0) continue;
+      const er = SOIL_PROPS[soilType[i]!]!.erodibility * (1 + p.looseErodibility * loose[i]!) * (1 - p.vegetationHold * vegetation[i]!);
+      const dz = Math.min(k * drive * er, maxFrac * soil[i]!, 0.5 * (zi - floor));
+      if (!(dz > 0)) continue;
+      takeSoil(world, i, dz);
+      sediment[i]! += dz * CELL_AREA;
+      eroded += dz * CELL_AREA;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  ledger.eroded += eroded;
+  dirty.y0 = y0;
+  dirty.y1 = y1;
 }
 
 /**

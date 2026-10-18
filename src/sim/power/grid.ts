@@ -336,6 +336,43 @@ export class PowerGrid {
     return true;
   }
 
+  /** Remove one turbine, pole or pump by id (the selection's Remove). */
+  remove(id: number): boolean {
+    const n = this.turbines.length + this.poles.length + this.pumps.length;
+    this.turbines = this.turbines.filter((o) => o.id !== id);
+    this.poles = this.poles.filter((o) => o.id !== id);
+    this.pumps = this.pumps.filter((o) => o.id !== id);
+    if (n === this.turbines.length + this.poles.length + this.pumps.length) return false;
+    this.dropWires(new Set([id]));
+    this.changed();
+    return true;
+  }
+
+  /** Earthworks planned over power structures take them down (see Structures.dismantle). */
+  dismantle(cells: ReadonlySet<number>): boolean {
+    if (cells.size === 0) return false;
+    const W = this.world.width;
+    const at = (x: number, y: number) => cells.has(y * W + x);
+    const gone = new Set<number>();
+    for (const t of this.turbines) if (at(t.x, t.y) || cells.has(t.a) || cells.has(t.b)) gone.add(t.id);
+    for (const p of this.poles) if (at(p.x, p.y)) gone.add(p.id);
+    for (const p of this.pumps) if (at(p.x, p.y) || at(p.hx, p.hy) || at(p.ox, p.oy)) gone.add(p.id);
+    if (!gone.size) return false;
+    this.turbines = this.turbines.filter((o) => !gone.has(o.id));
+    this.poles = this.poles.filter((o) => !gone.has(o.id));
+    this.pumps = this.pumps.filter((o) => !gone.has(o.id));
+    this.dropWires(gone);
+    this.changed();
+    return true;
+  }
+
+  private dropWires(gone: ReadonlySet<number>): void {
+    const wires: number[] = [];
+    for (let k = 0; k + 1 < this.wires.length; k += 2)
+      if (!gone.has(this.wires[k]!) && !gone.has(this.wires[k + 1]!)) wires.push(this.wires[k]!, this.wires[k + 1]!);
+    this.wires = wires;
+  }
+
   private changed(): void {
     this.dirty = true;
   }

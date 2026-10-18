@@ -11,6 +11,7 @@ import type { Command, Pt } from '../../src/shared/protocol';
 import { isUnlocked } from '../../src/shared/unlocks';
 import type { Settlement } from '../../src/sim/people/settlement';
 import type { Simulation } from '../../src/sim/sim';
+import { CROP_MOISTURE } from '../../src/sim/people/village';
 import { LandUse } from '../../src/sim/world';
 import {
   cellsAround,
@@ -99,42 +100,62 @@ abstract class PerVillageBot implements Bot {
  */
 export class IrrigateBot extends PerVillageBot {
   readonly name = 'irrigate';
-  readonly description = 'trench from the nearest river/lake that can feed it by gravity to the driest fields';
+  readonly description = 'trench from the nearest river/lake that can feed it by gravity into the driest land by the village';
   protected forVillage(sim: Simulation, s: Settlement, day: number): BotAction | null {
     const w = sim.world;
     const m = sim.people!.fieldMoisture;
     const fields = fieldsOf(sim, s);
     if (fields.length < 6) return null;
-    fields.sort((a, b) => m[a]! - m[b]! || a - b);
-    const dry = fields.slice(0, Math.max(4, Math.ceil(fields.length / 4)));
-    const cx = mean(dry.map((i) => cellX(w, i)));
-    const cy = mean(dry.map((i) => cellY(w, i)));
-    // Aim at the middle of the dry fields first, then at other dry cells (some sit right by the houses).
-    const aims = [...dry].sort((a, b) => dist(w, a, cx, cy) - dist(w, b, cx, cy) || a - b);
+    // The dry land a player would want green: fields and fertile open land near the village
+    // where crops lack water (people/village.ts CROP_MOISTURE).
+    const land = cellsAround(sim, s.state.x, s.state.y, 17).filter((i) => {
+      const lu = w.landuse[i];
+      if ((lu !== LandUse.Field && lu !== LandUse.None) || isWater(w, i) || dist(w, i, s.state.x, s.state.y) < 4) return false;
+      return m[i]! < CROP_MOISTURE.moist && (lu === LandUse.Field || w.fertility[i]! >= 0.4);
+    });
+    // The dry land first; if no canal reaches it, the driest fields.
     let best: { src: number; depth: number; route: Pt[]; T: Pt } | null = null;
-    for (const target of aims.filter((_, k) => k % 3 === 0).slice(0, 8)) {
-      const T = pt(w, target);
-      // Candidate sources, cheapest first (short, shallow), then the first with a clear route.
-      const cands: { src: number; depth: number; score: number; end: Pt }[] = [];
-      for (const j of cellsAround(sim, T[0], T[1], 50)) {
-        if (!isShore(w, j)) continue;
-        const S = pt(w, j);
-        const end = shortOf(S, T, 1);
-        const zEnd = w.terrain(w.idx(Math.round(end[0]), Math.round(end[1])));
-        // The canal floor at its end must lie 0.4 m below the source's surface.
-        const depth = Math.max(1, zEnd - w.surface(j) + 0.4);
-        if (depth > 3) continue;
-        cands.push({ src: j, depth, score: Math.hypot(S[0] - T[0], S[1] - T[1]) + 8 * depth, end });
-      }
-      cands.sort((a, b) => a.score - b.score || a.src - b.src);
-      for (const c of cands.filter((_, k) => k % 2 === 0).slice(0, 20)) {
-        const route = routeAround(sim, pt(w, c.src), c.end);
-        if (route) {
-          best = { src: c.src, depth: c.depth, route, T };
-          break;
+    let pool = fields;
+    let dry: number[] = [];
+    for (const p of land.length >= 12 ? [land, fields] : [fields]) {
+      if (best) break;
+      pool = p;
+      pool.sort((a, b) => m[a]! - m[b]! || a - b);
+      dry = pool.slice(0, Math.max(4, Math.ceil(pool.length / 4)));
+      const cx = mean(dry.map((i) => cellX(w, i)));
+      const cy = mean(dry.map((i) => cellY(w, i)));
+      // Aim at the middle of the dry fields first, then at other dry cells (some sit right by the houses).
+      const aims = [...dry].sort((a, b) => dist(w, a, cx, cy) - dist(w, b, cx, cy) || a - b);
+      // First only onto land above the source's water (else the canal floods it), then anywhere.
+      for (const strict of [true, false]) {
+        if (best) break;
+        for (const target of aims.filter((_, k) => k % 3 === 0).slice(0, 8)) {
+          const T = pt(w, target);
+          // Candidate sources, cheapest first (short, shallow), then the first with a clear route.
+          const cands: { src: number; depth: number; score: number; end: Pt }[] = [];
+          for (const j of cellsAround(sim, T[0], T[1], strict ? 70 : 50)) {
+            if (!isShore(w, j)) continue;
+            const S = pt(w, j);
+            const end = shortOf(S, T, 1);
+            const zEnd = w.terrain(w.idx(Math.round(end[0]), Math.round(end[1])));
+            // Land below the source's water level would only be flooded by the canal.
+            if (strict && zEnd < w.surface(j) + 0.3) continue;
+            // The canal floor at its end must lie 0.4 m below the source's surface.
+            const depth = Math.max(1, zEnd - w.surface(j) + 0.4);
+            if (depth > (strict ? 1.3 : 3)) continue; // irrigation: the water stands near field level
+            cands.push({ src: j, depth, score: Math.hypot(S[0] - T[0], S[1] - T[1]) + 8 * depth, end });
+          }
+          cands.sort((a, b) => a.score - b.score || a.src - b.src);
+          for (const c of cands.filter((_, k) => k % 2 === 0).slice(0, 20)) {
+            const route = routeAround(sim, pt(w, c.src), c.end);
+            if (route) {
+              best = { src: c.src, depth: c.depth, route, T };
+              break;
+            }
+          }
+          if (best) break;
         }
       }
-      if (best) break;
     }
     if (!best) return null;
     const T = best.T;
@@ -142,7 +163,7 @@ export class IrrigateBot extends PerVillageBot {
     return {
       day,
       village: s.state.id,
-      note: `canal ${Math.round(polyLength(best.route))} cells${best.route.length > 2 ? ' (dogleg)' : ''}, depth ${best.depth.toFixed(1)} m, to ${dry.length} driest fields`,
+      note: `canal ${Math.round(polyLength(best.route))} cells${best.route.length > 2 ? ' (dogleg)' : ''}, depth ${best.depth.toFixed(1)} m, to ${dry.length} driest ${pool === land ? 'cells' : 'fields'}`,
       commands: [{ type: 'planTrench', points: best.route, width: 2, depth: best.depth }],
       targets,
       info: { moistureBefore: mean(targets.map((i) => m[i]!)), fields: fields.length },
@@ -370,8 +391,8 @@ const WATER_SHALLOW = 0.3;
  * below its intake.
  */
 export class VandalBot implements Bot {
-  readonly name = 'vandal';
-  readonly description = 'canal from the river upstream into the village, and a dam across the river below the intake';
+  readonly name: string = 'vandal';
+  readonly description: string = 'canal from the river upstream into the village, and a dam across the river below the intake';
   private done = false;
   check(sim: Simulation, day: number): BotAction[] {
     if (this.done) return [];
@@ -424,7 +445,60 @@ export class VandalBot implements Bot {
   }
 }
 
-export const BOT_NAMES = ['irrigate', 'dike', 'weir', 'drain', 'vandal'] as const;
+/** Days after the vandal's works that `undo` takes them out again. */
+export const UNDO_AFTER = 48;
+
+/**
+ * (f) Vandal, then remorse: the vandal's canal and dam, and a year later a
+ * trench through the dam (down to the river bed) and a dike across the
+ * canal by its intake, as a player would undo them. Measures recovery.
+ */
+export class UndoBot extends VandalBot {
+  override readonly name = 'undo';
+  override readonly description = "the vandal's works, cut through a year later (dam trenched, canal closed by its intake)";
+  private works: Command[] | null = null;
+  private at = 0;
+  private undone = false;
+  override check(sim: Simulation, day: number): BotAction[] {
+    if (!this.works) {
+      const acts = super.check(sim, day);
+      if (acts.length) {
+        this.works = acts[0]!.commands;
+        this.at = day;
+      }
+      return acts;
+    }
+    if (this.undone || day < this.at + UNDO_AFTER) return [];
+    this.undone = true;
+    const commands: Command[] = [];
+    for (const c of this.works) {
+      if (c.type === 'planDike') {
+        // Trench through the dam along the river, its floor at the bed just up- and downstream.
+        const [a, b] = c.points as [Pt, Pt];
+        const m: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const nx = -(b[1] - a[1]) / len;
+        const ny = (b[0] - a[0]) / len;
+        const u: Pt = [m[0] + nx * 4, m[1] + ny * 4];
+        const d: Pt = [m[0] - nx * 4, m[1] - ny * 4];
+        commands.push({ type: 'planTrench', points: [u, d], width: Math.max(3, len - 3), depth: 0.1 });
+      } else if (c.type === 'planTrench') {
+        // Close the diversion canal a few cells from its intake.
+        const [S, V] = c.points as [Pt, Pt];
+        const len = Math.hypot(V[0] - S[0], V[1] - S[1]);
+        const ux = (V[0] - S[0]) / len;
+        const uy = (V[1] - S[1]) / len;
+        const p: Pt = [S[0] + ux * 4, S[1] + uy * 4];
+        const half = c.width / 2 + 3;
+        commands.push({ type: 'planDike', points: [[p[0] - uy * half, p[1] + ux * half], [p[0] + uy * half, p[1] - ux * half]], width: 3, height: c.depth + 2 });
+      }
+    }
+    const s = villages(sim)[0];
+    return [{ day, village: s?.state.id ?? 0, note: `undo: ${commands.length} works`, commands, targets: s ? homesOf(sim, s) : [] }];
+  }
+}
+
+export const BOT_NAMES = ['irrigate', 'dike', 'weir', 'drain', 'vandal', 'undo'] as const;
 export type BotName = (typeof BOT_NAMES)[number];
 
 export function makeBot(name: string, opts: { ignoreUnlocks?: boolean } = {}): Bot {
@@ -439,6 +513,8 @@ export function makeBot(name: string, opts: { ignoreUnlocks?: boolean } = {}): B
       return new DrainBot();
     case 'vandal':
       return new VandalBot();
+    case 'undo':
+      return new UndoBot();
     default:
       throw new Error(`unknown bot ${name} (known: ${BOT_NAMES.join(', ')})`);
   }

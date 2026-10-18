@@ -19,8 +19,11 @@ import { ToolPalette } from './ui/tools';
 import { ToolCards } from './ui/toolCards';
 import { isUnlocked, setUnlockAll } from './shared/unlocks';
 import { AreaHighlight } from './ui/areaHighlight';
+import { Selection } from './ui/selection';
 import { heightToY } from './render/coords';
 import * as THREE from 'three';
+import { SoundSystem } from './audio/sound';
+import { cameraView, setSoundSink } from './audio/bus';
 
 const params = new URLSearchParams(location.search);
 const testMode = params.has('test');
@@ -39,6 +42,9 @@ const initialSpeed = testMode || introDue ? 0 : 1;
 const AUTOSAVE_MS = 60_000;
 /** Phones: let the sim use at most ~45% of a core (battery, heat); ?duty= overrides. */
 const duty = Number(params.get('duty') ?? (matchMedia('(pointer: coarse)').matches ? 0.45 : 1));
+/** Sound (docs/SOUND.md): on by default, starting at the first gesture; off in tests unless ?sound=1. */
+const sound = new SoundSystem({ enabled: !testMode || params.has('sound'), base: import.meta.env.BASE_URL });
+setSoundSink(sound);
 
 async function startClient(): Promise<{ client: SimClient; data: ReadyData }> {
   if (resume) {
@@ -71,6 +77,16 @@ async function main(): Promise<void> {
   // Vegetation, people, their animals and fish (the village herds are sim
   // entities since M3-δ; only the welcome scenes add ambient animals).
   const layers = new WorldLayers(renderer, data, seed, null);
+  sound.attachMain({ width: data.info.width, look: data.look, revealed: data.revealed, plan: data.plan }, () =>
+    cameraView(renderer.camera.getCurrentState(), canvas.clientWidth, canvas.clientHeight),
+  );
+  layers.fishJumps.onSplash = (x, y) => sound.splash(x, y);
+  // Soft clicks for the HUD's buttons; tools have their own.
+  uiRoot.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('button');
+    if (!b || b.closest('.menu-sound')) return;
+    sound.ui(b.dataset.tool ? 'tool' : 'click');
+  });
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
   const historyPanel = new HistoryPanel(uiRoot, () => client.history());
@@ -113,7 +129,27 @@ async function main(): Promise<void> {
       statsBar.update(client.latest?.stats);
     });
   };
+  // Selecting what the player built (ui/selection.ts): tap in Look mode.
+  const groundToClient = (x: number, y: number): [number, number] | null => {
+    const v = tmp.set(x + 0.5, heightToY(renderer.heights.terrainAt(x, y)), y + 0.5).project(renderer.camera.camera);
+    if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) return null;
+    const r = canvas.getBoundingClientRect();
+    return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
+  };
+  const selection = new Selection(uiRoot, {
+    pick: (x, y) => renderer.pick(x, y),
+    project: groundToClient,
+    structures: () => renderer.structures.structures,
+    power: () => renderer.power.state,
+    mirror,
+    setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
+    setPreviewLining: (cells) => renderer.setPreviewLining(cells),
+    command: (cmd) => client.command(cmd),
+    onFrame: (fn) => void renderer.addFrameListener(fn),
+  });
   const tools = new ToolPalette(uiRoot, {
+    tap: (x, y, only) => selection.tapAt(x, y, only),
+    deselect: () => selection.clear(),
     hasCard: (t) => ToolCards.has(t),
     cardDue: (t) => cardsDue && ToolCards.has(t) && !ToolCards.seen(t),
     showCard,
@@ -123,12 +159,19 @@ async function main(): Promise<void> {
     setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
     setPreviewLining: (cells) => renderer.setPreviewLining(cells),
     depth: (i) => renderer.heights.depth[i] ?? 0,
+    speed: (i) => renderer.flow.speed(i),
+    setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
+    setWheelSites: (sites) => renderer.wheelPreview.setSites(sites),
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),
-    command: (cmd) => client.command(cmd),
+    command: (cmd) => {
+      client.command(cmd);
+      sound.ui('place');
+    },
   });
 
   client.onSnapshot((s) => {
     mirror.apply(s);
+    sound.feedMain(s);
     renderer.applySnapshot(s);
     layers.applySnapshot(s);
     hud.update(s);
@@ -142,7 +185,9 @@ async function main(): Promise<void> {
       achievements.updateIdeas(s.ideas);
     }
     if (s.plan || s.lining) tools.planUpdated();
+    if (s.structures || s.power) selection.refresh();
   });
+  tools.insertPanel(selection.panel);
 
   let last = performance.now();
   const loop = (now: number) => {
@@ -208,13 +253,14 @@ async function main(): Promise<void> {
       await writeSave(AUTOSAVE, bytes, { savedAt: Date.now(), seed: 0, day: 0 });
       location.search = '';
     },
+    sound,
   });
   achievements.updateIdeas();
 
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
   }
   document.getElementById('loading')?.classList.add('done');
 }

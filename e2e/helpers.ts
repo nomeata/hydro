@@ -60,3 +60,86 @@ export async function recordTexts(page: Page, selector: string): Promise<() => P
   );
   return () => page.evaluate((k) => [...(window as any)[k]] as string[], key);
 }
+
+/**
+ * A spot for a weir near the start: a known river cell flowing at ≥ 0.4 m/s,
+ * and the line across the flow through it, out to dry land on both sides.
+ */
+export async function findWeir(page: Page): Promise<{ x: number; y: number; a: [number, number]; b: [number, number] } | null> {
+  return page.evaluate(() => {
+    const h = (window as any).__hydro;
+    const m = h.mirror;
+    const depth: Float32Array = h.renderer.heights.depth;
+    const vel: Float32Array = h.renderer.flow.vel;
+    const W = m.width;
+    const { startX, startY } = h.data.info;
+    let best: { x: number; y: number; a: [number, number]; b: [number, number]; d: number } | null = null;
+    for (let y = 8; y < m.height - 8; y++)
+      for (let x = 8; x < W - 8; x++) {
+        const i = y * W + x;
+        const vx = vel[2 * i]!;
+        const vy = vel[2 * i + 1]!;
+        const sp = Math.hypot(vx, vy);
+        if (depth[i]! < 0.3 || sp < 0.4 || !m.isRevealed(x, y)) continue;
+        // Across the flow: out to the first dry cell on each side.
+        const ends: [number, number][] = [];
+        for (const s of [-1, 1]) {
+          let e: [number, number] | null = null;
+          for (let k = 1; k <= 7; k++) {
+            const px = Math.round(x - (vy / sp) * k * s);
+            const py = Math.round(y + (vx / sp) * k * s);
+            if (!m.isRevealed(px, py)) break;
+            if (depth[py * W + px]! < 0.05) {
+              e = [x - (vy / sp) * (k + 1) * s, y + (vx / sp) * (k + 1) * s];
+              break;
+            }
+          }
+          if (e) ends.push(e);
+        }
+        if (ends.length < 2) continue;
+        const d = Math.hypot(x - startX, y - startY);
+        if (d > 6 && (!best || d < best.d)) best = { x, y, a: ends[0]!, b: ends[1]!, d };
+      }
+    return best;
+  });
+}
+
+/** Screen position (page pixels) of cell (x, y) on the terrain. */
+export async function toScreen(page: Page, x: number, y: number): Promise<[number, number]> {
+  return page.evaluate(
+    ([cx, cy]) => {
+      const h = (window as any).__hydro;
+      const r = h.renderer;
+      const cam = r.camera.camera;
+      cam.updateMatrixWorld();
+      const v = { x: cx! + 0.5, y: (r.heights.terrainAt(cx, cy) / 5) * 2, z: cy! + 0.5 };
+      const mul = (e: number[], p: { x: number; y: number; z: number }) => {
+        const w = e[3]! * p.x + e[7]! * p.y + e[11]! * p.z + e[15]!;
+        return {
+          x: (e[0]! * p.x + e[4]! * p.y + e[8]! * p.z + e[12]!) / w,
+          y: (e[1]! * p.x + e[5]! * p.y + e[9]! * p.z + e[13]!) / w,
+          z: (e[2]! * p.x + e[6]! * p.y + e[10]! * p.z + e[14]!) / w,
+        };
+      };
+      const p = mul(cam.projectionMatrix.elements, mul(cam.matrixWorldInverse.elements, v));
+      const rect = (document.querySelector('#view') as HTMLElement).getBoundingClientRect();
+      return [rect.left + ((p.x + 1) / 2) * rect.width, rect.top + ((1 - p.y) / 2) * rect.height] as [number, number];
+    },
+    [x, y],
+  );
+}
+
+
+/** Touch input through CDP (real touch pointer events, as on a phone). */
+export async function touchPath(page: Page, pts: [number, number][], stepMs = 30): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  const at = (p: [number, number]) => [{ x: p[0], y: p[1], id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(pts[0]!) });
+  for (const p of pts.slice(1)) {
+    await page.waitForTimeout(stepMs);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(p) });
+  }
+  await page.waitForTimeout(stepMs);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+}

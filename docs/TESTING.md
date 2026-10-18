@@ -124,6 +124,26 @@ after a fixed number of simulated days. CI copies them into
 those URLs. They are therefore always the screenshots of the deployed build,
 and CI never has to commit to the repository.
 
+## 5b. Sound review — `tools/sound-review.ts`
+The ears' analogue of the screenshots (docs/SOUND.md). `npm run
+sound-review -- [--seconds 20] [--only river,village]` (needs a preview
+server; `HYDRO_PW_PORT` or `--url`) opens the game in headless Chromium
+with `?test=1&sound=1` for each scenario — quiet meadow, river close-up,
+paused, zoomed out (main game, seed 1) and the staged village, rain,
+weir and water-wheel scenes — records the mixer's ticks in real time,
+then renders them offline through the game's own Web Audio graph
+(`SoundSystem.renderOffline`, an `OfflineAudioContext`). It writes
+`out/sound/<scenario>.wav` and analyses each: integrated and momentary
+loudness (BS.1770 K-weighting, approx. LUFS), peak (headroom ≥ 3 dB),
+spectral balance in five bands, sustained tones (drones), click
+candidates, spot events per minute and the mean layer gains; warnings
+for peaks, loud scenarios and scenarios far from the median loudness go
+to `out/sound/report.json`. With ffmpeg installed it also renders a
+spectrogram (`<scenario>.png`) and waveform (`<scenario>-wave.png`):
+look at them for clicks (vertical lines), harsh highs, drones (long
+horizontal lines) and repetition, and listen to the WAVs. Unit tests of
+the mixing logic: `tests/audio/mix.test.ts`; e2e: `e2e/sound.spec.ts`.
+
 ## 6. Performance
 - `npm run bench`: hydro steps/sec for 256² and 512² worlds in Node; tracked
   over time (bench results are printed in CI logs). Besides the all-wet

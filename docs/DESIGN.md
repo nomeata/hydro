@@ -118,14 +118,58 @@ cancelled.
 | Tool | Effect when built | Unlock |
 |---|---|---|
 | Trench / canal | Lowers ground along a path to a floor that grades evenly from start to end | start |
-| Dike / wall | Raises ground along a path to a level crest | start |
+| Dike / wall | Raises an earth bank along a path to a level crest. It must never be overtopped: water pouring over its edge scours it, and it notches and breaches | start |
 | Level | Flattens an area to a target height (basins, terraces) | start |
-| Weir | Fixed, lined overflow crest drawn across a river: holds water to the crest, spills evenly above it | 15 villagers |
+| Weir | Drawn as a line across a river; only the crest height is set (its faces and stone apron follow from it). A stone crest built to be overtopped: holds the pool at the crest and spills the surplus safely; the place for mills and turbines | 15 villagers |
 | Sluice gate | Tap a dike or weir (or draw across a channel for a dam with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Worked by the villagers (GAMEPLAY.md §2): released in summer to water their fields, opened before the water spills over; with no village near it opens by itself as flood relief | 30 villagers |
 | Water wheel | Draw from fast river water onto the bank: the current turns a noria that lifts water up to 5 m into the head cell, and on along the player's trench (GAMEPLAY.md §1.3; wells and mills are villager creations) | 50 villagers |
 | Turbine | Tap the crest of a weir or dam: power from the real head × flow through it (the Power tool's first mode) | 100 |
 | Power line / pole | Draw a line of poles from a turbine: houses within 8 cells of a pole are lit | 150 |
 | Electric pump, pumped storage | Draw from water to an outlet: lifts water on spare power; a turbine below a pumped basin generates when the houses want more | 250 |
+
+**Selecting and editing.** In Look mode a tap on a weir, gate, water
+wheel, turbine, pole or pump selects it (with the weir tool, a tap on a
+weir too): a ring or, for a weir, a dashed line with a handle at each end.
+A small panel above the palette names it and offers **Remove** (tap twice:
+it asks "Remove?" first); a weir also gets **− / +** for its crest
+(0.25 m steps, 0.5–6 m above the ground it stands on) and its handles can
+be dragged out or in, with a live preview. Edits are plans: the crew takes
+the stone off what no longer belongs to the weir, lowers it back to the
+ground it was built on (saved per cell with the weir), reshapes the rest
+and lines it again. A removed weir goes back to its ground (gates and
+turbines in it go with it); a removed gate's opening is filled back up to
+the dam's crest. The Remove (erase) tool is the same thing as a brush:
+plans under it are cancelled, and every structure it touches, built or
+not (weir, gate, wheel, turbine, pole, pump), is taken down the same way
+(the crew's plans for lowering a weir or plugging a gate are kept even if
+the brush passes over them again). Mouse and touch alike
+(`ui/selection.ts`).
+
+**Earthworks take up what is in their way.** A trench, dike or level
+planned over a weir, gate, wheel, turbine, pole or pump takes it down
+when planned (a weir loses the part crossed; what is left on either side
+stays a weir if long enough). Fields, gardens, pastures, paths and yards
+turn back to plain land when the crew digs or heaps there (the villagers
+plant again elsewhere, or there once the work is done). Plans go round
+houses (and mills, wells, stores, ruins) and footbridges: those cells are
+left out, and the hint line says so.
+
+**Villagers keep off the works.** They never claim fields, pasture,
+yards or house plots on a structure's footprint (`CellFlag.Structure`,
+kept in sync with the structures), on lined cells, on cells with a
+pending plan, or on the crest and slopes of an earthen bank (fill more
+than 0.5 m above ground within two cells; a levelled terrace's inside
+stays farmable): `plans.ts takenGround`. Fields already on such ground
+go back to plain land at the next day.
+
+**Weir vs dike in the sim.** Earth heaped by a plan is marked
+`CellFlag.Fill`. Where water flows off the edge of an unlined fill cell
+into a lower neighbour with a clearly lower water surface, the bank is
+scoured (`overtopStep`, rate ∝ unit discharge × drop; `PARAMS.overtopK`);
+the soil goes into the water as sediment. The cut deepens where most
+water goes, so an overtopped dike notches and breaches within days, back
+from its downstream face, while a dike that only holds water stands.
+Weirs are lined, so they do not scour.
 
 Unlocks are driven by population milestones, not by purchase: one
 progression table in `src/shared/unlocks.ts` (`PROGRESSION`; the power tools
@@ -191,7 +235,14 @@ The player asked for "more direct endorphin hits". Decisions:
 - Flat-shaded low-poly terrain matching the Kenney style; water as a
   translucent animated surface with foam on fast flow.
 - Fog of war: unexplored land is hidden behind soft clouds/darkness.
-- Sound: deferred.
+- Sound (decision reversed: no longer deferred): a gentle, living
+  soundscape that reflects what is on screen — water murmur, lapping and
+  rapids by what flows in view, rain and wind from the weather and zoom,
+  birds by season, crickets and frogs, and rate-limited spot sounds of the
+  work nearby (hammering, axes, spades, animals, creaking wheels, fish
+  splashes), plus soft UI clicks and a chime for achievements. Quiet by
+  default, on after the first tap, mute and volume in the menu. Mostly
+  synthesised; a few CC0 samples. docs/SOUND.md.
 
 ## 7. Non-goals (for now)
 - Combat, money, trade UI, direct NPC control, scripted scenarios, quests.

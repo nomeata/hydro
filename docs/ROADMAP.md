@@ -82,11 +82,12 @@ Player feedback: more direct progress hits; keep it all positive
 - ☑ Daily history recorded in the sim and saved (thinned: daily for two
   years, half-seasons before, years after 20 years); `history` message
 - ☑ History chart panel: villagers (log) and prosperity, season bands,
-  rain, dry spells, floods, milestone stars
+  rain, dry spells, floods, milestone stars on the
+  villagers axis
 - ☑ Achievements per world (docs/ACHIEVEMENTS.md): checked by the sim
   against a start-of-world baseline, saved; toasts, Achievements card in
   the menu, medals on the history chart
-- ☑ Playtest harness (docs/PLAYTEST.md): hands-off and bot runs over many
+- ☑ Playtest harness (docs/PLAYTEST.md; round 2 tuning: hunger, ditches, big freshets, dry second year): hands-off and bot runs over many
   seeds, agency, variety and pacing in numbers; first findings for tuning
 
 ## M3¾ — Player agency ☐
@@ -120,6 +121,12 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   above), sluice gates (hold a reservoir closed, drain to the sill open;
   tap to toggle — since M3¾ worked by the villagers), built by the spirit crew; plans only on known land;
   tools unlock at 30/50 villagers (since M3¾: 15/30); digit-key hotkeys
+- ☑ Weir vs dike made plain (playtest feedback): overtopped earthen banks
+  scour and breach (`CellFlag.Fill`, `hydro/erosion.ts` overtopStep), weirs
+  are lined stone crests drawn as a line, shape from the crest height;
+  select and edit what you built (`ui/selection.ts`: tap, drag a weir's
+  ends, −/+ crest, Remove); earthworks take up fields and structures in
+  their way and go round houses
 - ☑ Player lining tool removed again: lining is left to the villagers near
   their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
 - ☑ Villagers line banks by their homes and the player's canals near the
@@ -127,12 +134,17 @@ See docs/GAMEPLAY.md §7 (prioritised list).
 - ☑ Water wheel (noria) tool at 50 villagers (GAMEPLAY §1.3,
   `sim/structures/wheel.ts`): lift from the current, trough to the bank,
   Uphill achievement, tool card scene
+- ☑ Wheel rework (playtest: "banks too high"): lift up to 10 m with a
+  wheel as tall as its lift, a 6-cell aqueduct to the end of the stroke,
+  the quickest water (race below a weir) counts; gold rings mark good
+  sites while the tool is held, a ghost wheel (red when bad) instead of
+  text; `tools/wheel-sites.ts` surveys sites per seed
 - ☑ Villager wells (water table within 4 m; water carriers until then;
   dry wells) and mills at head sites (the wheel turns with the flow, a
   miller, flour) — GAMEPLAY §1.1–1.2, `sim/people/wells.ts`, `mills.ts`;
   achievements Wellspring and Miller's Head
 - Pumps (manual/animal): cosmetic only, not planned
-- NPCs build their own small works (irrigation ditches, little dams, paths)
+- ◐ NPCs build their own small works: ☑ field ditches off the player's canals (playtest round 2); little dams, paths
 
 ## M5 — Human impact ☐
 - Ploughing/sealing → runoff; overgrazing/logging → erosion; wells →
@@ -172,9 +184,22 @@ Proposal and staged plan: docs/ENDLESS.md.
 - Active-region growth with macro catchment model for boundary inflows
 - Performance: tile sleeping, possibly WASM/GPU kernels
 
+## Sound ☑
+See docs/SOUND.md.
+- ☑ Ambience mixed from the view (river, lake, rapids/weir spill, rain,
+  wind, birds by season, crickets, frogs, turbine hum), procedural Web Audio
+- ☑ Spot sounds near the camera centre, panned and rate-limited (hammer,
+  axe, spade, crew digging, cows, sheep, chicks, wheels and mills, fish
+  splashes); UI clicks, achievement chime, milestone fanfare
+- ☑ Mute and volume in the menu (persisted), first-gesture start, silent
+  when hidden; the welcome scenes have their own ambience
+- ☑ Review loop: `npm run sound-review` (offline renders, loudness,
+  spectrograms)
+- ☐ Village chatter and children (no good CC0 voices yet), music
+
 ## Later / ideas
 - Ports & shipping: harbours at the quays, boats between villages on lakes
   and canals
-- Sound (Settlers-like work sounds, ambience), music
+- Music
 - Multiple biomes (desert oases, alpine)
 - Photo mode, timelapse of a valley over decades

@@ -6,6 +6,7 @@
 import type { HistoryData } from '../shared/protocol';
 import { COLORS, SEASON_COLORS, buildChart, describeSample, sampleAt, type ChartLayout } from './historyChart';
 import { STAR_PATH } from './icons';
+import { toolName, unlockMilestones } from '../shared/progress';
 import { CATEGORY_COLORS } from './achievementIcons';
 
 const REFRESH_MS = 3000;
@@ -29,10 +30,10 @@ const LEGEND: [string, string][] = [
   [mini(`<path d="M3 9q4-6 8 0t8 0" fill="none" stroke="${COLORS.flood}" stroke-width="2.2" stroke-linecap="round"/>`), 'Flood'],
   [
     mini(
-      `<g transform="scale(0.42) translate(1 0)"><path d="${STAR_PATH}" fill="${COLORS.star}" stroke="${COLORS.starInk}" stroke-width="3" stroke-linejoin="round"/></g><g transform="translate(13 0) scale(0.42)"><path d="${STAR_PATH}" fill="#fffdf6" stroke="${COLORS.starInk}" stroke-width="3" stroke-dasharray="4 3" stroke-linejoin="round"/></g>`,
+      `<g transform="scale(0.42) translate(1 0)"><path d="${STAR_PATH}" fill="${COLORS.star}" stroke="${COLORS.starInk}" stroke-width="3" stroke-linejoin="round"/></g><g transform="translate(13 0) scale(0.42)"><path d="${STAR_PATH}" fill="#fffdf6" stroke="${COLORS.starInk}" stroke-width="3" stroke-linejoin="round" opacity="0.7"/></g>`,
       28,
     ),
-    'New tools (reached · ahead)',
+    'Tool unlocks (reached · ahead)',
   ],
   [
     mini(
@@ -179,6 +180,9 @@ export class HistoryPanel {
       html += `<circle cx="${x}" cy="${L.prosY(s.w).toFixed(1)}" r="5" fill="${COLORS.pros}" stroke="#fff" stroke-width="2"/>`;
     }
     g.innerHTML = html;
-    this.readout.textContent = describeSample(s);
+    // Name the milestones reached within this sample.
+    const got = this.data!.milestones.filter((m) => m.day >= s.d && m.day < s.d + s.n);
+    const tools = got.flatMap((m) => unlockMilestones().find((u) => u.population === m.population)?.tools ?? []);
+    this.readout.textContent = describeSample(s) + (tools.length ? ` · ★ ${tools.map(toolName).join(' & ')} unlocked` : '');
   }
 }
