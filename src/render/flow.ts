@@ -176,6 +176,11 @@ export class FlowParticles {
     this.candDirty = true;
   }
 
+  /** Speed of the water (m/s) at cell i of the latest snapshot. */
+  speed(i: number): number {
+    return Math.hypot(this.vel[2 * i] ?? 0, this.vel[2 * i + 1] ?? 0);
+  }
+
   /** Leaf colours (season). */
   setLeafColours(a: THREE.ColorRepresentation, b: THREE.ColorRepresentation): void {
     (this.material.uniforms.uLeafA!.value as THREE.Color).set(a);

@@ -383,6 +383,7 @@ export class Structures {
         height: w.height,
         terrain: (i) => w.terrain(i),
         depth: (i) => w.water[i]!,
+        speed: (i) => Math.hypot(w.velX[i]!, w.velY[i]!),
         allowed: this.allow ?? undefined,
       },
       points,

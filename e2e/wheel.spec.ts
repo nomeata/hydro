@@ -76,7 +76,9 @@ test('the water wheel: drawn from the river onto the bank, built, and turning wi
 
   await page.locator('button[data-tool=wheel]').click();
   await expect(page.locator('button[data-tool=wheel]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.tools .hint')).toContainText('lifts water');
+  await expect(page.locator('.tools .hint')).toContainText('lifts the river');
+  // The good sites are marked on the map while the tool is held.
+  await expect.poll(() => page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.siteCount)).toBeGreaterThan(0);
   const a = await toScreen(page, x, y);
   // To just past the head cell (on a phone the view is only a few cells wide).
   const len = Math.hypot(hx - x, hy - y);
@@ -84,8 +86,11 @@ test('the water wheel: drawn from the river onto the bank, built, and turning wi
   await page.mouse.move(a[0], a[1]);
   await page.mouse.down();
   for (let k = 1; k <= 8; k++) await page.mouse.move(a[0] + ((b[0] - a[0]) * k) / 8, a[1] + ((b[1] - a[1]) * k) / 8);
-  // The preview says how high it lifts.
-  await expect(page.locator('.tools .hint')).toContainText('Lifts the water');
+  // The preview is a ghost wheel with its trough onto the bank, a good site (no text).
+  const ghost = () => page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.ghostState);
+  await expect.poll(async () => (await ghost())?.ok).toBe(true);
+  const g = (await ghost())!;
+  await expect(page.locator('.tools .hint')).toContainText('lifts the river');
   await page.mouse.up();
 
   // The sim places the wheel; the crew builds it within a day.
@@ -95,7 +100,10 @@ test('the water wheel: drawn from the river onto the bank, built, and turning wi
   await page.evaluate(() => (window as any).__hydro.client.runDays(1));
   await expect.poll(async () => (await wheel())?.progress, { timeout: 30_000 }).toBe(1);
   const w = await wheel();
-  expect([w.x, w.y]).toEqual([x, y]);
+  // Where the ghost stood (the head may move a cell with the point where the mouse was let go).
+  expect([w.x, w.y]).toEqual([g.site.x, g.site.y]);
+  expect(Math.max(Math.abs(w.x2 - g.site.hx), Math.abs(w.y2 - g.site.hy))).toBeLessThanOrEqual(1);
+  expect(Math.hypot(w.x - x, w.y - y)).toBeLessThan(1.5);
   // In the current it turns, and water runs in its trough.
   expect(Math.abs(w.speed)).toBeGreaterThan(0);
   expect(w.flow).toBeGreaterThan(0);
@@ -103,7 +111,7 @@ test('the water wheel: drawn from the river onto the bank, built, and turning wi
   expect(errors).toEqual([]);
 });
 
-test('a wheel drawn on dry land is refused with a reason', async ({ page }) => {
+test('a wheel drawn on dry land shows a red ghost and places nothing', async ({ page }) => {
   await openGame(page, '&size=128&cheat=1');
   await page.locator('button[data-tool=wheel]').click();
   const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
@@ -127,9 +135,12 @@ test('a wheel drawn on dry land is refused with a reason', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(a[0] + 30, a[1] + 10);
   await page.mouse.move(a[0] + 60, a[1] + 20);
+  await expect.poll(() => page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.ghostState?.ok)).toBe(false);
   const hints = await recordTexts(page, '.tools .hint');
   await page.mouse.up();
-  await expect.poll(hints).toContainEqual(expect.stringContaining('Start in the river'));
   await page.waitForTimeout(500);
+  // No message: the tool stays, ready for another try.
+  expect((await hints()).every((t: string) => t.includes('lifts the river'))).toBe(true);
+  await expect(page.locator('button[data-tool=wheel]')).toHaveAttribute('aria-pressed', 'true');
   expect(await page.evaluate(() => (window as any).__hydro.renderer.structures.structures.some((s: any) => s.kind === 'wheel'))).toBe(false);
 });
