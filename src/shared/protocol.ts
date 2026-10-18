@@ -112,7 +112,7 @@ export interface WorldInfo {
  *  R = soil type (SoilType enum)
  *  G = moisture 0..255
  *  B = vegetation 0..255
- *  A = snow cover 0..255
+ *  A = snow cover 0..255 (saturating in the snow's water depth, sim/hydro/soilwater.ts snowCoverByte)
  */
 export const LOOK_CHANNELS = 4;
 

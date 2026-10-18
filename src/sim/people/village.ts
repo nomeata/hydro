@@ -2185,8 +2185,11 @@ export class PeopleSystem {
   private updateAgent(a: Agent, time: SimTime, host: PeopleHost): void {
     // Check for rising water every 10 ticks per person (staggered by id): people wade
     // through fords up to MAX_WADE, and run only from water deeper than that.
-    if (!a.flee && a.task !== Task.Leave && (time.step / PEOPLE_TICK + a.id) % 10 === 0 && this.world.water[this.cellOf(a)]! > MAX_WADE) {
-      this.flee(a, time);
+    // The water under a footbridge's deck or a jetty is no reason to run: it
+    // is deep by design (else people turned back mid-way over every bridge).
+    if (!a.flee && a.task !== Task.Leave && (time.step / PEOPLE_TICK + a.id) % 10 === 0) {
+      const here = this.cellOf(a);
+      if (this.world.water[here]! > MAX_WADE && !this.onBridge(here)) this.flee(a, time);
     }
     switch (a.task) {
       case Task.Leave:

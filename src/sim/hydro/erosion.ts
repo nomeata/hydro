@@ -174,7 +174,13 @@ export class ErosionScratch {
   }
 }
 
-const NO_EXCHANGE = CellFlag.Lined | CellFlag.Outlet;
+/**
+ * Cells that neither give nor take sediment: stone lining, the open
+ * boundary, and the ground under structures (a weir's wall is laid in
+ * stone course by course, so the river cannot wash its last gap away while
+ * the crew closes it; gates' sills, wheels' beds and poles stay put too).
+ */
+const NO_EXCHANGE = CellFlag.Lined | CellFlag.Outlet | CellFlag.Structure;
 /** Max cells walked across a channel to find the point-bar side. */
 const BAR_REACH = 8;
 

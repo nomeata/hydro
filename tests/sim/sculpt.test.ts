@@ -113,11 +113,11 @@ describe('sculpting in the sim', () => {
     expect(totalWater(w)).toBeCloseTo(before + L.rain + L.inflow - L.outflow - L.evaporation - L.seepage, 0);
   });
 
-  it('goes round houses, bridges and structures, and clears fields under it', () => {
+  it('goes round houses, jetties and structures, and clears fields under it', () => {
     const w = meadow();
     const sim = new Simulation(w, 1);
     const house = w.idx(12, 12);
-    const bridge = w.idx(14, 12);
+    const bridge = w.idx(14, 12); // a jetty's deck (no footbridge there)
     const struct = w.idx(12, 14);
     const field = w.idx(10, 12);
     w.landuse[house] = LandUse.Building;
