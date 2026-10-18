@@ -68,6 +68,7 @@ export class HistoryPanel {
   private timer: ReturnType<typeof setInterval> | null = null;
   private onClose: (() => void) | null = null;
   private readonly ideaEl: HTMLElement;
+  private ideaHtml = '';
 
   constructor(
     root: HTMLElement,
@@ -153,7 +154,8 @@ export class HistoryPanel {
   private showIdea(): void {
     const idea = this.ideas?.top();
     const html = idea ? ideaItemHtml(idea) : '';
-    if (this.ideaEl.innerHTML !== html) this.ideaEl.innerHTML = html;
+    // (Compared with what was set, not innerHTML, which the browser re-serialises.)
+    if (html !== this.ideaHtml) this.ideaEl.innerHTML = this.ideaHtml = html;
     this.ideaEl.hidden = !idea;
   }
 
