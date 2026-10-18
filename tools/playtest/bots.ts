@@ -370,8 +370,8 @@ const WATER_SHALLOW = 0.3;
  * below its intake.
  */
 export class VandalBot implements Bot {
-  readonly name = 'vandal';
-  readonly description = 'canal from the river upstream into the village, and a dam across the river below the intake';
+  readonly name: string = 'vandal';
+  readonly description: string = 'canal from the river upstream into the village, and a dam across the river below the intake';
   private done = false;
   check(sim: Simulation, day: number): BotAction[] {
     if (this.done) return [];
@@ -424,7 +424,60 @@ export class VandalBot implements Bot {
   }
 }
 
-export const BOT_NAMES = ['irrigate', 'dike', 'weir', 'drain', 'vandal'] as const;
+/** Days after the vandal's works that `undo` takes them out again. */
+export const UNDO_AFTER = 48;
+
+/**
+ * (f) Vandal, then remorse: the vandal's canal and dam, and a year later a
+ * trench through the dam (down to the river bed) and a dike across the
+ * canal by its intake, as a player would undo them. Measures recovery.
+ */
+export class UndoBot extends VandalBot {
+  override readonly name = 'undo';
+  override readonly description = "the vandal's works, cut through a year later (dam trenched, canal closed by its intake)";
+  private works: Command[] | null = null;
+  private at = 0;
+  private undone = false;
+  override check(sim: Simulation, day: number): BotAction[] {
+    if (!this.works) {
+      const acts = super.check(sim, day);
+      if (acts.length) {
+        this.works = acts[0]!.commands;
+        this.at = day;
+      }
+      return acts;
+    }
+    if (this.undone || day < this.at + UNDO_AFTER) return [];
+    this.undone = true;
+    const commands: Command[] = [];
+    for (const c of this.works) {
+      if (c.type === 'planDike') {
+        // Trench through the dam along the river, its floor at the bed just up- and downstream.
+        const [a, b] = c.points as [Pt, Pt];
+        const m: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const nx = -(b[1] - a[1]) / len;
+        const ny = (b[0] - a[0]) / len;
+        const u: Pt = [m[0] + nx * 4, m[1] + ny * 4];
+        const d: Pt = [m[0] - nx * 4, m[1] - ny * 4];
+        commands.push({ type: 'planTrench', points: [u, d], width: Math.max(3, len - 3), depth: 0.1 });
+      } else if (c.type === 'planTrench') {
+        // Close the diversion canal a few cells from its intake.
+        const [S, V] = c.points as [Pt, Pt];
+        const len = Math.hypot(V[0] - S[0], V[1] - S[1]);
+        const ux = (V[0] - S[0]) / len;
+        const uy = (V[1] - S[1]) / len;
+        const p: Pt = [S[0] + ux * 4, S[1] + uy * 4];
+        const half = c.width / 2 + 3;
+        commands.push({ type: 'planDike', points: [[p[0] - uy * half, p[1] + ux * half], [p[0] + uy * half, p[1] - ux * half]], width: 3, height: c.depth + 2 });
+      }
+    }
+    const s = villages(sim)[0];
+    return [{ day, village: s?.state.id ?? 0, note: `undo: ${commands.length} works`, commands, targets: s ? homesOf(sim, s) : [] }];
+  }
+}
+
+export const BOT_NAMES = ['irrigate', 'dike', 'weir', 'drain', 'vandal', 'undo'] as const;
 export type BotName = (typeof BOT_NAMES)[number];
 
 export function makeBot(name: string, opts: { ignoreUnlocks?: boolean } = {}): Bot {
@@ -439,6 +492,8 @@ export function makeBot(name: string, opts: { ignoreUnlocks?: boolean } = {}): B
       return new DrainBot();
     case 'vandal':
       return new VandalBot();
+    case 'undo':
+      return new UndoBot();
     default:
       throw new Error(`unknown bot ${name} (known: ${BOT_NAMES.join(', ')})`);
   }

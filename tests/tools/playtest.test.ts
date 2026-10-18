@@ -16,7 +16,8 @@ describe('playtest harness', () => {
     const { sim } = newGame(SEED, SIZE);
     sim.run(600 * 6);
     const acted: string[] = [];
-    for (const name of BOT_NAMES) {
+    // (`undo` starts with the vandal's works, already placed here.)
+    for (const name of BOT_NAMES.filter((n) => n !== 'undo')) {
       const bot = makeBot(name, { ignoreUnlocks: true });
       const acts = bot.check(sim, 6);
       for (const a of acts) {
