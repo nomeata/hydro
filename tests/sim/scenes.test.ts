@@ -139,7 +139,8 @@ describe('welcome scenes', () => {
     const lift = w.terrain(wh.head) - w.surface(wh.cell);
     expect(lift).toBeGreaterThan(2.5);
     expect(lift).toBeLessThan(4);
-    const end = w.idx(L.trenchEnd - 1, L.y);
+    // Ten cells along the trench (the stream's front moves on from there).
+    const end = w.idx(hx + 10, L.y);
     expect(w.water[end]!).toBeLessThan(0.002);
     sim.run(900);
     expect(Math.abs(wh.speed)).toBeGreaterThan(0.6);
