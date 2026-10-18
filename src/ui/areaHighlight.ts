@@ -16,6 +16,7 @@ export class AreaHighlight {
   private readonly ring: SVGPolygonElement;
   private readonly glow: SVGPolygonElement;
   private raf = 0;
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     root: HTMLElement,
@@ -36,8 +37,14 @@ export class AreaHighlight {
   /** Ring the ground within r cells of (x, y) for a few seconds. */
   show(x: number, y: number, r: number): void {
     cancelAnimationFrame(this.raf);
+    if (this.timer) clearTimeout(this.timer);
     const start = performance.now();
     this.svg.style.display = '';
+    // Gone on time even when frames are slow.
+    this.timer = setTimeout(() => {
+      cancelAnimationFrame(this.raf);
+      this.svg.style.display = 'none';
+    }, SHOW_MS);
     const frame = (now: number) => {
       const t = now - start;
       if (t > SHOW_MS) {
