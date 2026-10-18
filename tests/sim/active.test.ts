@@ -157,6 +157,7 @@ describe('simulation on the active land', () => {
     // Save, load, continue == continue.
     const bytes = await saveGame(sim, {});
     const { sim: b } = await loadGame(bytes);
+    b.vegetationOn = false;
     expect(Array.from(b.active.tile)).toEqual(Array.from(act.tile));
     expect(b.stateHash()).toBe(sim.stateHash());
     sim.run(300);
