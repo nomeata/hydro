@@ -83,6 +83,8 @@ Player feedback: more direct progress hits; keep it all positive
 - ☑ Achievements per world (docs/ACHIEVEMENTS.md): checked by the sim
   against a start-of-world baseline, saved; toasts, Achievements card in
   the menu, medals on the history chart
+- ☑ Playtest harness (docs/PLAYTEST.md): hands-off and bot runs over many
+  seeds, agency, variety and pacing in numbers; first findings for tuning
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill

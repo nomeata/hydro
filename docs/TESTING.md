@@ -51,6 +51,14 @@ writes PNGs: hillshaded height, rivers, soils, groundwater, fertility. Used to
 review worldgen quality across many seeds at a glance (contact sheet). Cheap
 enough to run for 20 seeds when tuning.
 
+## 3b. Playability harness — `tools/playtest.ts`
+`npm run playtest -- --seeds 1..8 --years 10 --bot-years 4` plays new
+games headless, hands-off and with scripted player bots (irrigation, dikes,
+weir, drainage, a vandal), and summarises outcomes, their spread across
+seeds, the bots' effect and response latency, and pacing (events per real
+hour at 1×). Method and first findings: docs/PLAYTEST.md. A smoke test
+(`tests/tools/playtest.test.ts`) runs the bots on a 64² world.
+
 ## 4. Browser tests (Playwright + pre-installed Chromium) — `e2e/*.spec.ts`
 The game exposes a **test hook** when loaded with `?test=1`:
 `window.__hydro` gives access to the sim client (`runDays(n)`, `stateHash()`,
