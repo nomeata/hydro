@@ -3,7 +3,7 @@
  * rasterised from polyline tools, and the builders that realise them.
  */
 import type { Pt } from '../../shared/protocol';
-import { SOIL_PROPS, SoilType, type World } from '../world';
+import { CellFlag, LandUse, SOIL_PROPS, SoilType, type World } from '../world';
 
 /**
  * The part of the world that plan rasterisation needs. World satisfies it;
@@ -160,6 +160,65 @@ export function planLevel(world: PlanGrid, points: readonly Pt[], width: number)
   return changed;
 }
 
+/**
+ * A weir's cross-section for a crest `height` m above the ground: a level
+ * crest WEIR_CREST cells either side of the line, then sloped faces whose
+ * run follows from the height (taller weirs have broader feet), then a
+ * strip of stone apron (WEIR_APRON). The whole footprint is lined.
+ */
+export const WEIR_CREST = 1;
+export function weirBank(height: number): number {
+  return Math.max(1, Math.min(3, 0.6 + 0.4 * height));
+}
+/** Width (cells) of the stone apron beyond the faces. */
+export const WEIR_APRON = 0.6;
+
+/**
+ * Weir along the straight line a→b with its crest at `top` (absolute, m):
+ * returns cell → target height for every cell of the crest and faces, the
+ * crest's lowest ground and the lined cells. `ground(i)` is the ground before
+ * the weir (an edited weir passes the ground it was built on).
+ */
+export function weirShape(
+  world: PlanGrid,
+  a: Pt,
+  b: Pt,
+  top: number,
+  ground: (i: number) => number = (i) => world.terrain(i),
+): { targets: Map<number, number>; lowest: number; lined: number[] } {
+  const line: Pt[] = [a, b];
+  let lowest = Infinity;
+  for (const i of rasterisePath(world, line, WEIR_CREST).keys()) lowest = Math.min(lowest, ground(i));
+  const targets = new Map<number, number>();
+  if (!Number.isFinite(lowest)) return { targets, lowest, lined: [] };
+  const bank = weirBank(top - lowest);
+  const reach = WEIR_CREST + bank + WEIR_APRON;
+  const lined: number[] = [];
+  for (const [i, h] of rasterisePath(world, line, reach)) {
+    lined.push(i);
+    if (h.dist > WEIR_CREST + bank) continue;
+    const g = ground(i);
+    let t = top;
+    if (h.dist > WEIR_CREST) t = top + (g - top) * ((h.dist - WEIR_CREST) / bank);
+    if (t > g + 0.01) targets.set(i, t);
+  }
+  return { targets, lowest, lined };
+}
+
+/** Preview of a new weir (the UI): raise the plan to the weir's shape, as planDike does. Returns the lined cells. */
+export function planWeirPreview(world: PlanGrid, a: Pt, b: Pt, top: number): number[] {
+  const { targets, lined } = weirShape(world, a, b, top);
+  for (const [i, t] of targets) if (t > current(world, i) + 0.01) world.plan[i] = t;
+  return lined;
+}
+
+/** Lowest ground under a weir's crest along a→b. */
+export function weirLowest(world: PlanGrid, a: Pt, b: Pt): number {
+  let lowest = Infinity;
+  for (const i of rasterisePath(world, [a, b], WEIR_CREST).keys()) lowest = Math.min(lowest, world.terrain(i));
+  return lowest;
+}
+
 export function cancelPlans(world: PlanGrid, x: number, y: number, radius: number): number[] {
   const changed: number[] = [];
   const r2 = radius * radius;
@@ -179,15 +238,64 @@ export function cancelPlans(world: PlanGrid, x: number, y: number, radius: numbe
 }
 
 /**
+ * Earthworks take up what stood on the ground: a field, garden, pasture,
+ * path or yard there goes back to plain land (the villagers plant again
+ * elsewhere, or here once the work is done). Houses never get plans (the
+ * plan tools leave them out, see `keepsPlan`). Returns whether it changed.
+ */
+export function clearGround(world: World, i: number): boolean {
+  const lu = world.landuse[i]!;
+  if (lu === LandUse.None || lu === LandUse.Building || lu === LandUse.Bridge) return false;
+  world.landuse[i] = LandUse.None;
+  world.crop[i] = 0;
+  return true;
+}
+
+/**
+ * Ground the villagers must not farm, graze or build on: a structure's
+ * footprint (CellFlag.Structure: weirs, gates, wheels, turbines, pumps,
+ * poles), stone lining, a pending plan, or the crest and slopes of an
+ * earthen bank (fill standing more than RIDGE m above ground within two
+ * cells; a levelled terrace's flat inside stays farmable).
+ */
+export function takenGround(world: World, i: number): boolean {
+  if ((world.flags[i]! & (CellFlag.Structure | CellFlag.Lined)) !== 0 || !Number.isNaN(world.plan[i]!)) return true;
+  if ((world.flags[i]! & CellFlag.Fill) === 0) return false;
+  const W = world.width;
+  const x = i % W;
+  const y = (i / W) | 0;
+  const z = world.terrain(i) - RIDGE;
+  // Within two cells of the bank's edge (a dike's crest is a few cells wide).
+  for (let k = 1; k <= 2; k++) {
+    if (x - k >= 0 && world.terrain(i - k) < z) return true;
+    if (x + k < W && world.terrain(i + k) < z) return true;
+    if (y - k >= 0 && world.terrain(i - k * W) < z) return true;
+    if (y + k < world.height && world.terrain(i + k * W) < z) return true;
+  }
+  return false;
+}
+/** Height (m) above a neighbour that makes a fill cell part of a bank's crest or slope. */
+const RIDGE = 0.5;
+
+/** Whether the plan tools may plan cell i: not under a house (or a mill, well, store) or a footbridge. */
+export function keepsPlan(landuse: number): boolean {
+  return landuse !== LandUse.Building && landuse !== LandUse.Bridge;
+}
+
+/**
  * Move a cell's terrain by `amount` metres (negative = dig). Digging removes
- * soil, then bedrock; filling adds compacted clay-ish fill. Groundwater above
- * the new capacity is squeezed out to the surface. Returns the actual change.
+ * soil, then bedrock; filling adds compacted clay-ish fill (an earthen bank:
+ * CellFlag.Fill). Groundwater above the new capacity is squeezed out to the
+ * surface. What grew or stood on the ground is cleared (`clearGround`).
+ * Returns the actual change.
  */
 export function applyEarthwork(world: World, i: number, amount: number): number {
   if (amount === 0) return 0;
+  clearGround(world, i);
   if (amount > 0) {
     world.soil[i]! += amount;
     if (world.soilType[i] === SoilType.Rock && world.soil[i]! >= 0.3) world.soilType[i] = SoilType.Clay;
+    world.flags[i]! |= CellFlag.Fill;
     return amount;
   }
   let dig = -amount;
@@ -196,7 +304,10 @@ export function applyEarthwork(world: World, i: number, amount: number): number 
   world.soil[i] = s - fromSoil;
   dig -= fromSoil;
   if (dig > 0) world.bedrock[i]! -= dig;
-  if (world.soil[i]! < 0.05) world.soilType[i] = SoilType.Rock;
+  if (world.soil[i]! < 0.05) {
+    world.soilType[i] = SoilType.Rock;
+    world.flags[i]! &= ~CellFlag.Fill;
+  }
   // Squeeze out groundwater that no longer fits.
   const cap = world.soil[i]! * SOIL_PROPS[world.soilType[i]!]!.porosity;
   if (world.ground[i]! > cap) {

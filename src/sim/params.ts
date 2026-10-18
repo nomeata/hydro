@@ -107,6 +107,18 @@ export const PARAMS = {
   looseDays: 48,
   /** Vegetation holds the soil: erosion pickup × (1 − vegetationHold · vegetation). */
   vegetationHold: 0.6,
+  /**
+   * Overtopping (hydro/erosion.ts overtopStep): water pouring off the edge of
+   * an unlined earthen bank (CellFlag.Fill: dikes, levelled fill) scours it,
+   * lowering it by overtopK × unit discharge (m²/s) × drop (m, at most
+   * overtopMaxDrop) per hydraulic second (×MORFAC × erodibility). A dike
+   * overtopped by 20 cm loses some 0.3 m a day where the water pours over,
+   * which focuses the flow: it notches and breaches. Weirs are lined.
+   */
+  overtopK: 2.5e-4,
+  /** Drops smaller than this (m) do not count as pouring over an edge. */
+  overtopMinDrop: 0.15,
+  overtopMaxDrop: 2,
   /** Vegetation opens the soil: infiltration × (1 + vegetationInfiltration · vegetation). */
   vegetationInfiltration: 0.4,
   /** Trodden desire paths seal the soil a little: infiltration × this. */
