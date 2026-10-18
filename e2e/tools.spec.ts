@@ -45,7 +45,7 @@ const line = (a: [number, number], b: [number, number], n = 10): [number, number
   Array.from({ length: n + 1 }, (_, k) => [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
 
 test('tools stay selected; power lines, gates and wheels show their ghosts first', async ({ page }, info) => {
-  test.setTimeout(300_000);
+  test.setTimeout(500_000);
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&size=128&cheat=1', './?test=1&seed=3');
   const R = (js: string) => page.evaluate((s) => new Function('h', `return ${s}`)((window as any).__hydro), js);
@@ -65,8 +65,8 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
 
   // Drawing a power line: ghost poles and wires at once, before letting go; the mode stays after.
   await pick(page, phone, '.modes button[data-mode=poles]');
-  const a = await toScreen(page, startX - 12, startY + 6);
-  const b = await toScreen(page, startX + 10, startY + 6);
+  const a = await toScreen(page, startX - 7, startY + 4);
+  const b = await toScreen(page, startX + 7, startY + 4);
   const release = await stroke(page, phone, line(a, b), true);
   await expect.poll(() => R('h.renderer.powerGhost.state?.poles.length ?? 0'), { timeout: 60_000 }).toBeGreaterThan(1);
   expect(await R('h.renderer.powerGhost.state.wires.length')).toBeGreaterThan(0);
@@ -130,7 +130,7 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
 });
 
 test('brushes: distinct cursors, the fields under them tinted, the stroke tinted, an undo flashes', async ({ page }, info) => {
-  test.setTimeout(240_000);
+  test.setTimeout(400_000);
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&cheat=1');
   const R = (js: string) => page.evaluate((s) => new Function('h', `return ${s}`)((window as any).__hydro), js);

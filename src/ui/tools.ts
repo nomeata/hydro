@@ -651,9 +651,13 @@ export class ToolPalette {
       case 'weir':
         if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) cmd = { type: 'planWeir', points: ends, height: amount };
         break;
-      case 'gate':
-        cmd = { type: 'placeGate', points: ends, width, height: amount };
+      case 'gate': {
+        // A tap goes where its ghost stood (snapped to the crest).
+        const tap = Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) < 1.5;
+        const site = tap ? this.gatePreview(ends[0]!) : null;
+        cmd = { type: 'placeGate', points: site ? [[site.cx, site.cy]] : ends, width, height: amount };
         break;
+      }
       case 'wheel': {
         // Letting go on a bad site places nothing: the red ghost stays a moment, and the hint says why.
         const site = this.wheelPreview(ends);
@@ -791,12 +795,22 @@ export class ToolPalette {
     });
   }
 
-  /** Where a gate tapped at `p` would go (the sim's rule, on the mirror's ground and plans). */
+  /**
+   * Where a gate tapped at `p` would go (the sim's rule, on the mirror's
+   * ground and plans), snapped to the crest: the highest cell right around
+   * the tap where a gate fits (the tap then places it there).
+   */
   private gatePreview(p: Pt): GateSite | null {
     const m = this.host.mirror;
-    const site = gateTapSite({ width: m.width, height: m.height, current: (i) => (Number.isNaN(m.plan[i]!) ? m.terrain(i) : m.plan[i]!) }, p, this.width);
-    if (!site?.ok || !m.isRevealed(site.cx, site.cy)) return null;
-    return site;
+    const g = { width: m.width, height: m.height, current: (i: number) => (Number.isNaN(m.plan[i]!) ? m.terrain(i) : m.plan[i]!) };
+    let best: GateSite | null = null;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const site = gateTapSite(g, [Math.round(p[0]) + dx, Math.round(p[1]) + dy], this.width);
+        if (!site?.ok || !m.isRevealed(site.cx, site.cy)) continue;
+        if (!best || site.top > best.top + 0.01 || (Math.abs(site.top - best.top) <= 0.01 && dx === 0 && dy === 0)) best = site;
+      }
+    return best;
   }
 
   private showGateGhost(site: GateSite | null): void {

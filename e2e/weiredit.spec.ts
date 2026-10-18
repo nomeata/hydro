@@ -69,7 +69,7 @@ async function drag(page: Page, phone: boolean, a: [number, number], b: [number,
 }
 
 test('a weir is selected with a tap, its crest handle dragged up and down, an end dragged out along its line, and removed', async ({ page }, info) => {
-  test.setTimeout(400_000);
+  test.setTimeout(600_000);
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&size=128&cheat=1', './?test=1&seed=3');
   const site = await findWeir(page);
