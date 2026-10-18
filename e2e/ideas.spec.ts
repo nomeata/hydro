@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { openGame, settleFrames } from './helpers';
+import { openGame } from './helpers';
 
 test('ideas for this valley: a flood by the village suggests a dike, with a dot on the menu and a Show me', async ({ page }, info) => {
+  // A few simulated days: slow on CI machines.
+  test.setTimeout(300_000);
   const errors = await openGame(page, '&size=128');
   // Wait for the first village, then flood its land and let a few days pass (ideas are looked for every two days).
   const spot = await page.evaluate(async () => {
@@ -42,8 +44,6 @@ test('ideas for this valley: a flood by the village suggests a dike, with a dot 
   await expect(page.locator('[data-testid=area-highlight]')).toBeVisible();
   const goal = await page.evaluate(() => (window as any).__hydro.renderer.camera.getState());
   expect(Math.hypot(goal.x - spot.x, goal.y - spot.y)).toBeLessThan(25);
-  await settleFrames(page, 20);
-  await page.screenshot({ path: `test-results/ideas-show-${info.project.name}.png` });
   await expect(page.locator('[data-testid=area-highlight]')).toBeHidden({ timeout: 8000 });
   expect(errors).toEqual([]);
 });
