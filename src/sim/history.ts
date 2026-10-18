@@ -32,11 +32,13 @@ export interface DayReport {
   /** Cumulative flood counters. */
   floodCells: number;
   ruined: number;
+  /** The power grid, once there is one: mean power produced over the day (kW), houses on the grid. */
+  power?: { kw: number; lit: number };
 }
 
 /** Saved form: columns, rounded for compactness. */
 export interface HistoryState {
-  /** Columns d, n, p, w, r, t, f, h, v of the samples. */
+  /** Columns d, n, p, w, r, t, f, h, v of the samples, then e and l (null where absent; missing in older saves). */
   cols: number[][];
   milestones: HistoryMilestone[];
   /** Cumulative totals seen at the previous day boundary. */
@@ -44,6 +46,8 @@ export interface HistoryState {
 }
 
 const KEYS = ['d', 'n', 'p', 'w', 'r', 't', 'f', 'h', 'v'] as const;
+/** Optional columns (M6 power): absent in a sample before the grid existed. */
+const OPT_KEYS = ['e', 'l'] as const;
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
@@ -57,7 +61,13 @@ export function mergeSamples(ss: readonly HistorySample[]): HistorySample {
   let t = 0;
   let f = 0;
   let h = 0;
+  let e = 0;
+  let en = 0;
   for (const s of ss) {
+    if (s.e !== undefined) {
+      e += s.e * s.n;
+      en += s.n;
+    }
     n += s.n;
     w += s.w * s.n;
     r += s.r * s.n;
@@ -65,7 +75,11 @@ export function mergeSamples(ss: readonly HistorySample[]): HistorySample {
     f += s.f;
     h += s.h;
   }
-  return { d: first.d, n, p: last.p, w: round1(w / n), r: Math.round((r / n) * 100) / 100, t: round1(t / n), f, h, v: last.v };
+  const out: HistorySample = { d: first.d, n, p: last.p, w: round1(w / n), r: Math.round((r / n) * 100) / 100, t: round1(t / n), f, h, v: last.v };
+  // Power: the mean over the days the grid existed; houses lit at the end.
+  if (en > 0) out.e = round1(e / n);
+  if (last.l !== undefined) out.l = last.l;
+  return out;
 }
 
 export class History {
@@ -97,6 +111,10 @@ export class History {
       h: first ? 0 : Math.max(0, rep.ruined - last.ruined),
       v: rep.villages.length,
     };
+    if (rep.power) {
+      s.e = round1(rep.power.kw);
+      s.l = rep.power.lit;
+    }
     this.last = { precip: rep.precipTotal, floodCells: rep.floodCells, ruined: rep.ruined };
     this.samples.push(s);
     for (const m of unlockMilestones()) {
@@ -142,7 +160,7 @@ export class History {
 
   getState(): HistoryState {
     return {
-      cols: KEYS.map((k) => this.samples.map((s) => s[k])),
+      cols: [...KEYS.map((k) => this.samples.map((s) => s[k])), ...(this.samples.some((s) => s.e !== undefined) ? OPT_KEYS.map((k) => this.samples.map((s) => s[k] ?? (null as unknown as number))) : [])],
       milestones: this.milestones.map((m) => ({ ...m })),
       last: { ...this.last },
     };
@@ -154,7 +172,12 @@ export class History {
     for (let i = 0; i < n; i++) {
       const s = {} as Record<(typeof KEYS)[number], number>;
       KEYS.forEach((k, c) => (s[k] = st.cols[c]?.[i] ?? 0));
-      this.samples.push(s as HistorySample);
+      const hs = s as HistorySample;
+      OPT_KEYS.forEach((k, c) => {
+        const v = st.cols[KEYS.length + c]?.[i];
+        if (v !== undefined && v !== null) hs[k] = v;
+      });
+      this.samples.push(hs);
     }
     this.milestones = st.milestones.map((m) => ({ ...m }));
     // JSON turns NaN into null.

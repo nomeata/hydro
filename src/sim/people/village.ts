@@ -761,6 +761,19 @@ export class PeopleSystem {
   // ---------------------------------------------------------------------------
   // Wells and mills (wells.ts, mills.ts; docs/GAMEPLAY.md §1.1–1.2)
 
+  /** Finished houses (the power grid lights them; power/grid.ts). */
+  houses(): { id: number; x: number; y: number; settlement: number }[] {
+    const out: { id: number; x: number; y: number; settlement: number }[] = [];
+    for (const b of this.buildings) if (b.kind === 'house' && b.progress >= 1) out.push({ id: b.id, x: b.x, y: b.y, settlement: b.settlement });
+    return out;
+  }
+
+  /** The power grid's daily report: share of settlement `id`'s houses lit (wellbeing, settlement.ts). */
+  setLight(id: number, share: number): void {
+    const s = this.settlements.find((o) => o.state.id === id);
+    if (s) s.state.light = share;
+  }
+
   /** The village's mill (built or being built), if any. */
   millOf(id: number): Building | null {
     return this.buildings.find((b) => b.settlement === id && b.kind === 'mill') ?? null;

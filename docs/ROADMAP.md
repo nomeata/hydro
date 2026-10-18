@@ -132,9 +132,16 @@ See docs/GAMEPLAY.md §7 (prioritised list).
 - Shelved by the player ("keep it all positive"): irrigation → salinity,
   sewage → pollution downstream
 
-## M6 — Power ☐
-- Dams + turbines (head × flow), power poles with supply radius, lit houses,
-  electric pumps, demand curve by day/season, pumped storage
+## M6 — Power ◐
+See GAMEPLAY.md §1.5 "as built"; code in `sim/power/`, `render/power/`.
+- ☑ Turbine tool (unlock 100) tapped onto a weir/dam crest: P = ηρgQH from
+  the real flow through its penstock (water moved across the wall,
+  conserved), run of the river vs storage by the pool's spill level;
+  powerhouse, penstock, tailrace foam; lit cottages near it (window
+  glow, door lamp, dimming/flicker when short); +wellbeing; card scene;
+  Bright Windows; stats and history column
+- ☐ Power poles (150): networks, sagging wires
+- ☐ Electric pump (250), pumped storage; demand curve by day/season ☑
 - Power-dependent professions and higher population caps
 
 ## M7 — Endless world ◐

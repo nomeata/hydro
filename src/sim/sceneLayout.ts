@@ -63,6 +63,20 @@ export const SCENE_LAYOUT = {
     trenchEnd: 85,
     village: { x: 85, y: 75 },
   },
+  /**
+   * The turbine card: a turbine tapped onto the weir card's weir, and a
+   * hamlet (store at `village`, cottages at `houses`) on the bank beside it.
+   */
+  turbine: {
+    turbine: [28, 42] as Pt,
+    village: { x: 34, y: 38 },
+    houses: [
+      [31, 35],
+      [33, 36],
+      [35, 40],
+      [34, 43],
+    ] as Pt[],
+  },
   /** The rain front of the 'water' scene: start, velocity (cells per step), size, lifetime (steps). */
   front: { x: 14, y: 116, vx: 0.11, vy: -0.11, rx: 20, ry: 22, life: 760 },
 };
