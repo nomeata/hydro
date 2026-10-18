@@ -277,7 +277,9 @@ export class IntroScenes {
     const rest: [number, number] = [tool[0] + cr.width * 0.18, tool[1] - cr.height * 0.25];
     let p: [number, number];
     let press = false;
-    const dt = this.lastT ? Math.min(0.25, Math.max(0, t - this.lastT)) : 0;
+    // The brush is held for the part of the draw window since the last frame:
+    // slow frames (software GL, a weak phone) still dig the whole channel.
+    const held = Math.max(0, Math.min(t, T_RELEASE) - Math.max(this.lastT, T_DRAW));
     this.lastT = t;
     if (t < T_TAP - 0.5) {
       p = rest;
@@ -306,7 +308,7 @@ export class IntroScenes {
         // From where the brush was last frame to here (slow frames: no gaps).
         const from = this.lastAt ?? at;
         const n = Math.max(1, Math.ceil(Math.hypot(at[0] - from[0], at[1] - from[1]) / (DIG.radius * 0.4)));
-        for (let k = 1; k <= n; k++) sc.sample(from[0] + ((at[0] - from[0]) * k) / n, from[1] + ((at[1] - from[1]) * k) / n, (dt * DIG.boost) / n);
+        for (let k = 1; k <= n; k++) sc.sample(from[0] + ((at[0] - from[0]) * k) / n, from[1] + ((at[1] - from[1]) * k) / n, (held * DIG.boost) / n);
         this.lastAt = at;
         sc.flush();
       }
@@ -314,6 +316,11 @@ export class IntroScenes {
     } else {
       if (this.drew) {
         this.drew = false;
+        // The rest of the hold, up to the release, where the brush last was.
+        if (this.sculptor && this.lastAt && held > 0) {
+          this.sculptor.sample(this.lastAt[0], this.lastAt[1], held * DIG.boost);
+          this.sculptor.flush();
+        }
         this.renderer?.brushCursor.set(null);
         // The brush stays in the hand; let the water come quickly.
         this.client.setSpeed(4);
