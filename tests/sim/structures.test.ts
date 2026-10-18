@@ -153,6 +153,24 @@ describe('weir', () => {
     expect(surf(w, 24, 16)).toBeGreaterThan(weir.top - 0.1);
     expect(surf(w, 24, 16)).toBeLessThan(weir.top + 0.1);
   }, 60_000);
+
+  it('closes across a sandy river in flood (the last gap is not washed away)', async () => {
+    const w = valley(64, true);
+    // Spring flood: all the river through the closing gap.
+    for (let i = 0; i < w.size; i++) if (w.inflow[i]! > 0) w.inflow[i] = 4;
+    const sim = new Simulation(w, 3);
+    // Faster erosion: the water scoured the unfinished wall away as fast as the crew built it.
+    sim.geo.morfac *= 10;
+    await runDays(sim, 1);
+    const c = 32 + 6 * Math.sin(30 * 0.15);
+    sim.command({ type: 'planWeir', points: [[30, c - 7], [30, c + 7]], height: 1.5 });
+    const weir = sim.structures.weirs[0]!;
+    await build(sim, 4);
+    let low = Infinity;
+    for (let y = Math.round(c - 2); y <= Math.round(c + 2); y++) low = Math.min(low, w.terrain(w.idx(30, y)));
+    expect(low).toBeGreaterThan(weir.top - 0.05);
+    expect(weir.cells.every((i) => (w.flags[i]! & CellFlag.Lined) !== 0)).toBe(true);
+  }, 60_000);
 });
 
 describe('sluice gate', () => {
