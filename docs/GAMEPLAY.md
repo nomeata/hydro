@@ -167,7 +167,7 @@ richer.
   the fast hydraulic clock; a hydraulic day is only 300 s), so the
   reference case lifts ≈ 0.13 m³/s ≈ 38 m³ per game day: a thin stream
   that wets a trench and its fields; the race below a 1.5 m weir lifts
-  several times that. The trough stops while 0.5 m of water stands at its
+  more than twice that. The trough stops while 0.5 m of water stands at its
   outlet. Ledger: `lifted`. Achievement **Uphill** (100 m³ lifted).
   Site survey (`tools/wheel-sites.ts`, seeds 1–8 at 256², after spin-up):
   revealed wet cells at the banks are mostly quick enough (slow ones
