@@ -19,22 +19,23 @@ export const MILL = {
   /** Head sites within this many cells of the centre. */
   radius: 20,
   /** A head site: the water surface drops this much within `reach` cells… */
-  minDrop: 0.8,
+  minDrop: 0.6,
   reach: 2,
   /** The head may be this many cells from the mill's bank (a short race leads the water to the wheel). */
   race: 2,
   /** …with water this fast at the wheel… */
   minSpeed: 0.3,
-  /** …and this much flow past it (m³/s; depth × speed × a cell's width)… */
+  /** …and this much flow past it (m³/s, through the stream's cross-section, at most `section` cells either side)… */
   minFlow: 0.5,
+  section: 6,
   /** …giving at least this power (W, ρ g Q Δh). */
   minPower: 3000,
   /** A built mill grinds while power and flow are at least this share of minPower and minFlow, and stops below. */
   runShare: 0.5,
   /** The wheel turns at all above this share (a trickle does not move it). */
   turnShare: 0.2,
-  /** A mill without a head for this many days (weir gone, river moved) is given up. */
-  abandonDays: 60,
+  /** A mill without a head for this many days (a whole year: weir gone, river moved) is given up. */
+  abandonDays: 48,
   /** Milled grain books this much more food (flour keeps: less waste between field and table). */
   bonus: 1.1,
   /** Wellbeing bonus while the village's mill works (fresh bread, smoke from the ovens). */
@@ -81,8 +82,31 @@ export function headAt(w: World, c: number): Head {
     if (w.inBounds(dx, dy) && w.water[w.idx(dx, dy)]! >= 0.05) down = Math.min(down, w.surface(w.idx(dx, dy)));
   }
   const drop = Math.max(0, up - down);
-  const flow = h * speed * CELL;
+  const flow = sectionFlow(w, c, vx / speed, vy / speed);
   return { drop, speed, flow, power: RHO * GRAVITY * flow * drop };
+}
+
+/**
+ * Discharge (m³/s) through the cross-section at cell c, across the flow
+ * direction (ux, uy): the whole stream's water passes the mill (its race
+ * takes what the wheel needs), not just the one cell's.
+ */
+export function sectionFlow(w: World, c: number, ux: number, uy: number): number {
+  const W = w.width;
+  const x0 = c % W;
+  const y0 = (c / W) | 0;
+  let q = 0;
+  for (const sgn of [1, -1]) {
+    for (let k = sgn > 0 ? 0 : 1; k <= MILL.section; k++) {
+      const x = Math.round(x0 - uy * k * sgn);
+      const y = Math.round(y0 + ux * k * sgn);
+      if (!w.inBounds(x, y)) break;
+      const j = w.idx(x, y);
+      if (w.water[j]! < 0.05) break;
+      q += w.water[j]! * Math.max(0, w.velX[j]! * ux + w.velY[j]! * uy) * CELL;
+    }
+  }
+  return q;
 }
 
 /** Whether the head at a cell makes a mill site (the thresholds of MILL). */
