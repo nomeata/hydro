@@ -511,6 +511,25 @@ near the start) as a 25 % variant: two regimes, one of them flashier.
 3. **Terrace start** (P2), fast flood-memory forgetting (P3), lining only
    by houses (P5), founding judged at the end of summer + minScore 0.6
    (P6). Retune with the harness.
+
+   *As built (items 1 and 3, October 2026).* `sim/climate/climate.ts`;
+   freshet ×2.0 (×1.0 barely wetted the floodplain: carved channels hold
+   a 2.5× flow), AR(1) `a' = 0.6a + 0.24ε` (sd ≈ 0.3). Measured with a
+   hands-off probe (128², 3 years, seeds 1/3/5/7/11), P1 + P3 alone barely
+   changed growth (seed 3: 49/115/226 people at the ends of years 1–3, vs
+   36/83/167 before): the land stays moist (own saturation hardly moves
+   over a summer), yields are high and growth is limited by arrivals, not
+   food. So the economy was retuned too (PEOPLE §3.1): own soil counts
+   0.6 against capillary water, crops need 0.4, land is claimed only where
+   crops grow at least half as well, yield 34 → 8 per field, 14 fields per
+   farmer, growth pauses below food security 1, new villages from 40 people
+   (crowded 30). Result at the end of year 3, unaided: 41, 23, 37, 15, 79
+   (three villages) for seeds 1, 3, 5, 7, 11 (before: 206, 167, 181, 27,
+   185). A crude scripted intake canal (straight trench from the nearest
+   higher bank) gave 30, 70, 42, 9, 38: a clear gain on seed 3, noise or
+   damage elsewhere; the agency harness (item 2) has to judge this
+   properly. Spring brings a hungry month on several seeds (food security
+   dips before the first harvest).
 4. **Unlocks**: remove the Lining tool; weir 15, gate 30, wheel 50
    (`shared/unlocks.ts`, `ui/tools.ts`, hotkeys, e2e).
 5. **Villager-operated gates** (§2), achievements Gatekeeper/Safety Valve.
