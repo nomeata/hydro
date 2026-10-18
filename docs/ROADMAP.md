@@ -101,7 +101,8 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   relief by itself; a villager walks over and turns the wheel; no tap to
   toggle; achievements Gatekeeper (villagers) and Safety Valve
 - ☑ Tool cards at unlock (weir, gate): a live staged scene and two lines,
-  shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`)
+  shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`);
+  the water wheel's card too
 - "Ideas for this valley" in the Achievements card
 
 ## M4 — Structures ◐
@@ -113,7 +114,10 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
 - ☑ Villagers line banks by their homes and the player's canals near the
   village on their own; quays by the houses; a fishing jetty per village
-- Wells, pumps (manual/animal), water wheels and mills
+- ☑ Water wheel (noria) tool at 50 villagers (GAMEPLAY §1.3,
+  `sim/structures/wheel.ts`): lift from the current, trough to the bank,
+  Uphill achievement, tool card scene
+- Wells, pumps (manual/animal) and mills
 - NPCs build their own small works (irrigation ditches, little dams, paths)
 
 ## M5 — Human impact ☐

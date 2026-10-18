@@ -107,7 +107,7 @@ export class Simulation {
   readonly climate: Climate;
   readonly ledger: Ledger = newLedger();
   readonly crew = new SpiritCrew();
-  /** Lining, weirs and sluice gates. */
+  /** Lining, weirs, sluice gates and water wheels. */
   readonly structures: Structures;
   /** Who opens and closes the gates (villagers, or the gates themselves as flood relief). */
   readonly gatekeeper: Gatekeeper;
@@ -342,6 +342,8 @@ export class Simulation {
     this.ledger.outflow += out;
     this.ledger.inflow += edgeIn;
     this.outflowToday += out;
+    // Water wheels lift river water onto the bank (conserved: an internal transfer).
+    if (this.structures.wheels.length) this.ledger.lifted = (this.ledger.lifted ?? 0) + this.structures.stepWheels();
     this.sedLedger.outflow += sedOut;
     this.sedLedger.inflow += sedIn;
 
@@ -474,6 +476,9 @@ export class Simulation {
         }
         break;
       }
+      case 'placeWheel':
+        if (this.structures.placeWheel(cmd.points)) this.lookDirty = true;
+        break;
       case 'toggleGate':
         this.structures.toggleGate(cmd.id, cmd.open);
         break;

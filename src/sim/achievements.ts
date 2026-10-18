@@ -295,6 +295,7 @@ export class Achievements {
       }
       this.strokes = left;
     }
+    if (!this.has.has('uphill') && h.structures.wheels?.some((wh) => wh.lifted >= ACH.liftedM3)) this.earn('uphill', day);
     const p = h.people;
     if (p) {
       const n = p.settlements.length;

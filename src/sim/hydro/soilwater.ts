@@ -22,10 +22,12 @@ export interface Ledger {
   seepage: number;
   /** Net water added by earthworks (water displaced when raising ground, etc). */
   earthworks: number;
+  /** Water moved uphill by water wheels (an internal transfer: river cell → head cell; absent in older saves). */
+  lifted?: number;
 }
 
 export function newLedger(): Ledger {
-  return { rain: 0, snowfall: 0, inflow: 0, outflow: 0, evaporation: 0, seepage: 0, earthworks: 0 };
+  return { rain: 0, snowfall: 0, inflow: 0, outflow: 0, evaporation: 0, seepage: 0, earthworks: 0, lifted: 0 };
 }
 
 export interface SoilWaterInput {

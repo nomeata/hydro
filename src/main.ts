@@ -93,6 +93,7 @@ async function main(): Promise<void> {
     pick: (x, y) => renderer.pick(x, y),
     setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
     setPreviewLining: (cells) => renderer.setPreviewLining(cells),
+    depth: (i) => renderer.heights.depth[i] ?? 0,
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),
     command: (cmd) => client.command(cmd),
   });
