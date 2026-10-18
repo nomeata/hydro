@@ -24,6 +24,7 @@
  * so it saves and loads with the `vegetation` field alone.
  */
 import { hash2 } from '../shared/rng';
+import { rowsOf, type ActiveSet } from './active';
 import { CELL } from './constants';
 import { PARAMS } from './params';
 import { CellFlag, LandUse, SOIL_PROPS, type World } from './world';
@@ -110,15 +111,17 @@ export class Vegetation {
    * One game day. `seaLevelTemp` is the day's mean temperature at sea
    * level (°C); `day` the game day (for the wind-gap hash).
    */
-  daily(seaLevelTemp: number, day: number): void {
+  daily(seaLevelTemp: number, day: number, active?: ActiveSet | null): void {
     const w = this.world;
     const W = w.width;
     const H = w.height;
     const { vegetation: veg, water, snow, landuse, flags, bedrock, soil, soilType } = w;
     const gapP = VEG.gapsPerYear / 48;
     const gapSeed = (this.seed ^ Math.imul(day + 1, 0x2545f491)) | 0;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
+    const rows = rowsOf(active, W, H);
+    for (let r = 0; r < rows.length; r += 3) {
+      const y = rows[r]!;
+      for (let x = rows[r + 1]!; x < rows[r + 2]!; x++) {
         const i = y * W + x;
         const lu = landuse[i]!;
         if (lu === LandUse.Field || lu === LandUse.Garden || lu === LandUse.Bridge) continue;

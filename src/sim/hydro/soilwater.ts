@@ -6,6 +6,7 @@
  * Runs every few hydro steps with `steps` as the multiplier. Lateral
  * groundwater flow comes in M1c.
  */
+import type { ActiveSet } from '../active';
 import { CELL_AREA, DT, STEPS_PER_DAY, TILE } from '../constants';
 import { PARAMS } from '../params';
 import { LandUse, SOIL_PROPS, type World } from '../world';
@@ -41,6 +42,8 @@ export interface SoilWaterInput {
   steps: number;
   /** Multiplier on every prescribed inflow (river seasons and wet/dry years; default 1). */
   inflowScale?: number;
+  /** Only these tiles are updated (rain on frozen land is not simulated). */
+  active?: ActiveSet | null;
 }
 
 export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger): void {
@@ -60,8 +63,10 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
   let seep = 0;
   const deepK = PARAMS.deepDrainPerDay * dayFrac;
 
+  const act = inp.active && !inp.active.all ? inp.active : null;
   for (let ty = 0; ty * TILE < H; ty++) {
     for (let tx = 0; tx * TILE < W; tx++) {
+      if (act && !act.tile[ty * act.tw + tx]) continue;
       const t = ty * tilesWide + tx;
       const precip = tileRain[t]! * steps;
       // Temperature for the tile.
