@@ -103,6 +103,12 @@ export const enum CellFlag {
   Structure = 4,
   /** Dug by a player's trench plan (villagers line such canals near home). */
   Canal = 8,
+  /**
+   * Earth heaped by a plan (dike, level, weir body): an earthen bank. Water
+   * pouring over its edge scours it (hydro/erosion.ts overtopStep) unless it
+   * is lined, so an overtopped dike notches and breaches; a weir is lined.
+   */
+  Fill = 16,
 }
 
 export class World {

@@ -153,6 +153,30 @@ function waterGeometry(): THREE.BufferGeometry {
   return paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0x7cc8ee, 0.25);
 }
 
+/** Unit coping block: pale, a darker bevel line at the bottom. */
+function copingGeometry(): THREE.BufferGeometry {
+  return paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0xd8d0c0, 0.25);
+}
+
+/** Unit block of falling water: pale blue, whiter at the top where it breaks over the edge. */
+function sheetGeometry(): THREE.BufferGeometry {
+  const g = paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0xe8f6ff, 0);
+  const col = g.getAttribute('color');
+  const p = g.getAttribute('position');
+  const lo = srgb(0x8fd0f0);
+  const hi = srgb(0xf4fbff);
+  for (let i = 0; i < p.count; i++) {
+    const t = p.getY(i);
+    col.setXYZ(i, lo.r + (hi.r - lo.r) * t, lo.g + (hi.g - lo.g) * t, lo.b + (hi.b - lo.b) * t);
+  }
+  return g;
+}
+
+/** Unit foam patch: white. */
+function foamGeometry(): THREE.BufferGeometry {
+  return paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0xffffff, 0);
+}
+
 /** Small integer hash → 0..1 (stable prop choice per quay cell). */
 function hash01(i: number): number {
   let h = Math.imul(i ^ 0x5bd1e995, 0x27d4eb2d);
@@ -185,7 +209,7 @@ export class StructuresLayer {
   /** Current leaf lift 0..1 per gate id (animated). */
   private lift = new Map<number, number>();
   private readonly pieces: Record<
-    'post' | 'leaf' | 'beam' | 'wheel' | 'plank' | 'ashlar' | 'bollard' | 'lantern' | 'bench' | 'pile' | 'deck' | 'noria' | 'trough' | 'flow',
+    'post' | 'leaf' | 'beam' | 'wheel' | 'plank' | 'ashlar' | 'bollard' | 'lantern' | 'bench' | 'pile' | 'deck' | 'noria' | 'trough' | 'flow' | 'coping' | 'sheet' | 'foam',
     Piece
   >;
   /** Spin angle per water wheel id (radians), and the game speed (0 = paused; set from snapshots). */
@@ -236,7 +260,17 @@ export class StructuresLayer {
       noria: make('noria', noriaGeometry(), 8),
       trough: make('trough', troughGeometry(), 8),
       flow: make('flow', waterGeometry(), 16),
+      coping: make('coping', copingGeometry(), 128),
+      sheet: make('sheet', sheetGeometry(), 128),
+      foam: make('foam', foamGeometry(), 128),
     };
+    // Spilling water is see-through.
+    for (const k of ['sheet', 'foam'] as const) {
+      const mat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: k === 'sheet' ? 0.62 : 0.75, depthWrite: false, name: `weir-${k}` });
+      this.pieces[k].mesh.material = mat;
+      this.pieces[k].mesh.receiveShadow = false;
+      this.pieces[k].mesh.renderOrder = 2;
+    }
   }
 
   get structures(): readonly StructureInfo[] {
@@ -267,6 +301,11 @@ export class StructuresLayer {
 
   refreshHeights(): void {
     this.layout();
+  }
+
+  /** New water depths: the water sheeting over the weirs follows them. */
+  refreshWater(): void {
+    if (this.list.some((s) => s.kind === 'weir')) this.layout();
   }
 
   /** Lining per cell (snapshot): quay cells get a dressed edge and props. */
@@ -489,9 +528,17 @@ export class StructuresLayer {
     this.put(P.leaf, g.x, g.y, g.rot, 0, ySill + lift * H * OPEN_LIFT, g.width + 0.1, H + 0.15, 0.2);
   }
 
+  /**
+   * A weir: a dressed-stone crest along the overflow section, with a coping
+   * of big blocks (alternating, so it reads as masonry) and stone end posts.
+   * Its body and apron are the lined terrain (cobbles). Where water runs
+   * over the crest, a translucent sheet of water falls down its downstream
+   * face into a band of white foam at the foot.
+   */
   private layoutWeir(w: StructureInfo): void {
-    if (w.progress < 0.999 || w.x2 === undefined || w.y2 === undefined) return;
+    if (w.x2 === undefined || w.y2 === undefined) return;
     const P = this.pieces;
+    const hs = this.heights;
     const y = heightToY(w.top);
     const len = w.width;
     const c = Math.cos(w.rot);
@@ -500,7 +547,7 @@ export class StructuresLayer {
     let u0 = Infinity;
     let u1 = -Infinity;
     for (let u = 0; u <= len; u += 0.25) {
-      if (this.heights.terrainAt(w.x + c * u, w.y + sn * u) <= w.top + 0.05) {
+      if (hs.terrainAt(w.x + c * u, w.y + sn * u) <= w.top + 0.05) {
         u0 = Math.min(u0, u);
         u1 = Math.max(u1, u);
       }
@@ -508,11 +555,54 @@ export class StructuresLayer {
     if (!(u1 > u0)) return;
     u0 -= 0.3;
     u1 += 0.3;
-    // A pale dressed-stone crest (the body is the lined terrain) with a plank cap.
-    this.put(P.ashlar, w.x, w.y, w.rot, (u0 + u1) / 2, y - 0.3, u1 - u0, 0.3, 1.0);
-    this.put(P.plank, w.x, w.y, w.rot, (u0 + u1) / 2, y - 0.05, u1 - u0, 0.13, 0.4);
+    const prog = Math.min(1, Math.max(0, w.progress));
+    // The coping goes on block by block as the stone work gets done.
+    const span = u1 - u0;
+    const blocks = Math.max(1, Math.round(span / 0.7));
+    const bl = span / blocks;
+    const laid = prog >= 0.999 ? blocks : Math.floor(blocks * prog);
+    for (let k = 0; k < laid; k++) {
+      const u = u0 + bl * (k + 0.5);
+      const g = Math.min(y, heightToY(hs.terrainAt(w.x + c * u, w.y + sn * u)));
+      this.put(P.ashlar, w.x, w.y, w.rot, u, g - 0.25, bl * 0.98, y - g + 0.25 - 0.08, 1.15);
+      this.put(P.coping, w.x, w.y, w.rot, u, y - 0.09, bl * 0.94, 0.13, k % 2 ? 0.95 : 1.05);
+    }
+    if (prog < 0.999) return;
     // Little stone posts at either end of the crest.
-    for (const u of [u0, u1]) this.put(P.post, w.x, w.y, w.rot, u, y - 0.25, 0.45, 0.55, 0.55);
+    for (const u of [u0, u1]) this.put(P.post, w.x, w.y, w.rot, u, y - 0.25, 0.5, 0.6, 0.6);
+    // Which side is downstream: the lower water surface a little off the line.
+    const um = (u0 + u1) / 2;
+    const side = (o: number) => {
+      const px = w.x + c * um - sn * o;
+      const py = w.y + sn * um + c * o;
+      return hs.terrainAt(px, py) + hs.depthAt(px, py);
+    };
+    const down = side(2.5) <= side(-2.5) ? 1 : -1;
+    // Water sheeting over: per stretch of crest with water on it, a falling sheet and foam below.
+    for (let u = u0 + 0.5; u < u1; u += 1) {
+      const cx = w.x + c * u;
+      const cy = w.y + sn * u;
+      const d = Math.max(hs.depthAt(cx, cy), hs.depthAt(cx - sn * down * 0.6, cy + c * down * 0.6));
+      if (d < 0.015) continue;
+      const fx = cx - sn * down * 1.6;
+      const fy = cy + c * down * 1.6;
+      const tail = heightToY(hs.terrainAt(fx, fy) + hs.depthAt(fx, fy));
+      const fall = y - tail;
+      const ox = -sn * down;
+      const oy = c * down;
+      const thick = Math.min(0.12, 0.03 + d * 0.4);
+      if (fall > 0.06) {
+        // The sheet: from the crest's edge down its face (leaning out), in three steps.
+        for (let k = 0; k < 3; k++) {
+          const off = 0.55 + k * 0.28;
+          const top = y + thick * 0.5 - (fall * k) / 3;
+          this.put(P.sheet, cx + ox * off - c * u, cy + oy * off - sn * u, w.rot, u, top - fall / 3 - 0.02, 1.0, fall / 3 + 0.04, 0.3 + thick);
+        }
+      }
+      // Foam where it lands, and a thin skin of moving water on the crest.
+      this.put(P.foam, cx + ox * 1.45 - c * u, cy + oy * 1.45 - sn * u, w.rot, u, tail - 0.02, 1.02, 0.05, 0.75);
+      this.put(P.sheet, w.x, w.y, w.rot, u, y + 0.04, 1.0, Math.min(0.08, d * 0.6), 0.9);
+    }
   }
 
   /** A planked deck on piles from the shore cell out over the water; piles go in first. */
