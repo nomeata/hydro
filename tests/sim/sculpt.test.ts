@@ -156,7 +156,7 @@ describe('sculpting in the sim', () => {
     const make = () => {
       const sim = new Simulation(meadow(), 4);
       sim.command(hold('dig', 10, 20, 1));
-      sim.command({ ...hold('raise', 25, 20, 1), stroke: 2 });
+      sim.command(hold('raise', 25, 20, 1, 2.5, 2));
       sim.run(50);
       return sim;
     };
