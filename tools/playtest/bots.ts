@@ -403,7 +403,8 @@ function planWeirCanal(sim: Simulation, s: Settlement, earth: number): { site: W
     const score = canal.covered.length - 1.5 * site.poolFields - canal.earth / 200;
     if (!best || score > best.score) best = { site, canal, score };
   }
-  return best;
+  // Only works that water clearly more than the pool drowns.
+  return best && best.score >= 15 ? best : null;
 }
 
 /**
