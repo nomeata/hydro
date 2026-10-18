@@ -32,8 +32,8 @@ export interface DayReport {
   /** Cumulative flood counters. */
   floodCells: number;
   ruined: number;
-  /** The power grid, once there is one: kWh produced on the day, houses on the grid. */
-  power?: { kwh: number; lit: number };
+  /** The power grid, once there is one: mean power produced over the day (kW), houses on the grid. */
+  power?: { kw: number; lit: number };
 }
 
 /** Saved form: columns, rounded for compactness. */
@@ -112,7 +112,7 @@ export class History {
       v: rep.villages.length,
     };
     if (rep.power) {
-      s.e = round1(rep.power.kwh);
+      s.e = round1(rep.power.kw);
       s.l = rep.power.lit;
     }
     this.last = { precip: rep.precipTotal, floodCells: rep.floodCells, ruined: rep.ruined };

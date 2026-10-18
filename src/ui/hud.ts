@@ -89,6 +89,11 @@ export class Hud {
         (s.stats.village
           ? `\n${(s.stats.village.count ?? 1) > 1 ? `${s.stats.village.count} villages` : 'village'} ${s.stats.village.population} ppl, ${s.stats.village.houses} houses\n` +
             `food ${s.stats.village.food.toFixed(0)}, w ${s.stats.village.wellbeing.toFixed(2)}`
+          : '') +
+        (s.stats.power
+          ? `\npower ${(s.stats.power.produced / 1000).toFixed(1)} kW (day ${s.stats.power.dayMean.toFixed(1)})\n` +
+            `houses ${s.stats.power.houses}: ${(s.stats.power.supplied / 1000).toFixed(1)}/${(s.stats.power.demand / 1000).toFixed(1)} kW` +
+            (s.stats.power.pumping > 0 ? `, pumps ${(s.stats.power.pumping / 1000).toFixed(1)} kW` : '')
           : '');
     }
   }

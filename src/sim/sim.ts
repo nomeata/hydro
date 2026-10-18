@@ -257,7 +257,7 @@ export class Simulation {
       temperature: seaLevelTemperature({ ...t, timeOfDay: 0.375 }),
       floodCells: p?.floods.cells ?? 0,
       ruined: p?.floods.ruined ?? 0,
-      power: this.power.empty ? undefined : { kwh: this.power.lastDay.produced / 3.6e6, lit: this.power.stats().houses },
+      power: this.power.empty ? undefined : { kw: this.power.lastDay.produced / (STEPS_PER_DAY * DT) / 1000, lit: this.power.stats().houses },
     });
   }
 

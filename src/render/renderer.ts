@@ -29,6 +29,7 @@ import { VillageCuesLayer } from './village/cues';
 import { MillWheelsLayer } from './village/millwheels';
 import { fieldsToRgba } from './village/fields';
 import { StructuresLayer } from './structures/structures';
+import { PowerLayer } from './power/power';
 import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
 import type { BuildingInfo } from '../shared/protocol';
@@ -85,6 +86,8 @@ export class GameRenderer {
   readonly millWheels: MillWheelsLayer;
   /** Sluice gates and weirs from the snapshot's structure list. */
   readonly structures: StructuresLayer;
+  /** Turbines, poles, pumps and lit cottages (M6). */
+  readonly power: PowerLayer;
   /** Lining per cell as last received, and cells previewed by a lining tool. */
   private liningBase: Uint8Array;
   private liningPreview: readonly number[] | null = null;
@@ -207,6 +210,7 @@ export class GameRenderer {
     this.cues = new VillageCuesLayer(this.scene, this.heights);
     this.millWheels = new MillWheelsLayer(this.scene, this.heights);
     this.structures = new StructuresLayer(this.scene, this.heights);
+    this.power = new PowerLayer(this.scene, this.heights);
     this.updateBounds();
 
     this.sky = new SkyLighting(this.scene);
@@ -260,6 +264,7 @@ export class GameRenderer {
     this.flow.setVelocity(s.vel);
     this.flow.gameSpeed = s.stats.speedRequested > 0 ? Math.max(s.stats.speedAchieved, 0.3) : 0;
     this.structures.gameSpeed = this.flow.gameSpeed;
+    this.power.gameSpeed = this.flow.gameSpeed;
     this.weather.setFronts(s.climate.fronts);
     const wu = this.water.uniforms;
     wu.uDepthA.value = this.prevDepthTex();
@@ -283,6 +288,7 @@ export class GameRenderer {
       this.cues.refreshHeights();
       this.millWheels.refreshHeights();
       this.structures.refreshHeights();
+      this.power.refreshHeights();
       this.crops.invalidate();
     }
     if (s.look) {
@@ -295,6 +301,7 @@ export class GameRenderer {
       this.tex.plan.needsUpdate = true;
     }
     if (s.structures) this.structures.setStructures(s.structures);
+    if (s.power) this.power.setInfo(s.power);
     if (s.lining) {
       this.liningBase.set(s.lining.subarray(0, n));
       this.uploadLining();
@@ -310,6 +317,7 @@ export class GameRenderer {
         this.buildings.setBuildings(vis);
         this.cues.setBuildings(vis);
         this.millWheels.setBuildings(vis);
+        this.power.setBuildings(vis);
       }
     }
     if (s.buildings) {
@@ -318,6 +326,7 @@ export class GameRenderer {
       this.buildings.setBuildings(vis);
       this.cues.setBuildings(vis);
       this.millWheels.setBuildings(vis);
+      this.power.setBuildings(vis);
     }
     const vs = s.stats.villages;
     if (vs) {
@@ -383,6 +392,7 @@ export class GameRenderer {
     if (Math.abs(season - this.season) > 1e-4) {
       this.season = season;
       this.applySeasonColours();
+      this.power?.setSeason(season);
     }
   }
 
@@ -454,6 +464,7 @@ export class GameRenderer {
     this.cues.update(dt, cs.viewHeight);
     this.millWheels.update(dt, this.flow.gameSpeed);
     this.structures.update(dt);
+    this.power.update(dt);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;
     this.gl.render(this.scene, this.camera.camera);
@@ -505,6 +516,7 @@ export class GameRenderer {
     this.cues.dispose();
     this.millWheels.dispose();
     this.structures.dispose();
+    this.power.dispose();
     this.fog.dispose();
     this.sky.dispose();
     this.geometry.dispose();

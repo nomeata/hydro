@@ -74,8 +74,8 @@ export interface PowerStats {
   pumping: number;
   /** Houses on the grid. */
   houses: number;
-  /** Energy produced on the last full game day (kWh). */
-  lastDay: number;
+  /** Mean power produced over the last full game day (kW). */
+  dayMean: number;
 }
 
 /**
@@ -447,7 +447,7 @@ export interface HistorySample {
   h: number;
   /** Number of villages (end of the period). */
   v: number;
-  /** Power produced, kWh per day (mean over the period; absent before M6 and without turbines). */
+  /** Power produced, kW (mean over the period; absent before M6 and without turbines). */
   e?: number;
   /** Houses lit at the end of the period (absent before M6). */
   l?: number;

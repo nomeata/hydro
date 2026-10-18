@@ -8,9 +8,10 @@
  *
  * Dispatch per network and step (power/power.ts has the physics):
  *  1. Every turbine measures its head and full flow. The share `f` of it
- *     whose pool stands at the crest (water that would spill anyway) runs
- *     always; the rest is storage and runs only to cover the houses'
- *     demand that the free share does not.
+ *     whose pool stands at its spill level (water that would leave anyway)
+ *     runs always; the rest is storage and runs only to cover the houses'
+ *     demand that the free share does not. A pool filled by a pump on the
+ *     network is all storage (pumped storage).
  *  2. The houses take what they need of the production (share < 1: the
  *     lights dim); a surplus runs the pumps (houses first); what is left is
  *     dumped (the turbines then simply run, as a water wheel would).
@@ -21,7 +22,7 @@
  * Deterministic (no RNG), saved as PowerState.
  */
 import type { PowerInfo, PowerStats, Pt, SimTime } from '../../shared/protocol';
-import { CELL_AREA, DT } from '../constants';
+import { CELL_AREA, DT, STEPS_PER_DAY } from '../constants';
 import type { World } from '../world';
 import {
   LINK_SPAN,
@@ -45,10 +46,11 @@ export interface Turbine {
   x: number;
   y: number;
   rot: number;
-  /** Penstock ends either side of the wall, and the wall's crest (m). */
+  /** Penstock ends either side of the wall, the wall's crest (m), and the pool's high-water mark (absent before the first step). */
   a: number;
   b: number;
   crest: number;
+  mark?: number;
   progress: number;
   /** Last step: flow (m³/s, > 0 from a to b, < 0 from b to a), head (m), power (W). */
   flow: number;
@@ -418,7 +420,14 @@ export class PowerGrid {
         const down = up === t.a ? t.b : t.a;
         const head = Math.abs(sa - sb);
         const q = water[up]! > POWER.keep + 0.01 ? turbineFlow(head) : 0;
-        const f = smooth(t.crest - POWER.storageBand, t.crest - POWER.spillBand, w.surface(up));
+        const su = w.surface(up);
+        t.mark = Math.max(su, (t.mark ?? su) - POWER.markDecay / STEPS_PER_DAY);
+        const level = Math.min(t.crest, t.mark);
+        // Pumped storage: a pump on this network fills the pool.
+        const ux = up % w.width;
+        const uy = (up / w.width) | 0;
+        const paired = net.pumps.some((p) => Math.hypot(p.ox - ux, p.oy - uy) <= POWER.pairReach && Math.abs(w.surface(w.idx(p.ox, p.oy)) - su) < 1);
+        const f = paired ? 0 : smooth(level - POWER.storageBand, level - POWER.spillBand, su);
         const p = turbinePower(q, head);
         pFree += f * p;
         pStore += (1 - f) * p;
@@ -545,7 +554,7 @@ export class PowerGrid {
       supplied: this.now.supplied,
       pumping: this.now.pumping,
       houses,
-      lastDay: this.lastDay.produced / 3.6e6,
+      dayMean: this.lastDay.produced / (STEPS_PER_DAY * DT) / 1000,
     };
   }
 

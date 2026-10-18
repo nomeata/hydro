@@ -31,13 +31,24 @@ export const POWER = {
   /** The turbine leaves this much water in its intake cell (m). */
   keep: 0.05,
   /**
-   * A turbine whose pool stands at its crest (the water would spill
-   * anyway) runs at full flow; below the crest the pool is storage and the
-   * turbine runs only to cover what the free turbines cannot. Smooth
-   * between crest − storageBand and crest − spillBand.
+   * A turbine whose pool stands at its spill level (the water would leave
+   * anyway, over the crest or around the wall) runs at full flow; below it
+   * the pool is storage and the turbine runs only to cover what the free
+   * turbines cannot. Smooth between level − storageBand and level −
+   * spillBand. The spill level is the lower of the wall's crest and the
+   * pool's high-water mark, which sinks by markDecay per game day (so a
+   * pool that settles below the crest, leaking round the wall's end, still
+   * counts as full).
    */
   storageBand: 0.4,
   spillBand: 0.05,
+  markDecay: 0.01,
+  /**
+   * A turbine whose pool a pump on its network fills (the pump's outlet
+   * within this many cells of the intake, at the pool's level) is pumped
+   * storage: it never runs free, only when the houses need it.
+   */
+  pairReach: 12,
   /** A house's demand at its evening peak (W; GAMEPLAY §1.5: ~2 kW). */
   houseDemand: 2000,
   /** Pump efficiency, rating (W) and the head below which it counts as this much (m). */
@@ -131,7 +142,7 @@ export interface TurbineSite {
 /**
  * Where a turbine tapped at `p` would go: on the crest cell (the highest
  * ground within a cell of the tap), with its penstock across the wall to
- * the first ground at least half a metre below the crest on either side.
+ * the lowest ground within TURBINE_REACH on either side (past the wall's slopes).
  */
 export function turbineSite(g: PowerGrid2D, p: readonly [number, number]): TurbineSite | null {
   const W = g.width;
@@ -165,8 +176,8 @@ export function turbineSite(g: PowerGrid2D, p: readonly [number, number]): Turbi
     return s;
   };
   const [dx, dy] = ridge(1, 0) >= ridge(0, 1) ? [1, 0] : [0, 1];
-  let crest = top;
-  for (let k = -2; k <= 2; k++) crest = Math.min(crest, Math.max(top - 1, at(x + dx * k, y + dy * k)));
+  // The turbine sits on the crest: its pool spills at about this height.
+  const crest = top;
   const end = (s: number): number => {
     let low = Infinity;
     let cell = -1;
@@ -180,7 +191,8 @@ export function turbineSite(g: PowerGrid2D, p: readonly [number, number]): Turbi
         low = t;
         cell = i;
       }
-      if (t <= top - 0.5) break;
+      // Past the wall's foot the ground rises again: stop there.
+      if (t > low + 0.3) break;
     }
     return cell;
   };

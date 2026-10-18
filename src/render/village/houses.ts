@@ -282,9 +282,19 @@ export interface HouseSpots {
   chimney: { x: number; y: number; z: number };
   /** In front of the door (tile units), with the outward direction (ox, oz). */
   door: { x: number; z: number; ox: number; oz: number };
+  /** The windows' centres on the wall face (tile units, at wall height 0..1), facing (ox, oz) (lit cottages). */
+  windows: { x: number; z: number; ox: number; oz: number }[];
   scale: number;
   vscale: number;
 }
+
+/** Outward direction (x, z) of a wall facing dir (0 = +x, 1 = −z, 2 = −x, 3 = +z). */
+const OUT: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [0, -1],
+  [-1, 0],
+  [0, 1],
+];
 
 /** Where a house design's chimney and door are (for smoke, flowers; village/cues.ts). */
 export function houseSpots(variant: number): HouseSpots {
@@ -295,17 +305,16 @@ export function houseSpots(variant: number): HouseSpots {
   const hx = (sh.nx - 1) / 2;
   const hz = (sh.nz - 1) / 2;
   // Wall pieces sit on the tile's edge facing `dir` (0 = +x, 1 = −z, 2 = −x, 3 = +z).
-  const o = [
-    [1, 0],
-    [0, -1],
-    [-1, 0],
-    [0, 1],
-  ][dir]!;
-  const tx = dir === 0 ? hx : dir === 2 ? -hx : idx - hx;
-  const tz = dir === 1 ? -hz : dir === 3 ? hz : idx - hz;
+  const slot = (i: number, d: number) => {
+    const od = OUT[d]!;
+    const sx = d === 0 ? hx : d === 2 ? -hx : i - hx;
+    const sz = d === 1 ? -hz : d === 3 ? hz : i - hz;
+    return { x: sx + od[0] * 0.5, z: sz + od[1] * 0.5, ox: od[0], oz: od[1] };
+  };
   return {
     chimney: { x: c.x, y: c.y, z: c.z },
-    door: { x: tx + o[0]! * 0.5, z: tz + o[1]! * 0.5, ox: o[0]!, oz: o[1]! },
+    door: slot(idx, dir),
+    windows: sh.windows.map(([i, d]) => slot(i, d)),
     scale: d.scale,
     vscale: d.vscale,
   };

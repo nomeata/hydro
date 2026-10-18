@@ -124,7 +124,8 @@ describe('turbine', () => {
     expect(s.ok).toBe(true);
     expect([s.x, s.y]).toEqual([30, 16]);
     expect(s.a).toBe(sim.world.idx(29, 16));
-    expect(s.b).toBe(sim.world.idx(31, 16));
+    // Downstream: the lowest bed within reach.
+    expect(s.b).toBe(sim.world.idx(34, 16));
     expect(s.head).toBeGreaterThan(1.5);
     expect(s.power).toBeGreaterThan(30000);
     // Flat river bed: no wall to fall through.
@@ -167,18 +168,23 @@ describe('turbine', () => {
     expect(spill(sim)).toBeLessThan(spill(ref));
   });
 
-  it('a storage turbine (pool below its crest) runs only when houses need it', () => {
-    // A small river behind a high dam: the pool stays below the crest.
-    const sim = flowing(0.2, bed(30) + 3);
+  it('run of the river: with little water it takes what comes; a drawn-down pool is storage, run only for the houses', () => {
+    // A small river behind a high dam.
+    const sim = flowing(0.6, bed(30) + 3);
     const w = sim.world;
-    for (let y = 0; y < w.height; y++) for (let x = 0; x < 30; x++) w.water[w.idx(x, y)] = Math.max(0, bed(30) + 2 - w.terrain(w.idx(x, y)));
     sim.command({ type: 'placeTurbine', points: [[30, 16]] });
     build(sim);
-    sim.run(100);
-    expect(Math.abs(sim.power.turbines[0]!.flow)).toBe(0);
-    sim.power.houses = () => Array.from({ length: 6 }, (_, k) => ({ id: 100 + k, x: 28 + k, y: 21, settlement: 1 }));
-    sim.run(50);
+    sim.run(6 * DAY);
+    // The pool settles where the turbine takes about what the river brings.
     const t = sim.power.turbines[0]!;
+    expect(t.flow).toBeGreaterThan(0.3);
+    expect(t.flow).toBeLessThan(1.5);
+    // Drawn down well below its high-water mark, the pool is storage.
+    for (let y = 0; y < w.height; y++) for (let x = 0; x < 30; x++) w.water[w.idx(x, y)] = Math.max(0, w.water[w.idx(x, y)]! - 0.8);
+    sim.run(5);
+    expect(Math.abs(t.flow)).toBe(0);
+    sim.power.houses = () => Array.from({ length: 6 }, (_, k) => ({ id: 100 + k, x: 28 + k, y: 21, settlement: 1 }));
+    sim.run(20);
     expect(Math.abs(t.flow)).toBeGreaterThan(0);
     // It gives just what the houses want.
     const st = sim.power.stats();
@@ -206,6 +212,8 @@ describe('power grid', () => {
     sim.run(10);
     expect(sim.power.stats().houses).toBe(1);
     expect(sim.power.info().lit).toEqual([1, 1]);
+    sim.run(60);
+    expect(sim.achievements.hasEarned('brightWindows')).toBe(true);
     // A town of houses: the turbine cannot light them all.
     houses = Array.from({ length: 80 }, (_, k) => ({ id: 10 + k, x: 27 + (k % 9), y: 27 + Math.floor(k / 9) * 0.5, settlement: 1 }));
     sim.run(10);

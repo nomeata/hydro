@@ -147,6 +147,19 @@ html, body {
 }
 .options[hidden] { display: none; }
 .options label { display: flex; flex-direction: column; gap: 2px; min-width: 110px; }
+/* The power tool's modes (turbine, power line, pump) on its options line. */
+.options .modes { display: flex; gap: 4px; }
+.options .modes[hidden] { display: none; }
+.options .modes button {
+  position: relative; width: 62px; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; font-size: 10px; font-weight: 600; line-height: 1.05;
+}
+.options .modes button svg { width: 22px; height: 22px; }
+.options .modes button[aria-pressed='true'] { background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--wood); }
+.options .modes button .lock { display: none; }
+.options .modes button.locked > svg, .options .modes button.locked > span { filter: grayscale(1); opacity: 0.4; }
+.options .modes button.locked .lock { display: block; position: absolute; right: 2px; top: 2px; width: 13px; height: 13px; }
+.options .modes button.locked .lock svg { width: 13px; height: 13px; }
 .options label[hidden] { display: none; }
 .options output { font-weight: 700; }
 .options input[type='range'] { width: 120px; accent-color: var(--accent-2); }
