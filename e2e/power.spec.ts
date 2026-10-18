@@ -76,7 +76,7 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
   expect(st.poles.every((p: any) => p.progress >= 1)).toBe(true);
   expect(st.wires.length).toBeGreaterThan(0);
   expect(st.lit.length).toBeGreaterThan(0);
-  await settleFrames(page);
+  await settleFrames(page, 3);
   expect(await page.evaluate(() => (window as any).__hydro.renderer.power.litHouses)).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });

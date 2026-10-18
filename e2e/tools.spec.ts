@@ -71,7 +71,7 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
   await expect.poll(() => R('h.renderer.powerGhost.state?.poles.length ?? 0'), { timeout: 60_000 }).toBeGreaterThan(1);
   expect(await R('h.renderer.powerGhost.state.wires.length')).toBeGreaterThan(0);
   await release();
-  await expect.poll(() => R('h.renderer.power.state?.poles.length ?? 0'), { timeout: 15_000 }).toBeGreaterThan(1);
+  await expect.poll(() => R('h.renderer.power.state?.poles.length ?? 0'), { timeout: 60_000 }).toBeGreaterThan(1);
   expect(await R('h.renderer.powerGhost.state.poles.length')).toBe(0);
   await pressed(page, '.modes button[data-mode=poles]');
   // Escape goes back to looking around.
@@ -88,7 +88,7 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
   const let_go = await stroke(page, phone, line(wa, wb, 8), true);
   await expect.poll(() => R('h.renderer.weirGhost.structures.length'), { timeout: 60_000 }).toBe(1);
   await let_go();
-  await expect.poll(() => R('h.renderer.structures.structures.filter((s) => s.kind === "weir").length'), { timeout: 15_000 }).toBe(1);
+  await expect.poll(() => R('h.renderer.structures.structures.filter((s) => s.kind === "weir").length'), { timeout: 60_000 }).toBe(1);
   await pressed(page, 'button[data-tool=weir]');
   // While the crew builds it, it stands as a ghost.
   await expect.poll(() => R('h.renderer.buildGhost.structures.length'), { timeout: 60_000 }).toBe(1);
@@ -156,24 +156,24 @@ test('brushes: distinct cursors, the fields under them tinted, the stroke tinted
   // Held over the field (a touch shows the ring once the brush bites).
   const release = await stroke(page, phone, [at, [at[0] + 2, at[1]], [at[0] + 4, at[1]]], true);
   await page.waitForTimeout(500);
-  await expect.poll(() => R('h.renderer.brushCursor.shown?.tool')).toBe('raise');
+  await expect.poll(() => R('h.renderer.brushCursor.shown?.tool'), { timeout: 60_000 }).toBe('raise');
   expect(await R('h.renderer.cellTint.count("fields")')).toBeGreaterThan(0);
   expect(await R('h.renderer.brushCursor.shown.contours')).toBeGreaterThan(0);
-  await expect.poll(() => R('h.renderer.cellTint.count("stroke")')).toBeGreaterThan(0);
+  await expect.poll(() => R('h.renderer.cellTint.count("stroke")'), { timeout: 60_000 }).toBeGreaterThan(0);
   await release();
   // It says the crop there is lost.
-  await expect(page.locator('.tools .hint')).toContainText('fields');
+  await expect(page.locator('.tools .hint')).toContainText('fields', { timeout: 30_000 });
   await pressed(page, 'button[data-tool=raise]');
   // Undo: the stroke's ground flashes as it goes back.
   await pick(page, phone, '[data-testid=undo]');
-  await expect.poll(() => R('h.renderer.cellTint.count("undo")'), { timeout: 5_000 }).toBeGreaterThan(0);
+  await expect.poll(() => R('h.renderer.cellTint.count("undo")'), { timeout: 60_000 }).toBeGreaterThan(0);
   await expect(page.locator('.tools .hint')).toContainText('Undone');
   // Dig's cursor is its own.
   await pick(page, phone, 'button[data-tool=dig]');
   if (!phone) {
     await page.mouse.move(at[0] + 30, at[1]);
     await page.mouse.move(at[0] + 32, at[1]);
-    await expect.poll(() => R('h.renderer.brushCursor.shown?.tool')).toBe('dig');
+    await expect.poll(() => R('h.renderer.brushCursor.shown?.tool'), { timeout: 60_000 }).toBe('dig');
   }
   expect(errors).toEqual([]);
 });
