@@ -200,8 +200,7 @@ export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y
             perlin(x / 14, y / 14, S ^ 0x5bd1e995) +
             (soil === SoilType.Sand || soil === SoilType.Gravel || soil === SoilType.Peat ? 0.35 : 0) +
             (soil === SoilType.Rock ? 0.5 : 0) -
-            (soil === SoilType.Silt || soil === SoilType.Loam ? 0.15 : 0) +
-            snow * 0.4;
+            (soil === SoilType.Silt || soil === SoilType.Loam ? 0.15 : 0);
           const conifer = coniferBias + (h(31) - 0.5) * 0.5 > 0.12;
           const fringe = 0.72 + 0.4 * smooth(0.5, 0.9, veg);
           out.push({

@@ -46,6 +46,18 @@ export interface SoilWaterInput {
   active?: ActiveSet | null;
 }
 
+/**
+ * Snow water equivalent (m) at which the ground is about two-thirds white.
+ * Fresh snow is roughly ten times its water depth, so a few millimetres of
+ * water already make a few centimetres of snow that hide the grass.
+ */
+export const SNOW_COVER_SWE = 0.005;
+
+/** Snow cover as the look texture packs it (0..255): saturating in the snow's water depth. */
+export function snowCoverByte(swe: number): number {
+  return swe > 0 ? Math.round(255 * (1 - Math.exp(-swe / SNOW_COVER_SWE))) : 0;
+}
+
 export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger): void {
   const { width: W, height: H, water, ground, soil, soilType, snow, inflow, vegetation, landuse } = world;
   const vegInf = PARAMS.vegetationInfiltration;
