@@ -19,6 +19,7 @@ import { ToolPalette } from './ui/tools';
 import { ToolCards } from './ui/toolCards';
 import { isUnlocked, setUnlockAll } from './shared/unlocks';
 import { AreaHighlight } from './ui/areaHighlight';
+import { Selection } from './ui/selection';
 import { heightToY } from './render/coords';
 import * as THREE from 'three';
 
@@ -106,7 +107,27 @@ async function main(): Promise<void> {
       hud.setSpeed(before);
     });
   };
+  // Selecting what the player built (ui/selection.ts): tap in Look mode.
+  const groundToClient = (x: number, y: number): [number, number] | null => {
+    const v = tmp.set(x + 0.5, heightToY(renderer.heights.terrainAt(x, y)), y + 0.5).project(renderer.camera.camera);
+    if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) return null;
+    const r = canvas.getBoundingClientRect();
+    return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
+  };
+  const selection = new Selection(uiRoot, {
+    pick: (x, y) => renderer.pick(x, y),
+    project: groundToClient,
+    structures: () => renderer.structures.structures,
+    power: () => renderer.power.state,
+    mirror,
+    setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
+    setPreviewLining: (cells) => renderer.setPreviewLining(cells),
+    command: (cmd) => client.command(cmd),
+    onFrame: (fn) => void renderer.addFrameListener(fn),
+  });
   const tools = new ToolPalette(uiRoot, {
+    tap: (x, y, only) => selection.tapAt(x, y, only),
+    deselect: () => selection.clear(),
     hasCard: (t) => ToolCards.has(t),
     cardDue: (t) => cardsDue && ToolCards.has(t) && !ToolCards.seen(t),
     showCard,
@@ -135,7 +156,9 @@ async function main(): Promise<void> {
       achievements.updateIdeas(s.ideas);
     }
     if (s.plan || s.lining) tools.planUpdated();
+    if (s.structures || s.power) selection.refresh();
   });
+  tools.insertPanel(selection.panel);
 
   const intro = new Intro(uiRoot);
   let last = performance.now();
@@ -206,7 +229,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient };
   }
   document.getElementById('loading')?.classList.add('done');
 }
