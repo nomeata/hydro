@@ -49,8 +49,8 @@ test('digit keys pick tools, Escape returns to Look', async ({ page }) => {
   await expect(page.locator('button[data-tool=trench]')).toHaveAttribute('title', 'Trench (2)');
   await page.keyboard.press('Escape');
   await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
-  // A locked tool (Gate, 7) only shows when it unlocks.
-  await page.keyboard.press('7');
+  // A locked tool (Gate, 6) only shows when it unlocks.
+  await page.keyboard.press('6');
   await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.tools .hint')).toContainText('Unlocks at');
 });
@@ -67,4 +67,24 @@ test('mouse wheel zooms and drag pans the camera', async ({ page }) => {
   await settleFrames(page, 5);
   const state1 = await page.evaluate(() => JSON.stringify((window as any).__hydro.renderer.camera.getState()));
   expect(state1).not.toEqual(state0);
+});
+
+test('tool hints say why; a tool card shows at unlock and again from the ⓘ', async ({ page }) => {
+  await openGame(page, '&size=64&cards=1');
+  await page.locator('button[data-tool=dike]').click();
+  await expect(page.locator('.tools .hint')).toContainText('flood');
+  await expect(page.locator('.tools .hint-info')).toBeHidden();
+  // Reaching 15 villagers unlocks the weir: the next pick of a tool opens its card.
+  await page.evaluate(() => (window as any).__hydro.tools.setPopulation(15));
+  await page.locator('button[data-tool=weir]').click();
+  await expect(page.locator('.tool-card')).toBeVisible();
+  await expect(page.locator('.tool-card h2')).toHaveText('Weir');
+  expect(await page.evaluate(() => (window as any).__hydro.client.getSpeed())).toBe(0);
+  await page.locator('.tool-card .next').click();
+  await expect(page.locator('.tool-card')).toBeHidden();
+  // Shown once; the ⓘ on the hint line brings it back.
+  await page.locator('button[data-tool=weir]').click();
+  await expect(page.locator('.tool-card')).toBeHidden();
+  await page.locator('.tools .hint-info').click();
+  await expect(page.locator('.tool-card')).toBeVisible();
 });

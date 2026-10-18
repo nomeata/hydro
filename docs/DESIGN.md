@@ -69,8 +69,13 @@
 - Weather: rain fronts drift across the map with the wind; orographic
   enhancement makes mountains wetter. Winter precipitation falls as snow above
   the snow line and melts in spring ⇒ spring floods.
-- Slow random climate variability (wet years, droughts) so the landscape is
-  never quite in equilibrium. River courses slowly change.
+- Rivers have seasons: high water and a snowmelt freshet in spring, low
+  water in late summer. Slow random climate variability (wet years,
+  droughts: a yearly factor 0.55–1.6 on rivers and rain fronts, about one
+  dry year in six) keeps the landscape never quite in equilibrium. Dry
+  years and floods are setbacks, never failure. The live weather keeps the
+  generated climate (dry and wet worlds, rain shadows). River courses
+  slowly change.
 
 ### 2.4 Soil & vegetation
 - Per cell: moisture (from groundwater/surface), fertility (nutrients),
@@ -115,19 +120,27 @@ cancelled.
 | Trench / canal | Lowers ground along a path to a floor that grades evenly from start to end | start |
 | Dike / wall | Raises ground along a path to a level crest | start |
 | Level | Flattens an area to a target height (basins, terraces) | start |
-| Lining | Stone lining: canal/dike does not erode or slump. Villagers also line banks by their homes and the player's canals near the village on their own; lined banks by the houses facing open water become quays (lake fronts) | 15 villagers |
-| Weir | Fixed, lined overflow crest drawn across a river: holds water to the crest, spills evenly above it | 30 villagers |
-| Sluice gate | Tap a dike or weir (or draw across a channel for a dam with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Tap it in Look mode to toggle | 50 villagers |
-| Well / pump | Lifts groundwater/river water into a canal | mid |
-| Water wheel / mill | Uses flow; mills grain (settlement benefit) | mid |
-| Dam + turbine | Generates power from head × flow | late |
-| Power line / pole | Distributes power within a radius of poles | late |
-| Pumped storage | Pump uphill when surplus, generate when deficit | late |
+| Weir | Fixed, lined overflow crest drawn across a river: holds water to the crest, spills evenly above it | 15 villagers |
+| Sluice gate | Tap a dike or weir (or draw across a channel for a dam with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Worked by the villagers (GAMEPLAY.md §2): released in summer to water their fields, opened before the water spills over; with no village near it opens by itself as flood relief | 30 villagers |
+| Water wheel | Lifts river water into a trench on higher ground (GAMEPLAY.md §1.3; wells and mills are villager creations) | 50 villagers (planned) |
+| Turbine | Generates power from head × flow in a gate or weir | 100 (planned) |
+| Power line / pole | Distributes power within a radius of poles | 150 (planned) |
+| Electric pump, pumped storage | Pump uphill when surplus, generate when deficit | 250 (planned) |
 
-Unlocks are driven by population/prosperity milestones, not by purchase
-(`src/shared/unlocks.ts`). Stone work (lining, weirs, gates) is done by
-the quick spirit crew; villagers never carry out the player's plans, but do
-their own works (PEOPLE.md §5.4): lining near home, quays, a fishing jetty.
+Unlocks are driven by population milestones, not by purchase: one
+progression table in `src/shared/unlocks.ts` (`PROGRESSION`; the planned
+steps 50/100/150/250 are already milestones, waiting for their tools;
+`?cheat=1` unlocks everything for testing). Each tool's hint line names the
+problem of the land it solves (GAMEPLAY.md §3).
+Stone work (weirs, gates) is done by the quick spirit crew; villagers never
+carry out the player's plans, but do their own works (PEOPLE.md §5.4).
+
+There is no player lining tool (decision): stone lining (no erosion or
+slumping) is the villagers' job. They line the banks by their homes and the
+player's canals near the village on their own; lined banks by the houses
+facing open water become quays (lake fronts). Elsewhere the player's works
+live with natural erosion. (The sim keeps a `planLining` command for scenes
+and tests.)
 On a keyboard, the digit keys 1…9, 0 pick the tools in palette order.
 
 ## 4a. Progress you can feel
@@ -141,8 +154,8 @@ The player asked for "more direct endorphin hits". Decisions:
 - **Two headline stats** in a small **stats bar** next to the speed controls
   (on phones a second row below them):
   - **Population**: the total number of villagers. Its bar fills on a log
-    scale from the last tool-unlock milestone to the next
-    (`src/shared/unlocks.ts`; beyond the last one, towards doublings of it).
+    scale from the last milestone to the next (the progression in
+    `src/shared/unlocks.ts`: 15, 30, 50, 100, 150, 250; beyond, doublings).
     Reaching a milestone gives a small sparkle and a note of what unlocked.
   - **Prosperity**: the population-weighted mean of the settlements'
     wellbeing, in % ("waiting for settlers" before the first village).

@@ -20,15 +20,15 @@ import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works'
 
 /** Hydro steps between agent updates. */
 export const PEOPLE_TICK = 2;
+/** Steps a villager turns a sluice gate's wheel (the leaf's travel, structures.ts LIFT_STEPS). */
+const GATE_WORK_STEPS = 100;
 /** Founding happens this many steps into a new game. */
 const FOUND_AFTER = STEPS_PER_DAY / 3;
 /** How far (cells) a settlement works: fields, houses, plans. */
 export const REACH = 40;
-const FIELD_RADIUS = 22;
-const FIELDS_PER_FARMER = 6;
+const FIELD_RADIUS = 18;
 const CROP_RIPE = 230;
 /** Food (person-days) per harvested cell at fertility 1 and good moisture. */
-const YIELD = 34;
 /** Earth moved per builder visit (m). */
 const DIG_PER_VISIT = 0.5;
 /** House construction progress per builder visit. */
@@ -84,6 +84,36 @@ const TIRED_SPEED = 0.6;
 
 
 /**
+ * How crops respond to field moisture (docs/PEOPLE.md §3.1): nothing grows
+ * below `dry`, growth ramps up to full at `moist`, and waterlogged soil
+ * (≥ `soggy`) gives `soggyGrowth`. Exported so tools can tune it.
+ */
+/**
+ * Farming: fields a farmer looks after, and the food a ripe field cell gives
+ * (person-days, × fertility). Exported so tools can tune them.
+ */
+export const FARMING = {
+  fieldsPerFarmer: 14,
+  yield: 8,
+  /** Land is claimed only where crops would grow at least this well today (cropGrowth). */
+  minGrowth: 0.5,
+};
+
+/**
+ * Field moisture: the cell's own soil saturation × `own`, or capillary
+ * wetting from nearby water, max · exp(-d / reach) with d in cells.
+ */
+export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5 };
+
+export const CROP_MOISTURE = { dry: 0.2, moist: 0.4, soggy: 0.9, soggyGrowth: 0.4 };
+
+/** Crop growth factor 0..1 for a field moisture. */
+export function cropGrowth(m: number): number {
+  const c = CROP_MOISTURE;
+  return m < c.dry ? 0 : m < c.moist ? (m - c.dry) / (c.moist - c.dry) : m < c.soggy ? 1 : c.soggyGrowth;
+}
+
+/**
  * Visible stress of a field cell (docs/PEOPLE.md §7), mirroring the growth
  * factor in `growCrops`: 0 healthy (or nothing growing), 1..127 how dry
  * (127 = too dry to grow), 128..255 how waterlogged (255 = under water).
@@ -92,8 +122,9 @@ export function cropStress(crop: number, moisture: number, water: number, growin
   if (crop <= 0) return 0;
   if (water > 0.05) return 255;
   if (!growing || crop >= 255) return 0;
-  if (moisture < 0.35) return Math.max(1, Math.round(127 * Math.min(1, (0.35 - moisture) / 0.2)));
-  if (moisture >= 0.9) return STRESS_WET + Math.round(127 * Math.min(1, 0.5 + (moisture - 0.9) * 5));
+  const c = CROP_MOISTURE;
+  if (moisture < c.moist) return Math.max(1, Math.round(127 * Math.min(1, (c.moist - moisture) / (c.moist - c.dry))));
+  if (moisture >= c.soggy) return STRESS_WET + Math.round(127 * Math.min(1, 0.5 + (moisture - c.soggy) * 5));
   return 0;
 }
 
@@ -109,17 +140,24 @@ export const FOUNDING = {
   /** Minimum days between two foundings. */
   interval: DAYS_PER_YEAR,
   /** Total population of all villages that makes people look for new land. */
-  minPopulation: 25,
+  minPopulation: 40,
   /** A single village this big without free houses also sends people out. */
-  crowdedPopulation: 18,
+  crowdedPopulation: 30,
   /** Minimum distance (cells) to every other settlement. */
   minSpacing: 26,
-  /** Block attractiveness (0..~1.15) needed. */
-  minScore: 0.55,
+  /**
+   * Block attractiveness (0..~1.15) needed, both now and at the end of last
+   * summer (migrants judge land at its worst; docs/GAMEPLAY.md §4.3 P6).
+   */
+  minScore: 0.6,
+  /** Day of the year of the end-of-summer survey. */
+  summerDay: 22,
   /** Food (person-days) the founders bring. */
   food: 300,
 };
 export const ATTRACT_BLOCK = 8;
+/** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
+export const FLOOD_FORGET = 120;
 
 export interface Building {
   id: number;
@@ -170,6 +208,8 @@ export interface PeopleState {
   animals?: Animal[];
   /** No animals are kept (staged welcome scenes draw their own). */
   noAnimals?: boolean;
+  /** Block attractiveness at the end of last summer (absent before the first, and in older saves). */
+  summerSurvey?: number[];
 }
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
@@ -221,6 +261,8 @@ export class PeopleSystem {
   floods = { cells: 0, ruined: 0 };
   /** Block attractiveness from the latest survey (debugging/tests; recomputed before use). */
   attractiveness: Float32Array | null = null;
+  /** Block attractiveness at the end of last summer (FOUNDING.summerDay), or null before the first. */
+  summerSurvey: Float32Array | null = null;
   /** Quay cells (lined lake fronts by the houses), derived daily; rendering only. */
   readonly quay: Uint8Array;
   /** Set when `quay` changed, and when a jetty changed (for snapshots). */
@@ -230,6 +272,12 @@ export class PeopleSystem {
   readonly herds: Herds;
   /** Staged scenes keep no animals (their ambient animals are drawn by the renderer). */
   noAnimals = false;
+  /**
+   * Told when a villager sent by `callToGate` reaches the gate (gate id,
+   * agent id); returns the gate's centre to face, or null if there is
+   * nothing to do there any more. Set by the simulation (not saved).
+   */
+  onGate: ((gate: number, agent: number) => readonly [number, number] | null) | null = null;
   /** Told of harvests, catches (at the water cell) and rebuilt ruins; an observer only (not saved). */
   onEvent: ((e: PeopleEvent, cell: number) => void) | null = null;
   private readonly onBridge = (i: number): boolean => this.world.landuse[i] === LandUse.Bridge;
@@ -363,6 +411,37 @@ export class PeopleSystem {
     return { store, houses, owns: (x, y) => this.settlements.length < 2 || this.ownerOf(x, y) === s };
   }
 
+  /**
+   * Send a villager of settlement `index` to work sluice gate `gate`,
+   * standing at cell `stand` (structures/gatekeeper.ts): the nearest builder
+   * or idle adult who is not busy with work or carrying food. Returns the
+   * agent's id, or −1 if nobody can go (or the way is blocked).
+   */
+  callToGate(index: number, stand: number, gate: number, time: SimTime): number {
+    const s = this.settlements[index];
+    if (!s) return -1;
+    const W = this.world.width;
+    const sx = stand % W;
+    const sy = (stand / W) | 0;
+    let best: Agent | null = null;
+    let bestD = Infinity;
+    for (const a of this.agents) {
+      if (a.settlement !== s.state.id || a.child || a.flee || a.task === Task.Leave || a.task === Task.Work) continue;
+      if (a.siteKind === SiteKind.Gate && a.task === Task.Walk) continue; // already on the way to a gate
+      const idle = a.task === Task.None || a.task === Task.Rest || (a.task === Task.Walk && a.siteKind === SiteKind.Wander);
+      const free = a.job === Job.Builder && a.load <= 0 && a.carry !== CarryKind.Sack && a.carry !== CarryKind.Fish;
+      if (!idle && !free) continue;
+      const d = Math.hypot(a.x - sx, a.y - sy);
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    }
+    if (!best || !this.goTo(best, stand, SiteKind.Gate, time, gate)) return -1;
+    if (best.carry === CarryKind.Stone || best.carry === CarryKind.Earth) best.carry = CarryKind.None;
+    return best.id;
+  }
+
   /** Woodcutters, herders and the like of a village. */
   workersOf(id: number, job: Job): number {
     let n = 0;
@@ -375,7 +454,8 @@ export class PeopleSystem {
 
   private found(): void {
     this.founded = true;
-    const site = this.bestSite(this.startX, this.startY, 30);
+    // The start point is chosen with care (worldgen chooseStart: a dry terrace); stay close.
+    const site = this.bestSite(this.startX, this.startY, 4);
     if (site < 0) return;
     // The founders bring enough food to last until the first harvest.
     this.foundAt(site, 400, 4, false);
@@ -525,7 +605,7 @@ export class PeopleSystem {
 
   private daily(time: SimTime, host: PeopleHost): void {
     this.updateMoisture();
-    this.updateFloodMemory();
+    this.updateFloodMemory(time);
     for (const [site, until] of this.blocked) if (until <= time.day) this.blocked.delete(site);
     const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
     this.growCrops(time, host);
@@ -545,6 +625,8 @@ export class PeopleSystem {
       this.manageFields(s);
     }
     this.peakPopulation = Math.max(this.peakPopulation, this.population);
+    // Migrants remember how the land looked at the end of summer.
+    if (doy === FOUNDING.summerDay) this.summerSurvey = this.surveyLand();
     if (time.day % FOUNDING.everyDays === 0) this.considerFounding(time);
     this.updateQuays();
   }
@@ -754,7 +836,7 @@ export class PeopleSystem {
             const sl = this.slope(i);
             if (sl > 0.25) continue;
             const m = this.fieldMoisture[i]!;
-            const wet = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
+            const wet = cropGrowth(m);
             const forest = w.vegetation[i]! > 0.6 ? 0.6 : 1;
             sum += w.fertility[i]! * wet * forest * (1 - sl * 2);
           }
@@ -768,7 +850,10 @@ export class PeopleSystem {
 
   private considerFounding(time: SimTime): void {
     if (!this.wantsNewVillage(time.day)) return;
+    const summer = this.summerSurvey;
+    if (!summer) return;
     const a = this.surveyLand();
+    for (let b = 0; b < a.length; b++) a[b] = Math.min(a[b]!, summer[b] ?? 0);
     this.attractiveness = a;
     const B = ATTRACT_BLOCK;
     const bw = Math.ceil(this.world.width / B);
@@ -873,14 +958,25 @@ export class PeopleSystem {
     for (let i = 0; i < w.size; i++) {
       const cap = soil[i]! * SOIL_PROPS[soilType[i]!]!.porosity;
       const own = cap > 0 ? ground[i]! / cap : 0;
-      this.fieldMoisture[i] = Math.max(own, 0.8 * Math.exp(-d[i]! / 2.5));
+      this.fieldMoisture[i] = Math.max(own * CAPILLARY.own, CAPILLARY.max * Math.exp(-d[i]! / CAPILLARY.reach));
     }
   }
 
-  /** Memories of floods fade over about five years. */
-  private updateFloodMemory(): void {
+  /**
+   * Memories of floods fade over about four years, and fast once the cause
+   * is gone: on the last day of spring, land that stayed dry all spring
+   * (no flood since its first day) forgets FLOOD_FORGET at once. So one dry
+   * spring behind a new dike frees the land for the next year.
+   */
+  private updateFloodMemory(time: SimTime): void {
     const w = this.world;
-    for (let i = 0; i < w.size; i++) if (w.floodMemory[i]! > 0 && w.water[i]! <= 0.3) w.floodMemory[i]!--;
+    const m = w.floodMemory;
+    for (let i = 0; i < w.size; i++) if (m[i]! > 0 && w.water[i]! <= 0.3) m[i]!--;
+    if (time.season === 0 && time.dayOfSeason === DAYS_PER_SEASON - 1) {
+      // Flooded this spring: set to 255 and decremented at most once a day since.
+      const wetThisSpring = 255 - DAYS_PER_SEASON;
+      for (let i = 0; i < w.size; i++) if (m[i]! > 0 && m[i]! <= wetThisSpring) m[i] = Math.max(0, m[i]! - FLOOD_FORGET);
+    }
   }
 
   /** Floods are noticed as they happen: houses in deep water are ruined, flooded land remembered. */
@@ -935,7 +1031,7 @@ export class PeopleSystem {
         c = Math.max(0, c - 60); // drowning
       } else if (growing && c > 0 && c < 255) {
         const m = this.fieldMoisture[i]!;
-        const f = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
+        const f = cropGrowth(m);
         c = Math.min(255, c + Math.round(16 * f));
         // Growing crops draw water from the nearest water body, or the soil.
         const src = this.nearestWater[i]!;
@@ -1256,7 +1352,7 @@ export class PeopleSystem {
   private manageFields(s: Settlement): void {
     const w = this.world;
     const farmers = this.agents.filter((a) => a.settlement === s.state.id && a.job === Job.Farmer).length;
-    const want = farmers * FIELDS_PER_FARMER;
+    const want = farmers * FARMING.fieldsPerFarmer;
     const fields = this.fieldsOf(s);
     if (fields.length >= want) return;
     // Claim the best unclaimed cells nearby (at most 10 per day).
@@ -1271,7 +1367,8 @@ export class PeopleSystem {
         if (!this.buildable(i) || !this.spacious(x, y)) continue;
         if (this.settlements.length > 1 && this.ownerOf(x, y) !== s) continue;
         const m = this.fieldMoisture[i]!;
-        const wet = m < 0.15 ? 0 : m < 0.35 ? (m - 0.15) / 0.2 : m < 0.9 ? 1 : 0.4;
+        const wet = cropGrowth(m);
+        if (wet < FARMING.minGrowth) continue;
         const forest = Math.max(0, w.vegetation[i]! - 0.45);
         // Grow fields in solid patches next to existing ones.
         const W = w.width;
@@ -1395,6 +1492,18 @@ export class PeopleSystem {
         if (here !== a.site) a.heading = Math.atan2(((a.site / W) | 0) - ((here / W) | 0), (a.site % W) - (here % W));
         break;
       }
+      case SiteKind.Gate: {
+        // Turn the gate's wheel while the leaf moves.
+        const at = this.onGate?.(a.site, a.id) ?? null;
+        if (!at) {
+          a.task = Task.None;
+          break;
+        }
+        a.timer = GATE_WORK_STEPS;
+        a.anim = EntityAnim.Build;
+        a.heading = Math.atan2(at[1] - a.y, at[0] - a.x);
+        break;
+      }
       case SiteKind.Herd:
         // Watch the herd graze: mostly sitting in the grass.
         a.timer = HERDING.outing;
@@ -1478,7 +1587,7 @@ export class PeopleSystem {
       case SiteKind.Harvest: {
         const i = a.site;
         if (w.landuse[i] === LandUse.Field && w.crop[i]! >= CROP_RIPE) {
-          a.load = YIELD * Math.max(0.2, w.fertility[i]!) * (w.crop[i]! / 255);
+          a.load = FARMING.yield * Math.max(0.2, w.fertility[i]!) * (w.crop[i]! / 255);
           a.carry = CarryKind.Sack;
           w.crop[i] = 0;
           w.fertility[i] = Math.max(0.1, w.fertility[i]! * 0.985);
@@ -1853,6 +1962,7 @@ export class PeopleSystem {
       floods: this.floods,
       animals: this.herds.animals,
       noAnimals: this.noAnimals,
+      summerSurvey: this.summerSurvey ? Array.from(this.summerSurvey, (v) => Math.round(v * 1000) / 1000) : undefined,
     });
   }
 
@@ -1877,6 +1987,7 @@ export class PeopleSystem {
     this.floods = c.floods ?? { cells: 0, ruined: 0 };
     this.herds.animals = c.animals ?? [];
     this.noAnimals = c.noAnimals ?? false;
+    this.summerSurvey = c.summerSurvey ? Float32Array.from(c.summerSurvey) : null;
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.
     if (c.fishCap && c.fishCap.length === this.fishCap.length) this.fishCap.set(c.fishCap);

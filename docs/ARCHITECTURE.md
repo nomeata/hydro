@@ -77,6 +77,9 @@ Simulating an ever-growing grid is not affordable. The design is:
   short local spin-up. Because rivers come from the global macro network, a
   former boundary inflow continues seamlessly as an interior river.
 - Saves store fields per 64×64 chunk (from M7 on; M1 saves the whole window).
+- The M7 proposal (active set = revealed land + margin on 16² tiles, frozen
+  halo boundary, catchment inflow, consistent block worldgen, budgets,
+  soft cap) is in docs/ENDLESS.md.
 
 ## 3. Simulation
 
@@ -185,7 +188,20 @@ state). It raises infiltration and lowers erosion pickup. See PEOPLE.md
 ### 3.5 Climate & weather
 - Calendar, seasonal temperature, lapse rate. Rain fronts are drifting
   ellipses with orographic enhancement. Snow below 0 °C with degree-day
-  melt (M1c). AR(1) climate anomaly for wet and dry years (M1c).
+  melt (M1c).
+- River seasons and wet/dry years (`climate/climate.ts`, `SimState.climate`):
+  every boundary inflow is scaled by a smooth seasonal profile (spring 1.6,
+  summer 0.45, autumn 0.8, winter 1.0, cosine-interpolated between season
+  midpoints), a snowmelt freshet in the first 8 days of spring (up to +1.0,
+  sized by last winter's precipitation against its running mean) and a
+  yearly AR(1) anomaly (`a' = 0.6a + 0.24ε`, factor `exp(a)` in
+  [0.55, 1.6], eased in over spring). ε comes from a hash of seed and year,
+  not the weather's stream. The anomaly also scales the front frequency
+  (`exp(0.8a)`). Staged scenes switch it off (`climate.seasonal`).
+- The live rain follows the generation climate: each front's rain is
+  multiplied by a per-tile rain factor (the soils' rain field: wetness,
+  orography, rain shadow; clamped 0.4–2), saved with the climate state
+  (older saves: uniform).
 - Rain is evaluated per tile. The renderer receives the fronts (for clouds
   and rain particles) and the sun/season state.
 

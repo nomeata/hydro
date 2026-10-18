@@ -151,12 +151,12 @@ describe('waterworks', () => {
     expect(ids(sim.achievements)).toContain('waterfall');
   });
 
-  it('Stone by Stone, Weir Builder and Gatekeeper', async () => {
+  it('Weir Builder (crew stone work is not Stone by Stone)', async () => {
     const w = plain();
     const sim = new Simulation(w, 1);
     sim.command({ type: 'planLining', points: [[10, 10], [20, 10]], width: 2 });
     await build(sim);
-    expect(ids(sim.achievements)).toEqual(['stoneByStone']);
+    expect(ids(sim.achievements)).toEqual([]);
     sim.command({ type: 'planWeir', points: [[30, 5], [30, 20]], width: 2, height: 1 });
     await build(sim);
     await runDays(sim, 1);
@@ -165,13 +165,11 @@ describe('waterworks', () => {
     await build(sim);
     sim.command({ type: 'placeGate', points: [[45, 20]], width: 1, height: 0 });
     const g = sim.structures.gates[0]!;
-    // Opening an unfinished gate does not count.
-    sim.command({ type: 'toggleGate', id: g.id, open: true });
-    sim.command({ type: 'toggleGate', id: g.id, open: false });
-    expect(ids(sim.achievements)).not.toContain('gatekeeper');
     await build(sim);
+    // Gatekeeper is for villagers watering their fields (tests/sim/gatekeeper.test.ts): working a gate by hand does not count.
     sim.command({ type: 'toggleGate', id: g.id });
-    expect(ids(sim.achievements)).toContain('gatekeeper');
+    await runDays(sim, 1);
+    expect(ids(sim.achievements)).not.toContain('gatekeeper');
   });
 });
 
@@ -274,7 +272,8 @@ describe('the land and the people', () => {
   it('a real village: Founders, First Harvest and Hamlet in its first weeks', async () => {
     const gen = generateWorld({ seed: 3, size: 128 });
     const sim = new Simulation(gen.world, 3, { people: { startX: gen.startX, startY: gen.startY } });
-    await runDays(sim, 20);
+    // Families arrive by chance as houses free up: a hamlet within the first season or so.
+    await runDays(sim, 30);
     expect(ids(sim.achievements)).toEqual(expect.arrayContaining(['founders', 'firstHarvest', 'pop10']));
   }, 120_000);
 });
@@ -342,7 +341,7 @@ describe('saving', () => {
     c.people!.onEvent = null;
     c.structures.onLined = null;
     const ach = c.achievements as unknown as Record<string, unknown>;
-    for (const k of ['daily', 'update', 'touch', 'stroke', 'cancelled']) ach[k] = () => {};
+    for (const k of ['daily', 'update', 'touch', 'stroke', 'cancelled', 'lined']) ach[k] = () => {};
     c.command({ type: 'planTrench', points: [[gen.startX - 8, gen.startY], [gen.startX + 8, gen.startY]], width: 2, depth: 1 });
     await runDays(c, 4);
     expect(c.stateHash()).toBe(a.stateHash());

@@ -42,7 +42,7 @@ Fun on screen fast.
 ## M1c — Deep water ◐
 - ☑ Lateral groundwater (hourly Darcy diffusion), springs/bogs via overflow
 - ☑ Deep percolation sink so closed basins don't fill up over years
-- Snow + melt, climate anomaly (wet/dry years)
+- Snow + melt; ☑ climate anomaly (wet/dry years, GAMEPLAY §4.3 P1)
 - ☑ Phone bench page (`?bench=1`)
 - ☑ CPU cap on touch devices (sim duty cycle 45%, `?duty=` overrides)
 - Quality tiers (pending real-device numbers)
@@ -86,11 +86,33 @@ Player feedback: more direct progress hits; keep it all positive
 - ☑ Playtest harness (docs/PLAYTEST.md): hands-off and bot runs over many
   seeds, agency, variety and pacing in numbers; first findings for tuning
 
+## M3¾ — Player agency ☐
+See docs/GAMEPLAY.md §7 (prioritised list).
+- ☑ Design note: tools vs villager works, villager-operated gates, help,
+  agency diagnosis, unlock progression, climates (docs/GAMEPLAY.md)
+- ☑ River seasons, freshet and dry/wet years; live rain follows the
+  generation climate (`sim/climate/climate.ts`)
+- ◐ ☐ agency harness (unaided vs scripted plan); ☑ terrace start, flood
+  memory that forgets behind a dike, founding judged at the end of summer,
+  lining only by houses, growth pauses when food is short, economy retuned
+  so that water decides what is farmable
+- ☑ Unlocks without the Lining tool (weir 15, gate 30; milestones 50, 100,
+  150, 250 reserved for wheel, turbine, poles, pump); hints that say why
+- ☑ Villager-operated gates (GAMEPLAY §2; `sim/structures/gatekeeper.ts`):
+  summer release for dry fields, never while houses below are wet, flood
+  relief by itself; a villager walks over and turns the wheel; no tap to
+  toggle; achievements Gatekeeper (villagers) and Safety Valve
+- ☑ Tool cards at unlock (weir, gate): a live staged scene and two lines,
+  shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`)
+- "Ideas for this valley" in the Achievements card
+
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
   above), sluice gates (hold a reservoir closed, drain to the sill open;
-  tap to toggle), built by the spirit crew; plans only on known land;
-  tools unlock at 15/30/50 villagers; digit-key hotkeys
+  tap to toggle — since M3¾ worked by the villagers), built by the spirit crew; plans only on known land;
+  tools unlock at 30/50 villagers (since M3¾: 15/30); digit-key hotkeys
+- ☑ Player lining tool removed again: lining is left to the villagers near
+  their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
 - ☑ Villagers line banks by their homes and the player's canals near the
   village on their own; quays by the houses; a fishing jetty per village
 - Wells, pumps (manual/animal), water wheels and mills
@@ -108,6 +130,13 @@ Player feedback: more direct progress hits; keep it all positive
 - Power-dependent professions and higher population caps
 
 ## M7 — Endless world ☐
+Proposal and staged plan: docs/ENDLESS.md.
+- ☐ Step 1: simulate only revealed land + margin (frozen halo, dry-tile
+  sleeping) inside the fixed map; 512² desktop default
+- ☐ Step 1b: catchment inflow model for rivers entering from the fog
+- ☐ Step 2: tiled world growing up to a fixed extent, consistent block
+  worldgen, chunk streaming, per-page saves, soft cap by active-cell budget
+- ☐ Step 3 (if needed): unbounded (hierarchical macro, far-land LOD sleeping)
 - Active-region growth with macro catchment model for boundary inflows
 - Performance: tile sleeping, possibly WASM/GPU kernels
 

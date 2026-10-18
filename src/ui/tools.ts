@@ -2,7 +2,9 @@
  * Tool palette and drawing interaction. Tools only create *plans*; the
  * builders realise them over time. While a drawing tool is active, one
  * finger / the left mouse button draws, and two fingers still pan and zoom.
- * In Look mode, a tap on a sluice gate opens or closes it.
+ * Each tool's hint says which problem of the land it solves (GAMEPLAY.md
+ * §3). Sluice gates are worked by the villagers (sim/structures/gatekeeper.ts),
+ * not by the player.
  */
 import type { Command, Pt } from '../shared/protocol';
 import { planDike, planLevel, planTrench, rasterisePath, type PlanGrid } from '../sim/plans/plans';
@@ -11,7 +13,7 @@ import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
 import { toolName } from '../shared/progress';
 
-export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'line' | 'weir' | 'gate' | 'erase';
+export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'weir' | 'gate' | 'erase';
 
 export interface ToolHost {
   canvas: HTMLCanvasElement;
@@ -20,8 +22,13 @@ export interface ToolHost {
   setPreviewPlan(cells: Float32Array | null): void;
   /** Optimistic lining preview (cell indices), or null. */
   setPreviewLining?(cells: readonly number[] | null): void;
-  /** Id of the sluice gate at (or next to) a cell, if any (Look-mode taps toggle it). */
-  gateAt?(x: number, y: number): number | null;
+  /**
+   * Tool cards (ui/toolCards.ts): whether `tool` has one, whether it should
+   * still be shown after its unlock, and show it.
+   */
+  hasCard?(tool: ToolId): boolean;
+  cardDue?(tool: ToolId): boolean;
+  showCard?(tool: ToolId): void;
   /** Whether single-pointer drags pan the camera. */
   setCameraPrimaryPointer(enabled: boolean): void;
   command(cmd: Command): void;
@@ -36,16 +43,26 @@ interface ToolDef {
 
 const TOOLS: ToolDef[] = [
   { id: 'look', label: 'Look', icon: ICONS.hand, hint: '' },
-  { id: 'trench', label: 'Trench', icon: ICONS.trench, hint: 'Draw a trench. Its floor slopes evenly from start to end.' },
-  { id: 'dike', label: 'Dike', icon: ICONS.dike, hint: 'Draw a dike. Its crest is level.' },
-  { id: 'level', label: 'Level', icon: ICONS.level, hint: 'Brush over land to flatten it to the height where you start.' },
-  { id: 'line', label: toolName('line'), icon: ICONS.line, hint: 'Brush along a trench or dike to line it with stone: it no longer erodes or slumps.' },
-  { id: 'weir', label: toolName('weir'), icon: ICONS.weir, hint: 'Draw a short line across a river: a stone weir with a level crest that water spills over.' },
+  {
+    id: 'trench',
+    label: 'Trench',
+    icon: ICONS.trench,
+    hint: 'Dig from the river down to dry land: water follows the trench, fields follow the water. Its floor slopes evenly from start to end.',
+  },
+  { id: 'dike', label: 'Dike', icon: ICONS.dike, hint: 'Raise a level bank to keep a flood off the fields, or to hold a pond.' },
+  { id: 'level', label: 'Level', icon: ICONS.level, hint: 'Flatten a slope into a terrace or a basin, at the height where you start.' },
+  // No lining tool: villagers line the banks near their homes (planLining stays a command for scenes and tests).
+  {
+    id: 'weir',
+    label: toolName('weir'),
+    icon: ICONS.weir,
+    hint: 'Draw across a river: it holds a pool through the dry summer and spills over its crest.',
+  },
   {
     id: 'gate',
     label: toolName('gate'),
     icon: ICONS.gate,
-    hint: 'Tap a dike or weir to put a sluice gate in it, or draw across a channel for a dam with a gate. Tap a gate to open or close it.',
+    hint: 'Tap a dike or weir to put a sluice gate in it. Villagers open it to water their fields in summer; it opens by itself before the water spills over.',
   },
   { id: 'erase', label: 'Remove', icon: ICONS.erase, hint: 'Brush over plans to remove them.' },
 ];
@@ -62,7 +79,6 @@ const SETTINGS: Partial<Record<ToolId, ToolSettings>> = {
   trench: { width: 2, amount: 1.5, maxWidth: 8, amountLabel: 'Depth' },
   dike: { width: 2, amount: 2, maxWidth: 8, amountLabel: 'Height' },
   level: { width: 2, maxWidth: 8 },
-  line: { width: 4, maxWidth: 8 },
   weir: { width: 2, amount: 1, maxWidth: 4, amountLabel: 'Height' },
   gate: { width: 1, amount: 2, maxWidth: 3, amountLabel: 'Height' },
 };
@@ -74,6 +90,10 @@ export class ToolPalette {
   private readonly buttons = new Map<ToolId, HTMLButtonElement>();
   private readonly options: HTMLElement;
   private readonly hint: HTMLElement;
+  private readonly hintText: HTMLElement;
+  private readonly hintInfo: HTMLButtonElement;
+  /** A tool just unlocked whose card shows at the next pick. */
+  private cardPending: ToolId | null = null;
   private readonly sizeOut: HTMLOutputElement;
   private readonly sizeInput: HTMLInputElement;
   private readonly amountOut: HTMLOutputElement;
@@ -85,8 +105,6 @@ export class ToolPalette {
   private previewPending = false;
   /** Keep the preview until the sim confirms the plan. */
   private awaitingPlan = false;
-  /** A Look-mode press that may become a tap (to toggle a gate). */
-  private press: { id: number; x: number; y: number; t: number } | null = null;
   /** Highest village population seen (drives tool unlocks). */
   private population = 0;
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
@@ -100,6 +118,14 @@ export class ToolPalette {
 
     this.hint = document.createElement('div');
     this.hint.className = 'hint';
+    this.hint.hidden = true;
+    this.hintText = document.createElement('span');
+    this.hintInfo = document.createElement('button');
+    this.hintInfo.className = 'hint-info';
+    this.hintInfo.textContent = 'ⓘ';
+    this.hintInfo.hidden = true;
+    this.hintInfo.addEventListener('click', () => this.host.showCard?.(this.tool));
+    this.hint.append(this.hintText, this.hintInfo);
 
     this.options = document.createElement('div');
     this.options.className = 'options panel';
@@ -150,7 +176,12 @@ export class ToolPalette {
 
   /** Villagers in all villages (from snapshot stats): unlocks tools at milestones. */
   setPopulation(population: number): void {
+    const before = this.population;
     this.population = Math.max(this.population, population);
+    for (const t of TOOLS) {
+      const need = unlockPopulation(t.id);
+      if (need > 0 && before < need && this.population >= need && this.host.cardDue?.(t.id)) this.cardPending = t.id;
+    }
     for (const [id, b] of this.buttons) {
       const locked = !isUnlocked(id, this.population);
       b.classList.toggle('locked', locked);
@@ -198,13 +229,19 @@ export class ToolPalette {
   select(id: ToolId): void {
     if (this.isLocked(id)) {
       // A locked tool only says when it will be ready.
-      this.hint.textContent = `Unlocks at ${unlockPopulation(id)} villagers`;
+      this.setHint(`Unlocks at ${unlockPopulation(id)} villagers`, false);
       if (this.hintTimer) clearTimeout(this.hintTimer);
       this.hintTimer = setTimeout(() => {
         this.hintTimer = null;
-        this.hint.textContent = TOOLS.find((t) => t.id === this.tool)!.hint;
+        this.setHint(TOOLS.find((t) => t.id === this.tool)!.hint, this.host.hasCard?.(this.tool) ?? false);
       }, 2500);
       return;
+    }
+    // The first pick after a tool unlocked: its card.
+    if (this.cardPending) {
+      const t = this.cardPending;
+      this.cardPending = null;
+      this.host.showCard?.(t);
     }
     this.tool = id;
     this.drawing = null;
@@ -212,7 +249,7 @@ export class ToolPalette {
     const st = this.settings[id];
     this.options.hidden = !st;
     this.amountInput.closest('label')!.hidden = st?.amount === undefined;
-    this.hint.textContent = TOOLS.find((t) => t.id === id)!.hint;
+    this.setHint(TOOLS.find((t) => t.id === id)!.hint, this.host.hasCard?.(id) ?? false);
     this.host.setCameraPrimaryPointer(id === 'look');
     if (!this.awaitingPlan) this.clearPreview();
     if (st) {
@@ -221,6 +258,13 @@ export class ToolPalette {
       if (st.amount !== undefined) this.amountInput.value = String(st.amount);
     }
     this.refreshOptions();
+  }
+
+  /** The hint line, with an ⓘ to reopen the tool's card. */
+  private setHint(text: string, info: boolean): void {
+    this.hintText.textContent = text;
+    this.hint.hidden = !text;
+    this.hintInfo.hidden = !info;
   }
 
   private refreshOptions(): void {
@@ -246,11 +290,7 @@ export class ToolPalette {
 
   private onDown(e: PointerEvent): void {
     this.pointers.add(e.pointerId);
-    if (this.tool === 'look') {
-      const primary = e.pointerType !== 'mouse' || e.button === 0;
-      this.press = this.pointers.size === 1 && primary ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() } : null;
-      return;
-    }
+    if (this.tool === 'look') return;
     if (this.pointers.size > 1) {
       // Second finger: this is a pan/zoom gesture, abandon the stroke.
       this.drawing = null;
@@ -266,8 +306,6 @@ export class ToolPalette {
   }
 
   private onMove(e: PointerEvent): void {
-    const pr = this.press;
-    if (pr && pr.id === e.pointerId && Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > 8) this.press = null;
     const d = this.drawing;
     if (!d || d.id !== e.pointerId) return;
     const p = this.host.pick(e.clientX, e.clientY);
@@ -281,12 +319,7 @@ export class ToolPalette {
 
   private onUp(e: PointerEvent): void {
     this.pointers.delete(e.pointerId);
-    if (this.tool === 'look') {
-      const p = this.press;
-      this.press = null;
-      if (p && p.id === e.pointerId && performance.now() - p.t < 500) this.tap(e.clientX, e.clientY);
-      return;
-    }
+    if (this.tool === 'look') return;
     const d = this.drawing;
     if (!d || d.id !== e.pointerId) return;
     this.drawing = null;
@@ -304,9 +337,6 @@ export class ToolPalette {
         break;
       case 'level':
         cmd = { type: 'planLevel', points, width };
-        break;
-      case 'line':
-        cmd = { type: 'planLining', points, width };
         break;
       case 'weir':
         cmd = { type: 'planWeir', points: ends, width, height: amount };
@@ -326,20 +356,10 @@ export class ToolPalette {
 
   private onCancel(e: PointerEvent): void {
     this.pointers.delete(e.pointerId);
-    if (this.press?.id === e.pointerId) this.press = null;
     if (this.drawing?.id === e.pointerId) {
       this.drawing = null;
       if (!this.awaitingPlan) this.clearPreview();
     }
-  }
-
-  /** Look-mode tap: open or close a gate under the pointer. */
-  private tap(clientX: number, clientY: number): void {
-    if (!this.host.gateAt) return;
-    const p = this.host.pick(clientX, clientY);
-    if (!p) return;
-    const id = this.host.gateAt(p.x, p.y);
-    if (id !== null) this.host.command({ type: 'toggleGate', id });
   }
 
   private erase(x: number, y: number): void {
@@ -362,7 +382,6 @@ export class ToolPalette {
       if (this.tool === 'trench') planTrench(grid, pts, width, amount);
       else if (this.tool === 'dike') planDike(grid, pts, width, amount);
       else if (this.tool === 'level') planLevel(grid, pts, width);
-      else if (this.tool === 'line') lining = [...rasterisePath(grid, pts, Math.max(0.5, width / 2)).keys()];
       else if (this.tool === 'weir') {
         planDike(grid, ends, width, amount);
         lining = [...rasterisePath(grid, ends, width / 2 + 1).keys()];

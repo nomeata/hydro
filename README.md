@@ -31,7 +31,8 @@ Early development. See [the roadmap](docs/ROADMAP.md).
 | Open/close a sluice gate | click it (Look tool) | tap it |
 
 URL options: `?seed=123` picks a world, `?size=512` a bigger map,
-`?stats=1` shows performance numbers.
+`?stats=1` shows performance numbers, `?cheat=1` makes every tool
+available from the start (for testing).
 
 ## Development
 

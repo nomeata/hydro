@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BIN_DAYS, DAILY_DAYS, History, YEARLY_AFTER, mergeSamples, type DayReport } from '../../src/sim/history';
 import { milestoneFraction, milestoneSpan, prosperity, unlockMilestones } from '../../src/shared/progress';
-import { TOOL_UNLOCKS } from '../../src/shared/unlocks';
+import { PROGRESSION, TOOL_UNLOCKS } from '../../src/shared/unlocks';
 import { generateWorld } from '../../src/sim/worldgen';
 import { Simulation } from '../../src/sim/sim';
 import { loadGame, saveGame } from '../../src/sim/persist';
@@ -47,14 +47,22 @@ describe('prosperity and milestones', () => {
     ).toBeCloseTo(80);
   });
 
-  it('the population bar spans unlock milestones on a log scale, then doublings', () => {
+  it('the population bar spans the progression milestones on a log scale, then doublings', () => {
     const ms = unlockMilestones().map((m) => m.population);
-    expect(ms).toEqual([...new Set(Object.values(TOOL_UNLOCKS))].sort((a, b) => a - b));
+    expect(ms).toEqual(PROGRESSION.map((m) => m.population));
+    // Tools unlock at 15 and 30 (GAMEPLAY.md §4.5); later steps wait for their tools.
+    expect(TOOL_UNLOCKS).toEqual({ weir: 15, gate: 30 });
+    expect(unlockMilestones().slice(0, 3)).toEqual([
+      { population: 15, tools: ['weir'] },
+      { population: 30, tools: ['gate'] },
+      { population: 50, tools: [] },
+    ]);
     const first = ms[0]!;
     const lastM = ms[ms.length - 1]!;
-    expect(milestoneSpan(0)).toMatchObject({ prev: 1, next: first });
+    expect(milestoneSpan(0)).toMatchObject({ prev: 1, next: first, nextTools: ['weir'] });
     expect(milestoneFraction(0)).toBe(0);
-    expect(milestoneSpan(first)).toMatchObject({ prev: first, next: ms[1] ?? first * 2 });
+    expect(milestoneSpan(first)).toMatchObject({ prev: first, next: ms[1]!, nextTools: ['gate'] });
+    expect(milestoneSpan(30)).toMatchObject({ prev: 30, next: 50, nextTools: [] });
     expect(milestoneFraction(first)).toBe(0);
     expect(milestoneSpan(lastM)).toMatchObject({ prev: lastM, next: lastM * 2, nextTools: [] });
     expect(milestoneSpan(lastM * 3)).toMatchObject({ prev: lastM * 2, next: lastM * 4 });

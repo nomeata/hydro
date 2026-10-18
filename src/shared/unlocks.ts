@@ -1,16 +1,37 @@
 /**
- * Tool unlocks (DESIGN.md §4): tools become available as the people
- * prosper. The one table of population milestones, used by the tool
- * palette (locked tools are greyed out with a hint). Tools not listed are
- * available from the start.
+ * Tool unlocks (docs/GAMEPLAY.md §4.5): tools become available as the
+ * people prosper. The one table of population milestones, used by the tool
+ * palette (locked tools are greyed out with a hint), the stats bar and the
+ * history chart. Tools not listed are available from the start (trench,
+ * dike, level, remove).
  */
 
+/**
+ * The progression, ascending. Each step names the tool it unlocks, or none
+ * for a milestone whose tool is not built yet: the bar and the chart show
+ * those milestones already, and a new tool slots in by adding its id.
+ * Planned (GAMEPLAY.md §4.5): water wheel 50, turbine 100, power pole 150,
+ * electric pump 250.
+ */
+export const PROGRESSION: readonly { population: number; tool?: string }[] = [
+  { population: 15, tool: 'weir' },
+  { population: 30, tool: 'gate' },
+  { population: 50 }, // water wheel
+  { population: 100 }, // turbine (M6)
+  { population: 150 }, // power pole (M6)
+  { population: 250 }, // electric pump (M6)
+];
+
 /** Total villagers needed before a tool can be used. */
-export const TOOL_UNLOCKS: Readonly<Record<string, number>> = {
-  line: 15,
-  weir: 30,
-  gate: 50,
-};
+export const TOOL_UNLOCKS: Readonly<Record<string, number>> = Object.fromEntries(
+  PROGRESSION.filter((m) => m.tool).map((m) => [m.tool!, m.population]),
+);
+
+/** Cheat for testing (`?cheat=1`): every tool is available from the start. */
+let unlockAll = false;
+export function setUnlockAll(on: boolean): void {
+  unlockAll = on;
+}
 
 /** Villagers needed for `tool` (0 = from the start). */
 export function unlockPopulation(tool: string): number {
@@ -23,5 +44,5 @@ export function unlockPopulation(tool: string): number {
  * takes a tool away again.
  */
 export function isUnlocked(tool: string, population: number): boolean {
-  return population >= unlockPopulation(tool);
+  return unlockAll || population >= unlockPopulation(tool);
 }

@@ -8,7 +8,7 @@
 import { CellFlag, LandUse, type World } from '../world';
 
 export const WORKS = {
-  /** Banks within this many cells of buildings, yards, fields and paths are lined. */
+  /** Banks within this many cells of houses and their yards are lined (not by fields: a river may take a field). */
   near: 3,
   /** Player canals within this distance of the village centre are lined. */
   canalRadius: 22,
@@ -39,9 +39,13 @@ export interface Jetty {
   top: number;
 }
 
-/** Land uses that make a cell part of "home": banks near them are worth lining. */
+/**
+ * Land uses that make a cell part of "home": banks near them are worth
+ * lining. Only houses and their yards (docs/GAMEPLAY.md §4.3 P5): a meander
+ * eating into the fields is for the player to answer.
+ */
 function isHome(lu: number): boolean {
-  return lu === LandUse.Building || lu === LandUse.Yard || lu === LandUse.Field || lu === LandUse.Garden || lu === LandUse.Path || lu === LandUse.Bridge;
+  return lu === LandUse.Building || lu === LandUse.Yard;
 }
 
 function speed(w: World, i: number): number {

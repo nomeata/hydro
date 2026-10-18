@@ -51,6 +51,8 @@ export const enum SiteKind {
   Chop = 12,
   /** Lead the herd to pasture and watch it graze (site = pasture cell). */
   Herd = 13,
+  /** Work a sluice gate's wheel (site = gate id; structures/gatekeeper.ts). */
+  Gate = 14,
 }
 
 export interface Agent {
