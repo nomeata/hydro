@@ -59,8 +59,9 @@ same result; the harness only reads sim state and issues ordinary
   dry/waterlogged field shares, mean field moisture, forest cover and
   cumulative counters (land cells newly flooded, houses ruined, people
   fleeing, families' arrivals/departures, births/deaths);
-- milestones: the day the peak population first reached 15/30/50 (tool
-  unlocks) and 100/200/400; the day of every village founding;
+- milestones: the day the peak population first reached each progression
+  milestone (`src/shared/unlocks.ts`: weir 15, gate 30, then 50, 100, 150,
+  250 reserved for later tools) and 200/400; the day of every founding;
 - notable events for pacing: house finished, village founded, flood
   episode (≥ 5 land cells newly flooded or a house ruined), people
   fleeing, unlock, milestone, family arrived / left, a village's visible
@@ -89,7 +90,7 @@ per village (new villages get theirs later):
 - `dike`: dikes (1.5 m) 3 cells inside the water's edge on rays from the
   village where the land is low (< 2.5 m above the water) or remembers
   floods; looks again when new flood memory appears;
-- `weir`: once the weir is unlocked (30 villagers), a weir across the
+- `weir`: once the weir is unlocked (15 villagers), a weir across the
   river 12–40 cells upstream of the biggest village, crest 1 m above the
   water, banks high enough on both sides;
 - `drain`: a ditch (0.8 m) from the wettest patch near a village (soil
@@ -109,172 +110,181 @@ seed (which share everything up to the first action).
 
 ## Findings (first run)
 
-`npm run playtest -- --seeds 1..8 --years 10 --bot-years 4 --jobs 4`
-(commit of this doc; 128² maps, not the game's 256²: the full matrix took
-2.9 hours with 4 jobs on a shared container, 256² would be 4–10× slower).
-On 128² the start disc (56 cells) already shows most of the map, so
-revealed area and the room for new villages are not representative.
-Bot runs last 4 years and are compared with the hands-off run of the same
-seed on the same day. One run per seed and bot: the villages are
-stochastic, so a bot run diverges from the baseline after its first
-action for reasons unrelated to it; differences of ±10 % in population
-are within that noise.
+`npm run playtest -- --seeds 1..8 --years 10 --bot-years 4 --jobs 4` on
+main after the agency1 merge (50b3684: river seasons, wet/dry years,
+terrace start, economy retuned). It took 2.2 hours with 4 jobs on a
+shared container.
 
-### 1. The start is far too habitable
+Caveats: **128² maps**, not the game's 256² (256² is 4–10× slower), so
+the start disc already shows most of the map and there is little room
+for further villages; revealed area is not representative. Bot runs last
+**4 years** and are compared with the hands-off run of the same seed on
+the same day. One run per seed and bot: villages are stochastic and a bot
+run diverges from the baseline after its first action for reasons
+unrelated to it; with villages of 15–80 people, per-seed differences of
+±30 % happen by chance (e.g. two bots that change nothing near seed 2's
+village end at 57 and 86 people against a baseline of 37). Read the
+means over seeds, not single rows.
 
-| seed | relief m | slope | pop y1 | y2 | y4 | y10 | prosp. % | villages | min to 15 / 30 / 50 / 100 |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | 31 | 0.05 | 45 | 113 | 318 | 663 | 95 | 5 | 4 / 13 / 27 / 44 |
-| 2 | 21 | 0.04 | 16 | 71 | 255 | 972 | 97 | 9 | 24 / 35 / 41 / 61 |
-| 3 | 84 | 0.10 | 36 | 83 | 348 | 1014 | 98 | 8 | 11 / 19 / 37 / 54 |
-| 4 | 12 | 0.03 | 32 | 93 | 306 | 1035 | 96 | 9 | 14 / 24 / 35 / 49 |
-| 5 | 59 | 0.12 | 43 | 108 | 246 | 363 | 100 | 2 | 7 / 14 / 34 / 44 |
-| 6 | 10 | 0.02 | 39 | 101 | 345 | 1078 | 98 | 10 | 8 / 19 / 29 / 48 |
-| 7 | 150 | 0.48 | 24 | 35 | 25 | 4 | 38 | 1 | 11 / 37 / – / – |
-| 8 | 186 | 0.44 | 35 | 53 | 55 | 58 | 96 | 1 | 7 / 14 / 46 / – |
+An earlier run on the main before agency1 (a93081c, same command) is
+kept for comparison where it says something about the retune.
 
-- Hands-off, every seed reaches the lining unlock (15) and the weir (30),
-  in a median of **9 and 19 real minutes**; the gate (50) in 35 min on 7/8
-  seeds. All tools are unlocked before the player has had a reason to use
-  them.
-- Prosperity sits at 95–100 % (median 97 %) for ten years on 7/8 seeds:
-  the headline stat has no tension. Food security stays at its cap.
-- On flat seeds the population grows by ×2–2.5 in year two and then by
-  100–150 people a year, until 23–38 % of the map is fields and 5–10
-  villages; only seeds 1 and 5 level off (at 660 and 360) within ten
-  years. That is far above PEOPLE.md's growth limit (r ≤ 0.5 per year).
-- Why: food is never short. A farmer works 6 field cells
-  (`FIELDS_PER_FARMER`), each harvest gives `YIELD` 34 × fertility
-  person-days, while a person eats 48 a year, so one farmer feeds 2–4
-  people; migration is limited only by houses (`ECONOMY.arrivalRate` 0.6
-  families a day per free house above w = 0.6) and houses are built
-  whenever the village is full and w > 0.5.
-- **Nobody ever leaves** (0 departures in all 80 village-years): the
-  wellbeing target is 0.55·food + 0.2·housing + 0.15·water + 0.1·safety,
-  so with houses, water and safety it never drops below 0.45, above
-  `leaveBelow` 0.4, even at zero food. Starving villages shrink only by
-  the starvation death rate.
-- The two steep seeds (7, 8: slope > 0.4) are the exception. Seed 7's
-  village (84 cells from the river) put its fields on a valley floor
-  that floods every spring (90 of 120 field cells under water); crops
-  drown, food is 0 from year 1, and the village dies out slowly over nine
-  years (37 → 4) at prosperity 38 %, "struggling" all the time. Seed 8
-  is stuck at ~55 people with one village (no site scores ≥ 0.55).
+### 1. Does the hands-off village thrive?
 
-### 2. Agency: immediate feedback, little consequence
+| seed | relief m | slope | pop y1 | y2 | y4 | y10 | prosp. y10 % | food sec. y10 | villages | min to 15 (weir) / 30 (gate) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 31 | 0.05 | 36 | 41 | 43 | 53 | 63 | 0.35 | 1 | 7 / 13 |
+| 2 | 21 | 0.04 | 22 | 23 | 37 | 174 | 67 | 0.54 | 4 | 8 / 73 |
+| 3 | 84 | 0.10 | 12 | 17 | 41 | 259 | 81 | 0.88 | 5 | 38 / 84 |
+| 4 | 12 | 0.03 | 12 | 14 | 51 | 116 | 62 | 0.37 | 2 | 36 / 81 |
+| 5 | 59 | 0.12 | 33 | 37 | 42 | 51 | 60 | 0.26 | 1 | 7 / 14 |
+| 6 | 10 | 0.02 | 27 | 33 | 74 | 109 | 63 | 0.45 | 3 | 9 / 40 |
+| 7 | 150 | 0.48 | 17 | 12 | 13 | 14 | 59 | 0.23 | 1 | 11 / – |
+| 8 | 186 | 0.44 | 21 | 16 | 21 | 21 | 58 | 0.30 | 1 | 13 / – |
 
-| bot | acted | built in | first visible change | Δ pop (4 y) | Δ prosperity pts | Δ flooded cells | Δ houses ruined |
-|---|---|---|---|---|---|---|---|
-| irrigate | 8/8 | 1 day | same day (moisture) | −20 | −3.4 | +12 | +0.8 |
-| dike | 7/8 | 1 day | 20 days, on 2/7 seeds | −3 | +0.3 | +14 | +0.6 |
-| weir (from 30 villagers) | 5/8 | 1 day | same day (+0.1–0.3 m depth) | +19 | +0.9 | +1 | 0 |
-| drain | 8/8 | 1 day | same day (depth/moisture) | +7 | +0.1 | +4 | 0 |
-| vandal | 8/8 | 1–6 days | same day (depth) | −172 | −37 | +23 | +3.6 |
+- **The start is no longer too habitable, but it is still generous at
+  the beginning.** Every seed reaches the weir unlock (15) hands-off, in a
+  median of **10 real minutes** (day 19); the gate (30) on 6/8 seeds in a
+  median of 56 minutes. Before the retune all of them came within 35
+  minutes and on six seeds the villages grew to 360–1080 people at
+  95–100 % prosperity; now populations level off at 14–260 after ten years, and
+  only half the seeds found a second village (median day 167).
+- **Prosperity settles at about 60 %** (median 62 % in year 10, 58–81 %)
+  on every seed, and food security below 1 (median 0.36): the villages
+  are stationary but chronically short of food. The stats bar therefore
+  reads "so-so" for most of a game, whatever happens. Year 1 is the best
+  year everywhere (82–95 %; the founders bring 400 days of food).
+- 60 % is a floor, not an equilibrium of the land: wellbeing is
+  0.55·min(1, food security) + 0.2·housing + 0.15·water + 0.1·safety, so a
+  housed, safe village never drops below 0.45 even with an empty store,
+  above `ECONOMY.leaveBelow` 0.4. **Nobody ever leaves** (0 departures in
+  80 village-years, both runs); a hungry village only stops growing (the
+  growth pause below food security 1) and loses people slowly to deaths.
+- The steep seeds 7 and 8 (slope > 0.4, relief 150–186 m) stay at 12–21
+  people, food security ~0.25, with 45 % of their few fields dry-stressed;
+  on seed 7 the village sits 83 cells from the river.
 
-- The spirit crew finishes every plan within a day or two and the water
-  responds at once: the targeted fields are 0.02–0.36 wetter, the weir's
-  reservoir 0.1–0.3 m deeper, the drained patch drier, on the next day.
-  The *local* feedback is excellent.
-- But the beneficial bots change the villages by −20 … +19 people out of
-  ~300 (within the noise) and prosperity by a few points. The villages are
-  not limited by water or food, so there is nothing for the player to
-  fix: crops grow at full rate above field moisture 0.35, and the
-  moisture proxy (own soil, or 0.8·e^(−d/2) near water) already gives
-  0.5–0.7 on most fields.
-- Irrigation even hurts: a canal that ends in the fields floods them
-  (seed 1: 13 and 30 field cells flooded, prosperity 68 % vs 93 %; seed
-  7: four houses ruined and the village collapses). A careful player ends
-  the canal short of the fields, but nothing in the game rewards the
-  canal either way.
-- Dikes rarely matter: floods are rare (0–0.3 flood episodes a year, a
-  few houses in ten years on most seeds). On the one seed where floods
-  ruin a village (7) the dike bot found no water near the village on its
-  checks (the flood comes in spring over the fields); a flood-memory-
-  driven dike placement would be the next bot improvement.
-- Harm is strong and lasting: the vandal's diversion canal (and dam)
-  ruins 1–7 houses and leaves 6 of 8 villages at 4–9 people and 40 %
+### 2. Agency: immediate feedback, unclear consequence
+
+| bot | acted | built in | first visible change | Δ pop (4 y) | Δ prosperity pts | Δ dry fields pts | Δ flooded cells | Δ houses ruined |
+|---|---|---|---|---|---|---|---|---|
+| irrigate | 8/8 | 1–2 days | same day (moisture, depth) | −6 | +0.1 | −3.2 | +27 | 0 |
+| dike | 8/8 | 1 day | 0–35 days, on 5/8 seeds | −0.4 | 0.0 | +5.6 | +6 | 0 |
+| weir (at 15 villagers) | 4/8 | 1 day | same day (+0.1–0.3 m) | +7 | −1.4 | −5.6 | +4 | 0 |
+| drain | 7/8 | 1–2 days | same day (depth) | +4 | +0.3 | +3.6 | +11 | 0 |
+| vandal | 8/8 | 1–3 days | same day | −28 | −32 | +3.1 | +61 | +3.5 |
+
+(Baseline population at year 4: median 42.)
+
+- **Local feedback is excellent:** the spirit crew finishes every plan
+  within one or two days, and the target cells respond the same day: the
+  dry fields at the canal end are 0.08–0.30 wetter in field moisture, the
+  reservoir behind the weir 0.13–0.33 m deeper, the drained patch lower.
+- **But the villages hardly notice.** Averaged over seeds the beneficial
+  bots change the population by −6 … +7 (out of ~40) and prosperity by
+  about a point: less than the run-to-run noise. One canal to the driest
+  quarter of the fields lowers the dry-stressed share by only 3 points;
+  the weir by 6. A village has hundreds of field cells (140–2400) spread
+  over the land around it, and one canal wets a strip a few cells wide
+  (capillary reach 2.5 cells). A player would need many canals before the
+  stats bar moves, and nothing shows that more canals would pay.
+- Canals that end in the fields flood some of them (+27 flooded land
+  cells for irrigate); before the retune that was enough to cut seed 1's
+  prosperity from 93 to 68 %.
+- Dikes do nothing measurable: floods are rare and mild (0–0.4 episodes
+  a year, ≤ 2 houses ruined in ten years on any seed). The dike bot also
+  only finds water that is there on its checks; a spring flood over the
+  fields (seed 7 before the retune, 90 of 120 field cells under water)
+  needs flood-memory-driven placement.
+- **Harm is strong and permanent:** the vandal's diversion canal and dam
+  ruin 2–7 houses and leave 7 of 8 villages at 5–10 people and ~40 %
   prosperity for the remaining four years, with no recovery: nobody
-  leaves, nobody arrives (arrivals need w > 0.6), and a new village needs
-  25 people in all. PEOPLE.md's "setbacks and recovery in 3–8 years"
-  does not happen.
+  leaves, nobody arrives (arrivals need w > 0.6) and a new village needs
+  40 people in the valley. PEOPLE.md's "setbacks and recovery in 3–8
+  years" does not happen.
 
 ### 3. Variety
 
-- Outcomes are bimodal rather than varied: six seeds boom to 360–1080
-  people and fill the map, two steep ones stall (58) or die out (4).
-  Final population CV 0.65, prosperity CV 0.22 (driven by seed 7 alone).
-- The spread comes from relief and slope (and the flat land they leave),
-  not from water: rainfall varies only 84–119 mm per (48-day) year, river
-  inflow 0.7–66 m³/s without visible effect on the outcome (seed 1 with a
-  0.7 m³/s brook does as well as seed 6 with 66 m³/s).
-- Rivers barely move on flat seeds (0–2 new channel cells a year); only
-  the steep seeds 5, 7 and 8 shift by 6–18 cells a year.
-- The start site is always 7–16 cells from a river, except on seed 7
-  (84): `chooseStart` found no flat fertile land near water there.
+- Outcomes spread widely (final population 14–259, CV 0.79), but the
+  spread is in size, not in kind: prosperity converges to ~60 % on every
+  seed (CV 0.11).
+- Relief and slope decide most of it (seeds 7, 8 stall); water much less:
+  seed 1 with a 0.7 m³/s brook and seed 6 with 66 m³/s end at 53 and 109.
+  Rainfall varies 68–135 mm per (48-day) year.
+- Floods are rare everywhere (≤ 0.4 a year); the rivers move 0–11
+  channel cells a year (more on the steeper seeds; flat seeds 2, 4 are
+  static).
 
 ### 4. Pacing
 
-- Plenty of small events: 110–250 an hour at 1× on growing seeds (houses
-  60/h, new fields 80–100/h, families arriving 50–75/h), so a booming
-  village is never visually idle.
+| | year 1 | year 2 | year 3 | years 4–10 |
+|---|---|---|---|---|
+| events per real hour (median of 8 seeds) | 105 | 24 | 23 | 20–110 |
+
+- The first year is busy (houses, fields, arrivals, unlocks:
+  65–180 events an hour at 1×). **Then the game goes quiet for about an
+  hour of real time:** in years 2–3 hands-off villages stop growing (food
+  security below 1 pauses arrivals), and the rate drops to 13–48 events
+  an hour on every seed. All four 15+ minute silences of this run fall in
+  year 2 (days 67–163). Seeds that later found new villages pick up again
+  (seed 3: 100–160/h from year 4); small ones stay at 15–30/h.
 - "Major" events (new village, flood, unlock, milestone, river shift,
-  people fleeing) come about 8–9 an hour, every ~7 minutes; the longest
-  gap between them is 23–91 minutes.
-- Boring stretches: once growth stops (the map is full: seed 1 year 9–10,
-  seed 5 from year 6) the event rate drops from ~250 to ~30 an hour; the
-  steep seeds 7 and 8 drop to 5–15 an hour after year two with 20–41
-  minute silences (7 stretches of 15+ minutes, all on seeds 7 and 8).
-  Nothing happens to an established village: floods and droughts are too
-  rare and too mild to give the equilibrium life.
-- Unlocks all come in the first 35 minutes; after that there is no
-  progression goal but the doubling milestones (100, 200, 400).
+  people fleeing) come 5–13 times an hour; the longest gap between them
+  is 20–85 minutes.
+- Hands-off, the progression goals are reached early (weir) or never
+  (gate on 2/8 seeds, the later milestones on half); 8–16 achievements per
+  world arrive without the player.
 
 ### 5. Oddities found on the way
 
-- "Fleeing" fires constantly without any flood (up to 100 000 onsets in
-  ten years on seed 3): `PeopleSystem.updateAgent` makes anyone standing
-  in water deeper than 0.3 m flee, but people wade up to 0.4 m, so every
-  ford crossing is a flight (Run animation). The flee-episode counts in
-  the pacing tables are therefore not floods.
+- "Fleeing" fires constantly without floods (hundreds to 12 000 onsets in
+  ten years; up to 100 000 before the retune): `PeopleSystem.updateAgent`
+  makes anyone standing in water deeper than 0.3 m flee, but people wade
+  up to 0.4 m (`MAX_WADE`), so every ford crossing is a flight with the
+  Run animation. The flee counts in the tables are therefore not floods.
 - Departures are effectively dead code (see §1).
-- Achievements in a hands-off game: 9–16 per world (founders, first
-  harvest, pop 10/50/100/250, golden year, three villages, quayside,
-  decade, …) — most of the "endorphin hits" arrive without the player.
 
 ### Tuning suggestions (not applied; for the design review)
 
-1. **Make food the limit, so water matters.** In `people/village.ts`:
-   `YIELD` 34 → ~15, or `FIELDS_PER_FARMER` 6 → 3–4; and widen the
-   growth response to moisture (`growCrops`: full growth only from
-   moisture ~0.55 instead of 0.35, or yield ∝ moisture), so that natural
-   fields away from water give half a harvest and irrigation doubles it.
-   Check with the `irrigate` bot: Δ pop should become clearly positive.
-2. **Slow growth to the design rate.** `ECONOMY.arrivalRate` 0.6 → ~0.1,
-   and scale arrivals by surplus food security (e.g. ∝ max(0, S − 1))
-   rather than wellbeing alone; build houses only with a food surplus.
-   Target: r ≤ 0.5/yr, hands-off population levelling off at what the
-   land supports (tens to ~150 per village), not filling the map.
-3. **Let wellbeing fall.** Food weight 0.55 → 0.7 and housing/water/safety
-   0.3 together, or multiply the food term in, so that hunger can push w
-   below `leaveBelow` 0.4 and families actually leave (then come back:
-   PEOPLE.md's recovery). Keep a migrant trickle to small or collapsed
-   villages (`arriveAbove` lower for villages under ~10 people).
-4. **Later unlocks, or unlocks earned by the player.** At 15/30/50 all
-   tools come within 35 minutes hands-off. After (1)+(2) re-measure; if
-   growth is still easy, raise to e.g. 15/40/80, or tie the weir/gate
-   unlocks to the player's works (e.g. a first canal that feeds fields).
-5. **Fields and start site avoid flood-prone ground.** `manageFields`
-   should not claim cells with high `floodMemory` (or rate them by it);
-   `chooseStart` (worldgen) could penalise steep surroundings and
-   spring-flooded valley floors (seed 7) — or keep such starts on purpose
-   as the "hard" seeds where dikes are needed, and make the dike bot find
-   them (flood memory driven).
-6. **More life in the equilibrium.** Floods are rare (≤ 0.3/yr) and
-   rivers on flat maps static; climate anomalies (M1c "wet/dry years"),
-   a stronger spring melt or occasional droughts would give established
-   villages setbacks to recover from and the player a reason to build.
-7. **Fix flight while wading**: flee only above the wading limit (0.4 m)
-   or when the water is rising.
+1. **Let wellbeing fall, so hunger has a visible consequence and
+   recovery a trigger.** In `Settlement.day` (settlement.ts), weigh food
+   more (0.55 → 0.7) and housing/water/safety less, or multiply the food
+   term in, so that a hungry village can drop below `leaveBelow` 0.4 and
+   families leave, then come back when food returns. Pair with a migrant
+   trickle to small villages (e.g. `arriveAbove` 0.6 → 0.45 below ~10
+   people) so the vandal's village recovers in a few years.
+2. **Make one canal matter.** With food security ~0.36 the villages are
+   water-limited now, but one canal reaches too few fields. Options:
+   capillary reach (`CAPILLARY.reach` 2.5 → 4–5 cells, or `max` 0.8 →
+   0.9) so a canal through the fields wets a band of ~10 cells; or let
+   villagers dig short field ditches off the player's canals (M4
+   "NPCs build their own small works"). Target: the irrigate bot's
+   Δ prosperity ≥ +10 points within two years.
+3. **Fill the year-2 lull.** Hands-off villages stall exactly when the
+   player has the weir and nothing to aim for. Either keep the start a
+   little hungrier (founders' food 400 → ~250, so the first shortage and
+   the stats bar's dip come in year 1 while the player is still
+   watching, with a clear water-related cause), or give year 2 a nudge:
+   a dry summer from the climate anomaly early in the game, so the
+   first canal has an obvious job.
+4. **Prosperity as a readable stat.** With a floor at ~45 % and a
+   typical 60 %, the bar barely moves. Show it relative to the village's
+   own best (or food security directly), or move the floor down (1.).
+5. **Unlocks.** Weir at 15 comes in ~10 minutes hands-off, before most
+   players have dug a canal; gate at 30 comes late or never on small
+   valleys (2/8 seeds never). Consider tying the gate to the player's
+   works (e.g. a weir built) rather than to population alone.
+6. **Floods as events.** ≤ 0.4 floods a year and ≤ 2 ruined houses in ten
+   years: dikes have nothing to do. A stronger or more variable freshet
+   (agency1's river seasons) or rare big floods would give flood
+   protection a purpose and the equilibrium some drama.
+7. **Start site and steep seeds.** `chooseStart` (worldgen) sometimes
+   lands far from the river on steep land (seed 7: 83 cells, slope
+   0.48); such villages stay at ~15 people all game. Either penalise
+   steepness and distance, or keep them deliberately as "hard" valleys
+   where the player's canals are the only way up.
+8. **Fix flight while wading** (§5): flee only above `MAX_WADE`, or when
+   the water is rising.
 
-Re-run after a change: `npm run playtest -- --seeds 1..8 --years 10
---bot-years 4` and compare `out/playtest/summary.md`.
+Re-run after a change and compare `out/playtest/summary.md` (keep the
+old results dir to compare against).
