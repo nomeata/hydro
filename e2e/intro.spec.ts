@@ -10,9 +10,47 @@ async function colourCount(page: Page, selector: string): Promise<number> {
   return seen.size;
 }
 
+/** Console warnings about the live scenes giving up (the drawings stay instead). */
+function recordFallbacks(page: Page): string[] {
+  const out: string[] = [];
+  page.on('console', (m) => {
+    const t = m.text();
+    if (/unavailable|keeping the drawings|scene worker failed/i.test(t)) out.push(t);
+  });
+  return out;
+}
+
+/**
+ * Wait until `art` (an .intro-art) shows its live scene, not the drawing: the
+ * canvas is there and faded in, the drawing hidden. Fails at once if the
+ * scenes fall back to the drawing (canvas removed or a fallback warning),
+ * and only waits long for slow software GL.
+ */
+async function expectLive(page: Page, art: string, fallbacks: string[], timeout = 90_000): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        if (fallbacks.length) return `fallback: ${fallbacks.join(' | ')}`;
+        return page.evaluate((sel) => {
+          const a = document.querySelector(sel);
+          if (!a) return 'no art';
+          if (!a.querySelector('canvas.intro-live')) return 'fallback: no live canvas';
+          return a.classList.contains('live') && a.classList.contains('live-on') ? 'live' : 'waiting';
+        }, art);
+      },
+      { timeout, intervals: [500, 1000, 2000] },
+    )
+    .not.toMatch(/^(waiting|no art)$/);
+  if (fallbacks.length) throw new Error(`live scene fell back to the drawing: ${fallbacks.join(' | ')}`);
+  expect(await page.evaluate((sel) => (document.querySelector(sel)!.classList.contains('live') ? 'live' : 'not live'), art)).toBe('live');
+  await expect(page.locator(`${art} canvas.intro-live`)).toBeVisible();
+  await expect(page.locator(`${art} .intro-svg svg`)).toBeHidden();
+}
+
 test('welcome panels show live scenes, navigate, and clean up', async ({ page }) => {
   // Two workers and two renderers: slow on loaded CI runners.
   test.setTimeout(360_000);
+  const fallbacks = recordFallbacks(page);
   const errors = await openGame(page, '&size=64');
   const workers = () => page.evaluate(() => (window as any).__hydro.SimClient.live as number);
   expect(await workers()).toBe(1);
@@ -23,7 +61,8 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   await expect(intro.locator('h2')).toHaveText('Water shapes the land');
   // A second worker runs the scene; its first frames fade in over the drawing.
   expect(await workers()).toBe(2);
-  await expect(page.locator('.intro-art.live-on')).toHaveCount(1, { timeout: 90_000 });
+  // The live scene, not the drawing (which shows only when the scenes cannot run).
+  await expectLive(page, '.intro .intro-art', fallbacks);
   // The live frames fade in over the drawing (a handful of colours); on CI's
   // software GL the first rendered frames can take a long while.
   try {
@@ -46,7 +85,7 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   await intro.locator('.next').click();
   await expect(intro.locator('h2')).toHaveText('You shape the water');
   await expect(intro).toHaveAttribute('data-page', '1');
-  await expect(page.locator('.intro-art.live-on')).toHaveCount(1, { timeout: 60_000 });
+  await expectLive(page, '.intro .intro-art', fallbacks, 60_000);
   await expect(page.locator('.intro-tools')).toBeVisible();
   // The scripted hand brushes a real channel with Dig: the scene's ground drops.
   const t0 = await page.evaluate(() => {
@@ -73,6 +112,29 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   expect(await workers()).toBe(1);
   expect(await page.locator('canvas').count()).toBe(1);
   expect(errors).toEqual([]);
+  expect(fallbacks).toEqual([]);
+});
+
+test('live scenes survive a new deploy while the game is open (worker script gone from the server)', async ({ page }) => {
+  test.setTimeout(360_000);
+  const fallbacks = recordFallbacks(page);
+  const errors = await openGame(page, '&size=64&cards=1');
+  // The game keeps the worker script once it has started its own worker.
+  await page.waitForFunction(() => (window as any).__hydro.SimClient.scriptKept, null, { timeout: 30_000 });
+  // Every deploy replaces the hashed assets: the old worker file is gone.
+  await page.route(/\/assets\/worker-[^/]*\.js/, (r) => r.fulfill({ status: 404, body: 'gone' }));
+  await page.evaluate(() => (window as any).__hydro.showIntro());
+  await expectLive(page, '.intro .intro-art', fallbacks);
+  await page.locator('.intro .skip').click();
+  await expect(page.locator('.intro')).toBeHidden();
+  // The tool cards use the same machinery.
+  await page.evaluate(() => (window as any).__hydro.showCard('weir'));
+  await expectLive(page, '.tool-card .intro-art', fallbacks);
+  await page.locator('.tool-card .next').click();
+  await expect(page.locator('.tool-card')).toBeHidden();
+  expect(await page.evaluate(() => (window as any).__hydro.SimClient.live as number)).toBe(1);
+  expect(errors.filter((e) => !/404|Failed to load resource/.test(e))).toEqual([]);
+  expect(fallbacks).toEqual([]);
 });
 
 test('a first visit waits behind the welcome panels: no play, no toasts until they close', async ({ page }) => {
