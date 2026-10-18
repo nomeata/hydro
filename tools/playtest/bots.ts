@@ -113,39 +113,49 @@ export class IrrigateBot extends PerVillageBot {
       if ((lu !== LandUse.Field && lu !== LandUse.None) || isWater(w, i) || dist(w, i, s.state.x, s.state.y) < 4) return false;
       return m[i]! < CROP_MOISTURE.moist && (lu === LandUse.Field || w.fertility[i]! >= 0.4);
     });
-    const pool = land.length >= 12 ? land : fields;
-    pool.sort((a, b) => m[a]! - m[b]! || a - b);
-    const dry = pool.slice(0, Math.max(4, Math.ceil(pool.length / 4)));
-    const cx = mean(dry.map((i) => cellX(w, i)));
-    const cy = mean(dry.map((i) => cellY(w, i)));
-    // Aim at the middle of the dry fields first, then at other dry cells (some sit right by the houses).
-    const aims = [...dry].sort((a, b) => dist(w, a, cx, cy) - dist(w, b, cx, cy) || a - b);
+    // The dry land first; if no canal reaches it, the driest fields.
     let best: { src: number; depth: number; route: Pt[]; T: Pt } | null = null;
-    for (const target of aims.filter((_, k) => k % 3 === 0).slice(0, 8)) {
-      const T = pt(w, target);
-      // Candidate sources, cheapest first (short, shallow), then the first with a clear route.
-      const cands: { src: number; depth: number; score: number; end: Pt }[] = [];
-      for (const j of cellsAround(sim, T[0], T[1], 50)) {
-        if (!isShore(w, j)) continue;
-        const S = pt(w, j);
-        const end = shortOf(S, T, 1);
-        const zEnd = w.terrain(w.idx(Math.round(end[0]), Math.round(end[1])));
-        // Land below the source's water level would only be flooded by the canal.
-        if (zEnd < w.surface(j) + 0.3) continue;
-        // The canal floor at its end must lie 0.4 m below the source's surface.
-        const depth = Math.max(1, zEnd - w.surface(j) + 0.4);
-        if (depth > 3) continue;
-        cands.push({ src: j, depth, score: Math.hypot(S[0] - T[0], S[1] - T[1]) + 8 * depth, end });
-      }
-      cands.sort((a, b) => a.score - b.score || a.src - b.src);
-      for (const c of cands.filter((_, k) => k % 2 === 0).slice(0, 20)) {
-        const route = routeAround(sim, pt(w, c.src), c.end);
-        if (route) {
-          best = { src: c.src, depth: c.depth, route, T };
-          break;
+    let pool = fields;
+    let dry: number[] = [];
+    for (const p of land.length >= 12 ? [land, fields] : [fields]) {
+      if (best) break;
+      pool = p;
+      pool.sort((a, b) => m[a]! - m[b]! || a - b);
+      dry = pool.slice(0, Math.max(4, Math.ceil(pool.length / 4)));
+      const cx = mean(dry.map((i) => cellX(w, i)));
+      const cy = mean(dry.map((i) => cellY(w, i)));
+      // Aim at the middle of the dry fields first, then at other dry cells (some sit right by the houses).
+      const aims = [...dry].sort((a, b) => dist(w, a, cx, cy) - dist(w, b, cx, cy) || a - b);
+      // First only onto land above the source's water (else the canal floods it), then anywhere.
+      for (const strict of [true, false]) {
+        if (best) break;
+        for (const target of aims.filter((_, k) => k % 3 === 0).slice(0, 8)) {
+          const T = pt(w, target);
+          // Candidate sources, cheapest first (short, shallow), then the first with a clear route.
+          const cands: { src: number; depth: number; score: number; end: Pt }[] = [];
+          for (const j of cellsAround(sim, T[0], T[1], 50)) {
+            if (!isShore(w, j)) continue;
+            const S = pt(w, j);
+            const end = shortOf(S, T, 1);
+            const zEnd = w.terrain(w.idx(Math.round(end[0]), Math.round(end[1])));
+            // Land below the source's water level would only be flooded by the canal.
+            if (strict && zEnd < w.surface(j) + 0.3) continue;
+            // The canal floor at its end must lie 0.4 m below the source's surface.
+            const depth = Math.max(1, zEnd - w.surface(j) + 0.4);
+            if (depth > 3) continue;
+            cands.push({ src: j, depth, score: Math.hypot(S[0] - T[0], S[1] - T[1]) + 8 * depth, end });
+          }
+          cands.sort((a, b) => a.score - b.score || a.src - b.src);
+          for (const c of cands.filter((_, k) => k % 2 === 0).slice(0, 20)) {
+            const route = routeAround(sim, pt(w, c.src), c.end);
+            if (route) {
+              best = { src: c.src, depth: c.depth, route, T };
+              break;
+            }
+          }
+          if (best) break;
         }
       }
-      if (best) break;
     }
     if (!best) return null;
     const T = best.T;
