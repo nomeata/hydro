@@ -16,8 +16,22 @@
  * wall cell sees the bed max(z_i, z_j, top), so water passes only above the
  * top. They are applied after the main face loop by recomputing just the
  * faces of the (few) wall cells, so they cost nothing in the hot loop.
+ *
+ * Sparse running (docs/ENDLESS.md §3–4):
+ *  - Only the tiles of an ActiveSet are simulated. Cells outside are frozen
+ *    (the halo): faces between an active and a halo cell use the halo's
+ *    state as a fixed-level boundary, the flux is applied to the active cell
+ *    only, and the exchange is reported in `stats.edgeIn`/`edgeOut`.
+ *  - Dry tiles sleep: an active tile with no water at all, whose
+ *    face-neighbouring cells in the adjacent tiles are dry too, is skipped.
+ *    Every face it touches would be dry on both sides, so the full kernel
+ *    would set it to zero and change nothing: sleeping is exact (bit-for-bit
+ *    the same result). Rain, inflows or works that wet a cell wake its tile
+ *    on the next call, because wetness is rescanned at the start of each
+ *    call.
  */
-import { CELL, CELL_AREA, DRY, GRAVITY } from '../constants';
+import { ActiveSet } from '../active';
+import { CELL, CELL_AREA, DRY, GRAVITY, TILE } from '../constants';
 import { CellFlag, type World } from '../world';
 
 export interface FlowParams {
@@ -45,6 +59,13 @@ export interface Walls {
   top: Float32Array;
 }
 
+/** Wet bits per tile: any cell, and the four edge rows/columns. */
+const WET_ANY = 1;
+const WET_W = 2;
+const WET_E = 4;
+const WET_N = 8;
+const WET_S = 16;
+
 /** Reusable scratch buffers. */
 export class FlowScratch {
   readonly qxOld: Float32Array;
@@ -53,11 +74,29 @@ export class FlowScratch {
   readonly limit: Float32Array;
   /** Sediment concentration per cell (m³ sediment per m³ water). */
   readonly conc: Float32Array;
+  /** Per tile: wet bits, awake now, awake in the previous call (sized on first use). */
+  wet = new Uint8Array(0);
+  awake = new Uint8Array(0);
+  wasAwake = new Uint8Array(0);
+  /** Runs of awake tiles, (ty, tx0, tx1) triples; `nRuns` of them are valid. */
+  runs = new Int32Array(0);
+  nRuns = 0;
+  awakeTiles = 0;
+  /** The set used when the caller passes none (every tile active). */
+  private allSet: ActiveSet | null = null;
+  /** The active set (and its version) the halo scratch was set up for. */
+  set: ActiveSet | null = null;
+  version = -1;
   constructor(size: number) {
     this.qxOld = new Float32Array(size);
     this.qyOld = new Float32Array(size);
     this.limit = new Float32Array(size);
     this.conc = new Float32Array(size);
+  }
+
+  defaultSet(world: World): ActiveSet {
+    if (!this.allSet || this.allSet.width !== world.width || this.allSet.height !== world.height) this.allSet = new ActiveSet(world.width, world.height);
+    return this.allSet;
   }
 }
 
@@ -70,6 +109,14 @@ export interface FlowStats {
   maxSpeed: number;
   /** Sediment volume (m³) drained through outlets during the step. */
   sedimentOut?: number;
+  /** Water (m³) that came in from, or left into, the frozen land outside the active set. */
+  edgeIn?: number;
+  edgeOut?: number;
+  /** Sediment (m³) carried across the active edge. */
+  edgeSedIn?: number;
+  edgeSedOut?: number;
+  /** Tiles the kernel ran on (awake), of the active ones. */
+  awakeTiles?: number;
 }
 
 /** Largest stable time step for the given conditions (Courant-like). */
@@ -77,14 +124,176 @@ export function stableDt(maxDepth: number, maxSpeed: number, alpha = 0.7): numbe
   return (alpha * CELL) / (Math.sqrt(GRAVITY * Math.max(maxDepth, 0.01)) + maxSpeed);
 }
 
-/**
- * Advance surface water by dt seconds. Allocation-free.
- */
-export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: number, stats: FlowStats, walls?: Walls | null): void {
-  const { width: W, height: H, size, bedrock, soil, water, sediment, qx, qy, flags, velX, velY } = world;
-  const { qxOld, qyOld, limit, conc } = scratch;
+/** Set up the scratch for a new active set: halo cells pass flow unlimited and carry their frozen concentration. */
+function initHalo(world: World, scratch: FlowScratch, act: ActiveSet): void {
+  const { width: W, height: H, water, sediment, qx, qy } = world;
+  const { limit, conc, qxOld, qyOld } = scratch;
+  const nt = act.tw * act.th;
+  if (scratch.wet.length !== nt) {
+    scratch.wet = new Uint8Array(nt);
+    scratch.awake = new Uint8Array(nt);
+    scratch.wasAwake = new Uint8Array(nt);
+    scratch.runs = new Int32Array(nt * 3);
+  }
+  // Every active tile counts as just awake, so tiles that sleep at once get their faces cleared.
+  scratch.wasAwake.set(act.tile);
   qxOld.set(qx);
   qyOld.set(qy);
+  const hs = act.haloSpans;
+  for (let k = 0; k < hs.length; k += 3) {
+    const ty = hs[k]!;
+    for (let tx = hs[k + 1]!; tx < hs[k + 2]!; tx++) {
+      if (act.tile[ty * act.tw + tx]) continue;
+      for (let y = ty * TILE; y < Math.min(H, (ty + 1) * TILE); y++)
+        for (let x = tx * TILE; x < Math.min(W, (tx + 1) * TILE); x++) {
+          const i = y * W + x;
+          limit[i] = 1;
+          const vol = water[i]! * CELL_AREA;
+          conc[i] = vol > 0 ? sediment[i]! / vol : 0;
+        }
+    }
+  }
+  scratch.set = act;
+  scratch.version = act.version;
+}
+
+/** Copy the faces of the active and halo tiles to the "old" buffers (the rest never changes). */
+function copyOld(world: World, scratch: FlowScratch, act: ActiveSet): void {
+  const { width: W, height: H, qx, qy } = world;
+  const { qxOld, qyOld } = scratch;
+  if (act.all) {
+    qxOld.set(qx);
+    qyOld.set(qy);
+    return;
+  }
+  const hs = act.haloSpans;
+  for (let k = 0; k < hs.length; k += 3) {
+    const ty = hs[k]!;
+    const x0 = hs[k + 1]! * TILE;
+    const x1 = Math.min(W, hs[k + 2]! * TILE);
+    const y0 = ty * TILE;
+    const y1 = Math.min(H, y0 + TILE);
+    if (x0 === 0 && x1 === W) {
+      qxOld.set(qx.subarray(y0 * W, y1 * W), y0 * W);
+      qyOld.set(qy.subarray(y0 * W, y1 * W), y0 * W);
+    } else
+      for (let y = y0; y < y1; y++) {
+        const a = y * W + x0;
+        const b = y * W + x1;
+        qxOld.set(qx.subarray(a, b), a);
+        qyOld.set(qy.subarray(a, b), a);
+      }
+  }
+}
+
+/** Rescan which tiles hold water, decide which active tiles are awake, and build their runs. */
+function wake(world: World, scratch: FlowScratch, act: ActiveSet): void {
+  const { width: W, height: H, water, qx, qy, velX, velY } = world;
+  const { wet, awake, wasAwake, runs } = scratch;
+  const { tw, th, tile } = act;
+  const hs = act.haloSpans;
+  for (let k = 0; k < hs.length; k += 3) {
+    const ty = hs[k]!;
+    const y0 = ty * TILE;
+    const y1 = Math.min(H, y0 + TILE);
+    for (let tx = hs[k + 1]!; tx < hs[k + 2]!; tx++) {
+      const x0 = tx * TILE;
+      const x1 = Math.min(W, x0 + TILE);
+      let bits = 0;
+      for (let y = y0; y < y1; y++) {
+        const row = y * W;
+        let any = false;
+        for (let i = row + x0; i < row + x1; i++)
+          if (water[i]! > 0) {
+            any = true;
+            break;
+          }
+        if (!any) continue;
+        bits |= WET_ANY;
+        if (y === y0) bits |= WET_N;
+        if (y === y1 - 1) bits |= WET_S;
+        if (water[row + x0]! > 0) bits |= WET_W;
+        if (water[row + x1 - 1]! > 0) bits |= WET_E;
+      }
+      wet[ty * tw + tx] = bits;
+    }
+  }
+  let n = 0;
+  let awakeTiles = 0;
+  const s = act.spans;
+  for (let k = 0; k < s.length; k += 3) {
+    const ty = s[k]!;
+    let open = -1;
+    for (let tx = s[k + 1]!; tx < s[k + 2]!; tx++) {
+      const t = ty * tw + tx;
+      const a =
+        (wet[t]! & WET_ANY) !== 0 ||
+        (tx > 0 && (wet[t - 1]! & WET_E) !== 0) ||
+        (tx < tw - 1 && (wet[t + 1]! & WET_W) !== 0) ||
+        (ty > 0 && (wet[t - tw]! & WET_S) !== 0) ||
+        (ty < th - 1 && (wet[t + tw]! & WET_N) !== 0);
+      awake[t] = a ? 1 : 0;
+      if (a) {
+        awakeTiles++;
+        if (open < 0) open = tx;
+      } else {
+        if (open >= 0) {
+          runs[n++] = ty;
+          runs[n++] = open;
+          runs[n++] = tx;
+          open = -1;
+        }
+        if (wasAwake[t]) {
+          // Falling asleep: the faces it touches are dry on both sides, so the full kernel would zero them.
+          const x0 = tx * TILE;
+          const x1 = Math.min(W, x0 + TILE);
+          const y0 = ty * TILE;
+          const y1 = Math.min(H, y0 + TILE);
+          for (let y = y0; y < y1; y++) {
+            const row = y * W;
+            qx.fill(0, row + x0, row + x1);
+            qy.fill(0, row + x0, row + x1);
+            velX.fill(0, row + x0, row + x1);
+            velY.fill(0, row + x0, row + x1);
+            if (x0 > 0 && !tile[t - 1]) qx[row + x0 - 1] = 0;
+          }
+          if (y0 > 0 && !tile[t - tw]) qy.fill(0, (y0 - 1) * W + x0, (y0 - 1) * W + x1);
+        }
+      }
+      wasAwake[t] = a ? 1 : 0;
+    }
+    if (open >= 0) {
+      runs[n++] = ty;
+      runs[n++] = open;
+      runs[n++] = s[k + 2]!;
+    }
+  }
+  scratch.nRuns = n / 3;
+  scratch.awakeTiles = awakeTiles;
+}
+
+/**
+ * Advance surface water by dt seconds on the active tiles (all tiles if
+ * `active` is omitted). Allocation-free.
+ */
+export function flowStep(
+  world: World,
+  scratch: FlowScratch,
+  p: FlowParams,
+  dt: number,
+  stats: FlowStats,
+  walls?: Walls | null,
+  active?: ActiveSet | null,
+): void {
+  const { width: W, height: H, bedrock, soil, water, sediment, qx, qy, flags, velX, velY } = world;
+  const { qxOld, qyOld, limit, conc } = scratch;
+  const act = active ?? scratch.defaultSet(world);
+  if (scratch.set !== act || scratch.version !== act.version) initHalo(world, scratch, act);
+  else copyOld(world, scratch, act);
+  wake(world, scratch, act);
+  const runs = scratch.runs;
+  const nRuns = scratch.nRuns;
+  const { tw, th, tile } = act;
 
   const g = GRAVITY;
   const n2 = p.manning * p.manning;
@@ -94,63 +303,106 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
   const maxV = p.maxVelocity;
   const invDx = 1 / CELL;
 
-  // --- 1. Face discharges ---------------------------------------------------
-  for (let y = 0; y < H; y++) {
-    const row = y * W;
-    for (let x = 0; x < W; x++) {
-      const i = row + x;
-      const zi = bedrock[i]! + soil[i]!;
-      const hi = water[i]!;
-      const ei = zi + hi;
+  /** One face (a → b, b = a+1 or a+W), the same formula as the hot loop below. */
+  const face = (a: number, b: number, q0: number, qa: number, qb: number): number => {
+    const za = bedrock[a]! + soil[a]!;
+    const zb = bedrock[b]! + soil[b]!;
+    const ha = water[a]!;
+    const hb = water[b]!;
+    const ea = za + ha;
+    const eb = zb + hb;
+    const hf = Math.max(ea, eb) - Math.max(za, zb);
+    if (!(hf > minH && (ha > 0 || hb > 0))) return 0;
+    const qt = theta * q0 + side * (qa + qb);
+    let q = qt - g * hf * dt * (eb - ea) * invDx;
+    if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
+    const qmax = hf * maxV;
+    return q > qmax ? qmax : q < -qmax ? -qmax : q;
+  };
 
-      // x-face (i → i+1)
-      if (x < W - 1) {
-        const j = i + 1;
-        const zj = bedrock[j]! + soil[j]!;
-        const hj = water[j]!;
-        const ej = zj + hj;
-        const hf = Math.max(ei, ej) - Math.max(zi, zj);
-        if (hf > minH && (hi > 0 || hj > 0)) {
-          const q0 = qxOld[i]!;
-          const qa = x > 0 ? qxOld[i - 1]! : q0;
-          const qb = x < W - 2 ? qxOld[i + 1]! : q0;
-          const qt = theta * q0 + side * (qa + qb);
-          let q = qt - g * hf * dt * (ej - ei) * invDx;
-          if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
-          const qmax = hf * maxV;
-          if (q > qmax) q = qmax;
-          else if (q < -qmax) q = -qmax;
-          qx[i] = q;
+  // --- 1. Face discharges ---------------------------------------------------
+  for (let r = 0; r < nRuns; r++) {
+    const ty = runs[3 * r]!;
+    const tx0 = runs[3 * r + 1]!;
+    const tx1 = runs[3 * r + 2]!;
+    const cx0 = tx0 * TILE;
+    const cx1 = Math.min(W, tx1 * TILE);
+    const ry0 = ty * TILE;
+    const ry1 = Math.min(H, ry0 + TILE);
+    // Faces from the row above, where that tile is frozen (halo).
+    if (ry0 > 0)
+      for (let tx = tx0; tx < tx1; tx++) {
+        if (tile[(ty - 1) * tw + tx]) continue;
+        const row = (ry0 - 1) * W;
+        for (let x = tx * TILE; x < Math.min(W, (tx + 1) * TILE); x++) {
+          const i = row + x;
+          const q0 = qyOld[i]!;
+          qy[i] = face(i, i + W, q0, ry0 - 1 > 0 ? qyOld[i - W]! : q0, ry0 - 1 < H - 2 ? qyOld[i + W]! : q0);
+        }
+      }
+    for (let y = ry0; y < ry1; y++) {
+      const row = y * W;
+      // The face from the left neighbour (halo, or a sleeping tile: then it is dry on both sides).
+      if (cx0 > 0) {
+        const i = row + cx0 - 1;
+        const q0 = qxOld[i]!;
+        qx[i] = face(i, i + 1, q0, cx0 - 1 > 0 ? qxOld[i - 1]! : q0, cx0 - 1 < W - 2 ? qxOld[i + 1]! : q0);
+      }
+      for (let x = cx0; x < cx1; x++) {
+        const i = row + x;
+        const zi = bedrock[i]! + soil[i]!;
+        const hi = water[i]!;
+        const ei = zi + hi;
+
+        // x-face (i → i+1)
+        if (x < W - 1) {
+          const j = i + 1;
+          const zj = bedrock[j]! + soil[j]!;
+          const hj = water[j]!;
+          const ej = zj + hj;
+          const hf = Math.max(ei, ej) - Math.max(zi, zj);
+          if (hf > minH && (hi > 0 || hj > 0)) {
+            const q0 = qxOld[i]!;
+            const qa = x > 0 ? qxOld[i - 1]! : q0;
+            const qb = x < W - 2 ? qxOld[i + 1]! : q0;
+            const qt = theta * q0 + side * (qa + qb);
+            let q = qt - g * hf * dt * (ej - ei) * invDx;
+            if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
+            const qmax = hf * maxV;
+            if (q > qmax) q = qmax;
+            else if (q < -qmax) q = -qmax;
+            qx[i] = q;
+          } else {
+            qx[i] = 0;
+          }
         } else {
           qx[i] = 0;
         }
-      } else {
-        qx[i] = 0;
-      }
 
-      // y-face (i → i+W)
-      if (y < H - 1) {
-        const j = i + W;
-        const zj = bedrock[j]! + soil[j]!;
-        const hj = water[j]!;
-        const ej = zj + hj;
-        const hf = Math.max(ei, ej) - Math.max(zi, zj);
-        if (hf > minH && (hi > 0 || hj > 0)) {
-          const q0 = qyOld[i]!;
-          const qa = y > 0 ? qyOld[i - W]! : q0;
-          const qb = y < H - 2 ? qyOld[i + W]! : q0;
-          const qt = theta * q0 + side * (qa + qb);
-          let q = qt - g * hf * dt * (ej - ei) * invDx;
-          if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
-          const qmax = hf * maxV;
-          if (q > qmax) q = qmax;
-          else if (q < -qmax) q = -qmax;
-          qy[i] = q;
+        // y-face (i → i+W)
+        if (y < H - 1) {
+          const j = i + W;
+          const zj = bedrock[j]! + soil[j]!;
+          const hj = water[j]!;
+          const ej = zj + hj;
+          const hf = Math.max(ei, ej) - Math.max(zi, zj);
+          if (hf > minH && (hi > 0 || hj > 0)) {
+            const q0 = qyOld[i]!;
+            const qa = y > 0 ? qyOld[i - W]! : q0;
+            const qb = y < H - 2 ? qyOld[i + W]! : q0;
+            const qt = theta * q0 + side * (qa + qb);
+            let q = qt - g * hf * dt * (ej - ei) * invDx;
+            if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
+            const qmax = hf * maxV;
+            if (q > qmax) q = qmax;
+            else if (q < -qmax) q = -qmax;
+            qy[i] = q;
+          } else {
+            qy[i] = 0;
+          }
         } else {
           qy[i] = 0;
         }
-      } else {
-        qy[i] = 0;
       }
     }
   }
@@ -159,32 +411,71 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
 
   // --- 2. Outflow limiting: no cell may lose more water than it holds -------
   const k = dt * CELL; // volume per unit of q
-  for (let i = 0, x = 0; i < size; i++, x = x === W - 1 ? 0 : x + 1) {
-    let out = 0;
-    const qr = qx[i]!;
-    if (qr > 0) out += qr;
-    if (x > 0) {
-      const ql = qx[i - 1]!;
-      if (ql < 0) out -= ql;
+  for (let r = 0; r < nRuns; r++) {
+    const ty = runs[3 * r]!;
+    const cx0 = runs[3 * r + 1]! * TILE;
+    const cx1 = Math.min(W, runs[3 * r + 2]! * TILE);
+    const ry0 = ty * TILE;
+    const ry1 = Math.min(H, ry0 + TILE);
+    for (let y = ry0; y < ry1; y++) {
+      const row = y * W;
+      for (let x = cx0, i = row + cx0; x < cx1; x++, i++) {
+        let out = 0;
+        const qr = qx[i]!;
+        if (qr > 0) out += qr;
+        if (x > 0) {
+          const ql = qx[i - 1]!;
+          if (ql < 0) out -= ql;
+        }
+        const qd = qy[i]!;
+        if (qd > 0) out += qd;
+        if (y > 0) {
+          const qu = qy[i - W]!;
+          if (qu < 0) out -= qu;
+        }
+        const vol = water[i]! * CELL_AREA;
+        const outVol = out * k;
+        limit[i] = outVol > vol ? vol / outVol : 1;
+        conc[i] = vol > 0 ? sediment[i]! / vol : 0;
+      }
     }
-    const qd = qy[i]!;
-    if (qd > 0) out += qd;
-    if (i >= W) {
-      const qu = qy[i - W]!;
-      if (qu < 0) out -= qu;
-    }
-    const vol = water[i]! * CELL_AREA;
-    const outVol = out * k;
-    limit[i] = outVol > vol ? vol / outVol : 1;
-    conc[i] = vol > 0 ? sediment[i]! / vol : 0;
   }
-  for (let i = 0; i < size; i++) {
-    const q1 = qx[i]!;
-    if (q1 > 0) qx[i] = q1 * limit[i]!;
-    else if (q1 < 0) qx[i] = q1 * limit[i + 1]!;
-    const q2 = qy[i]!;
-    if (q2 > 0) qy[i] = q2 * limit[i]!;
-    else if (q2 < 0) qy[i] = q2 * limit[i + W]!;
+  const scaleX = (i: number): void => {
+    const q = qx[i]!;
+    if (q > 0) qx[i] = q * limit[i]!;
+    else if (q < 0) qx[i] = q * limit[i + 1]!;
+  };
+  const scaleY = (i: number): void => {
+    const q = qy[i]!;
+    if (q > 0) qy[i] = q * limit[i]!;
+    else if (q < 0) qy[i] = q * limit[i + W]!;
+  };
+  for (let r = 0; r < nRuns; r++) {
+    const ty = runs[3 * r]!;
+    const tx0 = runs[3 * r + 1]!;
+    const tx1 = runs[3 * r + 2]!;
+    const cx0 = tx0 * TILE;
+    const cx1 = Math.min(W, tx1 * TILE);
+    const ry0 = ty * TILE;
+    const ry1 = Math.min(H, ry0 + TILE);
+    if (ry0 > 0)
+      for (let tx = tx0; tx < tx1; tx++) {
+        if (tile[(ty - 1) * tw + tx]) continue;
+        const row = (ry0 - 1) * W;
+        for (let x = tx * TILE; x < Math.min(W, (tx + 1) * TILE); x++) scaleY(row + x);
+      }
+    for (let y = ry0; y < ry1; y++) {
+      const row = y * W;
+      if (cx0 > 0) scaleX(row + cx0 - 1);
+      for (let i = row + cx0; i < row + cx1; i++) {
+        const q1 = qx[i]!;
+        if (q1 > 0) qx[i] = q1 * limit[i]!;
+        else if (q1 < 0) qx[i] = q1 * limit[i + 1]!;
+        const q2 = qy[i]!;
+        if (q2 > 0) qy[i] = q2 * limit[i]!;
+        else if (q2 < 0) qy[i] = q2 * limit[i + W]!;
+      }
+    }
   }
 
   // --- 3. Continuity, sediment transport, velocity, outlets -----------------
@@ -192,71 +483,118 @@ export function flowStep(world: World, scratch: FlowScratch, p: FlowParams, dt: 
   let sedOut = 0;
   let maxDepth = 0;
   let maxSpeed = 0;
-  for (let y = 0; y < H; y++) {
-    const row = y * W;
-    for (let x = 0; x < W; x++) {
-      const i = row + x;
-      const qR = qx[i]!;
-      const qL = x > 0 ? qx[i - 1]! : 0;
-      const qD = qy[i]!;
-      const qU = y > 0 ? qy[i - W]! : 0;
-      // Net inflow volume (m³)
-      const net = (qL - qR + qU - qD) * k;
-      const h0 = water[i]!;
-      let h = h0 + net / CELL_AREA;
-      if (h < 0) h = 0;
+  let edgeIn = 0;
+  let edgeOut = 0;
+  let edgeSedIn = 0;
+  let edgeSedOut = 0;
+  /** Book a face between a frozen cell and an active one: `q` is the discharge into the active cell. */
+  const edge = (q: number, frozen: number, inner: number): void => {
+    if (q > 0) {
+      edgeIn += q * k;
+      edgeSedIn += q * k * conc[frozen]!;
+    } else if (q < 0) {
+      edgeOut -= q * k;
+      edgeSedOut -= q * k * conc[inner]!;
+    }
+  };
+  for (let r = 0; r < nRuns; r++) {
+    const ty = runs[3 * r]!;
+    const tx0 = runs[3 * r + 1]!;
+    const tx1 = runs[3 * r + 2]!;
+    const cx0 = tx0 * TILE;
+    const cx1 = Math.min(W, tx1 * TILE);
+    const ry0 = ty * TILE;
+    const ry1 = Math.min(H, ry0 + TILE);
+    for (let y = ry0; y < ry1; y++) {
+      const row = y * W;
+      for (let x = cx0; x < cx1; x++) {
+        const i = row + x;
+        const qR = qx[i]!;
+        const qL = x > 0 ? qx[i - 1]! : 0;
+        const qD = qy[i]!;
+        const qU = y > 0 ? qy[i - W]! : 0;
+        // Net inflow volume (m³)
+        const net = (qL - qR + qU - qD) * k;
+        const h0 = water[i]!;
+        let h = h0 + net / CELL_AREA;
+        if (h < 0) h = 0;
 
-      // Sediment, upwind.
-      let s = sediment[i]!;
-      if (qR > 0) s -= qR * k * conc[i]!;
-      else if (qR < 0) s -= qR * k * conc[i + 1]!;
-      if (qL > 0) s += qL * k * conc[i - 1]!;
-      else if (qL < 0) s += qL * k * conc[i]!;
-      if (qD > 0) s -= qD * k * conc[i]!;
-      else if (qD < 0) s -= qD * k * conc[i + W]!;
-      if (qU > 0) s += qU * k * conc[i - W]!;
-      else if (qU < 0) s += qU * k * conc[i]!;
-      if (s < 0) s = 0;
+        // Sediment, upwind.
+        let s = sediment[i]!;
+        if (qR > 0) s -= qR * k * conc[i]!;
+        else if (qR < 0) s -= qR * k * conc[i + 1]!;
+        if (qL > 0) s += qL * k * conc[i - 1]!;
+        else if (qL < 0) s += qL * k * conc[i]!;
+        if (qD > 0) s -= qD * k * conc[i]!;
+        else if (qD < 0) s -= qD * k * conc[i + W]!;
+        if (qU > 0) s += qU * k * conc[i - W]!;
+        else if (qU < 0) s += qU * k * conc[i]!;
+        if (s < 0) s = 0;
 
-      // Open boundary: critical-flow drain.
-      if ((flags[i]! & CellFlag.Outlet) !== 0 && h > 0) {
-        const vol = h * CELL_AREA;
-        const out = Math.min(vol, h * Math.sqrt(g * h) * CELL * dt);
-        const so = s * (out / vol);
-        s -= so;
-        sedOut += so;
-        h -= out / CELL_AREA;
-        outflow += out;
+        // Open boundary: critical-flow drain.
+        if ((flags[i]! & CellFlag.Outlet) !== 0 && h > 0) {
+          const vol = h * CELL_AREA;
+          const out = Math.min(vol, h * Math.sqrt(g * h) * CELL * dt);
+          const so = s * (out / vol);
+          s -= so;
+          sedOut += so;
+          h -= out / CELL_AREA;
+          outflow += out;
+        }
+
+        water[i] = h;
+        sediment[i] = s;
+
+        const hm = 0.5 * (h0 + h);
+        if (hm > DRY) {
+          // Thin films (water dropping over a bank) give huge q/h; clamp so that
+          // the time-step limit and erosion see physically sensible speeds.
+          let vx = (0.5 * (qL + qR)) / hm;
+          let vy = (0.5 * (qU + qD)) / hm;
+          if (vx > maxV) vx = maxV;
+          else if (vx < -maxV) vx = -maxV;
+          if (vy > maxV) vy = maxV;
+          else if (vy < -maxV) vy = -maxV;
+          velX[i] = vx;
+          velY[i] = vy;
+          const sp = Math.abs(vx) + Math.abs(vy);
+          if (sp > maxSpeed) maxSpeed = sp;
+        } else {
+          velX[i] = 0;
+          velY[i] = 0;
+        }
+        if (h > maxDepth) maxDepth = h;
       }
-
-      water[i] = h;
-      sediment[i] = s;
-
-      const hm = 0.5 * (h0 + h);
-      if (hm > DRY) {
-        // Thin films (water dropping over a bank) give huge q/h; clamp so that
-        // the time-step limit and erosion see physically sensible speeds.
-        let vx = (0.5 * (qL + qR)) / hm;
-        let vy = (0.5 * (qU + qD)) / hm;
-        if (vx > maxV) vx = maxV;
-        else if (vx < -maxV) vx = -maxV;
-        if (vy > maxV) vy = maxV;
-        else if (vy < -maxV) vy = -maxV;
-        velX[i] = vx;
-        velY[i] = vy;
-        const sp = Math.abs(vx) + Math.abs(vy);
-        if (sp > maxSpeed) maxSpeed = sp;
-      } else {
-        velX[i] = 0;
-        velY[i] = 0;
+    }
+    if (act.all) continue;
+    // The exchange with frozen neighbours, as phase 3 applied it.
+    for (let y = ry0; y < ry1; y++) {
+      const row = y * W;
+      if (cx0 > 0 && !tile[ty * tw + tx0 - 1]) edge(qx[row + cx0 - 1]!, row + cx0 - 1, row + cx0);
+      if (cx1 < W && !tile[ty * tw + tx1]) edge(-qx[row + cx1 - 1]!, row + cx1, row + cx1 - 1);
+    }
+    for (let tx = tx0; tx < tx1; tx++) {
+      const xa = tx * TILE;
+      const xb = Math.min(W, xa + TILE);
+      if (ty > 0 && !tile[(ty - 1) * tw + tx]) {
+        const row = (ry0 - 1) * W;
+        for (let x = xa; x < xb; x++) edge(qy[row + x]!, row + x, row + x + W);
       }
-      if (h > maxDepth) maxDepth = h;
+      if (ty < th - 1 && ry1 < H && !tile[(ty + 1) * tw + tx]) {
+        const row = (ry1 - 1) * W;
+        for (let x = xa; x < xb; x++) edge(-qy[row + x]!, row + x + W, row + x);
+      }
     }
   }
   stats.outflow = outflow;
   stats.sedimentOut = sedOut;
   stats.maxDepth = maxDepth;
   stats.maxSpeed = maxSpeed;
+  stats.edgeIn = edgeIn;
+  stats.edgeOut = edgeOut;
+  stats.edgeSedIn = edgeSedIn;
+  stats.edgeSedOut = edgeSedOut;
+  stats.awakeTiles = scratch.awakeTiles;
 }
 
 function wallTop(walls: Walls, i: number): number {
