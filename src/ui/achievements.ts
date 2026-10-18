@@ -31,7 +31,12 @@ export interface IdeasOptions {
   news: (on: boolean) => void;
   /** Per world, so ideas seen in one world are new in the next. */
   seed: number;
+  /** While true (a welcome panel or tool card is open), toasts wait. */
+  quiet?: () => boolean;
 }
+
+/** How often waiting toasts look whether the dialog has closed (ms). */
+const QUIET_RETRY_MS = 400;
 
 const TOOL_ICONS: Readonly<Record<string, string>> = { poles: 'pole' };
 
@@ -111,6 +116,13 @@ export class AchievementsUi {
     if (this.pump) return;
     const now = performance.now();
     if (!this.queue.length || this.showing >= MAX_TOASTS) return;
+    if (this.opts?.quiet?.()) {
+      this.pump = setTimeout(() => {
+        this.pump = null;
+        this.drain();
+      }, QUIET_RETRY_MS);
+      return;
+    }
     if (now < this.nextAt) {
       this.pump = setTimeout(() => {
         this.pump = null;
