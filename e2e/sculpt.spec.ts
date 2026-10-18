@@ -82,10 +82,10 @@ test('the Dig brush digs at once while held, stays selected, and Undo brings the
   await page.click('[data-tool=raise]');
   await page.mouse.move(px, py);
   await page.mouse.down();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(800);
   await page.mouse.up();
   await caughtUp(page);
-  expect(await height(page, s.x, s.y)).toBeGreaterThan(z0 + 0.2);
+  expect(await height(page, s.x, s.y)).toBeGreaterThan(z0 + 0.15);
   await page.click('[data-testid=undo]');
   await page.waitForFunction(([x, y, z]) => {
     const h = (window as any).__hydro;

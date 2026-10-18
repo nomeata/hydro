@@ -770,7 +770,8 @@ export class ToolPalette {
     if (!b) return;
     this.brushRaf = requestAnimationFrame(this.brushFrame);
     const now = performance.now();
-    const dt = Math.min(0.1, (now - b.t) / 1000);
+    // Real hold time (a slow frame still counts in full, up to a limit: the sim caps each sample too).
+    const dt = Math.min(0.25, (now - b.t) / 1000);
     b.t = now;
     const p = this.pickBrush(b.cx, b.cy);
     const tool = this.tool as BrushTool;

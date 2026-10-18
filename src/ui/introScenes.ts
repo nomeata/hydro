@@ -89,6 +89,7 @@ export class IntroScenes {
   /** 'shape' timeline state. */
   private drew = false;
   private lastT = 0;
+  private lastAt: Pt | null = null;
   private sculptor: Sculptor | null = null;
   private readonly onResize = () => this.renderer?.resize();
   private readonly tmp = new THREE.Vector3();
@@ -202,6 +203,7 @@ export class IntroScenes {
   private resetScript(): void {
     this.drew = false;
     this.lastT = 0;
+    this.lastAt = null;
     this.sculptor?.reset();
     this.renderer?.brushCursor.set(null);
     this.hand.style.opacity = '0';
@@ -275,7 +277,7 @@ export class IntroScenes {
     const rest: [number, number] = [tool[0] + cr.width * 0.18, tool[1] - cr.height * 0.25];
     let p: [number, number];
     let press = false;
-    const dt = this.lastT ? Math.min(0.1, Math.max(0, t - this.lastT)) : 0;
+    const dt = this.lastT ? Math.min(0.25, Math.max(0, t - this.lastT)) : 0;
     this.lastT = t;
     if (t < T_TAP - 0.5) {
       p = rest;
@@ -298,9 +300,14 @@ export class IntroScenes {
       if (sc) {
         if (!this.drew) {
           this.drew = true;
+          this.lastAt = at;
           sc.begin('dig', DIG.radius);
         }
-        sc.sample(at[0], at[1], dt * DIG.boost);
+        // From where the brush was last frame to here (slow frames: no gaps).
+        const from = this.lastAt ?? at;
+        const n = Math.max(1, Math.ceil(Math.hypot(at[0] - from[0], at[1] - from[1]) / (DIG.radius * 0.4)));
+        for (let k = 1; k <= n; k++) sc.sample(from[0] + ((at[0] - from[0]) * k) / n, from[1] + ((at[1] - from[1]) * k) / n, (dt * DIG.boost) / n);
+        this.lastAt = at;
         sc.flush();
       }
       this.renderer?.brushCursor.set({ x: at[0], y: at[1], r: DIG.radius, tool: 'dig', active: true });
