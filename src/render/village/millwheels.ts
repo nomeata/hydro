@@ -13,6 +13,7 @@ import type { BuildingInfo } from '../../shared/protocol';
 import { heightToY, type HeightSampler } from '../coords';
 import { vertexColorMaterial } from '../objects/loader';
 import { MILL_WHEEL } from './houses';
+import { undershotSign, wheelQuaternion } from '../wheelSpin';
 
 /** Angular speed (rad/s at 1×) per m/s of water, and the most it turns. */
 const SPIN_PER_MPS = 1.4;
@@ -66,6 +67,8 @@ interface Wheel {
   rot: number;
   spin: number;
   angle: number;
+  /** ±1: the way the wheel turns, its bottom moving with the current (wheelSpin.ts). */
+  dir: number;
 }
 
 export class MillWheelsLayer {
@@ -76,10 +79,10 @@ export class MillWheelsLayer {
   private readonly centres: THREE.Vector3[] = [];
   private readonly tmpM = new THREE.Matrix4();
   private readonly tmpQ = new THREE.Quaternion();
-  private readonly tmpQ2 = new THREE.Quaternion();
   private readonly one = new THREE.Vector3(1, 1, 1);
-  private readonly up = new THREE.Vector3(0, 1, 0);
-  private readonly axle = new THREE.Vector3(1, 0, 0);
+  private readonly vtmp: [number, number] = [0, 0];
+  /** Water velocity (m/s, cell axes) at a cell; set by the renderer. */
+  flowAt: ((x: number, y: number, out: [number, number]) => [number, number]) | null = null;
   private readonly geometry = wheelGeometry();
 
   constructor(
@@ -111,10 +114,13 @@ export class MillWheelsLayer {
   }
 
   setBuildings(list: readonly BuildingInfo[]): void {
-    const old = new Map(this.wheels.map((w) => [w.id, w.angle]));
+    const old = new Map(this.wheels.map((w) => [w.id, w]));
     this.wheels = list
       .filter((b) => b.kind === 'mill' && b.progress >= 1)
-      .map((b) => ({ id: b.id, x: b.x, y: b.y, rot: b.rot, spin: b.spin ?? 0, angle: old.get(b.id) ?? (b.id % 7) * 0.4 }));
+      .map((b) => {
+        const o = old.get(b.id);
+        return { id: b.id, x: b.x, y: b.y, rot: b.rot, spin: b.spin ?? 0, angle: o?.angle ?? (b.id % 7) * 0.4, dir: o?.dir ?? 1 };
+      });
     if (this.wheels.length > this.capacity) {
       const m = this.mesh;
       m.removeFromParent();
@@ -145,6 +151,11 @@ export class MillWheelsLayer {
       const ground = heightToY(h.terrainAt(w.x, w.y));
       const surface = heightToY(h.terrainAt(cx, cy) + h.depthAt(cx, cy));
       const y = Math.min(ground + 0.75, Math.max(surface + MILL_WHEEL.radius * 0.6, ground - 1.5));
+      // The bottom dips into the water there and moves with it.
+      if (this.flowAt) {
+        const [vx, vy] = this.flowAt(cx, cy, this.vtmp);
+        w.dir = undershotSign(w.rot, vx, vy, w.dir);
+      }
       this.centres.push(new THREE.Vector3(wx, y, wz));
     }
     this.sinceLayout = 0;
@@ -154,9 +165,7 @@ export class MillWheelsLayer {
   private place(): void {
     const m = this.mesh;
     this.wheels.forEach((w, i) => {
-      this.tmpQ.setFromAxisAngle(this.up, w.rot);
-      this.tmpQ2.setFromAxisAngle(this.axle, w.angle);
-      this.tmpQ.multiply(this.tmpQ2);
+      wheelQuaternion(w.rot, w.angle, this.tmpQ);
       this.tmpM.compose(this.centres[i]!, this.tmpQ, this.one);
       m.setMatrixAt(i, this.tmpM);
     });
@@ -168,7 +177,7 @@ export class MillWheelsLayer {
   update(dt: number, gameSpeed: number): void {
     if (!this.wheels.length) return;
     const k = Math.min(3, Math.max(0, gameSpeed));
-    for (const w of this.wheels) w.angle = (w.angle + Math.min(MAX_SPIN, w.spin * SPIN_PER_MPS) * k * dt) % (Math.PI * 2);
+    for (const w of this.wheels) w.angle = (w.angle + w.dir * Math.min(MAX_SPIN, w.spin * SPIN_PER_MPS) * k * dt) % (Math.PI * 2);
     this.sinceLayout += dt;
     if (this.sinceLayout >= RELAYOUT) this.layout();
     else this.place();

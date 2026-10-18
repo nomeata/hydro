@@ -3,6 +3,7 @@
  * camera. Other layers (objects, characters) add themselves to `scene` and
  * subscribe to `addFrameListener`.
  */
+import { GameClock } from './gameClock';
 import * as THREE from 'three';
 import type { Snapshot, WorldInfo } from '../shared/protocol';
 import { CameraController } from './camera';
@@ -60,7 +61,8 @@ export interface GameRendererOptions {
   followSimTime?: boolean;
 }
 
-type FrameListener = (dtSec: number, nowMs: number) => void;
+/** Called every frame with the wall-clock step and the game clock (see gameClock.ts). */
+type FrameListener = (realDt: number, clock: GameClock) => void;
 
 let capsLogged = false;
 
@@ -122,6 +124,8 @@ export class GameRenderer {
   private depthPrevIsA = true;
   private readonly listeners: FrameListener[] = [];
   private lastFrameMs: number | null = null;
+  /** The game-time animation clock: stops while paused (gameClock.ts). */
+  readonly clock = new GameClock();
   private snapPending = false;
   private snapAtMs = 0;
   private snapIntervalMs = 100;
@@ -220,8 +224,11 @@ export class GameRenderer {
     this.plots = new PlotLayer(this.scene, this.heights);
     this.cues = new VillageCuesLayer(this.scene, this.heights);
     this.millWheels = new MillWheelsLayer(this.scene, this.heights);
+    this.millWheels.flowAt = (x, y, out) => this.flow.velocityAt(x, y, out);
     this.structures = new StructuresLayer(this.scene, this.heights);
+    this.structures.flowAt = (x, y, out) => this.flow.velocityAt(x, y, out);
     this.wheelPreview = new WheelPreview(this.scene, this.heights);
+    this.wheelPreview.setFlow((x, y, out) => this.flow.velocityAt(x, y, out));
     this.brushCursor = new BrushCursor(this.scene, this.heights);
     this.power = new PowerLayer(this.scene, this.heights);
     this.updateBounds();
@@ -290,6 +297,7 @@ export class GameRenderer {
     this.structures.gameSpeed = this.flow.gameSpeed;
     this.structures.refreshWater();
     this.power.gameSpeed = this.flow.gameSpeed;
+    this.clock.gameSpeed = this.flow.gameSpeed;
     this.weather.setFronts(s.climate.fronts);
     const wu = this.water.uniforms;
     wu.uDepthA.value = this.prevDepthTex();
@@ -470,7 +478,11 @@ export class GameRenderer {
     this.water.uniforms.uMix.value = mix;
 
     this.camera.update(dt);
-    const t = nowMs / 1000;
+    // Game activity runs on the game clock: frozen while paused (gameClock.ts).
+    const clock = this.clock;
+    clock.tick(dt);
+    const t = clock.animSec;
+    const adt = clock.animDt;
     this.terrain.uniforms.uTime.value = t;
     const wu = this.water.uniforms;
     wu.uTime.value = t;
@@ -483,18 +495,19 @@ export class GameRenderer {
 
     if (this.shadows) this.fitShadow();
     else this.sky.placeSun(this.camera.targetWorld(this.tmpV), Math.max(this.info.width, this.info.height));
+    // Flecks scale their drift by the game speed themselves (and renew after camera moves while paused).
     this.flow.update(dt, this.camera);
-    this.weather.update(dt, t, this.camera);
+    this.weather.update(adt, t, this.camera);
     const cs = this.camera.getCurrentState();
     this.crops.update(nowMs, cs.x, cs.y, cs.viewHeight);
     this.plots.update(cs.viewHeight);
-    this.cues.update(dt, cs.viewHeight);
-    this.millWheels.update(dt, this.flow.gameSpeed);
-    this.structures.update(dt);
+    this.cues.update(adt, cs.viewHeight);
+    this.millWheels.update(clock.playDt, this.flow.gameSpeed);
+    this.structures.update(clock.playDt);
     this.wheelPreview.update(dt);
     this.brushCursor.update();
-    this.power.update(dt);
-    for (const fn of this.listeners) fn(dt, nowMs);
+    this.power.update(adt);
+    for (const fn of this.listeners) fn(dt, clock);
     if (this.contextLost) return;
     this.gl.render(this.scene, this.camera.camera);
   }

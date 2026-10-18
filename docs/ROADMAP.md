@@ -213,6 +213,8 @@ See docs/SOUND.md.
   when hidden; the welcome scenes have their own ambience
 - ☑ Review loop: `npm run sound-review` (offline renders, loudness,
   spectrograms)
+- ☑ Water beds 6 dB quieter (river close-up −31.8 LUFS); pausing freezes
+  all game animation (render/gameClock.ts)
 - ☐ Village chatter and children (no good CC0 voices yet), music
 
 ## Later / ideas
