@@ -8,14 +8,34 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# Branch and PR runs: a new push cancels the old run. Runs on main are never
+# cancelled (so a busy afternoon of pushes still deploys); their deploys
+# queue in the `pages` group below, and a run whose commit is already
+# superseded on the site does not deploy.
 concurrency:
-  group: pages-${{ github.ref }}
+  group: ci-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Typecheck and the vitest suite, split over two runners (by file).
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+        if: matrix.shard == 1
+      - run: npx vitest run --shard=${{ matrix.shard }}/2
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -25,29 +45,129 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
       - run: npx vite build
-      - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - run: echo "{\"sha\":\"${GITHUB_SHA}\"}" > dist/version.json
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: e2e-results
-          path: test-results/
-          if-no-files-found: ignore
-      - uses: actions/upload-pages-artifact@v3
-        if: github.ref == 'refs/heads/main'
-        with:
-          path: dist
+          name: dist
+          path: dist/
+          retention-days: 7
 
-  deploy:
-    if: github.ref == 'refs/heads/main'
+  # Browser tests (software GL, slow): four shards in parallel on the built site.
+  e2e:
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npx playwright test --grep-invert @readme --shard=${{ matrix.shard }}/4
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-results-${{ matrix.shard }}
+          path: test-results/
+          if-no-files-found: ignore
+
+  # README screenshots and og.png, rendered from the built site. Runs beside
+  # the e2e shards; if it fails, the deploy keeps the screenshots it has.
+  screenshots:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npx playwright test --grep @readme
+      - uses: actions/upload-artifact@v4
+        with:
+          name: readme-shots
+          path: |
+            dist/screenshots/
+            dist/og.png
+          retention-days: 7
+
+  deploy:
+    needs: [check, build, e2e, screenshots]
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      needs.check.result == 'success' && needs.build.result == 'success' &&
+      needs.e2e.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Skip if the site already runs this commit or a newer one (a later
+      # push whose run finished first).
+      - name: Is this commit still the newest?
+        id: fresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          live=$(curl -sf https://hydro.nomeata.de/version.json | jq -r .sha || true)
+          echo "live: ${live:-none}, this: $GITHUB_SHA"
+          status=none
+          if [ -n "$live" ] && [ "$live" != null ]; then
+            status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$live" --jq .status || echo unknown)
+          fi
+          echo "live compared to this: $status"
+          if [ "$status" = ahead ] || [ "$status" = identical ]; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.fresh.outputs.deploy == 'true'
+        with:
+          name: dist
+          path: dist/
+      - uses: actions/download-artifact@v4
+        if: steps.fresh.outputs.deploy == 'true' && needs.screenshots.result == 'success'
+        with:
+          name: readme-shots
+          path: dist/
+      - name: Keep the published screenshots (this run made none)
+        if: steps.fresh.outputs.deploy == 'true' && needs.screenshots.result != 'success'
+        run: |
+          mkdir -p dist/screenshots
+          for f in overview.png overview-phone.png closeup.png; do
+            curl -sf -o "dist/screenshots/$f" "https://hydro.nomeata.de/screenshots/$f" || echo "no $f"
+          done
+          curl -sf -o dist/og.png.live https://hydro.nomeata.de/og.png && mv dist/og.png.live dist/og.png || true
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.fresh.outputs.deploy == 'true'
+        with:
+          path: dist
       - id: deployment
+        if: steps.fresh.outputs.deploy == 'true'
         uses: actions/deploy-pages@v4
