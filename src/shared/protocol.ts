@@ -390,8 +390,10 @@ export type Command =
    * below it at the end; raise heaps a level bank `amount` above the lowest
    * ground on the line; even flattens to the height at the start. `width`
    * in cells; banks slope over 1.5 cells. Applied at once, one undo stroke.
+   * `floor` (dig only): the floor's absolute height (m) at the start and the
+   * end instead, for a canal graded to a water level (playtest bots).
    */
-  | { type: 'shapeLine'; tool: BrushTool; points: Pt[]; width: number; amount?: number }
+  | { type: 'shapeLine'; tool: BrushTool; points: Pt[]; width: number; amount?: number; floor?: [number, number] }
   /** Stone lining on the cells brushed by a path (built after any earthworks there). */
   | { type: 'planLining'; points: Pt[]; width: number }
   /**

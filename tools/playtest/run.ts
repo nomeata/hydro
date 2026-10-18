@@ -28,6 +28,8 @@ export interface JobSpec {
   window: number;
   /** Let bots use tools before they unlock (experiments). */
   ignoreUnlocks?: boolean;
+  /** Earth budget per bot over the run (m³; default bots.ts EARTH_BUDGET). */
+  budget?: number;
 }
 
 export interface Descriptors {
@@ -63,6 +65,8 @@ export interface ActionRecord extends BotAction {
   /** Plan cells the commands placed, and the day the earthworks were finished. */
   planCells: number;
   doneDay: number | null;
+  /** Earth the commands moved (m³, Simulation.brush.moved.script). */
+  earthMoved: number;
 }
 
 export interface ResponseRecord {
@@ -255,7 +259,7 @@ export async function runJob(spec: JobSpec, log: (msg: string) => void = () => {
   const descriptors = describe(sim, gen.startX, gen.startY);
   const forestStart = forestCover(sim.world);
   const obs = new Observer(sim);
-  const bot = spec.bot === 'baseline' ? null : makeBot(spec.bot, { ignoreUnlocks: spec.ignoreUnlocks });
+  const bot = spec.bot === 'baseline' ? null : makeBot(spec.bot, { ignoreUnlocks: spec.ignoreUnlocks, budget: spec.budget });
   const actions: ActionRecord[] = [];
   const pending: { rec: ActionRecord; cells: number[] }[] = [];
   let control: Simulation | null = null;
@@ -286,14 +290,15 @@ export async function runJob(spec: JobSpec, log: (msg: string) => void = () => {
       }
       for (const act of acts) {
         const before = planSnapshot(sim);
+        const moved0 = sim.brush.moved.script;
         for (const c of act.commands) sim.command(c);
         const cells: number[] = [];
         const plan = sim.world.plan;
         for (let i = 0; i < plan.length; i++) if (!Number.isNaN(plan[i]!) && !Object.is(plan[i], before[i])) cells.push(i);
-        const rec: ActionRecord = { ...act, planCells: cells.length, doneDay: cells.length ? null : d };
+        const rec: ActionRecord = { ...act, planCells: cells.length, doneDay: cells.length ? null : d, earthMoved: Math.round(sim.brush.moved.script - moved0) };
         actions.push(rec);
         if (cells.length) pending.push({ rec, cells });
-        log(`seed ${spec.seed} ${spec.bot} day ${d}: ${act.note} (${cells.length} plan cells)`);
+        log(`seed ${spec.seed} ${spec.bot} day ${d}: ${act.note} (${cells.length} plan cells, ${rec.earthMoved} m³ moved)`);
       }
     }
     obs.run(STEPS_PER_DAY);

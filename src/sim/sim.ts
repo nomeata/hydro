@@ -576,7 +576,7 @@ export class Simulation {
         if (this.brush.undo()) this.lookDirty = true;
         break;
       case 'shapeLine':
-        if (this.brush.shapeLine(cmd.tool, cmd.points, cmd.width, cmd.amount ?? 1, --this.scriptStroke).length) {
+        if (this.brush.shapeLine(cmd.tool, cmd.points, cmd.width, cmd.amount ?? 1, --this.scriptStroke, cmd.floor).length) {
           this.lookDirty = true;
           this.achievements.sculpted(w, this.time.day);
         }
