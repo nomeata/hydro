@@ -47,7 +47,7 @@ export class ToolCards {
 
   constructor(root: HTMLElement) {
     this.el = document.createElement('div');
-    this.el.className = 'intro tool-card';
+    this.el.className = 'tool-card';
     this.el.hidden = true;
     this.el.setAttribute('role', 'dialog');
     this.el.setAttribute('aria-modal', 'true');
