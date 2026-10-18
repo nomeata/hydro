@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { BuildingInfo } from '../../src/shared/protocol';
+import { FIELD_BYTES, FieldCrop, type BuildingInfo } from '../../src/shared/protocol';
 import { cropStress } from '../../src/sim/people/village';
 import { LandUse } from '../../src/sim/world';
 import { cropPlacements } from '../../src/render/village/crops';
+import { pegOutline } from '../../src/render/village/plots';
 import { decorPlacements, flowerGeometry, laundryGeometry, nearestVillage, smokeStrength } from '../../src/render/village/cues';
 import { CROP_RIPE, decodeStress, fieldsToRgba } from '../../src/render/village/fields';
 import { HAY_LEVEL, MAX_FOOD_PROPS, Stage, houseSpots, partsAt, storeDesign } from '../../src/render/village/houses';
@@ -18,17 +19,17 @@ describe('crop stress (render side)', () => {
   });
 
   it('expands snapshot fields to RGBA texels', () => {
-    const src = new Uint8Array([1, 200, 90, 5, 0, 0]);
+    const src = new Uint8Array([1, 200, 90, 2, 0, 0, 0, 3]);
     const dst = new Uint8Array(8);
     fieldsToRgba(src, dst, 2);
-    expect([...dst]).toEqual([1, 200, 90, 0, 5, 0, 0, 0]);
+    expect([...dst]).toEqual([1, 200, 90, 2, 0, 0, 0, 3]);
   });
 
   it('dry fields get fewer, smaller, yellower plants', () => {
     const n = 8;
     const make = (stress: number) => {
-      const f = new Uint8Array(n * n * 3);
-      for (let i = 0; i < n * n; i++) f.set([LandUse.Field, 150, stress], 3 * i);
+      const f = new Uint8Array(n * n * FIELD_BYTES);
+      for (let i = 0; i < n * n; i++) f.set([LandUse.Field, 150, stress], FIELD_BYTES * i);
       return cropPlacements(f, n, n, 0, 0, n, n);
     };
     const ok = make(0);
@@ -38,6 +39,42 @@ describe('crop stress (render side)', () => {
     expect(mean(dry, 'scale')).toBeLessThan(mean(ok, 'scale'));
     expect(make(0).length).toBe(ok.length);
     void CROP_RIPE;
+  });
+
+  it('millet stands sparser and shorter than the ordinary crop; paddies get rice clumps', () => {
+    const n = 8;
+    const make = (kind: FieldCrop) => {
+      const f = new Uint8Array(n * n * FIELD_BYTES);
+      for (let i = 0; i < n * n; i++) f.set([LandUse.Field, 150, 0, kind], FIELD_BYTES * i);
+      return cropPlacements(f, n, n, 0, 0, n, n);
+    };
+    const wheat = make(FieldCrop.Common);
+    const millet = make(FieldCrop.Millet);
+    const rice = make(FieldCrop.Paddy);
+    expect(millet.length).toBeLessThan(wheat.length * 0.75);
+    expect(millet.every((p) => p.model.startsWith('crops_wheat'))).toBe(true);
+    const mean = (ps: typeof wheat) => ps.reduce((a, p) => a + p.scale, 0) / ps.length;
+    expect(mean(millet)).toBeLessThan(mean(wheat.filter((p) => p.model.startsWith('crops_wheat'))));
+    expect(rice.length).toBe(n * n * 4);
+    expect(rice.every((p) => p.model === 'grass' && p.lift)).toBe(true);
+  });
+});
+
+describe('pegged plots (render side)', () => {
+  it('a string along the outline of the pegged cells and a peg at each corner of it', () => {
+    const n = 8;
+    const f = new Uint8Array(n * n * FIELD_BYTES);
+    // An L of three cells: (2,2), (3,2), (2,3).
+    for (const [x, y] of [[2, 2], [3, 2], [2, 3]] as const) f[FIELD_BYTES * (y * n + x) + 3] = FieldCrop.Pegged;
+    // A field cell is not a pegged plot, whatever its crop byte.
+    f.set([LandUse.Field, 0, 0, FieldCrop.Pegged], FIELD_BYTES * (6 * n + 6));
+    const g = pegOutline(f, n, n);
+    expect(g.strings.length).toBe(8);
+    expect(g.pegs.length).toBe(8);
+    for (const [x, y] of g.pegs) {
+      expect(x).toBeGreaterThanOrEqual(1.5);
+      expect(y).toBeLessThanOrEqual(3.5);
+    }
   });
 });
 
