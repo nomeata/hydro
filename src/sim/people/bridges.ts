@@ -10,24 +10,33 @@
  * village's fields that are too far to walk to and the good land it turned
  * down for that reason. A crossing from a reachable dry bank straight over
  * at most `maxSpan` wet cells to a dry bank opposite is scored by how much
- * walking it would save on the way to that land; well-trodden banks (desire
- * paths, traffic) rank a little higher. Deterministic; state saved with the
- * people (optional field, older saves have none).
+ * walking it would save on the way to that land, measured with all existing
+ * bridges (of any village, finished or not) already in the path network and
+ * checked with a real walk on the far bank, so a second bridge beside one
+ * that already joins the same shores saves next to nothing; well-trodden
+ * banks (desire paths, traffic) rank a little higher. A village's bridges
+ * are capped by its size and spaced in time. Deterministic; state saved
+ * with the people (optional field, older saves have none).
  */
 import type { StructureInfo } from '../../shared/protocol';
 import { LandUse, CellFlag, type World } from '../world';
 import { MAX_WADE } from './path';
-import { octile, type WalkMap } from './reach';
+import { octile, WalkMap } from './reach';
 
 export const BRIDGE = {
   /** Most deck cells (water to span), 20 m. */
   maxSpan: 4,
-  /** Bridges per village at most. */
+  /** Bridges per village at most: one per `perPeople` people (started), at most `perVillage`. */
   perVillage: 3,
+  perPeople: 25,
+  /** Days after choosing a bridge before the village considers another. */
+  cooldown: 24,
+  /** Best estimated crossings checked with a real walk on the far bank. */
+  verify: 4,
   /** Villages this small don't build bridges. */
   minPeople: 4,
   /** Walking saved (cost units, ≈ cells, summed over the land it serves) to be worth a bridge. */
-  minSaving: 60,
+  minSaving: 120,
   /** Score penalty per deck cell. */
   spanCost: 6,
   /** Progress per builder visit. */
@@ -113,9 +122,20 @@ export interface Crossing {
  * The best new crossing for a village, or null: from a dry bank reachable
  * on `map` over 1..maxSpan wet cells (at least one too deep or slow to
  * wade comfortably) to a dry bank, scored by the walking it saves on the
- * way to the `demand` cells. `taken(i)` marks cells of other bridges.
+ * way to the `demand` cells. `map` should already walk over the existing
+ * bridges (`bridge`, also used for the walk on the far bank), so only what
+ * a new bridge adds counts. `taken(i)` marks cells of other bridges.
+ * Candidates are ranked by an optimistic estimate (straight on from the far
+ * bank); the best few are then checked with a walking map from the far
+ * bank, and the best that still saves `minSaving` wins.
  */
-export function chooseCrossing(w: World, map: WalkMap, demand: readonly number[], taken: (i: number) => boolean): Crossing | null {
+export function chooseCrossing(
+  w: World,
+  map: WalkMap,
+  demand: readonly number[],
+  taken: (i: number) => boolean,
+  bridge?: (i: number) => boolean,
+): Crossing | null {
   if (!demand.length) return null;
   const W = w.width;
   // Unreachable demand counts as a long way round.
@@ -126,7 +146,7 @@ export function chooseCrossing(w: World, map: WalkMap, demand: readonly number[]
   const old = demand.map(far);
   const dx0 = demand.map((d) => d % W);
   const dy0 = demand.map((d) => (d / W) | 0);
-  let best: Crossing | null = null;
+  const cands: (Crossing & { viaB: number; dir: number })[] = [];
   for (let ly = 0; ly < map.h; ly++)
     for (let lx = 0; lx < map.w; lx++) {
       const ca = map.cost[ly * map.w + lx]!;
@@ -168,10 +188,29 @@ export function chooseCrossing(w: World, map: WalkMap, demand: readonly number[]
           if (nw < old[k]!) saving += old[k]! - nw;
         }
         if (saving < BRIDGE.minSaving) continue;
-        const score = saving - BRIDGE.spanCost * cells.length + (w.traffic[a]! + w.traffic[b]!) / 40 - ca * 0.1;
-        if (!best || score > best.score || (score === best.score && a < best.a)) best = { a, b, cells, saving, score };
+        const bonus = -BRIDGE.spanCost * cells.length + (w.traffic[a]! + w.traffic[b]!) / 40 - ca * 0.1;
+        cands.push({ a, b, cells, saving, score: saving + bonus, viaB, dir: bonus });
       }
     }
+  cands.sort((p, q) => q.score - p.score || p.a - q.a || p.b - q.b);
+  // Check the best estimates with a real walk from the far bank.
+  let best: Crossing | null = null;
+  const seen = new Set<number>();
+  for (const c of cands) {
+    if (seen.size >= BRIDGE.verify) break;
+    if (best && c.score <= best.score) break; // estimates are optimistic: nothing below can win
+    if (seen.has(c.b)) continue;
+    seen.add(c.b);
+    const far = new WalkMap(w, c.b % W, (c.b / W) | 0, undefined, bridge);
+    let saving = 0;
+    for (let k = 0; k < demand.length; k++) {
+      const nw = c.viaB + far.at(demand[k]!);
+      if (nw < old[k]!) saving += old[k]! - nw;
+    }
+    if (saving < BRIDGE.minSaving) continue;
+    const score = saving + c.dir;
+    if (!best || score > best.score) best = { a: c.a, b: c.b, cells: c.cells, saving, score };
+  }
   return best;
 }
 
@@ -236,15 +275,23 @@ export class Bridges {
       return day - b.since < BRIDGE.giveUpDays;
     });
     if (this.list.length !== before) this.dirty = true;
-    if (population < BRIDGE.minPeople || this.pending(settlement)) return;
-    if (this.of(settlement).length >= BRIDGE.perVillage || !demand.length) return;
+    if (population < BRIDGE.minPeople || this.pending(settlement) || !demand.length) return;
+    const mine = this.of(settlement);
+    if (mine.length >= Math.min(BRIDGE.perVillage, Math.ceil(population / BRIDGE.perPeople))) return;
+    if (mine.some((b) => day - b.since < BRIDGE.cooldown)) return;
     let dem = demand;
     if (dem.length > BRIDGE.maxDemand) {
       const step = dem.length / BRIDGE.maxDemand;
       dem = Array.from({ length: BRIDGE.maxDemand }, (_, k) => demand[Math.floor(k * step)]!);
     }
     const taken = this.taken();
-    const c = chooseCrossing(w, map, dem, (i) => taken.has(i));
+    // Every bridge (finished, being built or waiting to be rebuilt) counts as
+    // part of the path network: only what a new one adds is worth building.
+    const deck = new Set<number>();
+    for (const b of this.list) for (const c of b.cells) deck.add(c);
+    const onBridge = (i: number) => w.landuse[i] === LandUse.Bridge || deck.has(i);
+    const net = this.list.some((b) => b.progress < 1) ? new WalkMap(w, map.cx, map.cy, undefined, onBridge) : map;
+    const c = chooseCrossing(w, net, dem, (i) => taken.has(i), onBridge);
     if (!c) return;
     this.list.push({ id: this.nextId(), settlement, a: c.a, b: c.b, cells: c.cells, progress: 0, top: 0, since: day });
     this.dirty = true;
