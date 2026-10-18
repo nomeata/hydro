@@ -17,7 +17,10 @@ import { HistoryPanel } from './ui/historyPanel';
 import { AchievementsUi } from './ui/achievements';
 import { ToolPalette } from './ui/tools';
 import { ToolCards } from './ui/toolCards';
-import { setUnlockAll } from './shared/unlocks';
+import { isUnlocked, setUnlockAll } from './shared/unlocks';
+import { AreaHighlight } from './ui/areaHighlight';
+import { heightToY } from './render/coords';
+import * as THREE from 'three';
 
 const params = new URLSearchParams(location.search);
 const testMode = params.has('test');
@@ -69,7 +72,26 @@ async function main(): Promise<void> {
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
   const historyPanel = new HistoryPanel(uiRoot, () => client.history());
-  const achievements = new AchievementsUi(uiRoot);
+  // Ideas for this valley: "Show me" glides there and rings the spot.
+  const tmp = new THREE.Vector3();
+  const highlight = new AreaHighlight(uiRoot, (x, y) => {
+    const v = tmp.set(x + 0.5, heightToY(renderer.heights.terrainAt(x, y)), y + 0.5).project(renderer.camera.camera);
+    if (v.z > 1) return null;
+    const r = canvas.getBoundingClientRect();
+    return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
+  });
+  let peak = 0;
+  let menu: Menu | null = null;
+  const achievements = new AchievementsUi(uiRoot, {
+    seed: data.info.seed,
+    unlocked: (t) => isUnlocked(t, peak),
+    show: (idea) => {
+      renderer.camera.focus(idea.x, idea.y);
+      renderer.camera.setState({ viewHeight: Math.min(70, Math.max(26, idea.r * 5)) }, false);
+      highlight.show(idea.x, idea.y, idea.r + 1);
+    },
+    news: (on) => menu?.setNews(on),
+  });
   const statsBar = new StatsBar(uiRoot.querySelector('.topbar')!, () => historyPanel.open());
   // Tool cards at unlock (not in tests unless asked for with ?cards=1).
   const cards = new ToolCards(uiRoot);
@@ -107,6 +129,11 @@ async function main(): Promise<void> {
     achievements.update(s.achievements);
     const v = s.stats.village;
     if (v) tools.setPopulation(v.peak ?? v.population);
+    const p = v ? (v.peak ?? v.population) : 0;
+    if (s.ideas || p !== peak) {
+      peak = p;
+      achievements.updateIdeas(s.ideas);
+    }
     if (s.plan || s.lining) tools.planUpdated();
   });
 
@@ -154,7 +181,7 @@ async function main(): Promise<void> {
   };
   if (!testMode && !Intro.seen()) showIntro();
 
-  new Menu(uiRoot, {
+  menu = new Menu(uiRoot, {
     howToPlay: showIntro,
     achievements: () => achievements.panel.open(),
     newWorld: () => {
@@ -174,6 +201,7 @@ async function main(): Promise<void> {
       location.search = '';
     },
   });
+  achievements.updateIdeas();
 
   if (testMode) {
     client.setSpeed(0);

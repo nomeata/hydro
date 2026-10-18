@@ -317,7 +317,12 @@ says "watch and learn". Instead, three small things, in order of value:
    ≥ 30 boggy cells by a village → Drained; a village of 20+ without a
    head site → Miller's Head. Phrase descriptions as invitations ("Bring
    water to land too dry to farm"). No toasts, no nagging: the player
-   finds them when they look.
+   finds them when they look. *(Built as concrete ideas from the world's
+   actual problems, each with the tool that would help and a "Show me":
+   `sim/ideas.ts`, the top of the Achievements card; ≤ 3 for unlocked
+   tools, a small dot on the menu when a new one appears, Good Idea when
+   one goes away by the player's works. No village names: places are said
+   relative to the village, above/below/beside it, since the camera turns.)*
 
 No contextual pop-ups, no arrows, no "suggested plan" ghosts: they would
 turn the sandbox into a tutorial and contradict pillar 4.

@@ -216,6 +216,8 @@ export interface BuildingInfo {
   spin?: number;
   /** Mills: grain waiting to be ground (sacks shown by the door, 0..3). */
   sacks?: number;
+  /** Ruins: how overgrown, 0 (fresh mud) .. 2 (a year or more). */
+  weeds?: number;
 }
 
 /**
@@ -229,10 +231,13 @@ export interface BuildingInfo {
  * - wheel: a water wheel standing in the river cell (x, y) on its bed
  *   `sill`, lifting into a trough that runs to the head cell (x2, y2),
  *   whose ground is at `top`; `open` while water runs in the trough.
+ * - bridge: a villagers' footbridge from the bank cell (x, y) over `width`
+ *   wet cells to the bank cell (x2, y2), its deck at `top` (`broken`
+ *   after a flood swept the planks away).
  */
 export interface StructureInfo {
   id: number;
-  kind: 'gate' | 'weir' | 'jetty' | 'wheel';
+  kind: 'gate' | 'weir' | 'jetty' | 'wheel' | 'bridge';
   x: number;
   y: number;
   /** Direction of the structure's line in cell coordinates: (cos rot, sin rot). */
@@ -252,6 +257,8 @@ export interface StructureInfo {
   /** Wheels: speed of the current turning it (m/s, 0 = standing still; the sign says which way it passes across the axle x→x2) and the water lifted (m³/s). */
   speed?: number;
   flow?: number;
+  /** Footbridges (x, y and x2, y2 are the banks at either end): swept away by a flood, the piles left. */
+  broken?: boolean;
 }
 
 /**
@@ -329,6 +336,8 @@ export interface Snapshot {
   achievements?: AchievementsUpdate;
   /** The power grid, when it changed (M6). */
   power?: PowerInfo;
+  /** Ideas for this valley, when changed (see the Ideas section; sim/ideas.ts). */
+  ideas?: IdeaInfo[];
 }
 
 // ---------------------------------------------------------------------------
@@ -483,4 +492,26 @@ export interface AchievementsUpdate {
   earned: AchievementEarned[];
   /** Ids earned since the previous update (empty after loading a save: no fanfare). */
   fresh: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Ideas for this valley (docs/GAMEPLAY.md §3.3; sim/ideas.ts).
+
+export type IdeaKind = 'dry' | 'flood' | 'marsh' | 'mill' | 'turbine' | 'poles';
+
+/** A gentle suggestion from the world's current problems, shown in the Achievements card. */
+export interface IdeaInfo {
+  /** Stable id (kind and village), e.g. 'dry:0'. */
+  id: string;
+  kind: IdeaKind;
+  /** The tool that would help (the UI shows only ideas for unlocked tools). */
+  tool: string;
+  /** One sentence, an invitation. */
+  text: string;
+  /** Where (cell coordinates) and how big (radius in cells) the problem is. */
+  x: number;
+  y: number;
+  r: number;
+  /** The achievement it may lead to, if any. */
+  achievement?: string;
 }

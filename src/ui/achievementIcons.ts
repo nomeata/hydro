@@ -27,6 +27,9 @@ export const ACHIEVEMENT_ICONS: Readonly<Record<string, string>> = {
   waterfall: svg(
     `<path d="M3 5h11v8H3z" fill="#9aa3ad" stroke="#4b5560" stroke-width="1.6" stroke-linejoin="round"/><path d="M3 5h11" stroke="${WATER}" stroke-width="3"/><path d="M14 5c4 0 5 3 5 9v9" fill="none" stroke="${WATER}" stroke-width="5" stroke-linecap="round"/><path d="M17 9v10" stroke="#d8f1fc" stroke-width="1.4" stroke-linecap="round"/><path d="M8 27c3-2 6-2 11-3 4 0 7 1 10 3" fill="none" stroke="${WATER}" stroke-width="3" stroke-linecap="round"/><g fill="#fff" stroke="#8fd0f2" stroke-width="1"><circle cx="15" cy="23" r="2"/><circle cx="23" cy="23.5" r="1.8"/><circle cx="19" cy="21" r="1.4"/></g>`,
   ),
+  idea: svg(
+    `<circle cx="16" cy="13" r="12" fill="#fff3c4" opacity="0.6"/><path d="M16 4a8 8 0 0 0-5 14.2c1 .9 1.5 2 1.5 3.3V23h7v-1.5c0-1.3.5-2.4 1.5-3.3A8 8 0 0 0 16 4z" fill="#ffd27a" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><path d="M13 26h6M14 29h4" stroke="${INK}" stroke-width="2" stroke-linecap="round"/><path d="M13 16q3-5 6 0" fill="none" stroke="#c58a1c" stroke-width="1.5" stroke-linecap="round"/><path d="M16 15v-4c0-2 2-3 3-3" fill="none" stroke="${GREEN}" stroke-width="1.8" stroke-linecap="round"/>`,
+  ),
   stone: ICONS.line,
   weir: ICONS.weir,
   gate: ICONS.gate,
@@ -64,6 +67,9 @@ export const ACHIEVEMENT_ICONS: Readonly<Record<string, string>> = {
   ),
   jetty: svg(
     `<path d="M2 21h28v9H2z" fill="${WATER}"/><path d="M4 25q3-2 6 0t6 0 6 0 6 0" stroke="#d8f1fc" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M2 16h6l-2 5H2z" fill="#7fbf5a" stroke="${INK}" stroke-width="1.4"/><rect x="6" y="14" width="22" height="3" rx="1" fill="#c4935c" stroke="${INK}" stroke-width="1.4"/><path d="M11 17v9M18 17v9M25 17v9" stroke="#8d6438" stroke-width="2.2" stroke-linecap="round"/><path d="M24 14l4-9" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/><path d="M28 5c1 5 0 9 0 12" stroke="#7b8d9c" stroke-width=".9" fill="none"/>`,
+  ),
+  bridge: svg(
+    `<path d="M2 22h28v9H2z" fill="${WATER}"/><path d="M5 26q3-2 6 0t6 0 6 0" stroke="#d8f1fc" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M1 18h5l2 4H1zM31 18h-5l-2 4h7z" fill="#7fbf5a" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/><path d="M5 17q11-6 22 0" fill="none" stroke="#c4935c" stroke-width="3.4" stroke-linecap="round"/><path d="M5 17q11-6 22 0" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="1 2.4"/><path d="M9 15.5v-5M16 13v-5M23 15.5v-5" stroke="#8d6438" stroke-width="1.8" stroke-linecap="round"/><path d="M8 10.5q8-5 16 0" fill="none" stroke="#8d6438" stroke-width="1.8" stroke-linecap="round"/><path d="M10 17v8M22 17v8" stroke="#8d6438" stroke-width="2.2" stroke-linecap="round"/>`,
   ),
   well: svg(
     `<path d="M3 28h26" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/><path d="M9 28V8M23 28V8" stroke="#8d6438" stroke-width="2.2" stroke-linecap="round"/><path d="M5 10l11-6 11 6z" fill="#b5523a" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 13h14" stroke="#8d6438" stroke-width="1.8"/><path d="M16 13v5" stroke="${INK}" stroke-width="1"/><path d="M14 18h4l-.6 3h-2.8z" fill="#c49a62" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M7 21h18v7H7z" fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 21.5h18" stroke="${WATER}" stroke-width="2"/><path d="M12 24v4M17 24v4M21 21v3" stroke="#5f5a52" stroke-width="1"/>`,

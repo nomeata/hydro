@@ -49,6 +49,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | New Ground | A field on land that was too dry to farm at the start, near the works |
 | Green Desert | ≥ 150 cells that were too dry at the start are now well watered (field moisture ≥ 0.35), near the works, two days in a row |
 | Forest Keeper | ≥ 40 cells of forest (vegetation ≥ 0.6) where there was none at the start, near the works, two days in a row |
+| Good Idea | An idea for this valley (sim/ideas.ts) goes away while the player's works are near its spot (a turbine or poles idea: always) |
 | Well Trodden | A connected desire path (8-neighbours) of ≥ 30 cells |
 | **The people** | |
 | Founders | The first village |
@@ -61,6 +62,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | Quayside | Villagers have a quay (lined lake front by the houses) |
 | Wellspring | Villagers finish a well within 10 cells of the player's works |
 | Fishing Jetty | A village's jetty is finished |
+| Footbridge | Villagers finish (or rebuild) a footbridge to land across the water |
 | Cattle Country | A village keeps a herd of ≥ 5 cows |
 | Hamlet, Village Life, Bustling Valley, Little Town | 10, 50, 100, 250 villagers (highest population so far) |
 | **Seasons** | |

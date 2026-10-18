@@ -271,10 +271,13 @@ function sendSnapshot(): boolean {
   }
   const st = sim.structures;
   const people = sim.people;
-  if (st.structuresDirty || people?.jettyDirty) {
+  if (st.structuresDirty || people?.jettyDirty || people?.bridges.dirty) {
     snap.structures = people ? [...st.info(), ...people.jettyInfo()] : st.info();
     st.structuresDirty = false;
-    if (people) people.jettyDirty = false;
+    if (people) {
+      people.jettyDirty = false;
+      people.bridges.dirty = false;
+    }
   }
   if (st.liningDirty || people?.quayDirty) {
     const lining = new Uint8Array(w.size);
@@ -296,6 +299,7 @@ function sendSnapshot(): boolean {
   }
   // Achievements (not in the welcome panels' staged scenes).
   if (sceneRun === null && sim.achievements.dirty) snap.achievements = sim.achievements.take();
+  if (sceneRun === null && sim.ideas.dirty) snap.ideas = sim.ideas.take();
   post({ type: 'snapshot', ...snap }, transfer);
   return true;
 }

@@ -13,12 +13,14 @@ import {
   foodLevel,
   houseVariant,
   partsAt,
+  ruinDesign,
   storeDesign,
   villageModels,
 } from '../../src/render/village/houses';
 import { BuildingsLayer, buildDesignGeometry, buildingKey, repaint } from '../../src/render/village/buildings';
 import { CROP_RIPE, PATCH, cropKind, furrowsAlongX, patchHash } from '../../src/render/village/fields';
 import { CROP_MODELS, cropPlacements } from '../../src/render/village/crops';
+import { deckAt, deckHeight, deckOf } from '../../src/render/structures/decks';
 
 /** Stub library: every model is a unit box with a teal or grey colour. */
 const stub = {
@@ -78,6 +80,41 @@ describe('building designs', () => {
       // Exactly one door.
       expect(partsAt(d, Stage.Done).filter((p) => p.m.includes('door')).length).toBe(1);
     }
+  });
+
+  it('draws flood ruins wrecked, not as a building site, overgrown with age', async () => {
+    for (let v = 0; v < HOUSE_DESIGNS.length; v++) {
+      const r = ruinDesign(v, 0);
+      const ms = r.parts.map((p) => p.m as string);
+      // No scaffolding, stakes, roof on top or chimney; mud, debris and leaning walls instead.
+      expect(ms).not.toContain('pole');
+      expect(ms).not.toContain('stake');
+      expect(ms).not.toContain('town_chimney');
+      expect(ms).not.toContain('survival_resource_planks');
+      expect(ms).toContain('mud');
+      expect(ms).toContain('rubble');
+      const walls = r.parts.filter((p) => (p.m as string).includes('wall'));
+      expect(walls.filter((p) => (p.lean ?? 0) > 1).length).toBeGreaterThanOrEqual(1); // one fallen flat
+      expect(walls.filter((p) => Math.abs(p.lean ?? 0) > 0.05 || (p.roll ?? 0) !== 0).length).toBe(walls.length);
+      const roof = r.parts.find((p) => (p.m as string).startsWith('town_roof'))!;
+      expect(roof.y).toBeLessThan(0.5); // caved in
+      const weeds = (k: number) => ruinDesign(v, k).parts.filter((p) => p.fresh).length;
+      expect(weeds(0)).toBe(0);
+      expect(weeds(1)).toBeGreaterThan(0);
+      expect(weeds(2)).toBeGreaterThan(weeds(1));
+    }
+    expect(buildingKey({ id: 5, kind: 'ruin', x: 0, y: 0, rot: 0, progress: 0, weeds: 1 }, 0)).toMatch(/^ruin:\d:1$/);
+    const map = new Map((await stub.preloadStatic(villageModels())).map((m) => [m.name, m]));
+    expect(buildDesignGeometry(ruinDesign(0, 2), Stage.Done, map).getAttribute('position').count).toBeGreaterThan(100);
+  });
+
+  it('footbridge decks arch from bank to bank; people walk on them', () => {
+    const d = deckOf({ id: 1, kind: 'bridge', x: 10, y: 10, x2: 10, y2: 14, rot: Math.PI / 2, width: 3, top: 31, sill: 30, open: false, progress: 1 }, () => 30.5)!;
+    expect(d).not.toBeNull();
+    expect(deckHeight(d, d.u0)).toBeCloseTo(30.56, 5);
+    expect(deckHeight(d, (d.u0 + d.u1) / 2)).toBeGreaterThan(31);
+    expect(deckAt(d, 10, 12)).toBeGreaterThan(31);
+    expect(Number.isNaN(deckAt(d, 12, 12))).toBe(true);
   });
 
   it('only uses models from the manifest', () => {

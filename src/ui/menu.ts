@@ -11,6 +11,8 @@ export interface MenuActions {
 
 export class Menu {
   private readonly panel: HTMLElement;
+  private readonly button: HTMLElement;
+  private readonly items = new Map<string, HTMLElement>();
 
   constructor(root: HTMLElement, actions: MenuActions) {
     const button = document.createElement('button');
@@ -39,6 +41,7 @@ export class Menu {
         fn();
       });
       this.panel.append(b);
+      this.items.set(label, b);
     };
     item('How to play', () => actions.howToPlay());
     item('Achievements', () => actions.achievements());
@@ -55,8 +58,15 @@ export class Menu {
     document.addEventListener('pointerdown', (e) => {
       if (!this.panel.contains(e.target as Node) && e.target !== button) this.close();
     });
+    this.button = button;
     root.querySelector('.topbar')?.append(button);
     root.append(this.panel, file);
+  }
+
+  /** A small dot on the menu button and the Achievements item: a new idea for this valley. */
+  setNews(on: boolean): void {
+    this.button.classList.toggle('news', on);
+    this.items.get('Achievements')?.classList.toggle('news', on);
   }
 
   close(): void {
