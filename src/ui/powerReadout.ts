@@ -109,7 +109,8 @@ export function powerReadout(
     if (!t) return null;
     if (t.progress < 1) return { running: false, building: t.progress, power: 0, lit: 0, houses: 0, text: `Being built: ${Math.round(t.progress * 100)} %.` };
     const head = Math.abs(surface(t.ax, t.ay) - surface(t.bx, t.by));
-    const full = turbinePower(turbineFlow(head), head);
+    // (What the head could give at full flow; the main thread's water is a little behind the sim's.)
+    const full = Math.max(turbinePower(turbineFlow(head), head), t.power);
     const n = net(find(`${t.x},${t.y}`));
     const running = t.power > 0;
     const why =

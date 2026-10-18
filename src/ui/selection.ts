@@ -206,42 +206,40 @@ export class Selection {
     return out;
   }
 
-  /** What is at cell (x, y), if anything (weirs: anywhere along their line; small things win). */
-  hit(x: number, y: number, only?: SelectableKind): Target | null {
-    // Small things (in or by a weir: a gate, a turbine, a pump) win over the weir round them.
-    let best: Target | null = null;
-    let bd = Infinity;
-    let weir: Target | null = null;
-    let wd = Infinity;
+  /** Everything at cell (x, y), nearest first; small things (a gate, turbine or pump in or by a weir) before the weir round them. */
+  private hits(x: number, y: number, only?: SelectableKind): Target[] {
+    const small: [number, Target][] = [];
+    const weirs: [number, Target][] = [];
     for (const t of this.targets()) {
       if (only && t.kind !== only) continue;
       if (t.kind === 'weir') {
         const d = segDist(x, y, t.x, t.y, t.x2!, t.y2!);
-        if (d <= 1.8 && d < wd) {
-          wd = d;
-          weir = t;
-        }
+        if (d <= 1.8) weirs.push([d, t]);
         continue;
       }
       const d = Math.hypot(x - t.x, y - t.y);
-      const r = t.kind === 'pole' ? 1.3 : 1.8;
-      if (d <= r && d < bd) {
-        bd = d;
-        best = t;
-      }
+      if (d <= (t.kind === 'pole' ? 1.3 : 1.8)) small.push([d, t]);
     }
-    return best ?? weir;
+    const by = (a: [number, Target], b: [number, Target]) => a[0] - b[0];
+    return [...small.sort(by), ...weirs.sort(by)].map(([, t]) => t);
   }
 
-  /** A tap at a client position: select what is there (or let go). Returns whether something was selected. */
+  /** What is at cell (x, y), if anything. */
+  hit(x: number, y: number, only?: SelectableKind): Target | null {
+    return this.hits(x, y, only)[0] ?? null;
+  }
+
+  /** A tap at a client position: select what is there (a second tap on the same spot: the next thing there), or let go. Returns whether something was selected. */
   tapAt(clientX: number, clientY: number, only?: SelectableKind): boolean {
     const p = this.host.pick(clientX, clientY);
-    const t = p ? this.hit(p.x, p.y, only) : null;
-    if (!t) {
+    const all = p ? this.hits(p.x, p.y, only) : [];
+    if (!all.length) {
       if (!only) this.clear();
       return false;
     }
-    this.select(t);
+    const s = this.selected;
+    const k = s ? all.findIndex((t) => t.kind === s.kind && t.id === s.id) : -1;
+    this.select(all[(k + 1) % all.length]!);
     return true;
   }
 
