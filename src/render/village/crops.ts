@@ -10,7 +10,7 @@ import { heightToY, type HeightSampler } from '../coords';
 import { modelLibrary, type StaticModel } from '../objects/loader';
 import type { ModelName } from '../objects/manifest';
 import type { StaticModelSource } from '../objects/vegetation';
-import { FIELD_BYTES } from '../../shared/protocol';
+import { FIELD_BYTES, FieldCrop } from '../../shared/protocol';
 import { CROP_RIPE, CROP_SOWN, CropKind, ROWS_PER_CELL, cropKind, decodeStress, furrowsAlongX } from './fields';
 
 /** LandUse.Field (see sim/world.ts). */
@@ -26,6 +26,7 @@ export const CROP_MODELS: readonly ModelName[] = [
   'crops_leafsStageA',
   'crops_leafsStageB',
   'crop_pumpkin',
+  'grass',
 ];
 
 export interface CropPlacement {
@@ -39,6 +40,8 @@ export interface CropPlacement {
   r: number;
   g: number;
   b: number;
+  /** Stand on the water surface where there is water (paddies), not on the ground below. */
+  lift?: boolean;
 }
 
 function hash3(x: number, y: number, k: number): number {
@@ -75,6 +78,21 @@ function cropLook(kind: CropKind, crop: number): { model: ModelName; scale: numb
   }
 }
 
+/** Millet: short, sparse ears, olive green ripening to bronze. */
+function milletLook(crop: number): { model: ModelName; scale: number; tint: [number, number, number] } {
+  const g = Math.min(1, Math.max(0, (crop - CROP_SOWN) / (CROP_RIPE - CROP_SOWN)));
+  if (g < 0.5) return { model: 'crops_wheatStageA', scale: 0.4 + 0.45 * (g / 0.5), tint: [0.85, 1.0, 0.6] };
+  const k = Math.max(0, (g - 0.7) / 0.3);
+  return { model: 'crops_wheatStageB', scale: 0.72 + 0.08 * g, tint: [0.5 + 0.45 * k, 0.6 - 0.05 * k, 0.18 + 0.02 * k] };
+}
+
+/** Rice: bright green tufts, yellowing when ripe. */
+function riceLook(crop: number): { model: ModelName; scale: number; tint: [number, number, number] } {
+  const g = Math.min(1, Math.max(0, (crop - CROP_SOWN) / (CROP_RIPE - CROP_SOWN)));
+  const k = Math.max(0, (g - 0.75) / 0.25);
+  return { model: 'grass', scale: 0.45 + 0.5 * Math.min(1, g / 0.6), tint: [0.7 + 0.6 * k, 1.2 - 0.1 * k, 0.42 - 0.05 * k] };
+}
+
 /**
  * Crop models for the field cells in [x0,x1)×[y0,y1). `fields` is the
  * snapshot layout (FIELD_BYTES per cell: LandUse, crop, stress). Plants sit
@@ -102,10 +120,31 @@ export function cropPlacements(
       if (fields[FIELD_BYTES * i] !== FIELD) continue;
       const crop = fields[FIELD_BYTES * i + 1]!;
       if (crop < CROP_SOWN) continue;
-      const kind = cropKind(x, y);
-      const look = cropLook(kind, crop);
+      const hardy = fields[FIELD_BYTES * i + 3]!;
+      const kind = hardy === FieldCrop.Common ? cropKind(x, y) : CropKind.Wheat;
+      const look = hardy === FieldCrop.Millet ? milletLook(crop) : hardy === FieldCrop.Paddy ? riceLook(crop) : cropLook(kind, crop);
       const { dry, wet } = decodeStress(fields[FIELD_BYTES * i + 2]!);
-      const gap = dry * 0.55 + wet * 0.35;
+      if (hardy === FieldCrop.Paddy) {
+        // Rice in clumps on a grid, standing in the water (the terrain shader draws the basins).
+        for (let k = 0; k < 4; k++) {
+          if (dry > 0 && hash3(x, y, k + 32) < dry * 0.5) continue;
+          const v = 0.92 + 0.16 * hash3(x, y, k + 16);
+          out.push({
+            model: look.model,
+            x: x + ((k & 1) - 0.5) * 0.5 + (hash3(x, y, k) - 0.5) * 0.08,
+            y: y + ((k >> 1) - 0.5) * 0.5 + (hash3(x, y, k + 4) - 0.5) * 0.08,
+            yaw: hash3(x, y, k + 24) * Math.PI * 2,
+            scale: look.scale * (1 - 0.3 * dry) * (0.85 + 0.3 * hash3(x, y, k + 8)),
+            r: look.tint[0] * v,
+            g: look.tint[1] * v,
+            b: look.tint[2] * v,
+            lift: true,
+          });
+        }
+        continue;
+      }
+      // Millet stands sparse, with gaps.
+      const gap = dry * 0.55 + wet * 0.35 + (hardy === FieldCrop.Millet ? 0.4 : 0);
       const shrink = 1 - 0.3 * dry - 0.15 * wet;
       let [tr, tg, tb] = look.tint;
       if (dry > 0) {
@@ -282,7 +321,8 @@ export class CropLayer {
       }
       const mesh = b.mesh;
       arr.forEach((p, i) => {
-        this.tmpP.set(p.x + 0.5, heightToY(h.terrainAt(p.x, p.y)) - 0.01, p.y + 0.5);
+        const ground = h.terrainAt(p.x, p.y);
+        this.tmpP.set(p.x + 0.5, heightToY(ground + (p.lift ? 0.6 * h.depthAt(p.x, p.y) : 0)) - 0.01, p.y + 0.5);
         this.tmpQ.setFromAxisAngle(this.up, p.yaw);
         this.tmpS.setScalar(p.scale);
         this.tmpM.compose(this.tmpP, this.tmpQ, this.tmpS);

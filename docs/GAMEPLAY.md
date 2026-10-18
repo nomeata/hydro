@@ -697,3 +697,22 @@ near the start) as a 25 % variant: two regimes, one of them flashier.
     - **Start**: the meadow fallback avoids steep land and water farther
       than 14 cells, more than 5 m below, or that is only a lake.
     - **Fleeing** only from water deeper than wading depth (0.4 m).
+13. ☑ **Land short or to spare, seen on the fields** (PEOPLE §3.1, §7).
+    *As built (October 2026):* a village whose good land within reach is
+    used up and that needs more food sows **millet** on dry marginal land
+    (sandy soil, short sparse rows, 40 % of the yield) and **rice
+    paddies** in shallow still water (bunds, clear water, rice clumps;
+    45 %), at most 2 a day and 2 + ¼ of its ordinary fields. Once a canal
+    or drainage makes that land good, the next sowing is the ordinary crop
+    (a young hardy crop is ploughed under while sowing is possible). A
+    village with more good land than hands **pegs out** its best 6 plots
+    (pegs and string on unploughed meadow), the first fields claimed when
+    a farmer comes. Neither: ordinary crops edge to edge, no pegs.
+    Playtest (128², seeds 1–4, 4 years, hands-off; main → this): final
+    population 23/61/63/42 → 22/65/46/55 (sum 189 → 188; seed 3 founded
+    its third village later, seed 4 its second earlier), year 2 21/31/27/24
+    → 21/26/30/21, prosperity 76/92/92/98 → 83/88/87/98 %. A first cap
+    of 4 + ½ (4 a day) gave +19 % population and was halved. With it, on seeds 1
+    and 3 millet covers 5–25 % of the fields from the first summer on,
+    paddies appear by the river on seed 1 (10–20 cells), pegs while a
+    village has fewer hands than land (after departures, on new villages).

@@ -58,8 +58,6 @@ export class ToolCards {
   private readonly art: HTMLElement;
   private scenes: IntroScenes | null = null;
   private onCloseFn: (() => void) | null = null;
-  /** Live scenes failed once: stay with the icon. */
-  private noLive = false;
 
   constructor(root: HTMLElement) {
     this.el = document.createElement('div');
@@ -122,19 +120,17 @@ export class ToolCards {
       // Storage unavailable: it may show again next time.
     }
     this.art.classList.remove('live', 'live-on');
-    if (this.noLive) return;
+    // Each opening tries afresh (a failure last time may have passed); on failure the icon stays.
     try {
       const sc = new IntroScenes(this.art, def.scene);
       sc.onLive = () => this.art.classList.add('live');
       sc.onFail = () => {
-        this.noLive = true;
         this.scenes = null;
         this.art.classList.remove('live', 'live-on');
       };
       this.scenes = sc;
     } catch (e) {
       console.warn('Tool card scene unavailable', e);
-      this.noLive = true;
     }
   }
 
