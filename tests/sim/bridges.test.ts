@@ -6,6 +6,8 @@ import { loadGame, saveGame } from '../../src/sim/persist';
 import { PathFinder } from '../../src/sim/people/path';
 import { WalkMap } from '../../src/sim/people/reach';
 import { BRIDGE, Bridges, chooseCrossing } from '../../src/sim/people/bridges';
+import { standCell } from '../../src/sim/people/works';
+import type { Agent } from '../../src/sim/people/agents';
 
 /**
  * A 64² valley: a river along y ≈ 20 (west → east) across the whole map,
@@ -171,6 +173,50 @@ describe('footbridges', () => {
     expect(feet).toBeGreaterThan(0);
     expect(fieldsIn(w, 26, 13, 33, 16)).toBeGreaterThan(20);
     expect(p.jettyInfo().map((s) => s.kind)).toContain('bridge');
+  }, 240_000);
+
+  it('nobody turns back on a deck: villagers who step onto a bridge cross it', () => {
+    // Regression: people fled from the deep water under the deck (the flee
+    // check ignored bridges), and water carriers took the first deck cell
+    // for the water's edge: both walked a little way on and turned back.
+    const sim = village([{ x0: 26, y0: 13, x1: 33, y1: 16, crop: 40 }]);
+    const p = sim.people!;
+    const w = sim.world;
+    sim.run(STEPS_PER_DAY * 19);
+    const br = p.bridges.list[0]!;
+    expect(br.progress).toBe(1);
+    // The river rises (below the deck): deep water under it.
+    for (let y = 19; y <= 21; y++) w.inflow[w.idx(0, y)] = 3.5;
+    sim.run(STEPS_PER_DAY);
+    expect(br.broken).toBeUndefined();
+    expect(Math.max(...br.cells.map((c) => w.water[c]!))).toBeGreaterThan(0.4);
+    // A bucket is never filled from the deck.
+    for (const c of br.cells) expect(br.cells).not.toContain(standCell(w, c, 30, 30));
+    const agents = (p as unknown as { agents: Agent[] }).agents;
+    const W = w.width;
+    const st = new Map<number, { side: number; on: boolean }>();
+    let back = 0;
+    let over = 0;
+    for (let t = 0; t < STEPS_PER_DAY * 3; t += 10) {
+      sim.run(10);
+      for (const a of agents) {
+        const on = br.cells.includes(w.idx(Math.round(a.x), Math.round(a.y)));
+        // Which end is nearer (deck cells run from a to b).
+        const da = Math.hypot(a.x - (br.a % W), a.y - ((br.a / W) | 0));
+        const db = Math.hypot(a.x - (br.b % W), a.y - ((br.b / W) | 0));
+        const side = da < db ? -1 : 1;
+        const s = st.get(a.id);
+        if (!s) {
+          if (!on) st.set(a.id, { side, on }); // from where they stepped on
+          continue;
+        }
+        if (s.on && !on) side === s.side ? back++ : over++;
+        if (!on) s.side = side;
+        s.on = on;
+      }
+    }
+    expect(over).toBeGreaterThan(0);
+    expect(back).toBe(0);
   }, 240_000);
 
   it('a flood sweeps the deck away; the villagers rebuild it, higher', async () => {
