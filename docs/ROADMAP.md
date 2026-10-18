@@ -140,7 +140,9 @@ See GAMEPLAY.md §1.5 "as built"; code in `sim/power/`, `render/power/`.
   powerhouse, penstock, tailrace foam; lit cottages near it (window
   glow, door lamp, dimming/flicker when short); +wellbeing; card scene;
   Bright Windows; stats and history column
-- ☐ Power poles (150): networks, sagging wires
+- ☑ Power poles (150): a stroke of poles from a turbine (6 cells apart,
+  joining existing poles; never in water or houses), networks, sagging
+  wires; card scene; Village Lights; power in the history chart
 - ☐ Electric pump (250), pumped storage; demand curve by day/season ☑
 - Power-dependent professions and higher population caps
 

@@ -17,7 +17,7 @@ export const PROGRESSION: readonly { population: number; tool?: string }[] = [
   { population: 30, tool: 'gate' },
   { population: 50, tool: 'wheel' },
   { population: 100, tool: 'turbine' },
-  { population: 150 }, // power pole (M6)
+  { population: 150, tool: 'poles' },
   { population: 250 }, // electric pump (M6)
 ];
 

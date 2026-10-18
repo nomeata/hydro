@@ -221,6 +221,10 @@ describe('power grid', () => {
     expect(st.houses).toBe(80);
     expect(st.supplied).toBeLessThan(st.demand);
     expect(st.supplied).toBeCloseTo(st.produced, 3);
+    sim.run(60);
+    expect(sim.achievements.hasEarned('villageLights')).toBe(true);
+    // Poles never stand in the water.
+    for (const p of sim.power.poles) expect(sim.world.water[sim.world.idx(p.x, p.y)]!).toBeLessThan(0.1);
     const lit = sim.power.info().lit;
     expect(lit[1]!).toBeLessThan(1);
     expect(lit[1]!).toBeGreaterThan(0);

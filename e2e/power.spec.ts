@@ -105,6 +105,30 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
   expect(t.power).toBeGreaterThan(1000);
   const stats = await page.evaluate(() => (window as any).__hydro.client.latest.stats.power);
   expect(stats.produced).toBeGreaterThan(1000);
+
+  // A power line from the turbine to the village: its houses light up.
+  const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
+  const houses = await page.evaluate(() => (window as any).__hydro.renderer.buildingList.filter((b: any) => b.kind === 'house' && b.progress >= 1).length);
+  expect(houses).toBeGreaterThan(0);
+  await page.evaluate(([cx, cy]) => (window as any).__hydro.renderer.camera.setState({ x: cx, y: cy, viewHeight: 50 }, true), [(t.x + startX) / 2, (t.y + startY) / 2]);
+  await settleFrames(page);
+  await page.locator('button[data-tool=power]').click();
+  await page.locator('.modes button[data-mode=poles]').click();
+  await expect(page.locator('.tools .hint')).toContainText('line of poles');
+  const from = await toScreen(page, t.x, t.y);
+  const to = await toScreen(page, startX, startY);
+  await page.mouse.move(from[0], from[1]);
+  await page.mouse.down();
+  for (let k = 1; k <= 12; k++) await page.mouse.move(from[0] + ((to[0] - from[0]) * k) / 12, from[1] + ((to[1] - from[1]) * k) / 12);
+  await page.mouse.up();
+  await expect.poll(async () => (await power(page))?.poles.length ?? 0, { timeout: 15_000 }).toBeGreaterThan(0);
+  await runDays(page, 1);
+  const st = await power(page);
+  expect(st.poles.every((p: any) => p.progress >= 1)).toBe(true);
+  expect(st.wires.length).toBeGreaterThan(0);
+  expect(st.lit.length).toBeGreaterThan(0);
+  await settleFrames(page);
+  expect(await page.evaluate(() => (window as any).__hydro.renderer.power.litHouses)).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
 
