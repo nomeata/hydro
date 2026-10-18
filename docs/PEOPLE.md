@@ -332,7 +332,12 @@ year; gardens give green within about one season.
   flood that rises over the deck sweeps the planks away (the piles stay,
   `broken`); after 4 days, with the water below the deck again, the
   villagers rebuild it, higher (above the flood, at most 1.2 m above the
-  banks). A crossing that can't be worked for 60 days is given up. Saved
+  banks). The player's brushes do not go round a footbridge: ground
+  moved more than 0.1 m (strokes summed, undo counts back) at either bank
+  or under the deck breaks it the same way (`Bridges.disturbed`), to be
+  rebuilt on the new ground. Nobody flees the deep water under a deck or
+  fills a bucket from it (else walkers turned back a cell or two onto the
+  bridge). A crossing that can't be worked for 60 days is given up. Saved
   in `PeopleState.bridges` (absent in older saves). Rendered by the
   structures layer as an arched plank deck on piles with handrails (piles
   first, then the planks out from the village bank, rails last); the

@@ -48,16 +48,24 @@ const duty = Number(params.get('duty') ?? (matchMedia('(pointer: coarse)').match
 const sound = new SoundSystem({ enabled: !testMode || params.has('sound'), base: import.meta.env.BASE_URL });
 setSoundSink(sound);
 
+/** The loading screen's line: resuming a saved valley is not shaping a new one. */
+function loadingText(text: string): void {
+  const p = document.querySelector('#loading p');
+  if (p) p.textContent = text;
+}
+
 async function startClient(): Promise<{ client: SimClient; data: ReadyData }> {
   if (resume) {
     const saved = await readSave(AUTOSAVE);
     if (saved) {
+      loadingText('Returning to your valley…');
       const client = new SimClient({ bytes: saved.bytes, speed: initialSpeed, duty });
       try {
         return { client, data: await client.ready };
       } catch (e) {
         console.warn('Could not resume the saved world, starting a new one.', e);
         client.dispose();
+        loadingText('Shaping the land…');
       }
     }
   }
