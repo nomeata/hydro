@@ -53,14 +53,14 @@ jobs:
           path: dist/
           retention-days: 7
 
-  # Browser tests (software GL, slow): six shards in parallel on the built site.
+  # Browser tests (software GL, slow): eight shards in parallel on the built site.
   e2e:
     needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -74,9 +74,9 @@ jobs:
           path: dist/
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - run: npx playwright test --grep-invert @readme --shard=${{ matrix.shard }}/6
+      - run: npx playwright test --grep-invert @readme --shard=${{ matrix.shard }}/8
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: e2e-results-${{ matrix.shard }}
           path: test-results/
