@@ -576,6 +576,19 @@ export class StructuresLayer {
     // Gates set into the wall: their opening stays open.
     const gates = this.list.filter((g) => g.kind === 'gate');
     const inGate = (px: number, py: number) => gates.some((g) => Math.hypot(g.x - px, g.y - py) < g.width / 2 + 0.4);
+    // A drowned weir (the water below it as high as its crest, as in a
+    // flood) would vanish under the river: its coping stands a little proud
+    // of the water, level along the wall, so it always reads as a line
+    // across the river, with a white line of water tumbling over its lower
+    // edge.
+    let drownedTop = -Infinity;
+    for (let k = 0; k < blocks; k++) {
+      const px = w.x + c * (u0 + bl * (k + 0.5));
+      const py = w.y + sn * (u0 + bl * (k + 0.5));
+      if (surfAt(px + ox * 1.6, py + oy * 1.6) > w.top - 0.05 && hs.depthAt(px, py) > 0.05)
+        drownedTop = Math.max(drownedTop, surfAt(px, py), surfAt(px - ox * 1.2, py - oy * 1.2));
+    }
+    const yDrowned = Math.max(y, heightToY(drownedTop) + 0.06);
     for (let k = 0; k < laid; k++) {
       const u = u0 + bl * (k + 0.5);
       const px = w.x + c * u;
@@ -583,20 +596,15 @@ export class StructuresLayer {
       if (inGate(px, py)) continue;
       // The wall stands on the ground at its foot (the lower side).
       const foot = Math.min(hs.terrainAt(px, py), hs.terrainAt(px - sn * 1.2, py + c * 1.2), hs.terrainAt(px + sn * 1.2, py - c * 1.2));
-      // A drowned weir (the water below it as high as its crest, as in a
-      // flood) would vanish under the river: its coping stands a little
-      // proud of the water so the wall always reads as a line across it,
-      // with a white line of water tumbling over its lower edge.
-      const tail = surfAt(px + ox * 1.6, py + oy * 1.6);
-      const drowned = tail > w.top - 0.05;
-      const yc = drowned ? Math.max(y, heightToY(Math.max(surfAt(px, py), surfAt(px - ox * 1.2, py - oy * 1.2))) + 0.06) : y;
+      const drowned = drownedTop > -Infinity && surfAt(px + ox * 1.6, py + oy * 1.6) > w.top - 0.05;
+      const yc = drowned ? yDrowned : y;
       const g = Math.min(yc, heightToY(foot));
       this.put(P.ashlar, w.x, w.y, w.rot, u, g - 0.25, bl * 0.98, yc - g + 0.25 - 0.08, 1.15);
       this.put(P.coping, w.x, w.y, w.rot, u, yc - 0.09, bl * 0.94, 0.13, k % 2 ? 0.95 : 1.05);
       if (drowned && hs.depthAt(px, py) > 0.05) {
         const fx = px + ox * 0.85;
         const fy = py + oy * 0.85;
-        this.put(P.foam, fx - c * u, fy - sn * u, w.rot, u, heightToY(surfAt(fx, fy)) - 0.02, bl * 1.02, 0.07, 0.55);
+        this.put(P.foam, fx - c * u, fy - sn * u, w.rot, u, heightToY(surfAt(fx, fy)) - 0.01, bl * 1.02, 0.05, 0.6);
       }
     }
     if (prog < 0.999) return;
