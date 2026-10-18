@@ -11,9 +11,10 @@ import { planDike, planLevel, planTrench, rasterisePath, type PlanGrid } from '.
 import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
+import { wheelSite, type WheelSite } from '../sim/structures/wheel';
 import { toolName } from '../shared/progress';
 
-export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'weir' | 'gate' | 'erase';
+export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'weir' | 'gate' | 'wheel' | 'erase';
 
 export interface ToolHost {
   canvas: HTMLCanvasElement;
@@ -29,6 +30,8 @@ export interface ToolHost {
   hasCard?(tool: ToolId): boolean;
   cardDue?(tool: ToolId): boolean;
   showCard?(tool: ToolId): void;
+  /** Water depth (m) at cell i of the latest snapshot (the wheel's preview). */
+  depth?(i: number): number;
   /** Whether single-pointer drags pan the camera. */
   setCameraPrimaryPointer(enabled: boolean): void;
   command(cmd: Command): void;
@@ -63,6 +66,12 @@ const TOOLS: ToolDef[] = [
     label: toolName('gate'),
     icon: ICONS.gate,
     hint: 'Tap a dike or weir to put a sluice gate in it. Villagers open it to water their fields in summer; it opens by itself before the water spills over.',
+  },
+  {
+    id: 'wheel',
+    label: toolName('wheel'),
+    icon: ICONS.wheel,
+    hint: 'Fields too high above the river for a canal? Draw from fast water up onto the bank: the current turns the wheel and lifts water up to 5 m into your trench.',
   },
   { id: 'erase', label: 'Remove', icon: ICONS.erase, hint: 'Brush over plans to remove them.' },
 ];
@@ -328,6 +337,7 @@ export class ToolPalette {
     const width = this.width;
     const amount = this.amount;
     let cmd: Command | null = null;
+    let reason: string | null = null;
     switch (this.tool) {
       case 'trench':
         cmd = { type: 'planTrench', points, width, depth: amount };
@@ -344,6 +354,12 @@ export class ToolPalette {
       case 'gate':
         cmd = { type: 'placeGate', points: ends, width, height: amount };
         break;
+      case 'wheel': {
+        const site = this.wheelPreview(ends);
+        if (site?.ok) cmd = { type: 'placeWheel', points: ends };
+        else if (site?.reason) reason = site.reason;
+        break;
+      }
     }
     if (cmd) {
       this.host.command(cmd);
@@ -352,6 +368,28 @@ export class ToolPalette {
     // One stroke per tool use: go back to looking around, so a stray touch
     // never places a second plan.
     this.select('look');
+    if (reason) this.flashHint(reason);
+  }
+
+  /** Show a passing message on the hint line, then the current tool's hint again. */
+  private flashHint(text: string): void {
+    this.setHint(text, false);
+    if (this.hintTimer) clearTimeout(this.hintTimer);
+    this.hintTimer = setTimeout(() => {
+      this.hintTimer = null;
+      this.setHint(TOOLS.find((t) => t.id === this.tool)!.hint, this.host.hasCard?.(this.tool) ?? false);
+    }, 3000);
+  }
+
+  /** Where a wheel drawn along `ends` would go (the sim's own rule, on the mirror). */
+  private wheelPreview(ends: Pt[]): WheelSite | null {
+    const m = this.host.mirror;
+    const depth = this.host.depth;
+    if (!depth) return null;
+    return wheelSite(
+      { width: m.width, height: m.height, terrain: (i) => m.terrain(i), depth, allowed: (i) => m.isRevealed(i % m.width, (i / m.width) | 0) },
+      ends,
+    );
   }
 
   private onCancel(e: PointerEvent): void {
@@ -388,6 +426,13 @@ export class ToolPalette {
       } else if (this.tool === 'gate' && Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
         // Drawn across a channel: a dam with the gate at its lowest point (a tap previews nothing).
         planDike(grid, ends, 2, amount);
+      } else if (this.tool === 'wheel') {
+        // The wheel's cell, its trough and the head cell; the hint line says how high, or why not.
+        const site = this.wheelPreview(ends);
+        if (site?.ok) {
+          lining = [...rasterisePath(grid, [[site.x, site.y], [site.hx, site.hy]], 0.5).keys()];
+          this.setHint(`Lifts the water ${site.lift.toFixed(1)} m onto the bank.`, false);
+        } else if (site?.reason) this.setHint(site.reason, false);
       }
       // Plans only go on known land (the sim drops the rest too).
       const m = this.host.mirror;

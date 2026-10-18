@@ -26,6 +26,9 @@ export const ICONS = {
   gate: svg(
     '<rect x="4" y="9" width="6" height="19" rx="1.5" fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.6"/><rect x="22" y="9" width="6" height="19" rx="1.5" fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.6"/><rect x="3" y="7" width="26" height="3.5" rx="1.5" fill="#8d6438" stroke="#5b3d1f" stroke-width="1.4"/><rect x="10" y="12" width="12" height="11" fill="#c4935c" stroke="#6b4a2b" stroke-width="1.6"/><path d="M14 12v11M18 12v11M10 15.5h12" stroke="#7a5532" stroke-width="1.2"/><path d="M10 26c2 2 4 2 6 0s4-2 6 0" stroke="#59b3e6" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="16" cy="4.5" r="3" fill="none" stroke="#c0392b" stroke-width="1.8"/>',
   ),
+  wheel: svg(
+    '<path d="M2 25c3 2 6 2 9 0s6-2 9 0 6 2 10 0" stroke="#59b3e6" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="13" cy="15" r="9.5" fill="none" stroke="#8d6438" stroke-width="2.6"/><g stroke="#7a5532" stroke-width="1.8" stroke-linecap="round"><path d="M13 6v18M4 15h18M6.5 8.5l13 13M19.5 8.5l-13 13"/></g><g fill="#c4935c" stroke="#5b3d1f" stroke-width="1.2"><rect x="11" y="3" width="4" height="3" rx="0.8"/><rect x="20.5" y="13.5" width="3" height="4" rx="0.8"/><rect x="11" y="23.5" width="4" height="3" rx="0.8"/><rect x="2.5" y="13.5" width="3" height="4" rx="0.8"/></g><circle cx="13" cy="15" r="2" fill="#5b3d1f"/><path d="M16 4.5h13" stroke="#8d6438" stroke-width="3" stroke-linecap="round"/><path d="M26 6.5c1 2 1 4 0 6" stroke="#59b3e6" stroke-width="2" fill="none" stroke-linecap="round"/>',
+  ),
   erase: svg(
     '<circle cx="16" cy="16" r="11" fill="#fbe1d6" stroke="#b5482d" stroke-width="2.4"/><path d="M11 11l10 10M21 11L11 21" stroke="#b5482d" stroke-width="2.6" stroke-linecap="round"/>',
   ),

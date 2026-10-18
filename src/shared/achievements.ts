@@ -46,6 +46,8 @@ export const ACH = {
   pathCells: 30,
   /** Forest Keeper: new forest cells near the works. */
   forestCells: 40,
+  /** Uphill: water lifted by one water wheel (m³). */
+  liftedM3: 100,
 } as const;
 
 export const ACHIEVEMENTS: readonly AchievementInfo[] = [
@@ -56,6 +58,7 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'waterfall', title: 'Waterfall', description: `Let water tumble ${ACH.fallDrop} m down over your works.`, icon: 'waterfall', category: 'water' },
   { id: 'weirBuilder', title: 'Weir Builder', description: 'Finish a weir across the water.', icon: 'weir', category: 'water' },
   { id: 'gatekeeper', title: 'Gatekeeper', description: 'Villagers open a sluice gate to water their fields.', icon: 'gate', category: 'water' },
+  { id: 'uphill', title: 'Uphill', description: `A water wheel lifts its first ${ACH.liftedM3} m³ of river water onto the bank.`, icon: 'wheel', category: 'water' },
   { id: 'safetyValve', title: 'Safety Valve', description: 'A sluice gate opens before the flood spills over its dike.', icon: 'valve', category: 'water' },
   // The land
   { id: 'newGround', title: 'New Ground', description: 'Villagers farm land that was too dry for fields at first.', icon: 'sprout', category: 'land' },

@@ -94,7 +94,11 @@ export interface Wheel {
   hx: number;
   hy: number;
   progress: number;
-  /** Current speed of the water at the wheel (m/s, 0 when it stands still) and lifted flow (m³/s), as last reported. */
+  /**
+   * Current speed of the water at the wheel (m/s, 0 when it stands still;
+   * negative when it passes the other way across the axle) and the lifted
+   * flow (m³/s), as last reported.
+   */
   speed: number;
   flow: number;
   /** Total water lifted (m³). */
@@ -417,8 +421,10 @@ export class Structures {
         wh.lifted += vol;
         moved += vol;
       } else q = 0;
-      // Report changes the renderer can see (a tenth of a m/s; the trough running or not).
-      const sp = v >= WHEEL_MIN_SPEED && h >= 0.05 ? Math.round(v * 10) / 10 : 0;
+      // Report changes the renderer can see (a tenth of a m/s; the trough running or not), signed
+      // by which way the current passes under the wheel (across its axle, wheel → head).
+      const across = -(wh.hy - wh.y) * w.velX[i]! + (wh.hx - wh.x) * w.velY[i]!;
+      const sp = v >= WHEEL_MIN_SPEED && h >= 0.05 ? (Math.round(v * 10) / 10) * (across < 0 ? -1 : 1) : 0;
       if (sp !== wh.speed || (q > 0) !== (wh.flow > 0)) {
         wh.speed = sp;
         wh.flow = q;

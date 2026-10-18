@@ -207,7 +207,7 @@ export interface StructureInfo {
   /** Weirs: the far end of the line (wheels: the head cell). */
   x2?: number;
   y2?: number;
-  /** Wheels: speed of the current turning it (m/s, 0 = standing still) and the water lifted (m³/s). */
+  /** Wheels: speed of the current turning it (m/s, 0 = standing still; the sign says which way it passes across the axle x→x2) and the water lifted (m³/s). */
   speed?: number;
   flow?: number;
 }

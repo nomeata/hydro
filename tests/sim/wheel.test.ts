@@ -120,7 +120,7 @@ describe('water wheel', () => {
     const l0 = { ...L };
     await runDays(sim, 2);
     const wh = sim.structures.wheels[0]!;
-    expect(wh.speed).toBeGreaterThan(0.5);
+    expect(Math.abs(wh.speed)).toBeGreaterThan(0.5);
     expect(wh.lifted).toBeGreaterThan(10);
     expect(L.lifted! - (l0.lifted ?? 0)).toBeGreaterThan(10);
     // Water runs along the trench, down to its end.
@@ -129,6 +129,11 @@ describe('water wheel', () => {
     // Mass balance: nothing made or lost by the lifting.
     const expected = before + L.rain - l0.rain + L.snowfall - l0.snowfall + L.inflow - l0.inflow - (L.outflow - l0.outflow) - (L.evaporation - l0.evaporation) - (L.seepage - l0.seepage);
     expect(Math.abs(totalStored(w) - expected) / (L.inflow - l0.inflow)).toBeLessThan(1e-3);
+    // A week on, a hundred cubic metres are up: the Uphill achievement.
+    expect(sim.achievements.hasEarned('uphill')).toBe(false);
+    await runDays(sim, 6);
+    expect(wh.lifted).toBeGreaterThan(100);
+    expect(sim.achievements.hasEarned('uphill')).toBe(true);
     // Without a wheel the terrace stays dry.
     const dry = await flowing();
     await runDays(dry, 2);

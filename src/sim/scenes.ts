@@ -11,6 +11,9 @@
  *  - 'gate':    the tool card for the sluice gate: a full reservoir above
  *               dry fields; a villager walks over and opens the gate, the
  *               canal fills and the fields green (structures/gatekeeper.ts).
+ *  - 'wheel':   the tool card for the water wheel: dry fields on a terrace
+ *               high above a fast river; a wheel (built) lifts water into a
+ *               trench across the terrace (structures/wheel.ts).
  *
  * Everything here is deterministic (no Math.random / Date). Coordinates are
  * cells; see SCENE_LAYOUT for the landmarks the UI points the camera at.
@@ -24,7 +27,7 @@ import { CellFlag, FIELD_SPECS, SOIL_PROPS, SoilType, World } from './world';
 
 export type { SceneId };
 export { SCENE_LAYOUT };
-export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village', 'weir', 'gate'];
+export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village', 'weir', 'gate', 'wheel'];
 
 export const SCENE_SIZE = 96;
 const SEED = 20251;
@@ -82,17 +85,19 @@ const smooth = (a: number, b: number, x: number) => {
 };
 
 /** Nearest river sample to a point: distance (cells) and position along the river. */
-function nearestRiver(river: readonly RiverSample[], x: number, y: number): { d: number; s: number } {
+function nearestRiver(river: readonly RiverSample[], x: number, y: number): { d: number; s: number; x: number } {
   let best = Infinity;
   let s = 0;
+  let px = 0;
   for (const p of river) {
     const d = (p.x - x) ** 2 + (p.y - y) ** 2;
     if (d < best) {
       best = d;
       s = p.s;
+      px = p.x;
     }
   }
-  return { d: Math.sqrt(best), s };
+  return { d: Math.sqrt(best), s, x: px };
 }
 
 /** The scene land: meadow, river, pond, hollow and hill, with soils and plants. */
@@ -338,6 +343,84 @@ function stageGate(sim: Simulation): void {
   });
 }
 
+/** The wheel card's cells: the wheel in the river on row L.wheel.y, and its head cell on the bank. */
+export function wheelCells(w: World): { x: number; hx: number } {
+  const y = SCENE_LAYOUT.wheel.y;
+  const river = riverSamples();
+  let c = 0;
+  let best = Infinity;
+  for (const p of river)
+    if (Math.abs(p.y - y) < best) {
+      best = Math.abs(p.y - y);
+      c = p.x;
+    }
+  const x = Math.round(c + 1.2);
+  let hx = x + 1;
+  while (hx < w.width - 1 && nearestRiver(river, hx, y).d < RIVER_HW + 0.7) hx++;
+  return { x, hx };
+}
+
+/** The wheel card's land: a dry terrace above the river's east bank, a trench across it (before the simulation starts). */
+function carveWheel(w: World): void {
+  const L = SCENE_LAYOUT.wheel;
+  const river = riverSamples();
+  const { hx } = wheelCells(w);
+  const near = nearestRiver(river, hx, L.y);
+  const terrace = BED0 - BED_SLOPE * near.s + RIVER_DEPTH + L.lift;
+  const set = (i: number, h: number) => {
+    w.bedrock[i] = h - w.soil[i]!;
+  };
+  for (let y = 66; y < w.height; y++)
+    for (let x = 0; x < w.width; x++) {
+      const i = w.idx(x, y);
+      const r = nearestRiver(river, x, y);
+      if (r.d < RIVER_HW + 0.7 || x < r.x) continue;
+      // The terrace rises out of the river bank and falls gently away from it (and into the meadow at its north end).
+      const t = terrace - 0.015 * (x - hx) - Math.max(0, 70 - y) * 1.2;
+      set(i, Math.max(w.terrain(i), t));
+      w.water[i] = 0;
+      w.soilType[i] = SoilType.Loam;
+      w.ground[i] = w.soil[i]! * SOIL_PROPS[SoilType.Loam]!.porosity * 0.12;
+      w.vegetation[i] = Math.min(w.vegetation[i]!, 0.3);
+    }
+  // The trench: half a metre deep, falling evenly to its end.
+  for (let x = hx + 1; x <= L.trenchEnd; x++) {
+    const i = w.idx(x, L.y);
+    set(i, w.terrain(i) - 0.55 - 0.01 * (x - hx));
+    w.vegetation[i] = 0.1;
+    w.flags[i] = w.flags[i]! | CellFlag.Canal;
+  }
+}
+
+/** The wheel card: the wheel (built) and a small village whose fields are dry. */
+function stageWheel(sim: Simulation): void {
+  const L = SCENE_LAYOUT.wheel;
+  const v = L.village;
+  const { x, hx } = wheelCells(sim.world);
+  sim.command({ type: 'placeWheel', points: [[x, L.y], [hx + 1, L.y]] });
+  buildNow(sim);
+  const R = Math.PI / 2;
+  sim.people!.stage({
+    x: v.x,
+    y: v.y,
+    food: 260,
+    houses: [
+      { x: v.x - 3, y: v.y - 1, rot: 0 },
+      { x: v.x + 3, y: v.y - 2, rot: R },
+      { x: v.x + 1, y: v.y + 3, rot: 2 * R },
+    ],
+    fields: [
+      { x0: hx + 3, y0: L.y - 4, x1: L.trenchEnd - 1, y1: L.y - 2, crop: 110 },
+      { x0: hx + 3, y0: L.y + 2, x1: L.trenchEnd - 1, y1: L.y + 5, crop: 110 },
+    ],
+    people: [
+      { x: v.x - 1, y: v.y + 1, job: 'builder' },
+      { x: hx + 5, y: L.y - 3, job: 'farmer' },
+      { x: hx + 9, y: L.y + 3, job: 'farmer' },
+    ],
+  });
+}
+
 /**
  * Build a scene's simulation, spun up so the river flows. Deterministic:
  * the same id always gives the same state.
@@ -346,6 +429,7 @@ export function buildScene(id: SceneId): Simulation {
   const w = buildSceneWorld();
   const v = SCENE_LAYOUT.village;
   if (id === 'gate') carveGate(w);
+  if (id === 'wheel') carveWheel(w);
   // The weir card shows the low water of a dry summer.
   if (id === 'weir') for (let i = 0; i < w.size; i++) w.inflow[i]! *= 0.35;
   const sim = new Simulation(w, SEED, { people: { startX: v.x, startY: v.y } });
@@ -360,6 +444,7 @@ export function buildScene(id: SceneId): Simulation {
   // The village appears on the flowing land, everyone at their place.
   if (id === 'village') stageVillage(sim);
   if (id === 'weir') stageWeir(sim);
+  if (id === 'wheel') stageWheel(sim);
   if (id === 'gate') {
     stageGate(sim);
     // Start a few game hours before the day's end: the fields show the water soon after it arrives.

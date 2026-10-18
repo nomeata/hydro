@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SCENE_LAYOUT, SCENE_SIZE, buildScene, buildSceneWorld, cloneScene } from '../../src/sim/scenes';
+import { SCENE_LAYOUT, SCENE_SIZE, buildScene, buildSceneWorld, cloneScene, wheelCells } from '../../src/sim/scenes';
 import { CellFlag, FIELD_SPECS, LandUse } from '../../src/sim/world';
 import { Job, SiteKind } from '../../src/sim/people/agents';
 
@@ -126,5 +126,24 @@ describe('welcome scenes', () => {
     expect(g.operator).toBeGreaterThan(0);
     sim.run(400);
     expect(w.water[canal]!).toBeGreaterThan(0.05);
+  });
+
+  it('tool card: the wheel turns in the current and lifts water along the trench', () => {
+    const sim = buildScene('wheel');
+    const w = sim.world;
+    const wh = sim.structures.wheels[0]!;
+    expect(wh.progress).toBe(1);
+    const L = SCENE_LAYOUT.wheel;
+    const { hx } = wheelCells(w);
+    expect(wh.hx).toBe(hx);
+    const lift = w.terrain(wh.head) - w.surface(wh.cell);
+    expect(lift).toBeGreaterThan(2.5);
+    expect(lift).toBeLessThan(4);
+    const end = w.idx(L.trenchEnd - 1, L.y);
+    expect(w.water[end]!).toBeLessThan(0.002);
+    sim.run(900);
+    expect(Math.abs(wh.speed)).toBeGreaterThan(0.6);
+    expect(wh.lifted).toBeGreaterThan(40);
+    expect(w.water[end]!).toBeGreaterThan(0.005);
   });
 });
