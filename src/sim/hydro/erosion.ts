@@ -15,6 +15,7 @@
  * more than a little above the neighbours; bare bedrock is ~1000× harder;
  * lined cells, outlets and inflow cells never change their bed.
  */
+import { rowsOf, type ActiveSet } from '../active';
 import { CELL, CELL_AREA, DAYS_PER_YEAR } from '../constants';
 import { PARAMS } from '../params';
 import { CellFlag, SOIL_PROPS, SoilType, type World } from '../world';
@@ -321,8 +322,12 @@ export function erosionStep(
   p: GeoParams,
   ledger: SedimentLedger,
   dirty: RowRange,
+  active?: ActiveSet | null,
 ): void {
   const { width: W, height: H, bedrock, soil, soilType, water, sediment, velX, velY, flags, inflow, fertility, vegetation } = world;
+  // Only active cells change; frozen neighbours are read, never written.
+  const rows = rowsOf(active, W, H);
+  const act = active && !active.all ? active : null;
   const { bedAcc, transport, inflowConc, reach, loose } = scratch;
   const vegHold = p.vegetationHold;
   const t0 = scratch.time;
@@ -352,10 +357,11 @@ export function erosionStep(
   let y0 = dirty.y0;
   let y1 = dirty.y1;
 
-  for (let y = 0; y < H; y++) {
+  for (let r = 0; r < rows.length; r += 3) {
+    const y = rows[r]!;
     const row = y * W;
     let changed = false;
-    for (let x = 0; x < W; x++) {
+    for (let x = rows[r + 1]!; x < rows[r + 2]!; x++) {
       const i = row + x;
       const h = water[i]!;
       let s = sediment[i]!;
@@ -515,6 +521,7 @@ export function erosionStep(
             jy--;
           }
           const j = i + step;
+          if (act && !act.at(jx, jy)) continue;
           if (bedrock[j]! + soil[j]! <= eta) continue;
           // How directly the flow runs up the bank: velocity against the
           // bank's own uphill direction (from the smoothed terrain gradient,
@@ -541,6 +548,7 @@ export function erosionStep(
             const nx = mx + sx;
             const ny = my + sy;
             if (nx < 0 || ny < 0 || nx >= W || ny >= H) break;
+            if (act && !act.at(nx, ny)) break;
             const n = ny * W + nx;
             if (water[n]! <= hMin || (flags[n]! & NO_EXCHANGE) !== 0 || inflow[n]! > 0) break;
             m = n;
@@ -582,7 +590,7 @@ export function erosionStep(
   dirty.y0 = y0;
   dirty.y1 = y1;
   updateInflows(world, scratch, dt, p, t0);
-  if (p.bedSlopeK > 0) bedSlope(world, transport, dt, p, dirty);
+  if (p.bedSlopeK > 0) bedSlope(world, transport, dt, p, dirty, rows, act);
   ledger.eroded += eroded + bank;
   ledger.bank += bank;
   ledger.deposited += deposited;
@@ -597,16 +605,17 @@ export function erosionStep(
  * rivers), so it never fills quiet channels. Conservative: soil moves
  * between wet neighbours.
  */
-function bedSlope(world: World, transport: Float32Array, dt: number, p: GeoParams, dirty: RowRange): void {
+function bedSlope(world: World, transport: Float32Array, dt: number, p: GeoParams, dirty: RowRange, rows: Int32Array, act: ActiveSet | null): void {
   const { width: W, height: H, bedrock, soil, water, flags, inflow } = world;
   const hMin = p.erosionMinDepth;
   const k = (p.bedSlopeK * dt) / (CELL * CELL);
   const maxFrac = p.maxSoilFraction;
   let y0 = dirty.y0;
   let y1 = dirty.y1;
-  for (let y = 0; y < H; y++) {
+  for (let r = 0; r < rows.length; r += 3) {
+    const y = rows[r]!;
     const row = y * W;
-    for (let x = 0; x < W; x++) {
+    for (let x = rows[r + 1]!; x < rows[r + 2]!; x++) {
       const i = row + x;
       const ti = transport[i]!;
       if (water[i]! <= hMin || (flags[i]! & NO_EXCHANGE) !== 0 || inflow[i]! > 0) continue;
@@ -614,10 +623,10 @@ function bedSlope(world: World, transport: Float32Array, dt: number, p: GeoParam
       for (let f = 0; f < 2; f++) {
         let j: number;
         if (f === 0) {
-          if (x === W - 1) continue;
+          if (x === W - 1 || (act && !act.at(x + 1, y))) continue;
           j = i + 1;
         } else {
-          if (y === H - 1) continue;
+          if (y === H - 1 || (act && !act.at(x, y + 1))) continue;
           j = i + W;
         }
         const tj = transport[j]!;
@@ -693,29 +702,34 @@ function bankErode(world: World, zi: number, j: number, un: number, eta: number,
  * that decays with soil depth, so bare rock regains a thin regolith over
  * years. The surface does not move. Loose soil settles meanwhile.
  */
-export function weatherStep(world: World, days: number, p: GeoParams, ledger: SedimentLedger, loose?: Float32Array): void {
-  const { size, bedrock, soil, flags } = world;
+export function weatherStep(world: World, days: number, p: GeoParams, ledger: SedimentLedger, loose?: Float32Array, active?: ActiveSet | null): void {
+  const { width: W, height: H, bedrock, soil, flags } = world;
+  const rows = rowsOf(active, W, H);
   if (loose) {
     const keep = Math.exp(-days / p.looseDays);
-    for (let i = 0; i < size; i++) {
-      const l = loose[i]!;
-      if (l === 0) continue;
-      loose[i] = l < 0.01 ? 0 : l * keep;
+    for (let r = 0; r < rows.length; r += 3) {
+      for (let i = rows[r]! * W + rows[r + 1]!, e = rows[r]! * W + rows[r + 2]!; i < e; i++) {
+        const l = loose[i]!;
+        if (l === 0) continue;
+        loose[i] = l < 0.01 ? 0 : l * keep;
+      }
     }
   }
   const rate = (p.weatheringPerYear * days) / DAYS_PER_YEAR;
   const inv = 1 / p.weatheringDepth;
   const maxS = p.maxSoil;
   let sum = 0;
-  for (let i = 0; i < size; i++) {
-    if ((flags[i]! & CellFlag.Lined) !== 0) continue;
-    const s = soil[i]!;
-    if (s >= maxS) continue;
-    let w = rate * Math.exp(-s * inv);
-    if (s + w > maxS) w = maxS - s;
-    w = lowerBedrock(bedrock, i, w);
-    soil[i] = s + w;
-    sum += w;
+  for (let r = 0; r < rows.length; r += 3) {
+    for (let i = rows[r]! * W + rows[r + 1]!, e = rows[r]! * W + rows[r + 2]!; i < e; i++) {
+      if ((flags[i]! & CellFlag.Lined) !== 0) continue;
+      const s = soil[i]!;
+      if (s >= maxS) continue;
+      let w = rate * Math.exp(-s * inv);
+      if (s + w > maxS) w = maxS - s;
+      w = lowerBedrock(bedrock, i, w);
+      soil[i] = s + w;
+      sum += w;
+    }
   }
   ledger.weathered += sum * CELL_AREA;
 }

@@ -82,6 +82,8 @@ export class FlowScratch {
   runs = new Int32Array(0);
   nRuns = 0;
   awakeTiles = 0;
+  /** Let dry tiles sleep (exact; off only to test that). */
+  sleep = true;
   /** The set used when the caller passes none (every tile active). */
   private allSet: ActiveSet | null = null;
   /** The active set (and its version) the halo scratch was set up for. */
@@ -227,6 +229,7 @@ function wake(world: World, scratch: FlowScratch, act: ActiveSet): void {
     for (let tx = s[k + 1]!; tx < s[k + 2]!; tx++) {
       const t = ty * tw + tx;
       const a =
+        !scratch.sleep ||
         (wet[t]! & WET_ANY) !== 0 ||
         (tx > 0 && (wet[t - 1]! & WET_E) !== 0) ||
         (tx < tw - 1 && (wet[t + 1]! & WET_W) !== 0) ||

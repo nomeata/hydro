@@ -23,6 +23,7 @@ import { History, type HistoryState } from './history';
 import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
 import { Achievements, type AchievementsState } from './achievements';
 import { Vegetation } from './vegetation';
+import { ActiveSet } from './active';
 
 export interface SimOptions {
   /** Enable villages; founding happens near the start point. */
@@ -151,6 +152,16 @@ export class Simulation {
   readonly vegetation: Vegetation;
   /** Whether vegetation grows and declines (pure-physics tests may switch it off). */
   vegetationOn = true;
+  /**
+   * The tiles that are simulated (docs/ENDLESS.md §2): with the fog, the
+   * revealed land plus a margin; otherwise all. Derived from `revealed` and
+   * `fog` (recomputed at day boundaries and on load), so it is not saved.
+   */
+  readonly active: ActiveSet;
+  /** The fog setting the active set was last derived for. */
+  private maskFog: boolean | null = null;
+  /** Simulate every tile regardless of the fog (the worker's spin-up). */
+  private unmasked = false;
 
   constructor(world: World, seed: number, opts: SimOptions = {}) {
     this.world = world;
@@ -160,6 +171,7 @@ export class Simulation {
     this.gwScratch = new GroundwaterScratch(world.size);
     this.erosionScratch = new ErosionScratch(world.size);
     this.talusScratch = new TalusScratch(world.size);
+    this.active = new ActiveSet(world.width, world.height);
     this.weather = new Weather(world, this.rng);
     this.climate = new Climate(seed);
     if (opts.rain) this.setRainMap(tileRainMap(opts.rain, world.width, world.height, TILE));
@@ -172,12 +184,34 @@ export class Simulation {
       this.fog = true;
       revealDisc(world, opts.people.startX, opts.people.startY, START_REVEAL);
     }
+    this.updateActive();
     this.resetHistory();
     this.achievements = new Achievements(world.width, world.height);
     this.watchPeople();
     this.structures.onLined = (i) => this.achievements.touch(i);
     this.gatekeeper.onEvent = (e) => this.achievements.gateEvent(e, this.time.day);
     this.achievements.baseline(this);
+  }
+
+  /** Derive the active tiles from the revealed land (all tiles without fog). */
+  updateActive(): void {
+    this.maskFog = this.fog;
+    if (this.fog && !this.unmasked) this.active.setFromRevealed(this.world.revealed);
+    else this.active.setAll();
+  }
+
+  /**
+   * Run `steps` steps on the whole map, ignoring the fog: the worker's
+   * spin-up, so the frozen land outside the active set holds flowing rivers
+   * and settled water when it becomes the boundary (and later, when it is
+   * activated).
+   */
+  spinUp(steps: number): void {
+    this.unmasked = true;
+    this.updateActive();
+    this.run(steps);
+    this.unmasked = false;
+    this.updateActive();
   }
 
   /** Use a per-tile rain factor for the live weather (saved with the climate). */
@@ -203,14 +237,13 @@ export class Simulation {
   /** Record the calendar day that just ended. */
   private recordHistory(day: number): void {
     const p = this.people;
-    const w = this.world;
     const t = timeAt(this.step - STEPS_PER_DAY / 2);
     this.history.record({
       day,
       villages: p ? p.settlements.map((s) => s.state) : [],
       peak: p ? Math.max(p.peakPopulation, p.population) : 0,
       precipTotal: this.ledger.rain + this.ledger.snowfall,
-      area: w.size * CELL_AREA,
+      area: this.active.cells() * CELL_AREA,
       // The daily mean: the diurnal term vanishes at this time of day.
       temperature: seaLevelTemperature({ ...t, timeOfDay: 0.375 }),
       floodCells: p?.floods.cells ?? 0,
@@ -269,6 +302,8 @@ export class Simulation {
   /** Advance one hydro step (DT hydraulic seconds). */
   advance(): void {
     const w = this.world;
+    const act = this.active;
+    if (this.maskFog !== this.fog) this.updateActive();
     if (this.step % SOILWATER_EVERY === 0) {
       const t = this.time;
       this.climate.update(t, this.ledger.rain + this.ledger.snowfall);
@@ -283,6 +318,7 @@ export class Simulation {
           seaLevelTemp: seaLevelTemperature(t),
           steps: SOILWATER_EVERY,
           inflowScale: this.climate.inflowFactor(t),
+          active: act,
         },
         this.ledger,
       );
@@ -293,28 +329,40 @@ export class Simulation {
     const n = Math.max(1, Math.ceil(DT / stableDt(fs.maxDepth, fs.maxSpeed)));
     let out = 0;
     let sedOut = 0;
+    let edgeIn = 0;
+    let sedIn = 0;
     for (let k = 0; k < n; k++) {
-      flowStep(w, this.scratch, DEFAULT_FLOW_PARAMS, DT / n, fs, this.structures.walls);
-      out += fs.outflow;
-      sedOut += fs.sedimentOut ?? 0;
+      flowStep(w, this.scratch, DEFAULT_FLOW_PARAMS, DT / n, fs, this.structures.walls, act);
+      out += fs.outflow + fs.edgeOut!;
+      sedOut += fs.sedimentOut! + fs.edgeSedOut!;
+      edgeIn += fs.edgeIn!;
+      sedIn += fs.edgeSedIn!;
     }
+    // Water crossing the active edge counts as in- and outflow (ENDLESS.md §4.1).
     this.ledger.outflow += out;
+    this.ledger.inflow += edgeIn;
     this.outflowToday += out;
     this.sedLedger.outflow += sedOut;
+    this.sedLedger.inflow += sedIn;
 
     // Geomorphology.
     const geo = this.geo;
-    if (this.step % GROUNDWATER_EVERY === 2) groundwaterStep(w, this.gwScratch);
+    if (this.step % GROUNDWATER_EVERY === 2) {
+      const gw = this.gwScratch;
+      groundwaterStep(w, gw, undefined, act);
+      this.ledger.inflow += gw.edgeIn * CELL_AREA;
+      this.ledger.outflow += gw.edgeOut * CELL_AREA;
+    }
 
     if (this.step % EROSION_EVERY === EROSION_EVERY / 2) {
-      erosionStep(w, this.erosionScratch, EROSION_EVERY * DT, geo, this.sedLedger, this.geoDirty);
+      erosionStep(w, this.erosionScratch, EROSION_EVERY * DT, geo, this.sedLedger, this.geoDirty, act);
     }
     if (this.step % TALUS_EVERY === TALUS_EVERY - 1) {
       const frac = (geo.talusPerDay * geo.morfac * TALUS_EVERY) / STEPS_PER_DAY / PARAMS.morfac;
-      talusStep(w, this.talusScratch, frac, geo, this.sedLedger, this.geoDirty, this.erosionScratch.loose);
+      talusStep(w, this.talusScratch, frac, geo, this.sedLedger, this.geoDirty, this.erosionScratch.loose, act);
     }
     if (this.step % WEATHER_EVERY === 1) {
-      weatherStep(w, WEATHER_EVERY / STEPS_PER_DAY, geo, this.sedLedger, this.erosionScratch.loose);
+      weatherStep(w, WEATHER_EVERY / STEPS_PER_DAY, geo, this.sedLedger, this.erosionScratch.loose, act);
     }
     if (this.step % TERRAIN_PUBLISH_EVERY === 0 && this.geoDirty.y1 >= this.geoDirty.y0) {
       if (this.geoDirty.y0 < this.dirtyY0) this.dirtyY0 = this.geoDirty.y0;
@@ -359,7 +407,7 @@ export class Simulation {
     if (today !== timeAt(this.step - 1).day) {
       if (this.vegetationOn) {
         const t = timeAt(this.step - STEPS_PER_DAY / 2);
-        this.vegetation.daily(seaLevelTemperature({ ...t, timeOfDay: 0.375 }), today - 1);
+        this.vegetation.daily(seaLevelTemperature({ ...t, timeOfDay: 0.375 }), today - 1, act);
         this.lookDirty = true;
       }
       this.recordHistory(today - 1);
@@ -371,6 +419,8 @@ export class Simulation {
       this.outflowToday = 0;
       this.weather.updateElevation();
       this.updateReveal();
+      // The active land follows the revealed land (activation is a cheap tile scan).
+      this.updateActive();
     }
     if (this.step % 30 === 0) this.lookDirty = true;
   }
@@ -558,6 +608,7 @@ export class Simulation {
       // Older saves: an ordinary year from now on, uniform rain.
       this.climate.state.year = this.time.year;
     }
+    this.updateActive();
     if (st.history) this.history.setState(st.history);
     else this.resetHistory();
     if (st.achievements) this.achievements.setState(st.achievements, this.world);

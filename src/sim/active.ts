@@ -32,6 +32,8 @@ export class ActiveSet {
   spans: Int32Array = new Int32Array(0);
   /** The same for active + halo tiles. */
   haloSpans: Int32Array = new Int32Array(0);
+  /** Active cells as row segments, flattened (y, x0, x1) triples in row-major order. */
+  rows: Int32Array = new Int32Array(0);
   /** Active tiles. */
   count = 0;
   /** Every tile is active. */
@@ -108,6 +110,7 @@ export class ActiveSet {
     this.near.set(dilate(tile, tw, th, 1));
     this.spans = runs(tile, tw, th);
     this.haloSpans = runs(this.near, tw, th);
+    this.rows = rowSegments(this.spans, this.width, this.height);
     this.version++;
   }
 
@@ -147,6 +150,21 @@ function dilate(src: Uint8Array, tw: number, th: number, r: number): Uint8Array 
   return out;
 }
 
+/** Expand tile spans to cell row segments (y, x0, x1), sorted by row. */
+function rowSegments(spans: Int32Array, W: number, H: number): Int32Array {
+  const out: number[] = [];
+  let k0 = 0;
+  while (k0 < spans.length) {
+    const ty = spans[k0]!;
+    let k1 = k0;
+    while (k1 < spans.length && spans[k1] === ty) k1 += 3;
+    for (let y = ty * TILE; y < Math.min(H, (ty + 1) * TILE); y++)
+      for (let k = k0; k < k1; k += 3) out.push(y, spans[k + 1]! * TILE, Math.min(W, spans[k + 2]! * TILE));
+    k0 = k1;
+  }
+  return Int32Array.from(out);
+}
+
 function runs(mask: Uint8Array, tw: number, th: number): Int32Array {
   const out: number[] = [];
   for (let ty = 0; ty < th; ty++) {
@@ -162,4 +180,22 @@ function runs(mask: Uint8Array, tw: number, th: number): Int32Array {
     }
   }
   return Int32Array.from(out);
+}
+
+const allCache = new Map<string, ActiveSet>();
+
+/** An all-active set of the given size (shared), for kernels called without one. */
+export function allActive(width: number, height: number): ActiveSet {
+  const key = `${width}x${height}`;
+  let s = allCache.get(key);
+  if (!s) {
+    s = new ActiveSet(width, height);
+    allCache.set(key, s);
+  }
+  return s;
+}
+
+/** The row segments of `set`, or of the whole map. */
+export function rowsOf(set: ActiveSet | null | undefined, width: number, height: number): Int32Array {
+  return (set ?? allActive(width, height)).rows;
 }
