@@ -641,3 +641,47 @@ html, body {
   .ach-toast { padding: 7px 12px 9px 11px; gap: 12px; }
   .ach-toast b { font-size: 15px; }
 }
+
+/* --- ideas for this valley (Achievements card; ui/achievements.ts) ---- */
+.ach-body .ideas ul { grid-template-columns: 1fr; gap: 6px; }
+.idea { display: flex; align-items: center; gap: 11px; padding: 7px 8px 7px 9px; border-radius: 10px; background: rgba(61, 155, 214, 0.09); }
+.idea-icon { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--paper); box-shadow: inset 0 0 0 1.5px var(--wood); }
+.idea-icon svg { width: 24px; height: 24px; display: block; }
+.idea .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.idea .txt > span { font-size: 13px; line-height: 1.35; }
+.idea em { font-style: normal; font-size: 11px; color: #a8740a; font-weight: 700; margin-top: 2px; }
+.idea-show {
+  flex: none;
+  appearance: none;
+  border: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1.5px var(--wood), 0 1.5px 0 rgba(90, 60, 30, 0.3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.idea-show:hover { background: var(--paper-2); }
+/* A new idea: a small dot, nothing more. */
+.menu-button { position: relative; }
+.menu-button.news::after, .menu button.news::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f2b33d;
+  box-shadow: 0 0 0 2px var(--paper);
+}
+.menu button.news { position: relative; }
+.menu button.news::after { top: 50%; right: 12px; margin-top: -4.5px; }
+.area-highlight { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none !important; overflow: visible; }
+.area-highlight .glow { fill: rgba(255, 226, 120, 0.2); stroke: rgba(80, 55, 25, 0.35); stroke-width: 6; stroke-linejoin: round; }
+.area-highlight .ring { fill: none; stroke: #ffe58a; stroke-width: 2.6; stroke-dasharray: 7 6; stroke-linejoin: round; animation: area-ring 1.4s linear infinite; }
+@keyframes area-ring { to { stroke-dashoffset: -26; } }

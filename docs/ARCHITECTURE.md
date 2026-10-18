@@ -351,6 +351,16 @@ start-of-world baseline (RLE bitsets). Snapshots carry
 or load, with `fresh` empty); the history message carries the earned list
 for the chart's medals. See docs/ACHIEVEMENTS.md.
 
+**Ideas for this valley** (`src/sim/ideas.ts`, `SimState.ideas`): another
+observer; every 2 days it looks for problems near each village (field
+moisture in summer, flood memory, shallow still water, strong streams,
+weirs, the power grid) and keeps an idea while found (shown after two looks
+in a row, gone after two without; dry fields judged only in summer, mills
+kept half a year). Snapshots carry `ideas: IdeaInfo[]` when the list
+changes; the UI shows the first three for unlocked tools in the
+Achievements card, "Show me" focuses the camera and rings the spot
+(`ui/areaHighlight.ts`).
+
 ## 7. Code layout
 ```
 src/

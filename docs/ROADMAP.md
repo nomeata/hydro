@@ -105,7 +105,12 @@ See docs/GAMEPLAY.md §7 (prioritised list).
 - ☑ Tool cards at unlock (weir, gate): a live staged scene and two lines,
   shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`);
   the water wheel's card too
-- "Ideas for this valley" in the Achievements card
+- ☑ "Ideas for this valley" in the Achievements card (`sim/ideas.ts`,
+  `ui/achievements.ts`): ≤ 3 ideas for unlocked tools from the world's
+  problems (dry fields in summer, land flooded last spring, a marsh, a
+  strong stream without a mill, a weir without a turbine, houses far from
+  power), "Show me" rings the spot, a dot on the menu for a new one;
+  achievement Good Idea
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill

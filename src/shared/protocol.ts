@@ -329,6 +329,8 @@ export interface Snapshot {
   achievements?: AchievementsUpdate;
   /** The power grid, when it changed (M6). */
   power?: PowerInfo;
+  /** Ideas for this valley, when changed (see the Ideas section; sim/ideas.ts). */
+  ideas?: IdeaInfo[];
 }
 
 // ---------------------------------------------------------------------------
@@ -483,4 +485,26 @@ export interface AchievementsUpdate {
   earned: AchievementEarned[];
   /** Ids earned since the previous update (empty after loading a save: no fanfare). */
   fresh: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Ideas for this valley (docs/GAMEPLAY.md §3.3; sim/ideas.ts).
+
+export type IdeaKind = 'dry' | 'flood' | 'marsh' | 'mill' | 'turbine' | 'poles';
+
+/** A gentle suggestion from the world's current problems, shown in the Achievements card. */
+export interface IdeaInfo {
+  /** Stable id (kind and village), e.g. 'dry:0'. */
+  id: string;
+  kind: IdeaKind;
+  /** The tool that would help (the UI shows only ideas for unlocked tools). */
+  tool: string;
+  /** One sentence, an invitation. */
+  text: string;
+  /** Where (cell coordinates) and how big (radius in cells) the problem is. */
+  x: number;
+  y: number;
+  r: number;
+  /** The achievement it may lead to, if any. */
+  achievement?: string;
 }

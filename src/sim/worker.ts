@@ -296,6 +296,7 @@ function sendSnapshot(): boolean {
   }
   // Achievements (not in the welcome panels' staged scenes).
   if (sceneRun === null && sim.achievements.dirty) snap.achievements = sim.achievements.take();
+  if (sceneRun === null && sim.ideas.dirty) snap.ideas = sim.ideas.take();
   post({ type: 'snapshot', ...snap }, transfer);
   return true;
 }

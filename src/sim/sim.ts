@@ -22,6 +22,7 @@ import { CellFlag, SOIL_PROPS, type World } from './world';
 import { History, type HistoryState } from './history';
 import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
 import { Achievements, type AchievementsState } from './achievements';
+import { Ideas, type IdeasState } from './ideas';
 import { Vegetation } from './vegetation';
 import { ActiveSet } from './active';
 import { PowerGrid, type PowerState } from './power/grid';
@@ -52,6 +53,8 @@ export interface SimState {
   history?: HistoryState;
   /** Achievements (absent in older saves). */
   achievements?: AchievementsState;
+  /** Ideas for this valley (absent in older saves). */
+  ideas?: IdeasState;
   /** River seasons and wet/dry years (absent in older saves). */
   climate?: ClimateRunState;
   /** The power grid (M6; absent in older saves). */
@@ -153,6 +156,8 @@ export class Simulation {
   readonly history = new History();
   /** Achievements: an observer of the world, saved with it. */
   readonly achievements: Achievements;
+  /** Ideas for this valley (sim/ideas.ts): another observer, saved with the world. */
+  readonly ideas = new Ideas();
   /** Living vegetation (daily growth and decline; sim/vegetation.ts). */
   readonly vegetation: Vegetation;
   /** Whether vegetation grows and declines (pure-physics tests may switch it off). */
@@ -428,6 +433,7 @@ export class Simulation {
       this.power.daily();
       this.recordHistory(today - 1);
       this.achievements.daily(this, today - 1);
+      this.ideas.daily(this, today - 1);
     }
     this.achievements.update(this, this.step, today);
     if (this.step % STEPS_PER_DAY === 0) {
@@ -593,6 +599,7 @@ export class Simulation {
       },
       history: this.history.getState(),
       achievements: this.achievements.getState(),
+      ideas: this.ideas.getState(),
       climate: this.climate.getState(),
       power: this.power.empty ? undefined : this.power.getState(),
     };
@@ -644,6 +651,7 @@ export class Simulation {
     else this.resetHistory();
     if (st.achievements) this.achievements.setState(st.achievements, this.world);
     else this.achievements.catchUp(this, Math.max(0, this.time.day - 1));
+    this.ideas.setState(st.ideas);
     this.lookDirty = true;
     this.planDirty = true;
   }

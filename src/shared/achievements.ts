@@ -77,6 +77,7 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'greenDesert', title: 'Green Desert', description: `Bring water to ${ACH.greenCells} cells of dry land.`, icon: 'green', category: 'land' },
   { id: 'forestKeeper', title: 'Forest Keeper', description: 'New woods grow up by your works.', icon: 'forest', category: 'land' },
   { id: 'wellTrodden', title: 'Well Trodden', description: `Villagers wear a path ${ACH.pathCells * 5} m long.`, icon: 'path', category: 'land' },
+  { id: 'goodIdea', title: 'Good Idea', description: 'Take up one of the ideas for this valley, and see the trouble go.', icon: 'idea', category: 'land' },
   // The people
   { id: 'founders', title: 'Founders', description: 'The first family settles in your valley.', icon: 'house', category: 'people' },
   { id: 'firstHarvest', title: 'First Harvest', description: 'A field is brought in.', icon: 'wheat', category: 'people' },
