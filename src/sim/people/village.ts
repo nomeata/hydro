@@ -97,7 +97,7 @@ const TIRED_SPEED = 0.6;
  */
 export const FARMING = {
   fieldsPerFarmer: 28,
-  yield: 12,
+  yield: 10,
   /**
    * Crop growth per growing day at full growth (cropGrowth 1): a field sown
    * early in spring just ripens by the end of summer when it never lacked

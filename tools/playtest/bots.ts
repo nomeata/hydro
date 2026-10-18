@@ -133,7 +133,7 @@ export class IrrigateBot extends PerVillageBot {
           const T = pt(w, target);
           // Candidate sources, cheapest first (short, shallow), then the first with a clear route.
           const cands: { src: number; depth: number; score: number; end: Pt }[] = [];
-          for (const j of cellsAround(sim, T[0], T[1], 50)) {
+          for (const j of cellsAround(sim, T[0], T[1], strict ? 70 : 50)) {
             if (!isShore(w, j)) continue;
             const S = pt(w, j);
             const end = shortOf(S, T, 1);
@@ -142,7 +142,7 @@ export class IrrigateBot extends PerVillageBot {
             if (strict && zEnd < w.surface(j) + 0.3) continue;
             // The canal floor at its end must lie 0.4 m below the source's surface.
             const depth = Math.max(1, zEnd - w.surface(j) + 0.4);
-            if (depth > 3) continue;
+            if (depth > (strict ? 1.3 : 3)) continue; // irrigation: the water stands near field level
             cands.push({ src: j, depth, score: Math.hypot(S[0] - T[0], S[1] - T[1]) + 8 * depth, end });
           }
           cands.sort((a, b) => a.score - b.score || a.src - b.src);
