@@ -700,7 +700,7 @@ export class PeopleSystem {
       this.planWoods(s);
       this.herds.daily(s, this.herdHome(s), time.season === 3, !this.noAnimals);
       this.assignJobs(s, host);
-      this.manageFields(s);
+      this.manageFields(s, time);
     }
     this.peakPopulation = Math.max(this.peakPopulation, this.population);
     // Migrants remember how the land looked at the end of summer.
@@ -1666,10 +1666,17 @@ export class PeopleSystem {
     for (const a of mine) if (a.job === Job.Idle) a.job = Job.Farmer;
   }
 
-  private manageFields(s: Settlement): void {
+  private manageFields(s: Settlement, time: SimTime): void {
     const w = this.world;
     const farmers = this.agents.filter((a) => a.settlement === s.state.id && a.job === Job.Farmer).length;
     const want = farmers * FARMING.fieldsPerFarmer;
+    // Fields that stand in water when they should be sown are given up (land lost to a lake
+    // or a marsh); the village claims dry land elsewhere instead.
+    if (time.season === 0 || time.season === 1) {
+      for (const i of this.fieldsOf(s)) {
+        if (w.crop[i] === 0 && w.water[i]! > 0.05) w.landuse[i] = LandUse.None;
+      }
+    }
     const fields = this.fieldsOf(s);
     if (fields.length >= want) return;
     // Claim the best unclaimed cells nearby (at most 10 per day).
