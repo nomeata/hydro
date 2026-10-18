@@ -253,9 +253,10 @@ export class Selection {
     this.readout = null;
     this.powerBox.hidden = true;
     this.panel.hidden = false;
-    this.panel.style.visibility = 'hidden';
     this.ghosts(false);
     this.refresh();
+    // Placed at once (not only with the next frame: a slow machine draws few).
+    this.frame();
     this.onChange?.(this.selected);
   }
 
