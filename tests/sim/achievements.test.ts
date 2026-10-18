@@ -151,7 +151,7 @@ describe('waterworks', () => {
     expect(ids(sim.achievements)).toContain('waterfall');
   });
 
-  it('Weir Builder and Gatekeeper (crew stone work is not Stone by Stone)', async () => {
+  it('Weir Builder (crew stone work is not Stone by Stone)', async () => {
     const w = plain();
     const sim = new Simulation(w, 1);
     sim.command({ type: 'planLining', points: [[10, 10], [20, 10]], width: 2 });
@@ -165,13 +165,11 @@ describe('waterworks', () => {
     await build(sim);
     sim.command({ type: 'placeGate', points: [[45, 20]], width: 1, height: 0 });
     const g = sim.structures.gates[0]!;
-    // Opening an unfinished gate does not count.
-    sim.command({ type: 'toggleGate', id: g.id, open: true });
-    sim.command({ type: 'toggleGate', id: g.id, open: false });
-    expect(ids(sim.achievements)).not.toContain('gatekeeper');
     await build(sim);
+    // Gatekeeper is for villagers watering their fields (tests/sim/gatekeeper.test.ts): working a gate by hand does not count.
     sim.command({ type: 'toggleGate', id: g.id });
-    expect(ids(sim.achievements)).toContain('gatekeeper');
+    await runDays(sim, 1);
+    expect(ids(sim.achievements)).not.toContain('gatekeeper');
   });
 });
 

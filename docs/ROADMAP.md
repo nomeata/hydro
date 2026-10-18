@@ -94,14 +94,21 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   memory that forgets behind a dike, founding judged at the end of summer,
   lining only by houses, growth pauses when food is short, economy retuned
   so that water decides what is farmable
-- Unlocks without the Lining tool (weir 15, gate 30, wheel 50);
-  villager-operated gates; hints that say why, unlock cards
+- ☑ Unlocks without the Lining tool (weir 15, gate 30; milestones 50, 100,
+  150, 250 reserved for wheel, turbine, poles, pump); hints that say why
+- ☑ Villager-operated gates (GAMEPLAY §2; `sim/structures/gatekeeper.ts`):
+  summer release for dry fields, never while houses below are wet, flood
+  relief by itself; a villager walks over and turns the wheel; no tap to
+  toggle; achievements Gatekeeper (villagers) and Safety Valve
+- ☑ Tool cards at unlock (weir, gate): a live staged scene and two lines,
+  shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`)
+- "Ideas for this valley" in the Achievements card
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
   above), sluice gates (hold a reservoir closed, drain to the sill open;
-  tap to toggle), built by the spirit crew; plans only on known land;
-  tools unlock at 30/50 villagers; digit-key hotkeys
+  tap to toggle — since M3¾ worked by the villagers), built by the spirit crew; plans only on known land;
+  tools unlock at 30/50 villagers (since M3¾: 15/30); digit-key hotkeys
 - ☑ Player lining tool removed again: lining is left to the villagers near
   their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
 - ☑ Villagers line banks by their homes and the player's canals near the

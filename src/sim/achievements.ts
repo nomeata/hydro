@@ -3,7 +3,7 @@
  * world against a compact snapshot taken when the world was created
  * (where the water was, which land was too dry to farm) and against what
  * the player has touched. Some are noticed as they happen (a harvest, a
- * catch, a gate opened), the rest by checks a few times a game day.
+ * catch, a gate worked), the rest by checks a few times a game day.
  * Purely an observer: it never changes the world and uses no randomness,
  * so it cannot affect the simulation; its state is saved with the world.
  */
@@ -15,6 +15,7 @@ import type { PeopleEvent, PeopleSystem } from './people/village';
 import { longestPath } from './people/desire';
 import { VEG } from './vegetation';
 import type { Structures } from './structures/structures';
+import type { GateEvent } from './structures/gatekeeper';
 
 /** What the checks look at (the Simulation). */
 export interface AchievementHost {
@@ -228,9 +229,9 @@ export class Achievements {
     this.earn('stoneByStone', day);
   }
 
-  /** A finished gate was opened. */
-  gateOpened(day: number): void {
-    this.earn('gatekeeper', day);
+  /** Villagers opened a gate to water their fields, or flood relief saved a dike (structures/gatekeeper.ts). */
+  gateEvent(e: GateEvent, day: number): void {
+    this.earn(e === 'irrigated' ? 'gatekeeper' : 'safetyValve', day);
   }
 
   /** Something happened in a village. */

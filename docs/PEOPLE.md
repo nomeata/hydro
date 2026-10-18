@@ -207,6 +207,7 @@ list (`stats.villages`).
 | herder | pasture | leads the herd out, watches it graze, brings the milk | grass → dairy food |
 | woodcutter | forest edge | chop (axe), carry a log | vegetation ↓, woodpile |
 | idle | village | sit, chat; children play when w > 0.6 | — |
+| gatekeeper (a builder or idle adult, when called) | a sluice gate near the village | walks to the gate, turns its wheel while the leaf moves | gate opened or closed (GAMEPLAY.md §2, `structures/gatekeeper.ts`) |
 
 Fields are claimed and ploughed in any season but winter. Grain follows the
 year; gardens give green within about one season.
@@ -307,7 +308,7 @@ they look after the water by their homes on their own:
   known land plus a margin.
 - Tools unlock at population milestones (highest total population so far,
   so unlocks are never lost): one table in `src/shared/unlocks.ts`
-  (weir 30, gate 50; others from the start; `?cheat=1` unlocks all). Locked tools are
+  (weir 15, gate 30; others from the start; `?cheat=1` unlocks all). Locked tools are
   greyed with a lock and say "Unlocks at N villagers".
 
 ## 7. Making the hidden economy visible ("watch and learn")

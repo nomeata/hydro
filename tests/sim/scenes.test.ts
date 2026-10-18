@@ -91,4 +91,40 @@ describe('welcome scenes', () => {
     expect(p.agents.some((a) => a.siteKind === SiteKind.Fish)).toBe(true);
     expect(p.agents.some((a) => a.siteKind === SiteKind.Harvest || a.carry === 2)).toBe(true);
   });
+
+  it('tool card: a finished weir holds a pool in the low summer river', () => {
+    const sim = buildScene('weir');
+    const w = sim.world;
+    const wr = sim.structures.weirs[0]!;
+    expect(wr).toBeDefined();
+    expect(wr.cells.every((c) => (w.flags[c]! & CellFlag.Lined) !== 0)).toBe(true);
+    expect(sim.crew.pending).toBe(0);
+    sim.run(900);
+    // Upstream the river stands at the crest; it still spills over.
+    const [a, b] = SCENE_LAYOUT.weir;
+    const up = w.idx(Math.round((a![0] + b![0]) / 2 - 4), Math.round((a![1] + b![1]) / 2 - 4));
+    expect(w.surface(up)).toBeGreaterThan(wr.top - 0.05);
+    expect(sim.ledger.outflow).toBeGreaterThan(0);
+  });
+
+  it('tool card: a villager opens the gate for the dry fields and the canal fills', () => {
+    const sim = buildScene('gate');
+    const w = sim.world;
+    const g = sim.structures.gates[0]!;
+    expect(g.progress).toBe(1);
+    expect(g.open).toBe(false);
+    const G = SCENE_LAYOUT.gate;
+    const canal = w.idx(G.gate.x - 6, G.gate.y);
+    expect(w.water[canal]!).toBeLessThan(0.02);
+    let walked = false;
+    for (let k = 0; k < 600 && !g.open; k++) {
+      sim.run(1);
+      if (sim.people!.agents.some((a) => a.siteKind === SiteKind.Gate)) walked = true;
+    }
+    expect(walked).toBe(true);
+    expect(g.open).toBe(true);
+    expect(g.operator).toBeGreaterThan(0);
+    sim.run(400);
+    expect(w.water[canal]!).toBeGreaterThan(0.05);
+  });
 });

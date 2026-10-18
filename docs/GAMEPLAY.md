@@ -167,9 +167,15 @@ The rhythm becomes legible over a year: full reservoir in spring, a
 summer release with green fields below, closed again in autumn.
 
 ### 2.4 Changes
-- `Gate` gets `target: boolean`, `lastSwitch: number`, `operator: number`
-  (agent id or −1); `open` lerps toward `target`. Saved; old saves get
-  `target = open`.
+*Built (October 2026): `src/sim/structures/gatekeeper.ts`, checked every
+three game hours; the villager is called with `PeopleSystem.callToGate`
+and works the wheel for the leaf's travel (`LIFT_STEPS`, 4 game hours);
+if nobody arrives within a quarter day (relief) or a day, the gate moves
+by itself. `toggleGate` holds a gate by hand (tests, scenes).*
+- `Gate.open` is the target; `lift` (0..1) follows it and lowers the
+  wall's crest smoothly to the sill; `lastSwitch`, `operator` (agent id or
+  −1), `mode` (relief / irrigation), a pending `want`. Saved; old saves
+  get `lift = open`.
 - Achievement **Gatekeeper** → "Villagers open a sluice gate to water
   their fields" (rule 3 fired). New **Safety Valve**: rule 1 opened a gate
   and the dike was not overtopped that day.
@@ -208,7 +214,9 @@ says "watch and learn". Instead, three small things, in order of value:
    water up a terrace. The trench/dike/level cards are the existing
    "You shape the water" scene. The card is reachable again from a small
    ⓘ at the end of the hint line while that tool is selected. That is the
-   whole help system: ≤ 6 scenes, each ≤ 20 s.
+   whole help system: ≤ 6 scenes, each ≤ 20 s. *(Built for the weir and
+   the gate: `ui/toolCards.ts`, scenes 'weir' and 'gate' in
+   `sim/scenes.ts`; not shown under `?test=1` unless `&cards=1`.)*
 3. **Achievements as ideas.** The Achievements card opens with
    **"Ideas for this valley"**: up to three unearned achievements that
    the sim finds *possible here*, from data it already has:

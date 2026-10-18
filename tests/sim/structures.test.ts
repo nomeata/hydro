@@ -216,7 +216,8 @@ describe('sluice gate', () => {
     expect(g.top - g.sill).toBeCloseTo(2, 1);
     await build(sim, 10);
     expect(g.progress).toBe(1);
-    // Closed: the river backs up behind the gate; nothing gets through below the top.
+    // Held closed (no flood relief): the river backs up behind the gate; nothing gets through below the top.
+    sim.command({ type: 'toggleGate', id: g.id, open: false });
     await runDays(sim, 4);
     expect(surf(w, 26, 16)).toBeGreaterThan(g.sill + 0.8);
     expect(surf(w, 26, 16)).toBeLessThan(g.top + 0.3);

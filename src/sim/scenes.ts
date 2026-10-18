@@ -6,6 +6,11 @@
  *  - 'shape':   the same land; the intro draws a trench from the river to a
  *               dry hollow (a real planTrench command) and the water follows.
  *  - 'village': a ready-made village by the pond (PeopleSystem.stage).
+ *  - 'weir':    the tool card for the weir: low summer water; a weir across
+ *               the river (built at once) holds a pool behind it.
+ *  - 'gate':    the tool card for the sluice gate: a full reservoir above
+ *               dry fields; a villager walks over and opens the gate, the
+ *               canal fills and the fields green (structures/gatekeeper.ts).
  *
  * Everything here is deterministic (no Math.random / Date). Coordinates are
  * cells; see SCENE_LAYOUT for the landmarks the UI points the camera at.
@@ -19,7 +24,7 @@ import { CellFlag, FIELD_SPECS, SOIL_PROPS, SoilType, World } from './world';
 
 export type { SceneId };
 export { SCENE_LAYOUT };
-export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village'];
+export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village', 'weir', 'gate'];
 
 export const SCENE_SIZE = 96;
 const SEED = 20251;
@@ -231,6 +236,108 @@ function stageVillage(sim: Simulation): void {
   });
 }
 
+/** Let the spirit crew finish every plan and structure at once (staging). */
+function buildNow(sim: Simulation): void {
+  for (let k = 0; k < 200 && (sim.crew.pending > 0 || sim.structures.pending); k++) {
+    sim.crew.work(sim.world, 100, 1e9, (i) => sim.markTerrainDirty(i));
+    sim.structures.crewWork(1, 1e9);
+  }
+  sim.lookDirty = true;
+  sim.planDirty = true;
+}
+
+/** The weir card: low water, and a finished weir holding a pool. */
+function stageWeir(sim: Simulation): void {
+  sim.command({ type: 'planWeir', points: SCENE_LAYOUT.weir, width: 2, height: 1.6 });
+  buildNow(sim);
+}
+
+/** The gate card's land: a walled reservoir, a canal to the river, dry fields (before the simulation starts). */
+function carveGate(w: World): void {
+  const G = SCENE_LAYOUT.gate;
+  const { x0, y0, x1, y1 } = G.pond;
+  const ring = 14.8;
+  const floor = 12.4;
+  const level = 13.7;
+  const set = (i: number, h: number) => {
+    w.bedrock[i] = h - w.soil[i]!;
+  };
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      const i = w.idx(x, y);
+      const edge = x === x0 || x === x1 || y === y0 || y === y1;
+      if (edge) set(i, Math.max(w.terrain(i), ring));
+      else {
+        set(i, Math.min(w.terrain(i), floor));
+        w.water[i] = level - w.terrain(i);
+      }
+      w.vegetation[i] = Math.min(w.vegetation[i]!, edge ? 0.5 : 0.1);
+    }
+  // The canal: from the gate down to the river, its floor falling evenly
+  // and at least 1.7 m below the land beside it.
+  const gy = G.gate.y;
+  const top = 12.3;
+  for (let x = G.canalEnd; x < x0; x++) {
+    const t = (x0 - 1 - x) / (x0 - 1 - G.canalEnd);
+    let bank = Infinity;
+    for (const y of [gy - 2, gy + 2]) bank = Math.min(bank, w.terrain(w.idx(x, y)));
+    for (let y = gy - 1; y <= gy + 1; y++) {
+      const i = w.idx(x, y);
+      const h = Math.min(top - t * 2.6, bank - 1.7);
+      if (w.terrain(i) > h) set(i, h);
+      w.vegetation[i] = Math.min(w.vegetation[i]!, 0.25);
+    }
+    // Low banks along it, so the release stays in the canal.
+    const floor = Math.min(top - t * 2.6, bank - 1.7);
+    if (x < x0 - 1 && x > G.canalEnd + 1)
+      for (const y of [gy - 2, gy + 2]) {
+        const i = w.idx(x, y);
+        set(i, Math.max(w.terrain(i), floor + 2.3));
+      }
+  }
+  // Dry land around (a dry summer on the terrace).
+  for (let y = y0 - 8; y <= y1 + 14; y++)
+    for (let x = G.canalEnd + 3; x < x0; x++) {
+      const i = w.idx(x, y);
+      if (w.water[i]! > 0) continue;
+      w.ground[i] = w.soil[i]! * SOIL_PROPS[w.soilType[i]!]!.porosity * 0.12;
+      w.soilType[i] = SoilType.Loam;
+      w.vegetation[i] = Math.min(w.vegetation[i]!, 0.3);
+    }
+}
+
+/** The gate card: the gate (built), and a small village with dry fields below it. */
+function stageGate(sim: Simulation): void {
+  const G = SCENE_LAYOUT.gate;
+  const v = G.village;
+  const gy = G.gate.y;
+  sim.command({ type: 'placeGate', points: [[G.gate.x, gy]], width: 1, height: 0 });
+  buildNow(sim);
+  const R = Math.PI / 2;
+  sim.people!.stage({
+    x: v.x,
+    y: v.y,
+    food: 260,
+    houses: [
+      { x: v.x - 3, y: v.y - 1, rot: 0 },
+      { x: v.x + 3, y: v.y - 2, rot: R },
+      { x: v.x + 1, y: v.y + 3, rot: 2 * R },
+      { x: v.x - 4, y: v.y + 3, rot: 3 * R },
+    ],
+    fields: [
+      { x0: 68, y0: gy - 5, x1: 78, y1: gy - 2, crop: 120 },
+      { x0: 68, y0: gy + 2, x1: 78, y1: gy + 6, crop: 120 },
+    ],
+    people: [
+      { x: v.x + 1, y: v.y - 4, job: 'builder' },
+      { x: v.x - 1, y: v.y + 1, job: 'builder' },
+      { x: 70, y: gy - 3, job: 'farmer' },
+      { x: 75, y: gy + 4, job: 'farmer' },
+      { x: 72, y: gy + 5, job: 'farmer' },
+    ],
+  });
+}
+
 /**
  * Build a scene's simulation, spun up so the river flows. Deterministic:
  * the same id always gives the same state.
@@ -238,6 +345,9 @@ function stageVillage(sim: Simulation): void {
 export function buildScene(id: SceneId): Simulation {
   const w = buildSceneWorld();
   const v = SCENE_LAYOUT.village;
+  if (id === 'gate') carveGate(w);
+  // The weir card shows the low water of a dry summer.
+  if (id === 'weir') for (let i = 0; i < w.size; i++) w.inflow[i]! *= 0.35;
   const sim = new Simulation(w, SEED, { people: { startX: v.x, startY: v.y } });
   // Everything is known in the scenes.
   sim.fog = false;
@@ -251,6 +361,12 @@ export function buildScene(id: SceneId): Simulation {
   sim.run(SPINUP);
   // The village appears on the flowing land, everyone at their place.
   if (id === 'village') stageVillage(sim);
+  if (id === 'weir') stageWeir(sim);
+  if (id === 'gate') {
+    stageGate(sim);
+    // Start a few game hours before the day's end: the fields show the water soon after it arrives.
+    sim.step = Math.ceil(sim.step / STEPS_PER_DAY) * STEPS_PER_DAY - 440;
+  }
   if (id === 'water') {
     // A rain front drifting in from the left, over the land in a few seconds.
     const f = SCENE_LAYOUT.front;
