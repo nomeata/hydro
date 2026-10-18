@@ -50,6 +50,13 @@ export const ECONOMY = {
    * this, so a village levels off fed rather than hungry (GAMEPLAY §4.1).
    */
   growFood: 1,
+  /**
+   * ...counting the need for at least this many days ahead (so the store
+   * of a harvest just brought in does not look like plenty a few days
+   * before the harvest day, and the village does not fill up with
+   * families it cannot feed through the winter).
+   */
+  growHorizon: 24,
   /** Natural births/deaths per person per year (small, roughly balanced). */
   birthRate: 0.04,
   deathRate: 0.035,
@@ -184,10 +191,10 @@ export class Settlement {
   }
 
   /** Food security: stock relative to need until the next harvest (+ margin). */
-  foodSecurity(dayOfYear: number): number {
+  foodSecurity(dayOfYear: number, minDays = 0): number {
     const s = this.state;
     if (s.population <= 0) return 1;
-    return s.food / (s.population * ECONOMY.consumption * (this.daysToHarvest(dayOfYear) + 6));
+    return s.food / (s.population * ECONOMY.consumption * (Math.max(minDays, this.daysToHarvest(dayOfYear)) + 6));
   }
 
   /** Advance one game day. */
@@ -220,7 +227,7 @@ export class Settlement {
 
     // Natural change (small, mostly cosmetic).
     const perDay = 1 / DAYS_PER_YEAR;
-    const fed = this.foodSecurity(dayOfYear) >= ECONOMY.growFood;
+    const fed = this.foodSecurity(dayOfYear, ECONOMY.growHorizon) >= ECONOMY.growFood;
     const births = fed ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
     const deaths = s.population * (ECONOMY.deathRate + (starving ? ECONOMY.starvationDeathRate : 0)) * perDay;
     if (rng.next() < births) {
