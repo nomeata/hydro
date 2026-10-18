@@ -130,6 +130,8 @@ export class IrrigateBot extends PerVillageBot {
         const S = pt(w, j);
         const end = shortOf(S, T, 1);
         const zEnd = w.terrain(w.idx(Math.round(end[0]), Math.round(end[1])));
+        // Land below the source's water level would only be flooded by the canal.
+        if (zEnd < w.surface(j) + 0.3) continue;
         // The canal floor at its end must lie 0.4 m below the source's surface.
         const depth = Math.max(1, zEnd - w.surface(j) + 0.4);
         if (depth > 3) continue;

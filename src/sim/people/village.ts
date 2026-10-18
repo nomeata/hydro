@@ -119,7 +119,7 @@ export const FARMING = {
 export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 4 };
 
 /** Crops drown under water deeper than `drown` (m); shallower standing water grows them at `soggyGrowth`. */
-export const CROP_MOISTURE = { dry: 0.25, moist: 0.5, soggy: 0.9, soggyGrowth: 0.4, drown: 0.15 };
+export const CROP_MOISTURE = { dry: 0.22, moist: 0.46, soggy: 0.9, soggyGrowth: 0.4, drown: 0.15 };
 
 /** Crop growth factor 0..1 for a field moisture. */
 export function cropGrowth(m: number): number {
