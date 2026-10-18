@@ -238,7 +238,7 @@ export class Simulation {
   /** Let the achievements hear of the villagers' harvests, catches and rebuilt houses. */
   private watchPeople(): void {
     if (!this.people) return;
-    this.people.onEvent = (e, cell) => this.achievements.peopleEvent(e, cell, this.time.day);
+    this.people.onEvent = (e, cell) => this.achievements.peopleEvent(e, cell, this.time.day, this);
     this.people.onGate = (gate, agent) => this.gatekeeper.arrived(gate, agent);
   }
 
@@ -293,6 +293,8 @@ export class Simulation {
     terrainChanged: (i) => {
       // Freshly dug or heaped soil is loose (slumps and erodes more easily).
       this.erosionScratch.loose[i] = 1;
+      // Villagers building the player's plans: still the player's works.
+      if (this.achievements.isPlanned(i)) this.achievements.touch(i);
       this.markTerrainDirty(i);
     },
     planChanged: () => {
@@ -456,6 +458,7 @@ export class Simulation {
     switch (cmd.type) {
       case 'planTrench': {
         const changed = this.onlyRevealed(planTrench(w, cmd.points, cmd.width, cmd.depth));
+        this.achievements.planned(w, changed);
         this.achievements.stroke('trench', changed, pathLength(cmd.points));
         // Remember the player's canals (villagers line those near home).
         for (const i of changed) if (w.plan[i]! < w.terrain(i)) w.flags[i]! |= CellFlag.Canal;
@@ -465,6 +468,7 @@ export class Simulation {
       }
       case 'planDike': {
         const changed = this.onlyRevealed(planDike(w, cmd.points, cmd.width, cmd.height));
+        this.achievements.planned(w, changed);
         this.achievements.stroke('dike', changed, pathLength(cmd.points));
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
@@ -472,6 +476,7 @@ export class Simulation {
       }
       case 'planLevel': {
         const changed = this.onlyRevealed(planLevel(w, cmd.points, cmd.width));
+        this.achievements.planned(w, changed);
         this.achievements.stroke('level', changed, pathLength(cmd.points));
         this.crew.enqueue(changed);
         if (changed.length) this.planDirty = true;
@@ -482,6 +487,7 @@ export class Simulation {
         break;
       case 'planWeir': {
         const changed = this.structures.planWeir(cmd.points, cmd.width, cmd.height);
+        this.achievements.planned(w, changed);
         this.crew.enqueue(changed);
         this.lookDirty = true;
         if (changed.length) this.planDirty = true;
@@ -490,6 +496,7 @@ export class Simulation {
       case 'placeGate': {
         const r = this.structures.placeGate(cmd.points, Math.max(1, Math.min(3, cmd.width)), cmd.height);
         if (r) {
+          this.achievements.planned(w, r.cells);
           this.crew.enqueue(r.cells);
           this.lookDirty = true;
           this.planDirty = true;

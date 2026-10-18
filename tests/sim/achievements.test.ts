@@ -118,25 +118,64 @@ describe('waterworks', () => {
     expect(ids(sim.achievements)).toEqual(['firstSpade']);
   });
 
-  it('Lake Maker: a dug basin filled with water, but not a pond that was there at the start', async () => {
-    const make = async (pondAtStart: boolean) => {
+  it('Lake Maker: a pool held back by a ring dike, not dry land raised, a dug basin or a natural pond', async () => {
+    // A ring dike (2 m) around x, y in 16..40 on the rock plain at 20 m.
+    const ring = (sim: Simulation) =>
+      sim.command({ type: 'planDike', points: [[16, 16], [40, 16], [40, 40], [16, 40], [16, 16]], width: 2, height: 2 });
+    /** Water inside the ring up to `level` (m). */
+    const fill = (w: World, level: number, x0 = 20, x1 = 36) => {
+      for (let y = 20; y <= 36; y++) for (let x = x0; x <= x1; x++) w.water[w.idx(x, y)] = Math.max(0, level - w.terrain(w.idx(x, y)));
+    };
+    // Raising dry land (a dike, a level) on a fresh map: nothing, however long it stands.
+    {
       const w = plain();
       const sim = new Simulation(w, 1);
-      const fill = () => {
-        for (let y = 20; y <= 36; y++) for (let x = 16; x <= 40; x++) w.water[w.idx(x, y)] = Math.max(0, 19.9 - w.terrain(w.idx(x, y)));
-      };
+      ring(sim);
+      sim.command({ type: 'planLevel', points: [[5, 50], [30, 50]], width: 4 });
+      await build(sim);
+      await runDays(sim, 5);
+      expect(ids(sim.achievements)).not.toContain('lakeMaker');
+    }
+    // A dug basin that fills with water: no dam holds it back.
+    {
+      const w = plain();
+      const sim = new Simulation(w, 1);
       for (const y of [25, 28, 31]) sim.command({ type: 'planTrench', points: [[20, y], [36, y]], width: 4, depth: 1.5 });
       await build(sim);
-      if (pondAtStart) {
-        fill();
-        sim.achievements.baseline(sim);
-        sim.achievements.touch(w.idx(28, 28));
-      } else fill();
-      await runDays(sim, 3);
-      return ids(sim.achievements);
-    };
-    expect(await make(false)).toContain('lakeMaker');
-    expect(await make(true)).not.toContain('lakeMaker');
+      fill(w, 19.9);
+      await runDays(sim, 5);
+      expect(ids(sim.achievements)).not.toContain('lakeMaker');
+    }
+    // A pond that was there at the start, spreading (a wet season) next to new works that do not hold it.
+    {
+      const w = plain();
+      const sim = new Simulation(w, 1);
+      fill(w, 21, 22, 28);
+      sim.achievements.baseline(sim);
+      sim.command({ type: 'planDike', points: [[45, 10], [45, 50]], width: 2, height: 2 });
+      await build(sim);
+      fill(w, 20.8, 20, 36);
+      for (let d = 0; d < 5; d++) {
+        fill(w, 20.8, 20, 36);
+        await runDays(sim, 1);
+      }
+      expect(ids(sim.achievements)).not.toContain('lakeMaker');
+    }
+    // A real reservoir: a metre of water held by the dike for days.
+    {
+      const w = plain();
+      const sim = new Simulation(w, 1);
+      ring(sim);
+      await build(sim);
+      for (let y = 18; y <= 38; y++) for (let x = 18; x <= 38; x++) w.water[w.idx(x, y)] = 1;
+      await runDays(sim, ACH.lakeDays - 1);
+      expect(ids(sim.achievements)).not.toContain('lakeMaker');
+      await runDays(sim, 2);
+      expect(ids(sim.achievements)).toContain('lakeMaker');
+      // It is saved: the original ground under the works comes along.
+      const loaded = (await loadGame(await saveGame(sim))).sim;
+      expect(loaded.achievements.getState()).toEqual(sim.achievements.getState());
+    }
   });
 
   it('Waterfall: a canal led over the edge of a cliff', async () => {
@@ -215,12 +254,17 @@ describe('the land and the people', () => {
     expect(ids(a)).not.toContain('goldenYear');
     for (let k = 0; k < ACH.harvests - 1; k++) a.peopleEvent('harvest', 0, DAYS_PER_YEAR + 2);
     expect(ids(a)).toContain('goldenYear');
-    // Fish from the river don't count; fish from water made by the player do.
+    // Fish from the river don't count, nor from a puddle by the works; fish from water the player dug for do.
+    a.planned(w, [w.idx(40, 40)]);
     a.touch(w.idx(40, 40));
-    a.peopleEvent('catch', w.idx(40, 12), 5);
-    a.peopleEvent('catch', w.idx(5, 40), 5);
+    w.water[w.idx(41, 41)] = 0.3;
+    a.peopleEvent('catch', w.idx(40, 12), 5, h);
+    a.peopleEvent('catch', w.idx(5, 40), 5, h);
+    a.peopleEvent('catch', w.idx(40, 41), 5, h);
     expect(ids(a)).not.toContain('goneFishing');
-    a.peopleEvent('catch', w.idx(40, 41), 5);
+    w.bedrock[w.idx(40, 40)] -= 1;
+    w.water[w.idx(40, 40)] = 1;
+    a.peopleEvent('catch', w.idx(40, 41), 5, h);
     expect(ids(a)).toContain('goneFishing');
     a.daily(h, 6);
     expect(ids(a)).toContain('jetty');
