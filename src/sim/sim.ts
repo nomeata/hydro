@@ -15,6 +15,7 @@ import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
 import { SpiritCrew, cancelPlans, planDike, planLevel, planTrench } from './plans/plans';
 import { Structures, type StructuresState } from './structures/structures';
+import { Gatekeeper } from './structures/gatekeeper';
 import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
 import { CellFlag, SOIL_PROPS, type World } from './world';
 import { History, type HistoryState } from './history';
@@ -100,6 +101,8 @@ export class Simulation {
   readonly crew = new SpiritCrew();
   /** Lining, weirs and sluice gates. */
   readonly structures: Structures;
+  /** Who opens and closes the gates (villagers, or the gates themselves as flood relief). */
+  readonly gatekeeper: Gatekeeper;
   /** Sediment budget (m³). */
   readonly sedLedger: SedimentLedger = newSedimentLedger();
   /** Geomorphology tunables (a copy of PARAMS; tools and tests may change it). */
@@ -154,6 +157,7 @@ export class Simulation {
     this.vegetation = new Vegetation(world);
     this.structures = new Structures(world);
     this.structures.allow = (i) => !this.fog || isRevealed(this.world, i);
+    this.gatekeeper = new Gatekeeper(world, this.structures, () => this.time);
     if (opts.people) {
       this.people = new PeopleSystem(world, seed, opts.people.startX, opts.people.startY);
       this.fog = true;
@@ -163,12 +167,15 @@ export class Simulation {
     this.achievements = new Achievements(world.width, world.height);
     this.watchPeople();
     this.structures.onLined = (i) => this.achievements.touch(i);
+    this.gatekeeper.onEvent = (e) => this.achievements.gateEvent(e, this.time.day);
     this.achievements.baseline(this);
   }
 
   /** Let the achievements hear of the villagers' harvests, catches and rebuilt houses. */
   private watchPeople(): void {
-    if (this.people) this.people.onEvent = (e, cell) => this.achievements.peopleEvent(e, cell, this.time.day);
+    if (!this.people) return;
+    this.people.onEvent = (e, cell) => this.achievements.peopleEvent(e, cell, this.time.day);
+    this.people.onGate = (gate, agent) => this.gatekeeper.arrived(gate, agent);
   }
 
   /** Clear the history and count from now (after the worker's spin-up, or for old saves). */
@@ -321,6 +328,8 @@ export class Simulation {
         skip,
       );
     }
+    // Sluice gates: the leaves move, and villagers (or the gates themselves) decide.
+    this.gatekeeper.tick(this.step, people);
     // Stone work (lining, gates) is always done by the spirit crew.
     if (this.step % BUILD_EVERY === 0 && this.structures.pending) {
       this.structures.crewWork((PARAMS.liningPerDay * BUILD_EVERY) / STEPS_PER_DAY, PARAMS.builderCells);
@@ -396,11 +405,9 @@ export class Simulation {
         }
         break;
       }
-      case 'toggleGate': {
-        const g = this.structures.gates.find((g) => g.id === cmd.id);
-        if (this.structures.toggleGate(cmd.id, cmd.open) && g?.open && g.progress >= 1) this.achievements.gateOpened(this.time.day);
+      case 'toggleGate':
+        this.structures.toggleGate(cmd.id, cmd.open);
         break;
-      }
       case 'cancelPlan': {
         const gone = cancelPlans(w, cmd.x, cmd.y, cmd.radius);
         this.achievements.cancelled(gone);

@@ -30,6 +30,9 @@ export const ACHIEVEMENT_ICONS: Readonly<Record<string, string>> = {
   stone: ICONS.line,
   weir: ICONS.weir,
   gate: ICONS.gate,
+  valve: svg(
+    `<path d="M2 10h9v14H2z" fill="${WATER}"/><path d="M5 13q2-1.5 4 0" stroke="#d8f1fc" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M8 27l5-15h8l5 15z" fill="#c49a62" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.5 27V12M19.5 27V12" stroke="#8d6438" stroke-width="2.2"/><rect x="14.5" y="8" width="5" height="9" fill="#b98a52" stroke="${INK}" stroke-width="1.4"/><path d="M12 7h10" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><path d="M11 24h19" stroke="${WATER}" stroke-width="3.4" stroke-linecap="round"/><path d="M26 21l4 3-4 3" fill="none" stroke="#2f86c4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ),
   sprout: svg(
     `<path d="M3 26h26" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/><path d="M5 26l3-3h16l3 3z" fill="#c49a62" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M16 23V13" stroke="#4e9a3c" stroke-width="2.4" stroke-linecap="round"/><path d="M16 15c-6 0-8-4-8-7 4 0 8 2 8 7zM16 13c0-5 3-8 8-8 0 5-3 8-8 8z" fill="${GREEN}" stroke="#3f7a2e" stroke-width="1.5" stroke-linejoin="round"/><path d="M24 20q2-2 4 0" stroke="${WATER}" stroke-width="2" fill="none" stroke-linecap="round"/>`,
   ),

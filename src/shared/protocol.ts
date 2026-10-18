@@ -199,6 +199,8 @@ export interface StructureInfo {
   open: boolean;
   /** Construction progress 0..1. */
   progress: number;
+  /** Gates: how far the leaf is up now, 0..1 (it follows `open` over a few game hours). */
+  lift?: number;
   /** Weirs: the far end of the line. */
   x2?: number;
   y2?: number;
@@ -299,7 +301,11 @@ export type Command =
    * with a gate (`width` 1–3 cells) at its lowest point.
    */
   | { type: 'placeGate'; points: Pt[]; width: number; height: number }
-  /** Open or close a gate (open = !open when omitted). */
+  /**
+   * Open or close a gate by hand (open = !open when omitted) and hold it
+   * there: tests, scenes and debugging. In the game, villagers work the
+   * gates (sim/structures/gatekeeper.ts).
+   */
   | { type: 'toggleGate'; id: number; open?: boolean }
   /** Remove plans within a radius. */
   | { type: 'cancelPlan'; x: number; y: number; radius: number }

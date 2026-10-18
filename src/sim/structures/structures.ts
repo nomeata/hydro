@@ -13,6 +13,10 @@
  *   top; open, the passage is free down to the sill. While being built, a
  *   closed gate's wall rises from the ground it was placed on to its top, so
  *   a gate put into a full reservoir's dam never lets the water out.
+ *   Who opens and closes a gate is decided in gatekeeper.ts (the villagers,
+ *   or the gate itself as flood relief); here the leaf only moves: `lift`
+ *   follows `open` over a few game hours, lowering the wall's crest
+ *   smoothly towards the sill (no flood wave).
  *
  * Everything here is deterministic and part of SimState.
  */
@@ -38,9 +42,32 @@ export interface Gate {
   top: number;
   top0: number;
   sill: number;
+  /** Where the leaf is going: open (up, water passes to the sill) or closed. */
   open: boolean;
   progress: number;
+  /** How far the leaf is up, 0 (closed) .. 1 (open); follows `open` (absent in old saves: = open). */
+  lift?: number;
+  /** Gatekeeping (gatekeeper.ts; absent in old saves). Why the gate is open (GateMode). */
+  mode?: number;
+  /** Step of the last switch (−1e9: never). */
+  lastSwitch?: number;
+  /** Id of the villager who last worked the gate (−1: it moved by itself, or never). */
+  operator?: number;
+  /** A switch waiting for a villager: −1 none, 0 close, 1 open; its mode, and the step it was asked for. */
+  want?: number;
+  wantMode?: number;
+  wantStep?: number;
+  /** Day the gate last opened as flood relief (−1: none pending), and whether its dike was overtopped since. */
+  reliefDay?: number;
+  overtopped?: boolean;
+  /** Day a house below the gate was last seen in water (−1e9: never). */
+  wetDay?: number;
+  /** Held by the toggleGate command (tests, debugging): the gatekeeping leaves it alone. */
+  manual?: boolean;
 }
+
+/** Steps for the leaf to travel fully up or down (four game hours). */
+export const LIFT_STEPS = 100;
 
 export interface Weir {
   id: number;
@@ -297,6 +324,13 @@ export class Structures {
       sill,
       open: false,
       progress: 0,
+      lift: 0,
+      mode: 0,
+      lastSwitch: -1e9,
+      operator: -1,
+      want: -1,
+      reliefDay: -1,
+      wetDay: -1e9,
     };
     this.gates.push(gate);
     this.structuresDirty = true;
@@ -304,15 +338,37 @@ export class Structures {
     return { cells: changed, gate };
   }
 
+  /**
+   * Open or close a gate by hand (the toggleGate command: tests, scenes and
+   * debugging; players do not work gates). The gate is then held: the
+   * gatekeeping leaves it alone.
+   */
   toggleGate(id: number, open?: boolean): boolean {
     const g = this.gates.find((g) => g.id === id);
     if (!g) return false;
+    g.manual = true;
+    g.want = -1;
     const next = open ?? !g.open;
     if (next === g.open) return false;
     g.open = next;
     this.structuresDirty = true;
-    this.updateWalls();
     return true;
+  }
+
+  /** Move the gate leaves towards their targets (every step). */
+  stepGates(): void {
+    let moved = false;
+    for (const g of this.gates) {
+      const target = g.open ? 1 : 0;
+      const l = g.lift ?? target;
+      if (l === target) continue;
+      const next = target > l ? Math.min(1, l + 1 / LIFT_STEPS) : Math.max(0, l - 1 / LIFT_STEPS);
+      g.lift = next;
+      moved = true;
+      // Snapshots at tenths of the travel (the renderer eases in between).
+      if (Math.floor(next * 10) !== Math.floor(l * 10) || next === target) this.structuresDirty = true;
+    }
+    if (moved) this.updateWalls();
   }
 
   /** Remove planned lining and unfinished gates within a radius (the Remove tool). */
@@ -414,7 +470,7 @@ export class Structures {
   /** Rebuild the flow kernel's wall list from the gates. */
   updateWalls(): void {
     let n = 0;
-    for (const g of this.gates) if (!g.open) n += g.cells.length;
+    for (const g of this.gates) if (gateLift(g) < 1) n += g.cells.length;
     const wl = this.walls;
     if (wl.cell.length < n) {
       wl.cell = new Int32Array(n * 2);
@@ -422,8 +478,11 @@ export class Structures {
     }
     let k = 0;
     for (const g of this.gates) {
-      if (g.open) continue;
-      const h = g.top0 + (g.top - g.top0) * g.progress;
+      const lift = gateLift(g);
+      if (lift >= 1) continue;
+      const closed = g.top0 + (g.top - g.top0) * g.progress;
+      // A rising leaf lets the pool down gently: the crest falls towards the sill.
+      const h = closed + (g.sill - closed) * lift;
       for (const c of g.cells) {
         wl.cell[k] = c;
         wl.top[k] = h;
@@ -448,7 +507,19 @@ export class Structures {
     const flags = this.world.flags;
     const out: StructureInfo[] = [];
     for (const g of this.gates) {
-      out.push({ id: g.id, kind: 'gate', x: g.x, y: g.y, rot: g.rot, width: g.width, top: g.top, sill: g.sill, open: g.open, progress: g.progress });
+      out.push({
+        id: g.id,
+        kind: 'gate',
+        x: g.x,
+        y: g.y,
+        rot: g.rot,
+        width: g.width,
+        top: g.top,
+        sill: g.sill,
+        open: g.open,
+        progress: g.progress,
+        lift: gateLift(g),
+      });
     }
     for (const wr of this.weirs) {
       let done = 0;
@@ -483,9 +554,16 @@ export class Structures {
     this.lining.clear();
     for (let k = 0; k + 1 < s.lining.length; k += 2) this.lining.set(s.lining[k]!, s.lining[k + 1]!);
     this.gates = s.gates;
+    // Saves from before villager-worked gates: the leaf is where the gate is set.
+    for (const g of this.gates) g.lift ??= g.open ? 1 : 0;
     this.weirs = s.weirs;
     this.updateWalls();
     this.structuresDirty = true;
     this.liningDirty = true;
   }
+}
+
+/** How far a gate's leaf is up (0..1). */
+export function gateLift(g: Gate): number {
+  return g.lift ?? (g.open ? 1 : 0);
 }

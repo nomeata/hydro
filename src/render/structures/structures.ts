@@ -187,7 +187,7 @@ export class StructuresLayer {
 
   setStructures(list: readonly StructureInfo[]): void {
     this.list = list.map((s) => ({ ...s }));
-    for (const s of this.list) if (s.kind === 'gate' && !this.lift.has(s.id)) this.lift.set(s.id, s.open ? 1 : 0);
+    for (const s of this.list) if (s.kind === 'gate' && !this.lift.has(s.id)) this.lift.set(s.id, s.lift ?? (s.open ? 1 : 0));
     this.layout();
   }
 
@@ -232,7 +232,8 @@ export class StructuresLayer {
     for (const s of this.list) {
       if (s.kind !== 'gate') continue;
       const cur = this.lift.get(s.id) ?? 0;
-      const target = s.open ? 1 : 0;
+      // The sim's leaf position (it travels over a few game hours), eased between snapshots.
+      const target = s.lift ?? (s.open ? 1 : 0);
       if (cur === target) continue;
       const next = cur < target ? Math.min(target, cur + dt * 0.8) : Math.max(target, cur - dt * 0.8);
       this.lift.set(s.id, next);

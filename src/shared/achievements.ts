@@ -55,7 +55,8 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'lakeMaker', title: 'Lake Maker', description: 'Fill a new pond where the land used to be dry.', icon: 'lake', category: 'water' },
   { id: 'waterfall', title: 'Waterfall', description: `Let water tumble ${ACH.fallDrop} m down over your works.`, icon: 'waterfall', category: 'water' },
   { id: 'weirBuilder', title: 'Weir Builder', description: 'Finish a weir across the water.', icon: 'weir', category: 'water' },
-  { id: 'gatekeeper', title: 'Gatekeeper', description: 'Open a sluice gate.', icon: 'gate', category: 'water' },
+  { id: 'gatekeeper', title: 'Gatekeeper', description: 'Villagers open a sluice gate to water their fields.', icon: 'gate', category: 'water' },
+  { id: 'safetyValve', title: 'Safety Valve', description: 'A sluice gate opens before the flood spills over its dike.', icon: 'valve', category: 'water' },
   // The land
   { id: 'newGround', title: 'New Ground', description: 'Villagers farm land that was too dry for fields at first.', icon: 'sprout', category: 'land' },
   { id: 'greenDesert', title: 'Green Desert', description: `Bring water to ${ACH.greenCells} cells of dry land.`, icon: 'green', category: 'land' },

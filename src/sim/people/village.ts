@@ -20,6 +20,8 @@ import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works'
 
 /** Hydro steps between agent updates. */
 export const PEOPLE_TICK = 2;
+/** Steps a villager turns a sluice gate's wheel (the leaf's travel, structures.ts LIFT_STEPS). */
+const GATE_WORK_STEPS = 100;
 /** Founding happens this many steps into a new game. */
 const FOUND_AFTER = STEPS_PER_DAY / 3;
 /** How far (cells) a settlement works: fields, houses, plans. */
@@ -230,6 +232,12 @@ export class PeopleSystem {
   readonly herds: Herds;
   /** Staged scenes keep no animals (their ambient animals are drawn by the renderer). */
   noAnimals = false;
+  /**
+   * Told when a villager sent by `callToGate` reaches the gate (gate id,
+   * agent id); returns the gate's centre to face, or null if there is
+   * nothing to do there any more. Set by the simulation (not saved).
+   */
+  onGate: ((gate: number, agent: number) => readonly [number, number] | null) | null = null;
   /** Told of harvests, catches (at the water cell) and rebuilt ruins; an observer only (not saved). */
   onEvent: ((e: PeopleEvent, cell: number) => void) | null = null;
   private readonly onBridge = (i: number): boolean => this.world.landuse[i] === LandUse.Bridge;
@@ -361,6 +369,37 @@ export class PeopleSystem {
     const store = this.buildings.find((b) => b.settlement === id && b.kind === 'store') ?? null;
     const houses = this.buildings.filter((b) => b.settlement === id && b.kind === 'house' && b.progress >= 1);
     return { store, houses, owns: (x, y) => this.settlements.length < 2 || this.ownerOf(x, y) === s };
+  }
+
+  /**
+   * Send a villager of settlement `index` to work sluice gate `gate`,
+   * standing at cell `stand` (structures/gatekeeper.ts): the nearest builder
+   * or idle adult who is not busy with work or carrying food. Returns the
+   * agent's id, or −1 if nobody can go (or the way is blocked).
+   */
+  callToGate(index: number, stand: number, gate: number, time: SimTime): number {
+    const s = this.settlements[index];
+    if (!s) return -1;
+    const W = this.world.width;
+    const sx = stand % W;
+    const sy = (stand / W) | 0;
+    let best: Agent | null = null;
+    let bestD = Infinity;
+    for (const a of this.agents) {
+      if (a.settlement !== s.state.id || a.child || a.flee || a.task === Task.Leave || a.task === Task.Work) continue;
+      if (a.siteKind === SiteKind.Gate && a.task === Task.Walk) continue; // already on the way to a gate
+      const idle = a.task === Task.None || a.task === Task.Rest || (a.task === Task.Walk && a.siteKind === SiteKind.Wander);
+      const free = a.job === Job.Builder && a.load <= 0 && a.carry !== CarryKind.Sack && a.carry !== CarryKind.Fish;
+      if (!idle && !free) continue;
+      const d = Math.hypot(a.x - sx, a.y - sy);
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    }
+    if (!best || !this.goTo(best, stand, SiteKind.Gate, time, gate)) return -1;
+    if (best.carry === CarryKind.Stone || best.carry === CarryKind.Earth) best.carry = CarryKind.None;
+    return best.id;
   }
 
   /** Woodcutters, herders and the like of a village. */
@@ -1393,6 +1432,18 @@ export class PeopleSystem {
         const W = this.world.width;
         const here = this.cellOf(a);
         if (here !== a.site) a.heading = Math.atan2(((a.site / W) | 0) - ((here / W) | 0), (a.site % W) - (here % W));
+        break;
+      }
+      case SiteKind.Gate: {
+        // Turn the gate's wheel while the leaf moves.
+        const at = this.onGate?.(a.site, a.id) ?? null;
+        if (!at) {
+          a.task = Task.None;
+          break;
+        }
+        a.timer = GATE_WORK_STEPS;
+        a.anim = EntityAnim.Build;
+        a.heading = Math.atan2(at[1] - a.y, at[0] - a.x);
         break;
       }
       case SiteKind.Herd:
