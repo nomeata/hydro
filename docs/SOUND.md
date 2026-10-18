@@ -43,7 +43,7 @@ now" decision is reversed.)
 ## 2. The mix
 
 All levels are linear gains before the master volume (slider² — default
-slider 0.6, i.e. gain 0.36) and a gentle safety compressor (−14 dB, 3:1,
+slider 0.7, i.e. gain 0.49) and a gentle safety compressor (−14 dB, 3:1,
 soft knee) that should rarely act.
 
 ### Ambient layers (procedural)
@@ -140,4 +140,20 @@ fit), music.
 and writes WAVs, spectrograms and a loudness report (docs/TESTING.md
 §5b). Last review (20 s each, seed 1, default volume):
 
-(see below)
+| scenario | LUFS | momentary | peak dBFS | spots/min | notes |
+|---|---|---|---|---|---|
+| meadow | −33.3 | −39…−27 | −14.7 | 54 | wind, birds, distant work |
+| river close-up | −26.3 | −27…−24 | −14.6 | 3 | river + rapids, the loudest bed |
+| paused (same view) | −30.7 | −32…−27 | −16.9 | 6 (birds) | ambience on, activity off |
+| zoomed out | −33.7 | −37…−31 | −21.2 | 45 | wind; work taps faint |
+| village (scene) | −33.3 | −48…−27 | −12.6 | 57 | hammer, spade, birds, frogs, crickets |
+| rain (scene) | −28.6 | −32…−25 | −12.9 | 9 | rain swells as the front passes |
+| weir (scene) | −31.7 | −44…−24 | −14.4 | 12 | spill, lake, birds |
+| water wheel (scene) | −27.7 | −31…−25 | −11.7 | 66 | creaks, crew digging, river |
+
+Spread 7.4 LU, peaks ≥ 11 dB below full scale, no click candidates; the
+spectrograms showed no drones (only crickets' intended 4.4/4.7 kHz chirps
+and the achievement chime). Fixed through the loop: a voice counter that
+never released offline (silence after 10 spots), rain heard only at the
+exact centre, a bass-heavy river (now high-passed at 160 Hz), and the
+spade's crunch reaching 20 kHz (now low-passed at 2.2 kHz).

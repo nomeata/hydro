@@ -421,7 +421,7 @@ export class AudioEngine {
   }
 
   /** Play a sample (with a voice limit); returns false when not loaded. */
-  private sample(name: SampleName, gain: number, pan: number, at: number, rate = 1, offset = 0, dur?: number, fade = 0): boolean {
+  private sample(name: SampleName, gain: number, pan: number, at: number, rate = 1, offset = 0, dur?: number, fade = 0, lowpass = 0): boolean {
     const b = this.samples[name];
     if (!b) return false;
     const len = dur ?? (b.duration - offset) / rate;
@@ -430,7 +430,11 @@ export class AudioEngine {
     src.buffer = b;
     src.playbackRate.value = rate;
     const g = this.out(gain, pan, at, fade || 0.004);
-    src.connect(g);
+    if (lowpass > 0) {
+      const f = this.ctx.createBiquadFilter();
+      f.frequency.value = lowpass;
+      src.connect(f).connect(g);
+    } else src.connect(g);
     if (fade > 0) {
       g.gain.setValueAtTime(gain, at + Math.max(fade, len - fade));
       g.gain.linearRampToValueAtTime(0, at + len);
@@ -466,7 +470,8 @@ export class AudioEngine {
         break;
       }
       case 'dig':
-        this.sample(v < 0.5 ? 'dig1' : 'dig2', lv, e.pan, at, 0.75 * jitter(0.15));
+        // A spade in soil: the crunchy recording, darker.
+        this.sample(v < 0.5 ? 'dig1' : 'dig2', lv, e.pan, at, 0.75 * jitter(0.15), 0, undefined, 0, 2200);
         break;
       case 'moo':
         this.sample('moo', lv, e.pan, at, 0.92 + v * 0.14);

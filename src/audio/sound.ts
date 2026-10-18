@@ -25,7 +25,7 @@ export interface SoundSettings {
   volume: number;
 }
 
-export const DEFAULT_SETTINGS: SoundSettings = { muted: false, volume: 0.6 };
+export const DEFAULT_SETTINGS: SoundSettings = { muted: false, volume: 0.7 };
 
 export function loadSettings(): SoundSettings {
   try {
