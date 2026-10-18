@@ -8,12 +8,15 @@
 1. **Water is the protagonist.** Rain, snow, rivers, groundwater, floods and
    droughts are simulated, not scripted. Everything interesting follows from
    where water goes.
-2. **The player plans, the land responds.** The player is a "god hand" that
-   marks plans (trenches, dikes, reservoirs, gates, …). They are realised
-   quickly and on their own, so that the interesting wait is for the *water*
-   and the *people* to respond, not for construction. (Having villagers do
-   the earthworks was tried and felt odd; it is off, see
-   `PARAMS.villagersBuildPlans`.)
+2. **The god hand shapes the land; the crew builds.** The player is a "god
+   hand": the ground itself is sculpted directly, with brushes (raise, dig,
+   even) that change it at once under the finger, so the interesting wait
+   is for the *water* and the *people* to respond, not for construction.
+   Stone structures (weirs, gates, wheels, turbines, poles, pumps) are
+   still *planned*, and a quick crew builds them. (Having villagers do the
+   earthworks was tried and felt odd; it is off, see
+   `PARAMS.villagersBuildPlans`. Planned trenches, dikes and levels were the
+   first design, replaced by the brushes: plans felt indirect for earth.)
 3. **No control over people.** NPCs settle, farm, fish, graze, build houses and
    occasionally a little dam of their own, entirely on their own initiative.
    The player only shapes circumstances.
@@ -110,49 +113,79 @@
 - As settlements grow, their **territory** expands and the fog of war recedes,
   giving the player more land to shape. That is the progression.
 
-## 4. Player tools (plans)
+## 4. Player tools
 
-All tools place *plans*; NPC builders realise them over time. Plans can be
-cancelled.
+The ground is sculpted with three **brushes**; structures are placed as
+*plans* that the crew builds (and can be taken down again).
 
-| Tool | Effect when built | Unlock |
+| Tool | Effect | Unlock |
 |---|---|---|
-| Trench / canal | Lowers ground along a path to a floor that grades evenly from start to end | start |
-| Dike / wall | Raises an earth bank along a path to a level crest. It must never be overtopped: water pouring over its edge scours it, and it notches and breaches | start |
-| Level | Flattens an area to a target height (basins, terraces) | start |
-| Weir | Drawn as a line across a river; only the crest height is set (its faces and stone apron follow from it). A stone crest built to be overtopped: holds the pool at the crest and spills the surplus safely; the place for mills and turbines | 15 villagers |
-| Sluice gate | Tap a dike or weir (or draw across a channel for a dam with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Worked by the villagers (GAMEPLAY.md §2): released in summer to water their fields, opened before the water spills over; with no village near it opens by itself as flood relief | 30 villagers |
-| Water wheel | Draw from fast river water onto the bank: the current turns a noria that lifts water up to 5 m into the head cell, and on along the player's trench (GAMEPLAY.md §1.3; wells and mills are villager creations) | 50 villagers |
+| Raise | Brush: heaps up earth under the brush while held (bank, dam, pond wall). Loose earth: water pouring over it scours it, and an overtopped bank notches and breaches | start |
+| Dig | Brush: digs the ground under the brush while held (canal, ditch, basin). A rough channel grades itself once water runs in it | start |
+| Even | Brush: pulls the ground under the brush towards its mean height (terraces, flat sites, rounding off); repeated strokes level | start |
+| Weir | Drawn as a line across a river: a stone wall on the ground as it is (no earthworks), its crest at most 4 m above the ground on its lower side, with a stone apron at its foot. Built to be overtopped: holds the pool at the crest and spills the surplus safely; the place for mills and turbines | 15 villagers |
+| Sluice gate | Tap a weir or a bank (or draw across a channel for a stone wall with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Worked by the villagers (GAMEPLAY.md §2): released in summer to water their fields, opened before the water spills over; with no village near it opens by itself as flood relief | 30 villagers |
+| Water wheel | Draw from fast river water onto the bank: the current turns a noria that lifts water up to 5 m into the head cell, and on along the player's canal (GAMEPLAY.md §1.3; wells and mills are villager creations) | 50 villagers |
 | Turbine | Tap the crest of a weir or dam: power from the real head × flow through it (the Power tool's first mode) | 100 |
 | Power line / pole | Draw a line of poles from a turbine: houses within 8 cells of a pole are lit | 150 |
 | Electric pump, pumped storage | Draw from water to an outlet: lifts water on spare power; a turbine below a pumped basin generates when the houses want more | 250 |
+
+**The brushes** (decision; `sim/plans/sculpt.ts`, `brushwork.ts`,
+`ui/tools.ts`, `client/sculptor.ts`). While the pointer is held, the
+ground under the brush changes continuously and at once: rate × hold time
+(Raise and Dig 1.2 m/s at the centre, `BRUSH.rate`; Even closes
+1 − e^(−3 t) of the gap to the brush's weighted mean), with a soft round
+falloff ((1 − (d/r)²)²). Three sizes (radius 1.5, 2.5, 4 cells: about 15,
+25, 40 m across). Holding still digs a pit; a quick accidental swipe does
+little (a pass at 30 cells/s moves ~0.1 m). The brushes stay selected; on
+touch the brush bites only after 90 ms, so a second finger still pans and
+zooms. They work while paused too: the sim applies every stroke sample at
+once. The client applies the same kernel to its mirror for instant feel,
+and the sim's terrain is the final word (`Snapshot.sculptSeq`). A ring on
+the ground shows the brush. **Undo** (the button by the sizes, Ctrl/Cmd+Z)
+takes back the last strokes (the last 12, not across reloads).
+
+- *Water is conserved:* the brush never touches the water depth, so ground
+  raised under water lifts its water (which then runs off), digging lowers
+  it (water flows in); groundwater above the soil's new capacity comes out.
+- *Sculpted earth is loose* (the erosion's `loose`, fading over weeks): it
+  slumps and erodes readily. Ground above its original height is
+  `CellFlag.Fill`, so overtopped heaped earth breaches (`overtopStep`);
+  ground dug 0.3 m below it is `CellFlag.Canal` (villagers line such
+  canals near home). Plants are buried or dug out.
+- *What is in the way:* houses (and mills, wells, stores, ruins) and
+  footbridges are never changed, nor structures (weir, gate, wheel,
+  turbine, poles, pump) or the crew's work on them: the brush fades out
+  over two cells around them (`Snapshot.fixed`). Fields, gardens,
+  pastures, paths and yards under the brush go back to plain land, and
+  the villagers' stone lining comes off.
+- *The crew is cosmetic for earth:* a few workers walk up to freshly
+  sculpted ground and tamp it with their spades for a while, then leave
+  (`render/crowd/sculptCrew.ts`; no effect on the sim).
+- Bots, scenes and tests shape whole lines at once with the `shapeLine`
+  command (the old trench / dike / level profiles, with the same rules);
+  the earth moved by brushes and by scripts is counted
+  (`Simulation.brush.moved`, saved). Saves from before the brushes have
+  their pending trench, dike and level plans finished on load.
 
 **Selecting and editing.** In Look mode a tap on a weir, gate, water
 wheel, turbine, pole or pump selects it (with the weir tool, a tap on a
 weir too): a ring or, for a weir, a dashed line with a handle at each end.
 A small panel above the palette names it and offers **Remove** (tap twice:
 it asks "Remove?" first); a weir also gets **− / +** for its crest
-(0.25 m steps, 0.5–6 m above the ground it stands on) and its handles can
+(0.25 m steps, 0.5 m above the ground under it up to 4 m above the
+ground on its lower side) and its handles can
 be dragged out or in, with a live preview. Edits are plans: the crew takes
 the stone off what no longer belongs to the weir, lowers it back to the
-ground it was built on (saved per cell with the weir), reshapes the rest
-and lines it again. A removed weir goes back to its ground (gates and
+ground it was built on (saved per cell with the weir), builds the rest of
+the wall to its new crest and lines it again. A removed weir goes back to its ground (gates and
 turbines in it go with it); a removed gate's opening is filled back up to
-the dam's crest. The Remove (erase) tool is the same thing as a brush:
+the dam's crest. The Remove (erase) tool is a brush for structures:
 plans under it are cancelled, and every structure it touches, built or
 not (weir, gate, wheel, turbine, pole, pump), is taken down the same way
 (the crew's plans for lowering a weir or plugging a gate are kept even if
 the brush passes over them again). Mouse and touch alike
 (`ui/selection.ts`).
-
-**Earthworks take up what is in their way.** A trench, dike or level
-planned over a weir, gate, wheel, turbine, pole or pump takes it down
-when planned (a weir loses the part crossed; what is left on either side
-stays a weir if long enough). Fields, gardens, pastures, paths and yards
-turn back to plain land when the crew digs or heaps there (the villagers
-plant again elsewhere, or there once the work is done). Plans go round
-houses (and mills, wells, stores, ruins) and footbridges: those cells are
-left out, and the hint line says so.
 
 **Villagers keep off the works.** They never claim fields, pasture,
 yards or house plots on a structure's footprint (`CellFlag.Structure`,
@@ -162,14 +195,14 @@ than 0.5 m above ground within two cells; a levelled terrace's inside
 stays farmable): `plans.ts takenGround`. Fields already on such ground
 go back to plain land at the next day.
 
-**Weir vs dike in the sim.** Earth heaped by a plan is marked
-`CellFlag.Fill`. Where water flows off the edge of an unlined fill cell
+**Weir vs heaped earth in the sim.** Earth heaped by the brushes is
+marked `CellFlag.Fill`. Where water flows off the edge of an unlined fill cell
 into a lower neighbour with a clearly lower water surface, the bank is
 scoured (`overtopStep`, rate ∝ unit discharge × drop; `PARAMS.overtopK`);
 the soil goes into the water as sediment. The cut deepens where most
-water goes, so an overtopped dike notches and breaches within days, back
-from its downstream face, while a dike that only holds water stands.
-Weirs are lined, so they do not scour.
+water goes, so an overtopped bank notches and breaches within days, back
+from its downstream face, while a bank that only holds water stands.
+Weirs are stone walls (lined), so they do not scour.
 
 Unlocks are driven by population milestones, not by purchase: one
 progression table in `src/shared/unlocks.ts` (`PROGRESSION`; the power tools
@@ -184,7 +217,9 @@ player's canals near the village on their own; lined banks by the houses
 facing open water become quays (lake fronts). Elsewhere the player's works
 live with natural erosion. (The sim keeps a `planLining` command for scenes
 and tests.)
-On a keyboard, the digit keys 1…9, 0 pick the tools in palette order.
+On a keyboard, the digit keys 1…9, 0 pick the tools in palette order
+(1 Look, 2 Raise, 3 Dig, 4 Even, 5 Weir, …), Escape goes back to Look and
+Ctrl/Cmd+Z undoes the last stroke.
 
 ## 4a. Progress you can feel
 
@@ -226,8 +261,10 @@ The player asked for "more direct endorphin hits". Decisions:
 - Demand varies over day and season; pumped storage balances it.
 
 ## 6. Presentation
-- Tools apply once and then return to the Look tool, so stray touches never
-  place unintended plans.
+- Structure tools apply once and then return to the Look tool, so stray
+  touches never place unintended plans. The brushes stay selected: their
+  effect grows with hold time, so a stray swipe does little, and Undo
+  takes it back.
 - Flow direction of water must be readable at a glance (drifting foam,
   flow-aligned ripples). Plans stay visible under water.
 - 3D, WebGL, orthographic camera at an isometric-like angle; freely rotatable

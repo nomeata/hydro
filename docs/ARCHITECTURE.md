@@ -207,14 +207,25 @@ state). It raises infiltration and lowers erosion pickup. See PEOPLE.md
 - Rain is evaluated per tile. The renderer receives the fronts (for clouds
   and rain particles) and the sun/season state.
 
-### 3.6 Plans and builders
-- Plans are target terrain heights per cell, written by tool commands
-  (polyline trench with a graded floor, polyline dike with a level crest,
-  level area, cancel).
-- Builders move terrain towards the target at a bounded rate. M1 uses a
-  "spirit crew" stand-in. In M3, NPC builders replace it, using the same
-  `applyEarthwork` API.
-- The main thread renders plans **optimistically** for immediate feedback.
+### 3.6 Sculpting, plans and builders
+- **Brushes** (Raise, Dig, Even; DESIGN §4): the `sculpt` command carries
+  brush samples (x, y, hold time) of one stroke; the sim applies them at
+  once, even while paused (`plans/brushwork.ts` on the pure kernel
+  `plans/sculpt.ts`), keeps the last strokes' original ground for
+  `undoSculpt`, marks the earth loose (and Fill / Canal), clears fields and
+  leaves fixed cells alone (`Simulation.isFixed`, sent as
+  `Snapshot.fixed`). The client applies the same kernel to its
+  `WorldMirror` and the renderer's terrain rows at once
+  (`client/sculptor.ts`), numbers its commands, and lays the not yet
+  applied ones over the terrain rows of each snapshot until
+  `Snapshot.sculptSeq` catches up. `shapeLine` shapes a whole line at once
+  (bots, scenes, tests); `brush.moved` counts the earth moved.
+- **Plans** are target terrain heights per cell, now only for structures
+  (a weir's wall, a gate's passage, taking them down); the "spirit crew"
+  (`SpiritCrew`) moves terrain towards them at a bounded rate with
+  `applyEarthwork` (also the villagers' API for their own works).
+- The main thread renders structure plans **optimistically** for
+  immediate feedback.
 
 ### 3.7 Determinism & accounting
 - Seeded `sfc32` RNG owned by the sim. No `Math.random` or wall clock in `sim/`.
@@ -323,9 +334,9 @@ The welcome panels are illustrated by the real engine, not by drawings:
   open.
 - **Timelines:** each scene loops (11–14 s, then a short fade and a fresh
   clone). `shape` animates an HTML hand over a piece of the tool palette and
-  the canvas: it picks Trench, draws (showing the real plan preview from
-  `planTrench` on a `WorldMirror` grid), releases (a real `planTrench`
-  command), and the spirit crew digs while the hollow fills.
+  the canvas: it picks the Dig brush and brushes out along the line and back
+  (real `sculpt` commands, predicted on the scene's `WorldMirror` by a
+  `Sculptor`), and the hollow fills.
 - **Fallback:** the SVG drawings show while the scene loads and stay when
   WebGL or the worker fails.
 
