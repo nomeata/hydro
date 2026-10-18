@@ -116,8 +116,22 @@ export interface WorldInfo {
  */
 export const LOOK_CHANNELS = 4;
 
-/** Bytes per cell in Snapshot.fields: LandUse, crop stage, crop stress. */
-export const FIELD_BYTES = 3;
+/** Bytes per cell in Snapshot.fields: LandUse, crop stage, crop stress, field crop (FieldCrop). */
+export const FIELD_BYTES = 4;
+/**
+ * Fourth byte of Snapshot.fields (docs/PEOPLE.md §3.1, "hardy crops and
+ * pegged plots"): what a field cell grows. `Common` is the ordinary crop of
+ * good land (the renderer picks wheat, corn, cabbage or pumpkin per patch);
+ * millet and paddies are the hardy crops of a village short of good land;
+ * `Pegged` marks good land staked out for a farmer still to come (LandUse
+ * None: not ploughed).
+ */
+export const enum FieldCrop {
+  Common = 0,
+  Millet = 1,
+  Paddy = 2,
+  Pegged = 3,
+}
 /**
  * Crop stress byte: 0 healthy (or nothing growing), 1..127 dry (127: too dry
  * to grow), STRESS_WET..255 waterlogged (255: under water, drowning).
@@ -327,8 +341,8 @@ export interface Snapshot {
   /** All buildings, when changed. */
   buildings?: BuildingInfo[];
   /**
-   * Land use, crop stage and crop stress per cell (FIELD_BYTES each:
-   * LandUse, crop 0..255, stress — see STRESS_WET), when changed.
+   * Land use, crop stage, crop stress and field crop per cell (FIELD_BYTES
+   * each: LandUse, crop 0..255, stress — see STRESS_WET, FieldCrop), when changed.
    */
   fields?: Uint8Array;
   /** Water structures (gates, weirs), when changed. */

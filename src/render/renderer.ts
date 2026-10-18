@@ -25,6 +25,7 @@ import { FlowParticles } from './flow';
 import { WeatherLayer, createFrontUniforms } from './weather';
 import { BuildingsLayer } from './village/buildings';
 import { CropLayer } from './village/crops';
+import { PlotLayer } from './village/plots';
 import { VillageCuesLayer } from './village/cues';
 import { MillWheelsLayer } from './village/millwheels';
 import { fieldsToRgba } from './village/fields';
@@ -83,6 +84,7 @@ export class GameRenderer {
   readonly buildings: BuildingsLayer;
   /** Crop models on fields when zoomed in (the terrain shader paints the fields). */
   readonly crops: CropLayer;
+  readonly plots: PlotLayer;
   /** Chimney smoke, laundry and flowers showing each village's mood. */
   readonly cues: VillageCuesLayer;
   readonly millWheels: MillWheelsLayer;
@@ -202,6 +204,8 @@ export class GameRenderer {
     wu.uPreviewOn = tu.uPreviewOn;
     wu.uLining = tu.uLining;
     wu.uLiningOn = tu.uLiningOn;
+    wu.uFields = tu.uFields;
+    wu.uFieldsOn = tu.uFieldsOn;
     this.water = new WaterLayer(this.geometry, wu, W, H);
     this.updateFogChunks();
     this.scene.add(this.water.group);
@@ -213,6 +217,7 @@ export class GameRenderer {
     this.buildings = new BuildingsLayer(this.scene, this.heights);
     this.buildings.setShadows(this.shadows);
     this.crops = new CropLayer(this.scene, this.heights);
+    this.plots = new PlotLayer(this.scene, this.heights);
     this.cues = new VillageCuesLayer(this.scene, this.heights);
     this.millWheels = new MillWheelsLayer(this.scene, this.heights);
     this.structures = new StructuresLayer(this.scene, this.heights);
@@ -309,6 +314,7 @@ export class GameRenderer {
       this.wheelPreview.refreshHeights();
       this.power.refreshHeights();
       this.crops.invalidate();
+      this.plots.invalidate();
     }
     if (s.look) {
       (this.tex.look.image.data as Uint8Array).set(s.look.subarray(0, n * 4));
@@ -358,6 +364,7 @@ export class GameRenderer {
       this.tex.fields.needsUpdate = true;
       this.terrain.uniforms.uFieldsOn.value = 1;
       this.crops.setFields(s.fields);
+      this.plots.setFields(s.fields);
     }
     // Always daytime (a day/night cycle is distracting); the season drifts smoothly.
     if (this.followSimTime) this.setSun(DAY_TIME, s.time.yearFrac * 4);
@@ -480,6 +487,7 @@ export class GameRenderer {
     this.weather.update(dt, t, this.camera);
     const cs = this.camera.getCurrentState();
     this.crops.update(nowMs, cs.x, cs.y, cs.viewHeight);
+    this.plots.update(cs.viewHeight);
     this.cues.update(dt, cs.viewHeight);
     this.millWheels.update(dt, this.flow.gameSpeed);
     this.structures.update(dt);
@@ -534,6 +542,7 @@ export class GameRenderer {
     this.weather.dispose();
     this.buildings.dispose();
     this.crops.dispose();
+    this.plots.dispose();
     this.cues.dispose();
     this.millWheels.dispose();
     this.structures.dispose();

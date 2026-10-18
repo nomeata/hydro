@@ -2,7 +2,7 @@
  * Simulation orchestrator: owns the world and runs all subsystems at their
  * rates. Independent of workers and DOM, so it runs the same in Node tests.
  */
-import type { Command, SimTime } from '../shared/protocol';
+import { FIELD_BYTES, type Command, type SimTime } from '../shared/protocol';
 import { Rng } from '../shared/rng';
 import { timeAt, seaLevelTemperature } from './climate/calendar';
 import { Weather, type WeatherState } from './climate/weather';
@@ -821,15 +821,16 @@ export class Simulation {
     return d;
   }
 
-  /** Pack land use, crop stage and crop stress (FIELD_BYTES per cell, see Snapshot.fields). */
+  /** Pack land use, crop stage, crop stress and field crop (FIELD_BYTES per cell, see Snapshot.fields). */
   packFields(out: Uint8Array): void {
     const { landuse, crop, size } = this.world;
     const p = this.people;
     const season = this.time.season;
     for (let i = 0; i < size; i++) {
-      out[3 * i] = landuse[i]!;
-      out[3 * i + 1] = crop[i]!;
-      out[3 * i + 2] = p ? p.stressAt(i, season) : 0;
+      out[FIELD_BYTES * i] = landuse[i]!;
+      out[FIELD_BYTES * i + 1] = crop[i]!;
+      out[FIELD_BYTES * i + 2] = p ? p.stressAt(i, season) : 0;
+      out[FIELD_BYTES * i + 3] = p ? p.fieldCropAt(i) : 0;
     }
   }
 
