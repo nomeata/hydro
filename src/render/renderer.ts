@@ -264,6 +264,7 @@ export class GameRenderer {
     this.flow.setVelocity(s.vel);
     this.flow.gameSpeed = s.stats.speedRequested > 0 ? Math.max(s.stats.speedAchieved, 0.3) : 0;
     this.structures.gameSpeed = this.flow.gameSpeed;
+    this.structures.refreshWater();
     this.power.gameSpeed = this.flow.gameSpeed;
     this.weather.setFronts(s.climate.fronts);
     const wu = this.water.uniforms;

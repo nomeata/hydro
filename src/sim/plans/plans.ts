@@ -163,17 +163,15 @@ export function planLevel(world: PlanGrid, points: readonly Pt[], width: number)
 /**
  * A weir's cross-section for a crest `height` m above the ground: a level
  * crest WEIR_CREST cells either side of the line, then sloped faces whose
- * run follows from the height (taller weirs have broader feet), then one
- * cell of stone apron. The whole footprint is lined.
+ * run follows from the height (taller weirs have broader feet), then a
+ * strip of stone apron (WEIR_APRON). The whole footprint is lined.
  */
 export const WEIR_CREST = 1;
 export function weirBank(height: number): number {
-  return Math.max(1.5, Math.min(3.5, 1 + 0.5 * height));
+  return Math.max(1, Math.min(3, 0.6 + 0.4 * height));
 }
-/** Distance from the line (cells) within which a weir is lined: crest, faces and apron. */
-export function weirReach(height: number): number {
-  return WEIR_CREST + weirBank(height) + 1;
-}
+/** Width (cells) of the stone apron beyond the faces. */
+export const WEIR_APRON = 0.6;
 
 /**
  * Weir along the straight line a→b with its crest at `top` (absolute, m):
@@ -194,7 +192,7 @@ export function weirShape(
   const targets = new Map<number, number>();
   if (!Number.isFinite(lowest)) return { targets, lowest, lined: [] };
   const bank = weirBank(top - lowest);
-  const reach = WEIR_CREST + bank + 1;
+  const reach = WEIR_CREST + bank + WEIR_APRON;
   const lined: number[] = [];
   for (const [i, h] of rasterisePath(world, line, reach)) {
     lined.push(i);

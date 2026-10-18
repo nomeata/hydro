@@ -74,7 +74,7 @@ export class Selection {
   private pending: { ends: [Pt, Pt]; top: number; at: number } | null = null;
   /** The end being dragged (0 or 1) and where it is. */
   private drag: { end: 0 | 1; id: number; at: Pt } | null = null;
-  private armed: ReturnType<typeof setTimeout> | null = null;
+  private armed = false;
   /** Told when the selection opens or closes (the palette hides its hint meanwhile). */
   onChange: ((sel: Selected | null) => void) | null = null;
 
@@ -260,6 +260,7 @@ export class Selection {
   // Edits
 
   private crest(dz: number): void {
+    this.disarm();
     const s = this.selected;
     const w = this.weirNow();
     if (!s || !w) return;
@@ -281,7 +282,8 @@ export class Selection {
       // First tap: ask.
       this.removeBtn.textContent = 'Remove?';
       this.removeBtn.classList.add('armed');
-      this.armed = setTimeout(() => this.disarm(), 3000);
+      // Asked until something else is pressed or selected (no timer: a slow second tap still counts).
+      this.armed = true;
       return;
     }
     this.disarm();
@@ -290,8 +292,7 @@ export class Selection {
   }
 
   private disarm(): void {
-    if (this.armed) clearTimeout(this.armed);
-    this.armed = null;
+    this.armed = false;
     this.removeBtn.textContent = 'Remove';
     this.removeBtn.classList.remove('armed');
   }

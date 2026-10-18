@@ -166,7 +166,7 @@ export class ToolPalette {
 
   private pointers = new Set<number>();
   /** A possible tap in Look mode: where and when the pointer went down. */
-  private tap: { id: number; x: number; y: number; t: number } | null = null;
+  private tap: { id: number; x: number; y: number } | null = null;
   /** The tools' column (the selection panel goes in above the palette). */
   private readonly wrap: HTMLElement;
   private drawing: { id: number; points: Pt[] } | null = null;
@@ -418,7 +418,7 @@ export class ToolPalette {
   private onDown(e: PointerEvent): void {
     this.pointers.add(e.pointerId);
     if (this.tool === 'look') {
-      this.tap = this.pointers.size === 1 && (e.pointerType !== 'mouse' || e.button === 0) ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() } : null;
+      this.tap = this.pointers.size === 1 && (e.pointerType !== 'mouse' || e.button === 0) ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
       return;
     }
     if (this.pointers.size > 1) {
@@ -454,7 +454,8 @@ export class ToolPalette {
     if (this.tool === 'look') {
       const t = this.tap;
       this.tap = null;
-      if (t?.id === e.pointerId && performance.now() - t.t < 600 && Math.hypot(e.clientX - t.x, e.clientY - t.y) <= 8) this.host.tap?.(e.clientX, e.clientY);
+      // (No time limit: a slow, still press is a tap too.)
+      if (t?.id === e.pointerId && Math.hypot(e.clientX - t.x, e.clientY - t.y) <= 8) this.host.tap?.(e.clientX, e.clientY);
       return;
     }
     const d = this.drawing;
