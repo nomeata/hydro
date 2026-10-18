@@ -24,8 +24,8 @@ export const DITCH = {
   maxCut: 0.9,
   /** Ground must lie at least this far above the canal's water, or the ditch would spill (m). */
   minAbove: 0.03,
-  /** Canal cells this far (cells) from the village centre are considered. */
-  reach: 22,
+  /** Ditch cells lie within this distance (cells) of the village centre (its field radius). */
+  reach: 18,
   /** Cells within this distance of the ditch that it should help (dry fields or farmable land), and how many it needs. */
   helps: 2,
   minHelped: 8,
@@ -97,6 +97,7 @@ export function chooseDitch(
           }
           if (w.water[j]! > 0.05 || !ditchable(w, j) || taken(j) || !mine(j)) break;
           if (g < surf + DITCH.minAbove || g - floor > DITCH.maxCut) break;
+          if ((xx - cx) ** 2 + (yy - cy) ** 2 > R * R) break;
           open = true;
           cells.push(j);
           if (cells.length >= DITCH.maxLen) break;

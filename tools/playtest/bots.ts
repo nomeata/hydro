@@ -11,6 +11,7 @@ import type { Command, Pt } from '../../src/shared/protocol';
 import { isUnlocked } from '../../src/shared/unlocks';
 import type { Settlement } from '../../src/sim/people/settlement';
 import type { Simulation } from '../../src/sim/sim';
+import { CROP_MOISTURE } from '../../src/sim/people/village';
 import { LandUse } from '../../src/sim/world';
 import {
   cellsAround,
@@ -99,14 +100,22 @@ abstract class PerVillageBot implements Bot {
  */
 export class IrrigateBot extends PerVillageBot {
   readonly name = 'irrigate';
-  readonly description = 'trench from the nearest river/lake that can feed it by gravity to the driest fields';
+  readonly description = 'trench from the nearest river/lake that can feed it by gravity into the driest land by the village';
   protected forVillage(sim: Simulation, s: Settlement, day: number): BotAction | null {
     const w = sim.world;
     const m = sim.people!.fieldMoisture;
     const fields = fieldsOf(sim, s);
     if (fields.length < 6) return null;
-    fields.sort((a, b) => m[a]! - m[b]! || a - b);
-    const dry = fields.slice(0, Math.max(4, Math.ceil(fields.length / 4)));
+    // The dry land a player would want green: fields and fertile open land near the village
+    // where crops lack water (people/village.ts CROP_MOISTURE).
+    const land = cellsAround(sim, s.state.x, s.state.y, 17).filter((i) => {
+      const lu = w.landuse[i];
+      if ((lu !== LandUse.Field && lu !== LandUse.None) || isWater(w, i) || dist(w, i, s.state.x, s.state.y) < 4) return false;
+      return m[i]! < CROP_MOISTURE.moist && (lu === LandUse.Field || w.fertility[i]! >= 0.4);
+    });
+    const pool = land.length >= 12 ? land : fields;
+    pool.sort((a, b) => m[a]! - m[b]! || a - b);
+    const dry = pool.slice(0, Math.max(4, Math.ceil(pool.length / 4)));
     const cx = mean(dry.map((i) => cellX(w, i)));
     const cy = mean(dry.map((i) => cellY(w, i)));
     // Aim at the middle of the dry fields first, then at other dry cells (some sit right by the houses).
@@ -142,7 +151,7 @@ export class IrrigateBot extends PerVillageBot {
     return {
       day,
       village: s.state.id,
-      note: `canal ${Math.round(polyLength(best.route))} cells${best.route.length > 2 ? ' (dogleg)' : ''}, depth ${best.depth.toFixed(1)} m, to ${dry.length} driest fields`,
+      note: `canal ${Math.round(polyLength(best.route))} cells${best.route.length > 2 ? ' (dogleg)' : ''}, depth ${best.depth.toFixed(1)} m, to ${dry.length} driest ${pool === land ? 'cells' : 'fields'}`,
       commands: [{ type: 'planTrench', points: best.route, width: 2, depth: best.depth }],
       targets,
       info: { moistureBefore: mean(targets.map((i) => m[i]!)), fields: fields.length },

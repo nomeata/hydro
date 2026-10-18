@@ -97,7 +97,7 @@ const TIRED_SPEED = 0.6;
  */
 export const FARMING = {
   fieldsPerFarmer: 28,
-  yield: 6,
+  yield: 12,
   /**
    * Crop growth per growing day at full growth (cropGrowth 1): a field sown
    * early in spring just ripens by the end of summer when it never lacked
@@ -119,7 +119,7 @@ export const FARMING = {
 export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 4 };
 
 /** Crops drown under water deeper than `drown` (m); shallower standing water grows them at `soggyGrowth`. */
-export const CROP_MOISTURE = { dry: 0.2, moist: 0.4, soggy: 0.9, soggyGrowth: 0.4, drown: 0.15 };
+export const CROP_MOISTURE = { dry: 0.25, moist: 0.5, soggy: 0.9, soggyGrowth: 0.4, drown: 0.15 };
 
 /** Crop growth factor 0..1 for a field moisture. */
 export function cropGrowth(m: number): number {
