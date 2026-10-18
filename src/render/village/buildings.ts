@@ -20,6 +20,7 @@ import type { StaticModelSource } from '../objects/vegetation';
 import {
   HOUSE_DESIGNS,
   buildStage,
+  campDesign,
   foodLevel,
   houseVariant,
   isProc,
@@ -288,6 +289,7 @@ export function buildingKey(b: BuildingInfo, food: number, fish = false, wood = 
   if (b.kind === 'ruin') return `ruin:${houseVariant(b.id)}:${b.weeds ?? 2}`;
   if (b.kind === 'well') return `well:${buildStage(b.progress)}:${b.dry ? 1 : 0}`;
   if (b.kind === 'mill') return `mill:${buildStage(b.progress)}:${b.sacks ?? 0}`;
+  if (b.kind === 'camp') return 'camp';
   return `house:${houseVariant(b.id)}:${buildStage(b.progress)}`;
 }
 
@@ -296,6 +298,7 @@ function designFor(key: string): { design: Design; stage: Stage } {
   if (parts[0] === 'store') return { design: storeDesign(Number(parts[1]), parts[2] === '1', Number(parts[3] ?? 0)), stage: Stage.Done };
   if (parts[0] === 'well') return { design: wellDesign(parts[2] === '1'), stage: Number(parts[1]) as Stage };
   if (parts[0] === 'mill') return { design: millDesign(Number(parts[2] ?? 0)), stage: Number(parts[1]) as Stage };
+  if (parts[0] === 'camp') return { design: campDesign(), stage: Stage.Done };
   if (parts[0] === 'ruin') return { design: ruinDesign(Number(parts[1]), Number(parts[2] ?? 0)), stage: Stage.Done };
   return { design: HOUSE_DESIGNS[Number(parts[1])]!, stage: Number(parts[2]) as Stage };
 }

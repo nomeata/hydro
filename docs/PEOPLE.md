@@ -222,6 +222,11 @@ garden crop in summer and autumn) flatten the yearly sawtooth.
     the harvest day, families poured in and starved through the spring.
     So a village grows on a surplus and levels off fed, and shrinks by
     departures when hunger comes (a dry year, a flood).
+- **What holds growth back** is named daily per village (`limit`:
+  land, food, wellbeing, room, building, open; GAMEPLAY §4.6). When
+  families would come but there is no room for a house or no good land,
+  a family camps at the edge (tent, cart, fire) for up to 24 days and
+  moves in when a house is free.
 - **Recovery floor:** a village under 12 people (`ECONOMY.smallVillage`)
   takes migrants above w 0.45 (`arriveSmall`) and builds a house for them
   above 0.4 (`houseSmall`), so a village refills after a setback once its
@@ -249,7 +254,8 @@ point: on most worlds a dry terrace 2–6 m above the river with a fertile,
 flood-prone floodplain below it (worldgen `chooseStart`, GAMEPLAY §4.3 P2;
 the old river meadow is the fallback). Further
 villages (code: `FOUNDING` in `village.ts`): once all villages together
-have ≥ 40 people, or one village has ≥ 30 people and no free house, and at
+have ≥ 40 people, or one village has ≥ 30 people and no free house (or
+is held back by its land or by room for houses: `limit`), and at
 most once per game year, the best block scoring ≥ 0.6 (0..~1.15:
 fertility × wetness × flatness, averaged, plus 0.15 near water) both now
 and at the end of last summer (a survey kept from day 22: migrants judge

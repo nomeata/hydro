@@ -133,6 +133,70 @@ export interface SettlementState {
    * land than hands.
    */
   pegs?: number[];
+  /**
+   * What holds the village's growth back (daily, after the day's planning;
+   * `classifyGrowth`; absent in old saves until the next day).
+   */
+  limit?: GrowthLimit;
+  /**
+   * Newcomers camping at the village edge (docs/GAMEPLAY.md §4.6): a family
+   * that would like to settle but finds no room (no site for a house) or no
+   * land (good land used up). `cell` is where their cart stands, `since` the
+   * day they came; they leave after `CAMP.stay` days if nothing changes, and
+   * move in when the village can take them.
+   */
+  camp?: { cell: number; since: number };
+  /** Day from which another family may camp (after one moved on). */
+  campAgain?: number;
+}
+
+/**
+ * Why a village is not growing (docs/GAMEPLAY.md §4.6), most binding first:
+ * - `land`: the store won't last until the next harvest and the good land
+ *   within walking reach is used up (hardy crops, no pegs);
+ * - `food`: the store won't last, though good land is left (poor yields:
+ *   dry or tired fields, or a lean season);
+ * - `wellbeing`: fed, but not attractive enough for newcomers (water, safety, housing);
+ * - `room`: fed and attractive, a house is wanted but there is no site for it;
+ * - `building`: a house is going up (growing);
+ * - `open`: a free house waits for newcomers (growing).
+ */
+export type GrowthLimit = 'land' | 'food' | 'wellbeing' | 'room' | 'building' | 'open';
+
+export interface GrowthFacts {
+  wellbeing: number;
+  /** Wellbeing above which families arrive (arriveAbove, or arriveSmall for a small village). */
+  arriveAbove: number;
+  /** Food security over the growth horizon (≥ growFood: the store lasts). */
+  fed: number;
+  freeHouses: number;
+  /** A house is being built (or a ruin rebuilt). */
+  building: boolean;
+  /** Good land the village could still claim (unclaimed plots within walking reach). */
+  goodLeft: number;
+}
+
+export function classifyGrowth(f: GrowthFacts): GrowthLimit {
+  if (f.fed < ECONOMY.growFood) return f.goodLeft > 0 ? 'food' : 'land';
+  if (f.wellbeing <= f.arriveAbove) return 'wellbeing';
+  if (f.freeHouses > 0) return 'open';
+  if (f.building) return 'building';
+  return 'room';
+}
+
+/** Camping newcomers (docs/GAMEPLAY.md §4.6). */
+export const CAMP = {
+  /** Days a family camps before giving up and moving on. */
+  stay: 24,
+  /** Days without a camp before another family tries. */
+  again: 12,
+  /** Distance (cells) of the camp from the village centre. */
+  dist: 9,
+};
+
+/** Limits under which newcomers camp at the edge: they want to come, but the village can't take them. */
+export function campsFor(limit: GrowthLimit | undefined, wellbeing: number, arriveAbove: number): boolean {
+  return (limit === 'room' || limit === 'land') && wellbeing > arriveAbove;
 }
 
 export type Mood = -1 | 0 | 1;

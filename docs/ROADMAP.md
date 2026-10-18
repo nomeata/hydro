@@ -117,6 +117,10 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   strong stream without a mill, a weir without a turbine, houses far from
   power), "Show me" rings the spot, a dot on the menu for a new one;
   achievement Good Idea
+- ☑ Growth cues (GAMEPLAY §4.6): each village's growth limit named daily
+  (land, food, wellbeing, room; `?stats=1`), newcomers camping at the edge
+  when room or land is the limit, ideas that point at the limit (water the
+  dry ground once the good land is farmed; level ground for houses)
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
