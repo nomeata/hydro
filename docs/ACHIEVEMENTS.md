@@ -17,7 +17,10 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 - **The player's works**: every cell the spirit crew digs, heaps or lines is
   marked; "near the works" means in or next to an 8×8 block with a marked
   cell. Land and water achievements only count near the works, so natural
-  floods and wet springs don't earn them.
+  floods and wet springs don't earn them. When the player plans works on a
+  cell (trench, dike, level, weir, gate) the sim remembers its **original
+  ground** (saved with the world; villagers building the player's plans
+  count as the player's works too).
 - Events are reported as they happen (a harvest, a catch, a rebuilt ruin, a
   finished well or mill, villagers opening a gate for their fields, a gate's flood relief, a bank lined by
   villagers). Quick checks run every 60 steps (plans
@@ -27,6 +30,11 @@ and the medals on the history chart in `src/ui/achievements.ts`,
   numbers, so the simulation is the same with or without them.
 - Old saves without achievements take their loaded state as the baseline
   and quietly record what is already true. Loading never shows toasts.
+  Saves from before the original ground was kept only count works planned
+  after loading for Lake Maker.
+- Toasts (and the population milestone notes) wait while the welcome
+  panels or a tool card are open; a first visit starts paused behind the
+  welcome panels, and play begins when they close.
 
 ## The list
 
@@ -35,7 +43,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | **Waterworks** | |
 | First Spade | An earthwork plan (trench, dike, level) is fully built |
 | Long Canal | A trench stroke at least 40 cells (200 m) long is built (at most 30% cancelled) |
-| Lake Maker | ≥ 30 cells of standing water (≥ 0.5 m, slower than 0.3 m/s) where there was no water at the start, near the works, on two days in a row |
+| Lake Maker | A reservoir the player made, on three days in a row: one connected body of standing water (≥ 0.1 m, slower than 0.3 m/s) that touches a cell the player raised, with its surface ≥ 0.2 m above that cell's original ground (without the work the water would spill there), and holding, on cells that were dry at the start, ≥ 40 cells and ≥ 2000 m³ of water above their original ground (≥ 0.5 m deep on average). Raising dry land, a dug basin, rain puddles or a natural lake spreading near the works do not count |
 | Waterfall | The water surface drops ≥ 3 m within two cells at a cell the player's works changed, with the water flowing (≥ 0.2 m/s) |
 | Weir Builder | All cells of a weir are lined |
 | Gatekeeper | Villagers open a sluice gate to water their fields (GAMEPLAY §2.2 rule 3; not a gate held by the `toggleGate` command) |
@@ -56,7 +64,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | First Harvest | The first field harvested |
 | A New Home | A second village |
 | Three Villages | A third village |
-| Gone Fishing | A fish caught in water at least 3 cells from the world's own water, near the works |
+| Gone Fishing | A fish caught by water the player made, at least 3 cells from the world's own water: a cell they dug (≥ 0.3 m below its original ground) or a lake their works hold back (as for Lake Maker, any size) |
 | Golden Year | 250 field harvests in one calendar year |
 | Stone by Stone | Villagers line a bank cell with stone (their own works near home) |
 | Quayside | Villagers have a quay (lined lake front by the houses) |
