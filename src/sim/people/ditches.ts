@@ -91,7 +91,7 @@ export function chooseDitch(
           // The canal itself and its banks (the cut through a bank is part of the ditch).
           if ((w.flags[j]! & CellFlag.Canal) !== 0 && !open) {
             if (w.water[j]! > 0.05 || g <= floor) continue;
-            if (g - floor > DITCH.maxCut + 1 || (w.flags[j]! & (CellFlag.Structure | CellFlag.Lined)) !== 0) break;
+            if (g - floor > DITCH.maxCut + 1 || (w.flags[j]! & CellFlag.Structure) !== 0) break;
             cells.push(j);
             continue;
           }

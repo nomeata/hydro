@@ -92,13 +92,14 @@ describe('floods', () => {
     const house = p.buildings.find((b) => b.kind === 'house' && b.progress >= 1)!;
     expect(house).toBeDefined();
     const housesBefore = p.settlements[0]!.state.houses;
+
     // A flood: deep water around the house and the village centre.
     const s = p.settlements[0]!.state;
     sim.command({ type: 'debugWater', x: house.x, y: house.y, radius: 6, depth: 1.5 });
     sim.command({ type: 'debugWater', x: s.x, y: s.y, radius: 6, depth: 1.5 });
     // …and around a villager wherever they are (on a terrace the water soon runs off).
     const caught = p.agents.find((a) => !a.child)!;
-    sim.command({ type: 'debugWater', x: Math.round(caught.x), y: Math.round(caught.y), radius: 4, depth: 1.5 });
+    sim.command({ type: 'debugWater', x: Math.round(caught.x), y: Math.round(caught.y), radius: 4, depth: 3 });
     // Whoever is caught in it runs (some may reach dry ground within the 40 steps).
     const fled = new Set<number>();
     for (let k = 0; k < 20; k++) {
@@ -111,5 +112,13 @@ describe('floods', () => {
     expect(p.settlements[0]!.state.houses).toBeLessThan(housesBefore);
     expect(fleeing).toBeGreaterThan(0);
     expect(sim.world.floodMemory[sim.world.idx(house.x, house.y)]!).toBeGreaterThan(200);
+    // Wading through a ford is no flood: knee-deep water around someone sends nobody running.
+    await runDays(sim, 1);
+    const wader = p.agents.find((a) => !a.child && !a.flee)!;
+    sim.command({ type: 'debugWater', x: Math.round(wader.x), y: Math.round(wader.y), radius: 1.5, depth: 0.32 });
+    for (let k = 0; k < 20; k++) {
+      sim.run(2);
+      expect(wader.flee ?? false).toBe(false);
+    }
   }, 240_000);
 });
