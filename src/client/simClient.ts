@@ -181,6 +181,11 @@ export class SimClient {
   }
 
   private disposed = false;
+  /** Whether later workers start from the in-memory copy of the script (tests). */
+  static get scriptKept(): boolean {
+    return workerBlobUrl !== null;
+  }
+
   /** Workers currently running (tests check that the welcome scenes clean up). */
   static live = 0;
 }
