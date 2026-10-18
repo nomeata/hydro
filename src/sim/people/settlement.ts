@@ -56,7 +56,9 @@ export const ECONOMY = {
    * before the harvest day, and the village does not fill up with
    * families it cannot feed through the winter).
    */
-  growHorizon: 24,
+  growHorizon: 40,
+  /** Families leave a village only while more than this many people live there (no failure). */
+  stayers: 4,
   /** Natural births/deaths per person per year (small, roughly balanced). */
   birthRate: 0.04,
   deathRate: 0.035,
@@ -250,8 +252,8 @@ export class Settlement {
     }
     const households = Math.ceil(s.population / ECONOMY.houseCapacity);
     const pLeave = ECONOMY.departureRate * Math.max(0, ECONOMY.leaveBelow - s.wellbeing) * households;
-    if (s.population > 0 && rng.next() < pLeave) {
-      const n = Math.min(s.population, rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));
+    if (s.population > ECONOMY.stayers && rng.next() < pLeave) {
+      const n = Math.min(s.population - ECONOMY.stayers, rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));
       s.population -= n;
       ev.left += n;
     }
