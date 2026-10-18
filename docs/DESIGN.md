@@ -138,9 +138,12 @@ the stone off what no longer belongs to the weir, lowers it back to the
 ground it was built on (saved per cell with the weir), reshapes the rest
 and lines it again. A removed weir goes back to its ground (gates and
 turbines in it go with it); a removed gate's opening is filled back up to
-the dam's crest. The Remove (erase) tool stays the brush for plans and
-unfinished works, poles and pumps; finished stone works are taken down
-through the selection. Mouse and touch alike (`ui/selection.ts`).
+the dam's crest. The Remove (erase) tool is the same thing as a brush:
+plans under it are cancelled, and every structure it touches, built or
+not (weir, gate, wheel, turbine, pole, pump), is taken down the same way
+(the crew's plans for lowering a weir or plugging a gate are kept even if
+the brush passes over them again). Mouse and touch alike
+(`ui/selection.ts`).
 
 **Earthworks take up what is in their way.** A trench, dike or level
 planned over a weir, gate, wheel, turbine, pole or pump takes it down
@@ -150,6 +153,14 @@ turn back to plain land when the crew digs or heaps there (the villagers
 plant again elsewhere, or there once the work is done). Plans go round
 houses (and mills, wells, stores, ruins) and footbridges: those cells are
 left out, and the hint line says so.
+
+**Villagers keep off the works.** They never claim fields, pasture,
+yards or house plots on a structure's footprint (`CellFlag.Structure`,
+kept in sync with the structures), on lined cells, on cells with a
+pending plan, or on the crest and slopes of an earthen bank (fill more
+than 0.5 m above ground within two cells; a levelled terrace's inside
+stays farmable): `plans.ts takenGround`. Fields already on such ground
+go back to plain land at the next day.
 
 **Weir vs dike in the sim.** Earth heaped by a plan is marked
 `CellFlag.Fill`. Where water flows off the edge of an unlined fill cell
