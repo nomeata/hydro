@@ -88,7 +88,10 @@ export class Hud {
         `fronts ${s.climate.fronts.length}` +
         (s.stats.village
           ? `\n${(s.stats.village.count ?? 1) > 1 ? `${s.stats.village.count} villages` : 'village'} ${s.stats.village.population} ppl, ${s.stats.village.houses} houses\n` +
-            `food ${s.stats.village.food.toFixed(0)}, w ${s.stats.village.wellbeing.toFixed(2)}`
+            `food ${s.stats.village.food.toFixed(0)}, w ${s.stats.village.wellbeing.toFixed(2)}` +
+            (s.stats.villages ?? [])
+              .map((v, k) => `\n v${k + 1}: ${v.population} ppl, w ${v.wellbeing.toFixed(2)}, limit ${v.limit ?? '–'}`)
+              .join('')
           : '') +
         (s.stats.power
           ? `\npower ${(s.stats.power.produced / 1000).toFixed(1)} kW (day ${s.stats.power.dayMean.toFixed(1)})\n` +

@@ -438,6 +438,24 @@ export function storeDesign(level: number, fish = false, wood = 0): Design {
 }
 
 /**
+ * Newcomers camping at the village edge (GAMEPLAY §4.6): a small closed
+ * tent, their cart loaded with bundles, and a fire ring between them. The
+ * family itself are agents sitting by it. Faces the village along +x.
+ */
+export function campDesign(): Design {
+  const parts: Part[] = [
+    { m: 'mud', x: 0, y: -0.03, z: 0, s: [1.5, 0.05, 1.3], stages: ALL },
+    { m: 'tent_smallClosed', x: -0.45, y: 0, z: -0.25, rot: 1, s: [0.55, 0.55, 0.55], stages: ALL },
+    { m: 'town_cart', x: 0.35, y: 0, z: 0.5, rot: 0, s: [0.5, 0.5, 0.5], stages: ALL },
+    { m: 'sack', x: 0.3, y: 0.32, z: 0.45, rot: 1, s: [0.2, 0.22, 0.18], stages: ALL },
+    { m: 'sack', x: 0.45, y: 0.32, z: 0.58, rot: 2, s: [0.18, 0.2, 0.17], stages: ALL },
+    { m: 'survival_campfire', x: 0.25, y: 0, z: -0.3, s: [1.1, 1.1, 1.1], stages: ALL },
+    { m: 'survival_box', x: -0.1, y: 0, z: 0.25, rot: 1, s: [0.9, 0.9, 0.9], stages: ALL },
+  ];
+  return { name: 'camp', scale: 1.3, vscale: 1.0, plaster: GABLE_WOOD, parts };
+}
+
+/**
  * The village well (GAMEPLAY §1.1): a round stone ring with water in it, two
  * posts with a winding beam, a little shingle roof and a bucket on the rim.
  * Built in stages like a house: a pit with stakes and stones, the ring
@@ -627,6 +645,7 @@ export function villageModels(): ModelName[] {
   add(storeDesign(MAX_FOOD_PROPS, true, 3));
   add(wellDesign(false));
   add(millDesign(3));
+  add(campDesign());
   for (let v = 0; v < HOUSE_DESIGNS.length; v++) add(ruinDesign(v, 2));
   return [...s];
 }

@@ -146,6 +146,8 @@ export interface SettlementState {
    * move in when the village can take them.
    */
   camp?: { cell: number; since: number };
+  /** Day from which another family may camp (after one moved on). */
+  campAgain?: number;
 }
 
 /**
