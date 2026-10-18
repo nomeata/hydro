@@ -18,7 +18,9 @@
 - Commit as Claude <noreply@anthropic.com> (the repo's git config); never
   pass another --author. End messages with the Co-Authored-By trailer.
 - Agents merge their own finished branch into `main` (after merging `main`
-  into it and running all tests), push, and watch CI until it's green.
+  into it and running all tests locally), push, and report right away —
+  don't wait for GitHub CI; the lead keeps an eye on CI and dispatches a fix
+  if a run fails.
 - Parallel agents: run each in its own git worktree (`isolation: "worktree"`)
   on its own branch from current `main`; it commits there, and the lead
   reviews and merges. In a fresh worktree, symlink `node_modules` from the
