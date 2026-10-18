@@ -296,7 +296,7 @@ export function flowStep(
   wake(world, scratch, act);
   const runs = scratch.runs;
   const nRuns = scratch.nRuns;
-  const { tw, th, tile } = act;
+  const { tw, tile } = act;
 
   const g = GRAVITY;
   const n2 = p.manning * p.manning;
@@ -305,23 +305,6 @@ export function flowStep(
   const minH = p.minFaceDepth;
   const maxV = p.maxVelocity;
   const invDx = 1 / CELL;
-
-  /** One face (a → b, b = a+1 or a+W), the same formula as the hot loop below. */
-  const face = (a: number, b: number, q0: number, qa: number, qb: number): number => {
-    const za = bedrock[a]! + soil[a]!;
-    const zb = bedrock[b]! + soil[b]!;
-    const ha = water[a]!;
-    const hb = water[b]!;
-    const ea = za + ha;
-    const eb = zb + hb;
-    const hf = Math.max(ea, eb) - Math.max(za, zb);
-    if (!(hf > minH && (ha > 0 || hb > 0))) return 0;
-    const qt = theta * q0 + side * (qa + qb);
-    let q = qt - g * hf * dt * (eb - ea) * invDx;
-    if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
-    const qmax = hf * maxV;
-    return q > qmax ? qmax : q < -qmax ? -qmax : q;
-  };
 
   // --- 1. Face discharges ---------------------------------------------------
   for (let r = 0; r < nRuns; r++) {
@@ -340,7 +323,7 @@ export function flowStep(
         for (let x = tx * TILE; x < Math.min(W, (tx + 1) * TILE); x++) {
           const i = row + x;
           const q0 = qyOld[i]!;
-          qy[i] = face(i, i + W, q0, ry0 - 1 > 0 ? qyOld[i - W]! : q0, ry0 - 1 < H - 2 ? qyOld[i + W]! : q0);
+          qy[i] = haloFace(world, p, dt, i, i + W, q0, ry0 - 1 > 0 ? qyOld[i - W]! : q0, ry0 - 1 < H - 2 ? qyOld[i + W]! : q0);
         }
       }
     for (let y = ry0; y < ry1; y++) {
@@ -349,7 +332,7 @@ export function flowStep(
       if (cx0 > 0) {
         const i = row + cx0 - 1;
         const q0 = qxOld[i]!;
-        qx[i] = face(i, i + 1, q0, cx0 - 1 > 0 ? qxOld[i - 1]! : q0, cx0 - 1 < W - 2 ? qxOld[i + 1]! : q0);
+        qx[i] = haloFace(world, p, dt, i, i + 1, q0, cx0 - 1 > 0 ? qxOld[i - 1]! : q0, cx0 - 1 < W - 2 ? qxOld[i + 1]! : q0);
       }
       for (let x = cx0; x < cx1; x++) {
         const i = row + x;
@@ -443,16 +426,6 @@ export function flowStep(
       }
     }
   }
-  const scaleX = (i: number): void => {
-    const q = qx[i]!;
-    if (q > 0) qx[i] = q * limit[i]!;
-    else if (q < 0) qx[i] = q * limit[i + 1]!;
-  };
-  const scaleY = (i: number): void => {
-    const q = qy[i]!;
-    if (q > 0) qy[i] = q * limit[i]!;
-    else if (q < 0) qy[i] = q * limit[i + W]!;
-  };
   for (let r = 0; r < nRuns; r++) {
     const ty = runs[3 * r]!;
     const tx0 = runs[3 * r + 1]!;
@@ -465,11 +438,11 @@ export function flowStep(
       for (let tx = tx0; tx < tx1; tx++) {
         if (tile[(ty - 1) * tw + tx]) continue;
         const row = (ry0 - 1) * W;
-        for (let x = tx * TILE; x < Math.min(W, (tx + 1) * TILE); x++) scaleY(row + x);
+        for (let x = tx * TILE; x < Math.min(W, (tx + 1) * TILE); x++) scale(qy, limit, row + x, W);
       }
     for (let y = ry0; y < ry1; y++) {
       const row = y * W;
-      if (cx0 > 0) scaleX(row + cx0 - 1);
+      if (cx0 > 0) scale(qx, limit, row + cx0 - 1, 1);
       for (let i = row + cx0; i < row + cx1; i++) {
         const q1 = qx[i]!;
         if (q1 > 0) qx[i] = q1 * limit[i]!;
@@ -486,20 +459,6 @@ export function flowStep(
   let sedOut = 0;
   let maxDepth = 0;
   let maxSpeed = 0;
-  let edgeIn = 0;
-  let edgeOut = 0;
-  let edgeSedIn = 0;
-  let edgeSedOut = 0;
-  /** Book a face between a frozen cell and an active one: `q` is the discharge into the active cell. */
-  const edge = (q: number, frozen: number, inner: number): void => {
-    if (q > 0) {
-      edgeIn += q * k;
-      edgeSedIn += q * k * conc[frozen]!;
-    } else if (q < 0) {
-      edgeOut -= q * k;
-      edgeSedOut -= q * k * conc[inner]!;
-    }
-  };
   for (let r = 0; r < nRuns; r++) {
     const ty = runs[3 * r]!;
     const tx0 = runs[3 * r + 1]!;
@@ -569,35 +528,93 @@ export function flowStep(
         if (h > maxDepth) maxDepth = h;
       }
     }
-    if (act.all) continue;
-    // The exchange with frozen neighbours, as phase 3 applied it.
-    for (let y = ry0; y < ry1; y++) {
-      const row = y * W;
-      if (cx0 > 0 && !tile[ty * tw + tx0 - 1]) edge(qx[row + cx0 - 1]!, row + cx0 - 1, row + cx0);
-      if (cx1 < W && !tile[ty * tw + tx1]) edge(-qx[row + cx1 - 1]!, row + cx1, row + cx1 - 1);
-    }
-    for (let tx = tx0; tx < tx1; tx++) {
-      const xa = tx * TILE;
-      const xb = Math.min(W, xa + TILE);
-      if (ty > 0 && !tile[(ty - 1) * tw + tx]) {
-        const row = (ry0 - 1) * W;
-        for (let x = xa; x < xb; x++) edge(qy[row + x]!, row + x, row + x + W);
-      }
-      if (ty < th - 1 && ry1 < H && !tile[(ty + 1) * tw + tx]) {
-        const row = (ry1 - 1) * W;
-        for (let x = xa; x < xb; x++) edge(-qy[row + x]!, row + x + W, row + x);
-      }
-    }
   }
   stats.outflow = outflow;
   stats.sedimentOut = sedOut;
   stats.maxDepth = maxDepth;
   stats.maxSpeed = maxSpeed;
-  stats.edgeIn = edgeIn;
-  stats.edgeOut = edgeOut;
-  stats.edgeSedIn = edgeSedIn;
-  stats.edgeSedOut = edgeSedOut;
+  bookEdges(world, scratch, act, k, stats);
   stats.awakeTiles = scratch.awakeTiles;
+}
+
+/** Scale face f's discharge by its donor's outflow limit (`step` = 1 for x faces, W for y faces). */
+function scale(q: Float32Array, limit: Float32Array, f: number, step: number): void {
+  const v = q[f]!;
+  if (v > 0) q[f] = v * limit[f]!;
+  else if (v < 0) q[f] = v * limit[f + step]!;
+}
+
+/** One face a → b (b = a+1 or a+W) next to the hot loop (halo faces): the same formula. */
+function haloFace(world: World, p: FlowParams, dt: number, a: number, b: number, q0: number, qa: number, qb: number): number {
+  const { bedrock, soil, water } = world;
+  const za = bedrock[a]! + soil[a]!;
+  const zb = bedrock[b]! + soil[b]!;
+  const ha = water[a]!;
+  const hb = water[b]!;
+  const ea = za + ha;
+  const eb = zb + hb;
+  const hf = Math.max(ea, eb) - Math.max(za, zb);
+  if (!(hf > p.minFaceDepth && (ha > 0 || hb > 0))) return 0;
+  const theta = p.theta;
+  const qt = theta * q0 + (1 - theta) * 0.5 * (qa + qb);
+  let q = qt - GRAVITY * hf * dt * (eb - ea) * (1 / CELL);
+  const n2 = p.manning * p.manning;
+  if (q0 !== 0) q /= 1 + (GRAVITY * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
+  const qmax = hf * p.maxVelocity;
+  return q > qmax ? qmax : q < -qmax ? -qmax : q;
+}
+
+/** The exchange with frozen neighbours across the active edge, as phase 3 applied it (k = volume per unit q). */
+function bookEdges(world: World, scratch: FlowScratch, act: ActiveSet, k: number, stats: FlowStats): void {
+  let inW = 0;
+  let outW = 0;
+  let inS = 0;
+  let outS = 0;
+  if (!act.all) {
+    const { width: W, height: H, qx, qy } = world;
+    const { conc, runs, nRuns } = scratch;
+    const { tw, th, tile } = act;
+    /** `q` is the discharge from the frozen cell into the active one. */
+    const edge = (q: number, frozen: number, inner: number): void => {
+      if (q > 0) {
+        inW += q * k;
+        inS += q * k * conc[frozen]!;
+      } else if (q < 0) {
+        outW -= q * k;
+        outS -= q * k * conc[inner]!;
+      }
+    };
+    for (let r = 0; r < nRuns; r++) {
+      const ty = runs[3 * r]!;
+      const tx0 = runs[3 * r + 1]!;
+      const tx1 = runs[3 * r + 2]!;
+      const cx0 = tx0 * TILE;
+      const cx1 = Math.min(W, tx1 * TILE);
+      const ry0 = ty * TILE;
+      const ry1 = Math.min(H, ry0 + TILE);
+      for (let y = ry0; y < ry1; y++) {
+        const row = y * W;
+        if (cx0 > 0 && !tile[ty * tw + tx0 - 1]) edge(qx[row + cx0 - 1]!, row + cx0 - 1, row + cx0);
+        if (cx1 < W && !tile[ty * tw + tx1]) edge(-qx[row + cx1 - 1]!, row + cx1, row + cx1 - 1);
+      }
+      for (let tx = tx0; tx < tx1; tx++) {
+        const xa = tx * TILE;
+        const xb = Math.min(W, xa + TILE);
+        if (ty > 0 && !tile[(ty - 1) * tw + tx]) {
+          const row = (ry0 - 1) * W;
+          for (let x = xa; x < xb; x++) edge(qy[row + x]!, row + x, row + x + W);
+        }
+        if (ty < th - 1 && ry1 < H && !tile[(ty + 1) * tw + tx]) {
+          const row = (ry1 - 1) * W;
+          for (let x = xa; x < xb; x++) edge(-qy[row + x]!, row + x + W, row + x);
+        }
+      }
+    }
+  }
+  stats.edgeIn = inW;
+  stats.edgeOut = outW;
+  stats.edgeSedIn = inS;
+  stats.edgeSedOut = outS;
 }
 
 function wallTop(walls: Walls, i: number): number {
