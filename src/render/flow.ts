@@ -200,6 +200,12 @@ export class FlowParticles {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
+  /** Water velocity (m/s, cell axes) at fractional cell coords, from the latest snapshot. */
+  velocityAt(x: number, y: number, out: [number, number]): [number, number] {
+    this.sampleVel(x, y, out);
+    return out;
+  }
+
   /** Bilinear velocity (m/s) at fractional cell coords, ignoring dry cells. */
   private sampleVel(x: number, y: number, out: [number, number]): void {
     const W = this.W;

@@ -224,8 +224,11 @@ export class GameRenderer {
     this.plots = new PlotLayer(this.scene, this.heights);
     this.cues = new VillageCuesLayer(this.scene, this.heights);
     this.millWheels = new MillWheelsLayer(this.scene, this.heights);
+    this.millWheels.flowAt = (x, y, out) => this.flow.velocityAt(x, y, out);
     this.structures = new StructuresLayer(this.scene, this.heights);
+    this.structures.flowAt = (x, y, out) => this.flow.velocityAt(x, y, out);
     this.wheelPreview = new WheelPreview(this.scene, this.heights);
+    this.wheelPreview.setFlow((x, y, out) => this.flow.velocityAt(x, y, out));
     this.brushCursor = new BrushCursor(this.scene, this.heights);
     this.power = new PowerLayer(this.scene, this.heights);
     this.updateBounds();

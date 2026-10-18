@@ -15,6 +15,7 @@
  * state; wheels spin (only their own instances are rewritten per frame).
  */
 import * as THREE from 'three';
+import { undershotSign, wheelQuaternion } from '../wheelSpin';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LINING_QUAY, type StructureInfo } from '../../shared/protocol';
 import { heightToY, type HeightSampler } from '../coords';
@@ -214,9 +215,12 @@ export class StructuresLayer {
   >;
   /** Spin angle per water wheel id (radians), and the game speed (0 = paused; set from snapshots). */
   private spin = new Map<number, number>();
+  /** ±1 per wheel id: the way it turns, its bottom moving with the current (wheelSpin.ts). */
+  private spinDir = new Map<number, number>();
+  private readonly vtmp: [number, number] = [0, 0];
+  /** Water velocity (m/s, cell axes) at a cell; set by the renderer. */
+  flowAt: ((x: number, y: number, out: [number, number]) => [number, number]) | null = null;
   gameSpeed = 1;
-  private readonly spinQ = new THREE.Quaternion();
-  private readonly xAxis = new THREE.Vector3(1, 0, 0);
   private readonly zAxis = new THREE.Vector3(0, 0, 1);
   private readonly pitchQ = new THREE.Quaternion();
   /** Quay cells (from the lining snapshot) and the grid width. */
@@ -358,7 +362,13 @@ export class StructuresLayer {
     const g = Math.min(3, this.gameSpeed);
     for (const s of this.list) {
       if (s.kind !== 'wheel' || !s.speed || s.progress < 1 || g <= 0) continue;
-      this.spin.set(s.id, ((this.spin.get(s.id) ?? 0) - dt * g * WHEEL_SPIN * s.speed) % (Math.PI * 2));
+      let dir = this.spinDir.get(s.id) ?? 1;
+      if (this.flowAt) {
+        const [vx, vy] = this.flowAt(s.x, s.y, this.vtmp);
+        dir = undershotSign(-s.rot, vx, vy, dir);
+        this.spinDir.set(s.id, dir);
+      }
+      this.spin.set(s.id, ((this.spin.get(s.id) ?? 0) + dir * dt * g * WHEEL_SPIN * s.speed) % (Math.PI * 2));
       spun = true;
     }
     if (spun && !moved) this.layoutNorias();
@@ -451,9 +461,7 @@ export class StructuresLayer {
       const { yc, d } = this.wheelFrame(wh);
       this.ensure(piece, piece.n + 1);
       this.p.set(wh.x + 0.5, yc, wh.y + 0.5);
-      this.q.setFromAxisAngle(this.up, -wh.rot);
-      this.spinQ.setFromAxisAngle(this.xAxis, this.spin.get(wh.id) ?? 0);
-      this.q.multiply(this.spinQ);
+      wheelQuaternion(-wh.rot, this.spin.get(wh.id) ?? 0, this.q);
       // Taller wheels are built broader too.
       this.s.set(wheelBreadth(d), d, d);
       this.m.compose(this.p, this.q, this.s);
