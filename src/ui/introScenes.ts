@@ -45,7 +45,7 @@ const SCRIPTS: Record<SceneId, Script> = {
   },
   // Tool cards (toolCards.ts).
   weir: { camera: { x: 27, y: 41, yaw: 40 * DEG, pitch: 36 * DEG, viewHeight: 20 }, speed: 3, duration: 14 },
-  gate: { camera: { x: 76, y: 70, yaw: -20 * DEG, pitch: 40 * DEG, viewHeight: 22 }, speed: 3, duration: 20 },
+  gate: { camera: { x: 77, y: 69, yaw: -20 * DEG, pitch: 40 * DEG, viewHeight: 16 }, speed: 3, duration: 16 },
 };
 
 /** Timeline of the 'shape' scene (seconds). */

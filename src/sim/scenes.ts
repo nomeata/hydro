@@ -258,7 +258,7 @@ function carveGate(w: World): void {
   const { x0, y0, x1, y1 } = G.pond;
   const ring = 14.8;
   const floor = 12.4;
-  const level = 14.2;
+  const level = 13.7;
   const set = (i: number, h: number) => {
     w.bedrock[i] = h - w.soil[i]!;
   };
@@ -273,17 +273,27 @@ function carveGate(w: World): void {
       }
       w.vegetation[i] = Math.min(w.vegetation[i]!, edge ? 0.5 : 0.1);
     }
-  // The canal: from the gate down to the river, floor falling evenly.
+  // The canal: from the gate down to the river, its floor falling evenly
+  // and at least 1.7 m below the land beside it.
   const gy = G.gate.y;
   const top = 12.3;
   for (let x = G.canalEnd; x < x0; x++) {
     const t = (x0 - 1 - x) / (x0 - 1 - G.canalEnd);
+    let bank = Infinity;
+    for (const y of [gy - 2, gy + 2]) bank = Math.min(bank, w.terrain(w.idx(x, y)));
     for (let y = gy - 1; y <= gy + 1; y++) {
       const i = w.idx(x, y);
-      const h = top - t * 2.6;
+      const h = Math.min(top - t * 2.6, bank - 1.7);
       if (w.terrain(i) > h) set(i, h);
       w.vegetation[i] = Math.min(w.vegetation[i]!, 0.25);
     }
+    // Low banks along it, so the release stays in the canal.
+    const floor = Math.min(top - t * 2.6, bank - 1.7);
+    if (x < x0 - 1 && x > G.canalEnd + 1)
+      for (const y of [gy - 2, gy + 2]) {
+        const i = w.idx(x, y);
+        set(i, Math.max(w.terrain(i), floor + 2.3));
+      }
   }
   // Dry land around (a dry summer on the terrace).
   for (let y = y0 - 8; y <= y1 + 14; y++)
