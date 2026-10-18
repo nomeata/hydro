@@ -9,7 +9,8 @@
  * (loose) soil stands at a lower angle. Only soil moves,
  * never bedrock; lined cells neither give nor receive.
  */
-import { CELL } from '../constants';
+import { rowsOf, type ActiveSet } from '../active';
+import { CELL, TILE } from '../constants';
 import { CellFlag, SOIL_PROPS, SOIL_TYPE_COUNT, type World } from '../world';
 import type { GeoParams, RowRange, SedimentLedger } from './erosion';
 
@@ -48,8 +49,12 @@ export function talusStep(
   ledger: SedimentLedger,
   dirty: RowRange,
   loose?: Float32Array,
+  active?: ActiveSet | null,
 ): void {
   const { width: W, height: H, bedrock, soil, soilType, water, ground, flags } = world;
+  // Only active cells give or receive; frozen neighbours are only read.
+  const rows = rowsOf(active, W, H);
+  const act = active && !active.all ? active : null;
   const { delta, donor, reposeDry } = scratch;
   const wetSat = p.wetSaturation;
   const wetF = p.reposeWet;
@@ -61,8 +66,9 @@ export function talusStep(
   const ex = scratch.ex;
   const nb = scratch.nb;
 
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
+  for (let r = 0; r < rows.length; r += 3) {
+    const y = rows[r]!;
+    for (let x = rows[r + 1]!; x < rows[r + 2]!; x++) {
       const i = y * W + x;
       const so = soil[i]!;
       if (so <= 0) continue;
@@ -79,6 +85,8 @@ export function talusStep(
       let n = 0;
       let total = 0;
       let maxEx = 0;
+      // Next to a frozen tile? (Only cells on a tile's rim can be.)
+      const rim = act !== null && (((x + 1) & (TILE - 1)) < 2 || ((y + 1) & (TILE - 1)) < 2);
       for (let dy = -1; dy <= 1; dy++) {
         const yy = y + dy;
         if (yy < 0 || yy >= H) continue;
@@ -88,6 +96,7 @@ export function talusStep(
           if (xx < 0 || xx >= W) continue;
           const j = yy * W + xx;
           if ((flags[j]! & CellFlag.Lined) !== 0) continue;
+          if (rim && !act!.at(xx, yy)) continue;
           const diag = dx !== 0 && dy !== 0 ? DIAG : 1;
           const drop = zi - (bedrock[j]! + soil[j]!);
           let e = drop - dWet * diag;

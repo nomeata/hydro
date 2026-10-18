@@ -40,6 +40,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | Weir Builder | All cells of a weir are lined |
 | Gatekeeper | Villagers open a sluice gate to water their fields (GAMEPLAY §2.2 rule 3; not a gate held by the `toggleGate` command) |
 | Miller's Head | Villagers finish a mill whose head (the cell driving its wheel) is within 3 cells of the player's works (a weir's spill, a canal step) |
+| Uphill | A water wheel has lifted 100 m³ onto the bank in all |
 | Safety Valve | A sluice gate opens as flood relief (rule 1) and its dike is not overtopped that day |
 | **The land** | |
 | New Ground | A field on land that was too dry to farm at the start, near the works |

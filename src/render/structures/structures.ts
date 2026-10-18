@@ -4,11 +4,15 @@
  * weirs (a wooden plank cap along the crest with stone end posts), the
  * villagers' jetties (a planked deck on piles) and quays (a dressed-stone
  * edge where lined banks by the houses meet the water, with now and then a
- * few steps, a bollard, a bench or a lantern).
+ * few steps, a bollard, a bench or a lantern), and water wheels (a
+ * spoked wooden noria with buckets on its rim, turning with the current
+ * between two posts, and a trough on stilts to the bank that runs with
+ * water while the wheel lifts).
  *
  * Built from a few procedural, vertex-coloured unit pieces; every piece is
- * one InstancedMesh scaled per instance, so the layer costs ≤ 6 draw calls
- * however many structures exist. Gate leaves animate towards their state.
+ * one InstancedMesh scaled per instance, so the layer's draw calls do not
+ * grow with the number of structures. Gate leaves animate towards their
+ * state; wheels spin (only their own instances are rewritten per frame).
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -111,6 +115,43 @@ function deckGeometry(): THREE.BufferGeometry {
   return paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0xc39a66, 0.3);
 }
 
+/**
+ * Unit noria (diameter 1, axle along x, wheel in the y-z plane, centred on
+ * the origin): a rim of planks, spokes, a hub and buckets on the rim,
+ * open towards +x where the trough is.
+ */
+function noriaGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const n = 12;
+  const r = 0.47;
+  const seg = ((2 * Math.PI * r) / n) * 1.08;
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2;
+    const rim = new THREE.BoxGeometry(0.18, 0.06, seg).translate(0, r, 0).rotateX(a);
+    parts.push(paint(rim, k % 2 ? 0x9a6c40 : 0xa8794a));
+    if (k % 2 === 0) {
+      // A bucket hanging off the rim, on the trough side.
+      const b = new THREE.BoxGeometry(0.16, 0.1, 0.11).translate(0.1, r + 0.04, 0).rotateX(a + Math.PI / n);
+      parts.push(paint(b, 0x6b4a2b));
+    }
+  }
+  for (let k = 0; k < 4; k++) parts.push(paint(new THREE.BoxGeometry(0.05, 0.92, 0.035).rotateX((k * Math.PI) / 4), 0x7a5532));
+  parts.push(paint(new THREE.CylinderGeometry(0.07, 0.07, 0.24, 8).rotateZ(Math.PI / 2), 0x5e4024));
+  return mergeGeometries(parts, false)!;
+}
+
+/** Unit trough (length 1 along x, base at y = 0): a planked U channel. */
+function troughGeometry(): THREE.BufferGeometry {
+  const floor = new THREE.BoxGeometry(1, 0.3, 1).translate(0, 0.15, 0);
+  const sides = [-0.42, 0.42].map((z) => paint(new THREE.BoxGeometry(1, 1, 0.16).translate(0, 0.5, z), 0x9a6c40, 0.2));
+  return mergeGeometries([paint(floor, 0x8d6438), ...sides], false)!;
+}
+
+/** Unit block of running water (lighter on top). */
+function waterGeometry(): THREE.BufferGeometry {
+  return paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0x7cc8ee, 0.25);
+}
+
 /** Small integer hash → 0..1 (stable prop choice per quay cell). */
 function hash01(i: number): number {
   let h = Math.imul(i ^ 0x5bd1e995, 0x27d4eb2d);
@@ -127,6 +168,10 @@ interface Piece {
 
 /** Leaf lift (fraction of the gate height) when open. */
 const OPEN_LIFT = 0.92;
+/** Wheel spin (rad per real second at 1×) per m/s of current. */
+const WHEEL_SPIN = 1.1;
+/** The trough's lip above the head cell's ground (three.js units). */
+const TROUGH_LIP = 0.1;
 
 export class StructuresLayer {
   readonly group = new THREE.Group();
@@ -134,9 +179,14 @@ export class StructuresLayer {
   /** Current leaf lift 0..1 per gate id (animated). */
   private lift = new Map<number, number>();
   private readonly pieces: Record<
-    'post' | 'leaf' | 'beam' | 'wheel' | 'plank' | 'ashlar' | 'bollard' | 'lantern' | 'bench' | 'pile' | 'deck',
+    'post' | 'leaf' | 'beam' | 'wheel' | 'plank' | 'ashlar' | 'bollard' | 'lantern' | 'bench' | 'pile' | 'deck' | 'noria' | 'trough' | 'flow',
     Piece
   >;
+  /** Spin angle per water wheel id (radians), and the game speed (0 = paused; set from snapshots). */
+  private spin = new Map<number, number>();
+  gameSpeed = 1;
+  private readonly spinQ = new THREE.Quaternion();
+  private readonly xAxis = new THREE.Vector3(1, 0, 0);
   /** Quay cells (from the lining snapshot) and the grid width. */
   private quays: number[] = [];
   private readonly m = new THREE.Matrix4();
@@ -173,6 +223,9 @@ export class StructuresLayer {
       bench: make('bench', benchGeometry()),
       pile: make('pile', pileGeometry()),
       deck: make('deck', deckGeometry(), 128),
+      noria: make('noria', noriaGeometry(), 8),
+      trough: make('trough', troughGeometry(), 8),
+      flow: make('flow', waterGeometry(), 16),
     };
   }
 
@@ -240,6 +293,15 @@ export class StructuresLayer {
       moved = true;
     }
     if (moved) this.layout();
+    // Wheels turn with the current: ω ∝ its speed, the bottom moving with the water.
+    let spun = false;
+    const g = Math.min(3, this.gameSpeed);
+    for (const s of this.list) {
+      if (s.kind !== 'wheel' || !s.speed || s.progress < 1 || g <= 0) continue;
+      this.spin.set(s.id, ((this.spin.get(s.id) ?? 0) - dt * g * WHEEL_SPIN * s.speed) % (Math.PI * 2));
+      spun = true;
+    }
+    if (spun && !moved) this.layoutNorias();
   }
 
   dispose(): void {
@@ -292,14 +354,85 @@ export class StructuresLayer {
     for (const st of this.list) {
       if (st.kind === 'gate') this.layoutGate(st);
       else if (st.kind === 'jetty') this.layoutJetty(st);
+      else if (st.kind === 'wheel') this.layoutWheel(st);
       else this.layoutWeir(st);
     }
     this.layoutQuays();
     for (const p of Object.values(P)) {
+      if (p === P.noria) continue;
       p.mesh.count = p.n;
       p.mesh.instanceMatrix.needsUpdate = true;
     }
+    this.layoutNorias();
     void this.local;
+  }
+
+  /** Where a wheel's parts go (three.js units): its centre height and diameter, the trough's height. */
+  private wheelFrame(wh: StructureInfo): { yc: number; d: number; yTrough: number } {
+    const bed = heightToY(wh.sill);
+    const surface = heightToY(wh.sill + this.heights.depthAt(wh.x, wh.y));
+    const yTrough = heightToY(wh.top) + TROUGH_LIP;
+    // The buckets dip below the surface and tip out just above the trough.
+    const bottom = Math.max(bed + 0.04, surface - 0.18);
+    const top = yTrough + 0.14;
+    const d = Math.max(0.8, top - bottom);
+    return { yc: top - d / 2, d, yTrough };
+  }
+
+  /** The turning wheels (rewritten every frame while any turns). */
+  private layoutNorias(): void {
+    const piece = this.pieces.noria;
+    piece.n = 0;
+    for (const wh of this.list) {
+      if (wh.kind !== 'wheel' || wh.progress < 1) continue;
+      const { yc, d } = this.wheelFrame(wh);
+      this.ensure(piece, piece.n + 1);
+      this.p.set(wh.x + 0.5, yc, wh.y + 0.5);
+      this.q.setFromAxisAngle(this.up, -wh.rot);
+      this.spinQ.setFromAxisAngle(this.xAxis, this.spin.get(wh.id) ?? 0);
+      this.q.multiply(this.spinQ);
+      this.s.set(1, d, d);
+      this.m.compose(this.p, this.q, this.s);
+      piece.mesh.setMatrixAt(piece.n++, this.m);
+    }
+    piece.mesh.count = piece.n;
+    piece.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * A water wheel: two posts in the river carrying the axle, the wheel
+   * (layoutNorias), and a trough on stilts from beside the wheel's top to
+   * the head cell, with water running in it and spilling out at the end.
+   */
+  private layoutWheel(wh: StructureInfo): void {
+    const P = this.pieces;
+    const { yc, d, yTrough } = this.wheelFrame(wh);
+    const bed = heightToY(wh.sill);
+    const prog = Math.min(1, Math.max(0, wh.progress));
+    const c = Math.cos(wh.rot);
+    const sn = Math.sin(wh.rot);
+    // Posts either side of the wheel, rising with the work.
+    for (const u of [-0.17, 0.17]) this.put(P.beam, wh.x, wh.y, wh.rot, u, bed - 0.05, 0.08, (yc + 0.06 - bed + 0.05) * Math.max(0.15, prog), 0.1);
+    if (prog < 0.5) return;
+    this.put(P.beam, wh.x, wh.y, wh.rot, 0, yc - 0.03, 0.46, 0.06, 0.06);
+    // The trough: from beside the wheel's top to over the head cell.
+    const u0 = 0.1;
+    const u1 = Math.max(u0 + 0.3, Math.hypot((wh.x2 ?? wh.x) - wh.x, (wh.y2 ?? wh.y) - wh.y) + 0.05);
+    const tH = 0.09;
+    const tFrom = prog >= 1 ? u1 : u0 + (u1 - u0) * (prog - 0.5) * 2;
+    this.put(P.trough, wh.x, wh.y, wh.rot, (u0 + tFrom) / 2, yTrough, tFrom - u0, tH, 0.2);
+    // Stilts under it, down to the ground (or the river bed).
+    for (let u = u0 + 0.25; u < tFrom; u += 0.6) {
+      const g = heightToY(this.heights.terrainAt(wh.x + c * u, wh.y + sn * u));
+      if (yTrough - g > 0.04) this.put(P.beam, wh.x, wh.y, wh.rot, u, g - 0.03, 0.05, yTrough - g + 0.03, 0.05);
+    }
+    if (prog < 1 || !wh.open) return;
+    // Running water in the trough, and a little fall into the head cell.
+    this.put(P.flow, wh.x, wh.y, wh.rot, (u0 + u1) / 2, yTrough + 0.025, u1 - u0 - 0.04, 0.035, 0.13);
+    const ground = heightToY(this.heights.terrainAt(wh.x + c * u1, wh.y + sn * u1));
+    this.put(P.flow, wh.x, wh.y, wh.rot, u1 + 0.03, ground, 0.05, yTrough + 0.06 - ground, 0.11);
+    // Water tipping from the top bucket into the trough.
+    this.put(P.flow, wh.x, wh.y, wh.rot, 0.05, yTrough + 0.03, 0.05, yc + d / 2 - yTrough - 0.03, 0.08);
   }
 
   private layoutGate(g: StructureInfo): void {

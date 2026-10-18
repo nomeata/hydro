@@ -41,6 +41,13 @@ export const PARAMS = {
   villagersBuildPlans: false,
   /** Stone lining: cells lined per day per worked site by the spirit crew (a gate is 4× the work of one cell). */
   liningPerDay: 4,
+  /**
+   * Water wheel (structures/wheel.ts): lifted flow = gain · P / (ρ g H),
+   * capped (m³ per hydraulic second). The gain stands for the hydraulic
+   * clock running ~10× fast, so a wheel feeds a thin stream along a trench.
+   */
+  wheelGain: 10,
+  wheelMaxFlow: 0.2,
 
   // --- Geomorphology (M1b): erosion, deposition, talus, weathering ---------
   // See hydro/erosion.ts and hydro/talus.ts. Hydraulic-time rates are per
