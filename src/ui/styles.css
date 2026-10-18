@@ -278,6 +278,11 @@ html, body {
   color: var(--ink);
 }
 .menu button:hover { background: var(--paper-2); }
+.menu-sound { display: flex; align-items: center; gap: 6px; padding-right: 10px; border-bottom: 1px solid var(--paper-2); margin-bottom: 4px; }
+.menu-sound .sound-toggle { flex: none; min-width: 96px; }
+.menu-sound .sound-toggle[aria-pressed='false'] { color: #8a7d6a; }
+.menu-sound input[type='range'] { flex: 1; min-width: 70px; accent-color: var(--wood); }
+.menu-sound input[type='range']:disabled { opacity: 0.4; }
 
 /* --- intro ----------------------------------------------------------- */
 .intro,

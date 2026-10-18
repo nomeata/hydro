@@ -12,6 +12,7 @@ import { ICONS } from './icons';
 import { ACHIEVEMENTS, CATEGORY_NAMES, achievementInfo, type AchievementCategory } from '../shared/achievements';
 import { medal } from './achievementIcons';
 import { dayLabel } from './historyChart';
+import { sound } from '../audio/bus';
 
 const TOAST_MS = 5000;
 /** Toasts shown at once; more wait their turn. */
@@ -148,6 +149,7 @@ export class AchievementsUi {
     const m = el.querySelector('.medal')!;
     m.append(sparkles());
     this.toasts.append(el);
+    sound.ui('chime');
     this.showing++;
     setTimeout(() => {
       el.classList.add('out');

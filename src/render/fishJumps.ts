@@ -49,6 +49,8 @@ export class FishJumps {
   private fish: Uint8Array | null = null;
   /** Fog of war: whether a cell position is known land (no jumps in the fog). */
   known: ((x: number, y: number) => boolean) | null = null;
+  /** Called when a fish leaves the water (sound). */
+  onSplash: ((x: number, y: number) => void) | null = null;
   /** Multiplies the jump rate (the welcome scenes show off a little). */
   rateScale = 1;
   private readonly bw: number;
@@ -121,6 +123,7 @@ export class FishJumps {
       if (!j.splashed) {
         this.splash(j.x, j.y, j.surface);
         j.splashed = true;
+        this.onSplash?.(j.x, j.y);
       }
       const h = 4 * j.height * j.t * (1 - j.t);
       const slope = 4 * j.height * (1 - 2 * j.t);

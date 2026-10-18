@@ -184,9 +184,22 @@ Proposal and staged plan: docs/ENDLESS.md.
 - Active-region growth with macro catchment model for boundary inflows
 - Performance: tile sleeping, possibly WASM/GPU kernels
 
+## Sound ☑
+See docs/SOUND.md.
+- ☑ Ambience mixed from the view (river, lake, rapids/weir spill, rain,
+  wind, birds by season, crickets, frogs, turbine hum), procedural Web Audio
+- ☑ Spot sounds near the camera centre, panned and rate-limited (hammer,
+  axe, spade, crew digging, cows, sheep, chicks, wheels and mills, fish
+  splashes); UI clicks, achievement chime, milestone fanfare
+- ☑ Mute and volume in the menu (persisted), first-gesture start, silent
+  when hidden; the welcome scenes have their own ambience
+- ☑ Review loop: `npm run sound-review` (offline renders, loudness,
+  spectrograms)
+- ☐ Village chatter and children (no good CC0 voices yet), music
+
 ## Later / ideas
 - Ports & shipping: harbours at the quays, boats between villages on lakes
   and canals
-- Sound (Settlers-like work sounds, ambience), music
+- Music
 - Multiple biomes (desert oases, alpine)
 - Photo mode, timelapse of a valley over decades

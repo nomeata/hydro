@@ -7,6 +7,7 @@
 import type { SimStats } from '../shared/protocol';
 import { milestoneFraction, milestoneSpan, prosperity, toolName, unlockMilestones } from '../shared/progress';
 import { ICONS } from './icons';
+import { sound } from '../audio/bus';
 
 export class StatsBar {
   readonly el: HTMLButtonElement;
@@ -107,6 +108,7 @@ export class StatsBar {
     row.classList.remove('cheer');
     void row.offsetWidth; // restart the animation
     row.classList.add('cheer');
+    sound.ui('fanfare');
     const burst = document.createElement('span');
     burst.className = 'sparkles';
     const n = 9;
