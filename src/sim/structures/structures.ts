@@ -24,7 +24,9 @@ import type { Pt, StructureInfo } from '../../shared/protocol';
 import { LINING_DONE, LINING_QUAY } from '../../shared/protocol';
 import type { Walls } from '../hydro/inertial';
 import { planDike, rasterisePath } from '../plans/plans';
+import { CELL_AREA, DT } from '../constants';
 import { CellFlag, type World } from '../world';
+import { WHEEL_MIN_SPEED, wheelLift, wheelSite } from './wheel';
 
 export interface Gate {
   id: number;
@@ -81,12 +83,32 @@ export interface Weir {
   cells: number[];
 }
 
+/** A water wheel (structures/wheel.ts): in the river at `cell`, lifting into `head`. */
+export interface Wheel {
+  id: number;
+  cell: number;
+  head: number;
+  /** Wheel and head cell coordinates. */
+  x: number;
+  y: number;
+  hx: number;
+  hy: number;
+  progress: number;
+  /** Current speed of the water at the wheel (m/s, 0 when it stands still) and lifted flow (m³/s), as last reported. */
+  speed: number;
+  flow: number;
+  /** Total water lifted (m³). */
+  lifted: number;
+}
+
 export interface StructuresState {
   nextId: number;
   /** Pairs [cell, progress] of planned lining, in placement order. */
   lining: number[];
   gates: Gate[];
   weirs: Weir[];
+  /** Water wheels (absent in older saves). */
+  wheels?: Wheel[];
 }
 
 /** How far across the gate line the passage may cut through a dike (cells). */
@@ -95,6 +117,12 @@ const PASSAGE_REACH = 4;
 const MIN_GATE_HEAD = 0.3;
 /** Gate progress per unit of lining work (a gate is ~4× the work of a lined cell). */
 const GATE_WORK = 0.25;
+/** Wheel progress per unit of lining work (about three lined cells' worth of carpentry). */
+const WHEEL_WORK = 0.33;
+/** The wheel leaves this much water in its cell (m). */
+const WHEEL_KEEP = 0.05;
+/** The trough stops when the water at its outlet stands this deep (m): nowhere to go. */
+const HEAD_FULL = 0.5;
 
 function current(w: World, i: number): number {
   const p = w.plan[i]!;
@@ -106,6 +134,7 @@ export class Structures {
   readonly lining = new Map<number, number>();
   gates: Gate[] = [];
   weirs: Weir[] = [];
+  wheels: Wheel[] = [];
   private nextId = 1;
   /** Gate walls for the flow kernel. */
   readonly walls: Walls = { count: 0, cell: new Int32Array(16), top: new Float32Array(16) };
@@ -125,7 +154,7 @@ export class Structures {
   constructor(private readonly world: World) {}
 
   get pending(): boolean {
-    return this.lining.size > 0 || this.gates.some((g) => g.progress < 1);
+    return this.lining.size > 0 || this.gates.some((g) => g.progress < 1) || this.wheels.some((wh) => wh.progress < 1);
   }
 
   // ---------------------------------------------------------------------------
@@ -339,6 +368,67 @@ export class Structures {
   }
 
   /**
+   * Water wheel (see the protocol's placeWheel and structures/wheel.ts).
+   * Returns the new wheel, or null if no wheel fits here.
+   */
+  placeWheel(points: readonly Pt[]): Wheel | null {
+    const w = this.world;
+    const site = wheelSite(
+      {
+        width: w.width,
+        height: w.height,
+        terrain: (i) => w.terrain(i),
+        depth: (i) => w.water[i]!,
+        allowed: this.allow ?? undefined,
+      },
+      points,
+    );
+    if (!site?.ok) return null;
+    const cell = w.idx(site.x, site.y);
+    const head = w.idx(site.hx, site.hy);
+    if (this.wheels.some((o) => o.cell === cell || o.head === cell || o.cell === head)) return null;
+    const wheel: Wheel = { id: this.nextId++, cell, head, x: site.x, y: site.y, hx: site.hx, hy: site.hy, progress: 0, speed: 0, flow: 0, lifted: 0 };
+    this.wheels.push(wheel);
+    // The trough's outlet gets a stone apron, so the falling water does not scour it.
+    this.addLining(head);
+    this.structuresDirty = true;
+    return wheel;
+  }
+
+  /**
+   * Turn the finished wheels (every step, after the flow): move the lifted
+   * water from the river cell to the head cell. Returns the volume moved (m³).
+   */
+  stepWheels(): number {
+    const w = this.world;
+    const water = w.water;
+    let moved = 0;
+    for (const wh of this.wheels) {
+      if (wh.progress < 1) continue;
+      const i = wh.cell;
+      const h = water[i]!;
+      const v = Math.hypot(w.velX[i]!, w.velY[i]!);
+      const head = w.terrain(wh.head) - (w.terrain(i) + h);
+      let q = water[wh.head]! < HEAD_FULL ? wheelLift(v, h, head) : 0;
+      const vol = Math.min(q * DT, Math.max(0, h - WHEEL_KEEP) * CELL_AREA);
+      if (vol > 0) {
+        water[i] = h - vol / CELL_AREA;
+        water[wh.head]! += vol / CELL_AREA;
+        wh.lifted += vol;
+        moved += vol;
+      } else q = 0;
+      // Report changes the renderer can see (a tenth of a m/s; the trough running or not).
+      const sp = v >= WHEEL_MIN_SPEED && h >= 0.05 ? Math.round(v * 10) / 10 : 0;
+      if (sp !== wh.speed || (q > 0) !== (wh.flow > 0)) {
+        wh.speed = sp;
+        wh.flow = q;
+        this.structuresDirty = true;
+      }
+    }
+    return moved;
+  }
+
+  /**
    * Open or close a gate by hand (the toggleGate command: tests, scenes and
    * debugging; players do not work gates). The gate is then held: the
    * gatekeeping leaves it alone.
@@ -392,6 +482,12 @@ export class Structures {
       this.updateWalls();
       any = true;
     }
+    const wheels = this.wheels.filter((wh) => wh.progress >= 1 || (wh.x - x) ** 2 + (wh.y - y) ** 2 > r2);
+    if (wheels.length !== this.wheels.length) {
+      for (const wh of this.wheels) if (!wheels.includes(wh)) this.lining.delete(wh.head);
+      this.wheels = wheels;
+      any = true;
+    }
     const weirs = this.weirs.filter((wr) => wr.cells.some((c) => (w.flags[c]! & CellFlag.Lined) !== 0 || this.lining.has(c)));
     if (weirs.length !== this.weirs.length) this.weirs = weirs;
     if (any) {
@@ -422,6 +518,7 @@ export class Structures {
     const plan = this.world.plan;
     const out: number[] = [];
     for (const g of this.gates) if (g.progress < 1 && this.gateReady(g)) out.push(g.cells[0]!);
+    for (const wh of this.wheels) if (wh.progress < 1) out.push(wh.cell);
     for (const i of this.lining.keys()) if (Number.isNaN(plan[i]!)) out.push(i);
     return out;
   }
@@ -448,6 +545,12 @@ export class Structures {
       g.progress = Math.min(1, g.progress + amount * GATE_WORK);
       this.structuresDirty = true;
       this.updateWalls();
+      return true;
+    }
+    const wh = this.wheels.find((o) => o.progress < 1 && o.cell === i);
+    if (wh) {
+      wh.progress = Math.min(1, wh.progress + amount * WHEEL_WORK);
+      this.structuresDirty = true;
       return true;
     }
     return false;
@@ -539,13 +642,31 @@ export class Structures {
         progress: wr.cells.length ? done / wr.cells.length : 1,
       });
     }
+    for (const wh of this.wheels) {
+      out.push({
+        id: wh.id,
+        kind: 'wheel',
+        x: wh.x,
+        y: wh.y,
+        x2: wh.hx,
+        y2: wh.hy,
+        rot: Math.atan2(wh.hy - wh.y, wh.hx - wh.x),
+        width: Math.hypot(wh.hx - wh.x, wh.hy - wh.y),
+        top: this.world.terrain(wh.head),
+        sill: this.world.terrain(wh.cell),
+        open: wh.flow > 0,
+        progress: wh.progress,
+        speed: wh.speed,
+        flow: wh.flow,
+      });
+    }
     return out;
   }
 
   getState(): StructuresState {
     const lining: number[] = [];
     for (const [i, p] of this.lining) lining.push(i, p);
-    return structuredClone({ nextId: this.nextId, lining, gates: this.gates, weirs: this.weirs });
+    return structuredClone({ nextId: this.nextId, lining, gates: this.gates, weirs: this.weirs, wheels: this.wheels });
   }
 
   setState(st: StructuresState): void {
@@ -557,6 +678,7 @@ export class Structures {
     // Saves from before villager-worked gates: the leaf is where the gate is set.
     for (const g of this.gates) g.lift ??= g.open ? 1 : 0;
     this.weirs = s.weirs;
+    this.wheels = s.wheels ?? [];
     this.updateWalls();
     this.structuresDirty = true;
     this.liningDirty = true;
