@@ -26,6 +26,7 @@ import { WeatherLayer, createFrontUniforms } from './weather';
 import { BuildingsLayer } from './village/buildings';
 import { CropLayer } from './village/crops';
 import { VillageCuesLayer } from './village/cues';
+import { MillWheelsLayer } from './village/millwheels';
 import { fieldsToRgba } from './village/fields';
 import { StructuresLayer } from './structures/structures';
 import { makeLiningTexture } from './structures/lining';
@@ -81,6 +82,7 @@ export class GameRenderer {
   readonly crops: CropLayer;
   /** Chimney smoke, laundry and flowers showing each village's mood. */
   readonly cues: VillageCuesLayer;
+  readonly millWheels: MillWheelsLayer;
   /** Sluice gates and weirs from the snapshot's structure list. */
   readonly structures: StructuresLayer;
   /** Lining per cell as last received, and cells previewed by a lining tool. */
@@ -203,6 +205,7 @@ export class GameRenderer {
     this.buildings.setShadows(this.shadows);
     this.crops = new CropLayer(this.scene, this.heights);
     this.cues = new VillageCuesLayer(this.scene, this.heights);
+    this.millWheels = new MillWheelsLayer(this.scene, this.heights);
     this.structures = new StructuresLayer(this.scene, this.heights);
     this.updateBounds();
 
@@ -277,6 +280,7 @@ export class GameRenderer {
       this.updateBounds();
       this.buildings.refreshHeights();
       this.cues.refreshHeights();
+      this.millWheels.refreshHeights();
       this.structures.refreshHeights();
       this.crops.invalidate();
     }
@@ -304,6 +308,7 @@ export class GameRenderer {
         const vis = this.visibleBuildings(this.buildingList);
         this.buildings.setBuildings(vis);
         this.cues.setBuildings(vis);
+        this.millWheels.setBuildings(vis);
       }
     }
     if (s.buildings) {
@@ -311,6 +316,7 @@ export class GameRenderer {
       const vis = this.visibleBuildings(s.buildings);
       this.buildings.setBuildings(vis);
       this.cues.setBuildings(vis);
+      this.millWheels.setBuildings(vis);
     }
     const vs = s.stats.villages;
     if (vs) {
@@ -445,6 +451,7 @@ export class GameRenderer {
     const cs = this.camera.getCurrentState();
     this.crops.update(nowMs, cs.x, cs.y, cs.viewHeight);
     this.cues.update(dt, cs.viewHeight);
+    this.millWheels.update(dt, this.flow.gameSpeed);
     this.structures.update(dt);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;
@@ -495,6 +502,7 @@ export class GameRenderer {
     this.buildings.dispose();
     this.crops.dispose();
     this.cues.dispose();
+    this.millWheels.dispose();
     this.structures.dispose();
     this.fog.dispose();
     this.sky.dispose();

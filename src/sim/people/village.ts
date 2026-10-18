@@ -16,7 +16,7 @@ import { updateDesirePaths } from './desire';
 import { Herds, type HerdHome } from './herds';
 import { PathFinder } from './path';
 import { ECONOMY, Settlement, type SettlementState } from './settlement';
-import { MILL, chooseMillSite, headAt } from './mills';
+import { MILL, chooseMillSite, headAt, millTurns } from './mills';
 import { WELL, chooseWellSite, drawWell, waterAccess, wellWorks } from './wells';
 import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works';
 
@@ -837,7 +837,7 @@ export class PeopleSystem {
     const by = (site.bank / W) | 0;
     const b = this.addBuilding('mill', st.id, bx, by);
     // The wheel side faces the water (local +x; three.js turns +x towards −z).
-    b.rot = Math.round(Math.atan2(-(((site.wheel / W) | 0) - by), (site.wheel % W) - bx) / (Math.PI / 2)) * (Math.PI / 2);
+    b.rot = Math.round(Math.atan2(-(((site.side / W) | 0) - by), (site.side % W) - bx) / (Math.PI / 2)) * (Math.PI / 2);
     b.wheel = site.wheel;
     b.spin = 0;
     b.running = false;
@@ -851,7 +851,7 @@ export class PeopleSystem {
     const m = this.millOf(st.id);
     st.milling = false;
     if (!m || m.wheel === undefined) return;
-    const live = headAt(this.world, m.wheel).power >= MILL.runShare * MILL.minPower;
+    const live = millTurns(headAt(this.world, m.wheel), MILL.runShare);
     m.idle = live ? 0 : (m.idle ?? 0) + 1;
     st.milling = m.progress >= 1 && (m.running ?? false);
     if (m.idle < (m.progress >= 1 ? MILL.abandonDays : MILL.abandonDays / 2)) return;
@@ -869,9 +869,9 @@ export class PeopleSystem {
     for (const m of this.buildings) {
       if (m.kind !== 'mill' || m.wheel === undefined) continue;
       const hd = headAt(this.world, m.wheel);
-      const turn = m.progress >= 1 && hd.power >= MILL.turnShare * MILL.minPower;
+      const turn = m.progress >= 1 && millTurns(hd, MILL.turnShare);
       const spin = turn ? Math.round(hd.speed * 20) / 20 : 0;
-      m.running = m.progress >= 1 && hd.power >= MILL.runShare * MILL.minPower;
+      m.running = m.progress >= 1 && millTurns(hd, MILL.runShare);
       if (spin !== m.spin) {
         m.spin = spin;
         this.buildingsDirty = true;
@@ -1525,8 +1525,11 @@ export class PeopleSystem {
     const planWork =
       PARAMS.villagersBuildPlans && host.planCells().some((i) => !Number.isNaN(this.world.plan[i]!) && this.settlementNear(i) === s);
     const want = new Map<Job, number>();
-    // Stone work and the jetty need a builder or two (a small mason share, more when prosperous).
     const st = s.state;
+    // A miller while there is grain at the mill (first: the grain should not wait).
+    const mill = this.millOf(st.id);
+    want.set(Job.Miller, mill && mill.progress >= 1 && (mill.grain ?? 0) > 0 ? 1 : 0);
+    // Stone work and the jetty need a builder or two (a small mason share, more when prosperous).
     const stoneWork = n >= 4 && (st.lineSites?.length ?? 0) > 0 && (st.lineBudget ?? 0) >= 1;
     const jettyWork = st.jetty !== undefined && st.jetty.progress < 1;
     const masons = stoneWork || jettyWork ? Math.max(1, Math.round(n * (0.04 + 0.08 * Math.max(0, st.wellbeing)))) : 0;
@@ -1539,9 +1542,6 @@ export class PeopleSystem {
     // Woodcutters: a small share of bigger villages, while the woodpile needs logs.
     const wood = n >= WOOD.minPeople && (st.chopSites?.length ?? 0) > 0 && (st.wood ?? 0) < WOOD.enough;
     want.set(Job.Woodcutter, wood ? Math.min(WOOD.max, Math.max(1, Math.round(n * WOOD.share))) : 0);
-    // A miller while there is grain at the mill.
-    const mill = this.millOf(st.id);
-    want.set(Job.Miller, mill && mill.progress >= 1 && (mill.grain ?? 0) > 0 ? 1 : 0);
     // Move at most two people per day, lowest ids first (deterministic, no flip-flop).
     let moves = 2;
     for (const [job, target] of want) {

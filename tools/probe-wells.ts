@@ -3,6 +3,9 @@ import { DAYS_PER_YEAR, STEPS_PER_DAY } from '../src/sim/constants';
 import { Simulation } from '../src/sim/sim';
 import { SOIL_PROPS } from '../src/sim/world';
 import { generateWorld } from '../src/sim/worldgen/index';
+import { WELL } from '../src/sim/people/wells';
+if (process.env.GARDEN) WELL.garden = Number(process.env.GARDEN);
+if (process.env.NOWELL) WELL.minPeople = 1e9;
 
 const seed = Number(process.argv[2] ?? 3);
 const years = Number(process.argv[3] ?? 3);
@@ -33,7 +36,12 @@ for (let d = 1; d <= years * DAYS_PER_YEAR; d++) {
       }
       const wells = p.buildings.filter((b) => b.settlement === st.id && (b.kind as string) === 'well').length;
       const mills = p.buildings.filter((b) => b.settlement === st.id && (b.kind as string) === 'mill').length;
-      return `${st.population}p w${st.wellbeing.toFixed(2)} wd${wd.toFixed(0)} tbl${best.toFixed(1)} wa${st.waterAccess.toFixed(2)} W${wells}M${mills}`;
+      const wg = (p as any).wellGarden as Int32Array;
+      let gf = 0;
+      let nf = 0;
+      for (let i = 0; i < w.size; i++) if (w.landuse[i] === 1) { nf++; if (wg[i]! >= 0) gf++; }
+      const mill = p.millOf(st.id);
+      return `${st.population}p f${nf}/${gf} food${st.food.toFixed(0)}${mill ? ` mill${mill.progress.toFixed(1)} sp${mill.spin}` : ''} w${st.wellbeing.toFixed(2)} wd${wd.toFixed(0)} tbl${best.toFixed(1)} wa${st.waterAccess.toFixed(2)} W${wells}M${mills}`;
     });
     line.push(`d${d}: ${p.population} [${vs.join(' | ')}]`);
   }

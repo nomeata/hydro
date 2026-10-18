@@ -21,13 +21,15 @@ export const MILL = {
   /** A head site: the water surface drops this much within `reach` cells… */
   minDrop: 0.8,
   reach: 2,
+  /** The head may be this many cells from the mill's bank (a short race leads the water to the wheel). */
+  race: 2,
   /** …with water this fast at the wheel… */
   minSpeed: 0.3,
   /** …and this much flow past it (m³/s; depth × speed × a cell's width)… */
   minFlow: 0.5,
   /** …giving at least this power (W, ρ g Q Δh). */
   minPower: 3000,
-  /** A built mill grinds while the power is at least this share of minPower, and stops below. */
+  /** A built mill grinds while power and flow are at least this share of minPower and minFlow, and stops below. */
   runShare: 0.5,
   /** The wheel turns at all above this share (a trickle does not move it). */
   turnShare: 0.2,
@@ -52,26 +54,33 @@ export interface Head {
   power: number;
 }
 
-/** Measure the head at cell c (zeros if it is dry). */
+/**
+ * Measure the head at cell c (zeros if it is dry): the drop of the water
+ * surface along the flow through c, from `reach` cells upstream to `reach`
+ * cells downstream (so the slope of a river's banks does not count).
+ */
 export function headAt(w: World, c: number): Head {
   const h = w.water[c]!;
   if (h < 0.05) return { drop: 0, speed: 0, flow: 0, power: 0 };
   const W = w.width;
+  const vx = w.velX[c]!;
+  const vy = w.velY[c]!;
+  const speed = Math.hypot(vx, vy);
+  if (speed < 1e-3) return { drop: 0, speed, flow: 0, power: 0 };
   const x0 = c % W;
   const y0 = (c / W) | 0;
-  const R = MILL.reach;
-  let hi = -Infinity;
-  let lo = Infinity;
-  for (let y = Math.max(0, y0 - R); y <= Math.min(w.height - 1, y0 + R); y++)
-    for (let x = Math.max(0, x0 - R); x <= Math.min(W - 1, x0 + R); x++) {
-      const j = y * W + x;
-      if (w.water[j]! < 0.05) continue;
-      const s = w.surface(j);
-      if (s > hi) hi = s;
-      if (s < lo) lo = s;
-    }
-  const drop = Math.max(0, hi - lo);
-  const speed = Math.hypot(w.velX[c]!, w.velY[c]!);
+  // The highest surface a little upstream, the lowest a little downstream (each at least c's own).
+  let up = w.surface(c);
+  let down = up;
+  for (let k = 1; k <= MILL.reach; k++) {
+    const ux = Math.round(x0 - (vx / speed) * k);
+    const uy = Math.round(y0 - (vy / speed) * k);
+    const dx = Math.round(x0 + (vx / speed) * k);
+    const dy = Math.round(y0 + (vy / speed) * k);
+    if (w.inBounds(ux, uy) && w.water[w.idx(ux, uy)]! >= 0.05) up = Math.max(up, w.surface(w.idx(ux, uy)));
+    if (w.inBounds(dx, dy) && w.water[w.idx(dx, dy)]! >= 0.05) down = Math.min(down, w.surface(w.idx(dx, dy)));
+  }
+  const drop = Math.max(0, up - down);
   const flow = h * speed * CELL;
   return { drop, speed, flow, power: RHO * GRAVITY * flow * drop };
 }
@@ -81,17 +90,28 @@ export function isHeadSite(hd: Head): boolean {
   return hd.drop >= MILL.minDrop && hd.speed >= MILL.minSpeed && hd.flow >= MILL.minFlow && hd.power >= MILL.minPower;
 }
 
-/** A chosen mill site: the bank cell for the mill house and the water cell of its wheel. */
+/** Whether a built mill's wheel turns (`share` = MILL.turnShare) or grinds (MILL.runShare) at a head: enough power and flow. */
+export function millTurns(hd: Head, share: number): boolean {
+  return hd.power >= share * MILL.minPower && hd.flow >= share * MILL.minFlow;
+}
+
+/**
+ * A chosen mill site: the bank cell for the mill house, the water cell
+ * beside it where the wheel turns (`side`), and the cell whose head drives
+ * it (`wheel`: the strongest head within MILL.race cells of the bank; a
+ * short race leads the current to the wheel).
+ */
 export interface MillSite {
   bank: number;
+  side: number;
   wheel: number;
   power: number;
 }
 
 /**
  * The best head site within MILL.radius of (cx, cy), with a dry,
- * buildable bank cell beside it (`ok(i)` filters bank cells: ownership,
- * known land). Stronger and nearer sites win. Null if there is none.
+ * buildable bank cell beside the water (`ok(i)` filters bank cells:
+ * ownership, known land). Stronger and nearer sites win. Null if there is none.
  */
 export function chooseMillSite(
   w: World,
@@ -102,23 +122,56 @@ export function chooseMillSite(
 ): MillSite | null {
   const W = w.width;
   const R = MILL.radius;
-  let best: MillSite | null = null;
-  let bestScore = -Infinity;
-  for (let y = Math.max(2, Math.round(cy - R)); y <= Math.min(w.height - 3, Math.round(cy + R)); y++)
-    for (let x = Math.max(2, Math.round(cx - R)); x <= Math.min(W - 3, Math.round(cx + R)); x++) {
-      const r = Math.hypot(x - cx, y - cy);
-      if (r > R) continue;
+  const Rr = MILL.race;
+  const x0 = Math.max(2, Math.round(cx - R));
+  const x1 = Math.min(W - 3, Math.round(cx + R));
+  const y0 = Math.max(2, Math.round(cy - R));
+  const y1 = Math.min(w.height - 3, Math.round(cy + R));
+  // Head sites in (and just around) the window.
+  const heads = new Map<number, Head>();
+  for (let y = Math.max(0, y0 - Rr); y <= Math.min(w.height - 1, y1 + Rr); y++)
+    for (let x = Math.max(0, x0 - Rr); x <= Math.min(W - 1, x1 + Rr); x++) {
       const c = y * W + x;
       if (w.water[c]! < 0.1) continue;
       const hd = headAt(w, c);
-      if (!isHeadSite(hd)) continue;
-      for (const b of [c - 1, c + 1, c - W, c + W]) {
-        if (!bankOk(w, b) || slope(b) >= 0.5 || !ok(b)) continue;
-        const score = Math.min(hd.power, 20000) / 2000 - Math.hypot((b % W) - cx, ((b / W) | 0) - cy) / 6;
-        if (score > bestScore) {
-          bestScore = score;
-          best = { bank: b, wheel: c, power: hd.power };
+      if (isHeadSite(hd)) heads.set(c, hd);
+    }
+  if (!heads.size) return null;
+  let best: MillSite | null = null;
+  let bestScore = -Infinity;
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      const r = Math.hypot(x - cx, y - cy);
+      if (r > R) continue;
+      const b = y * W + x;
+      if (!bankOk(w, b) || slope(b) >= 0.5 || !ok(b)) continue;
+      let wheel = -1;
+      let power = 0;
+      for (let dy = -Rr; dy <= Rr; dy++)
+        for (let dx = -Rr; dx <= Rr; dx++) {
+          const hd = heads.get(b + dy * W + dx);
+          if (hd && hd.power > power) {
+            power = hd.power;
+            wheel = b + dy * W + dx;
+          }
         }
+      if (wheel < 0) continue;
+      // The wheel turns in the wet cell beside the house nearest the head.
+      let side = -1;
+      let sideD = Infinity;
+      for (const j of [b - 1, b + 1, b - W, b + W]) {
+        if (w.water[j]! < 0.05) continue;
+        const d = Math.hypot((j % W) - (wheel % W), ((j / W) | 0) - ((wheel / W) | 0));
+        if (d < sideD) {
+          sideD = d;
+          side = j;
+        }
+      }
+      if (side < 0) continue;
+      const score = Math.min(power, 20000) / 2000 - r / 6 - sideD;
+      if (score > bestScore) {
+        bestScore = score;
+        best = { bank: b, side, wheel, power };
       }
     }
   return best;

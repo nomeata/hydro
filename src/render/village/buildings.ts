@@ -21,7 +21,9 @@ import {
   foodLevel,
   houseVariant,
   isProc,
+  millDesign,
   partsAt,
+  wellDesign,
   storeDesign,
   woodLevel,
   villageModels,
@@ -42,6 +44,9 @@ const PROC_COLOURS: Record<ProcKind, number> = {
   hay: 0xe2c25a,
   soil: 0x6e4e32,
   fish: 0x8fb3c9,
+  ring: 0xa8a196,
+  water: 0x3f7896,
+  gable: 0x8a4a3a,
 };
 
 function procGeometry(kind: ProcKind): THREE.BufferGeometry {
@@ -68,6 +73,18 @@ function procGeometry(kind: ProcKind): THREE.BufferGeometry {
     g = mergeGeometries([g.index ? g.toNonIndexed() : g, tail.index ? tail.toNonIndexed() : tail], false);
     // Hangs down from its tail at the origin.
     g.translate(0, -1.27, 0);
+  } else if (kind === 'ring') {
+    // A round wall of rough stones: a low-poly drum with a bevelled rim.
+    g = new THREE.CylinderGeometry(0.5, 0.54, 1, 10, 2);
+    g.translate(0, 0.5, 0);
+  } else if (kind === 'water') {
+    g = new THREE.CylinderGeometry(0.5, 0.5, 1, 10, 1);
+    g.translate(0, 0.5, 0);
+  } else if (kind === 'gable') {
+    // A pitched roof: a triangular prism along z, ridge on top, origin at the eaves' middle.
+    const tri = new THREE.Shape([new THREE.Vector2(-0.5, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)]);
+    g = new THREE.ExtrudeGeometry(tri, { depth: 1, bevelEnabled: false });
+    g.translate(0, 0, -0.5);
   } else if (kind === 'hay') {
     g = new THREE.CylinderGeometry(0.5, 0.5, 1, 8, 1);
     g.translate(0, 0.5, 0);
@@ -84,7 +101,9 @@ function procGeometry(kind: ProcKind): THREE.BufferGeometry {
   for (let i = 0; i < n; i++) {
     // Subtle top-to-bottom shading for depth.
     const y = ng.getAttribute('position').getY(i);
-    const k = kind === 'plinth' ? 0.85 + 0.15 * Math.min(1, Math.max(0, y)) : 1;
+    let k = kind === 'plinth' ? 0.85 + 0.15 * Math.min(1, Math.max(0, y)) : 1;
+    // Rough stones: each vertex a little lighter or darker.
+    if (kind === 'ring') k = 0.82 + 0.3 * (((i * 2654435761) >>> 0) / 4294967296);
     col[i * 3] = c.r * k;
     col[i * 3 + 1] = c.g * k;
     col[i * 3 + 2] = c.b * k;
@@ -175,12 +194,16 @@ export function buildingKey(b: BuildingInfo, food: number, fish = false, wood = 
   if (b.kind === 'store') return `store:${food}:${fish ? 1 : 0}:${wood}`;
   // Ruins: the walls still stand, the roof is gone.
   if (b.kind === 'ruin') return `house:${houseVariant(b.id)}:${Stage.Walls}`;
+  if (b.kind === 'well') return `well:${buildStage(b.progress)}:${b.dry ? 1 : 0}`;
+  if (b.kind === 'mill') return `mill:${buildStage(b.progress)}:${b.sacks ?? 0}`;
   return `house:${houseVariant(b.id)}:${buildStage(b.progress)}`;
 }
 
 function designFor(key: string): { design: Design; stage: Stage } {
   const parts = key.split(':');
   if (parts[0] === 'store') return { design: storeDesign(Number(parts[1]), parts[2] === '1', Number(parts[3] ?? 0)), stage: Stage.Done };
+  if (parts[0] === 'well') return { design: wellDesign(parts[2] === '1'), stage: Number(parts[1]) as Stage };
+  if (parts[0] === 'mill') return { design: millDesign(Number(parts[2] ?? 0)), stage: Number(parts[1]) as Stage };
   return { design: HOUSE_DESIGNS[Number(parts[1])]!, stage: Number(parts[2]) as Stage };
 }
 
