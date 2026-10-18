@@ -102,7 +102,7 @@ test('achievement toasts wait while the welcome panels are open', async ({ page 
   await page.evaluate(async () => {
     const h = (window as any).__hydro;
     const { startX: x, startY: y } = h.data.info;
-    h.client.command({ type: 'planTrench', points: [[x - 6, y + 8], [x + 6, y + 8]], width: 2, depth: 1.5 });
+    h.client.command({ type: 'shapeLine', tool: 'dig', points: [[x - 6, y + 8], [x + 6, y + 8]], width: 2, amount: 1.5 });
     await h.client.runDays(1.2);
   });
   await page.waitForFunction(() => (window as any).__hydro.achievements.list.some((e: { id: string }) => e.id === 'firstSpade'), null, { timeout: 30_000 });

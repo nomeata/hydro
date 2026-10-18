@@ -153,7 +153,7 @@ function trenchWorld(lined: boolean): { w: World; sim: Simulation; cells: number
       w.ground[i] = 0.5;
     }
   const sim = new Simulation(w, 5);
-  sim.command({ type: 'planTrench', points: [[0, 16], [W - 1, 16]], width: 2, depth: 1.5 });
+  sim.command({ type: 'shapeLine', tool: 'dig', points: [[0, 16], [W - 1, 16]], width: 2, amount: 1.5 });
   while (sim.crew.pending > 0) sim.run(10);
   const cells: number[] = [];
   for (let i = 0; i < w.size; i++) if (Math.abs(w.terrain(i) - flat(i % W)) > 0.01) cells.push(i);

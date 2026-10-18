@@ -74,6 +74,15 @@ function shortOf(a: Pt, b: Pt, back: number): Pt {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 }
 
+/**
+ * Shape the ground along a line to a target profile at once (the sim's
+ * shapeLine: the brushes' rules for conservation, loose earth and what is in
+ * the way; the earth moved is counted in Simulation.brush.moved).
+ */
+function shape(tool: 'dig' | 'raise', points: Pt[], width: number, amount: number): Command[] {
+  return [{ type: 'shapeLine', tool, points, width, amount }];
+}
+
 /** Bots that act once per village (and look again on later checks for new villages). */
 abstract class PerVillageBot implements Bot {
   abstract readonly name: string;
@@ -164,7 +173,7 @@ export class IrrigateBot extends PerVillageBot {
       day,
       village: s.state.id,
       note: `canal ${Math.round(polyLength(best.route))} cells${best.route.length > 2 ? ' (dogleg)' : ''}, depth ${best.depth.toFixed(1)} m, to ${dry.length} driest ${pool === land ? 'cells' : 'fields'}`,
-      commands: [{ type: 'planTrench', points: best.route, width: 2, depth: best.depth }],
+      commands: shape('dig', best.route, 2, best.depth),
       targets,
       info: { moistureBefore: mean(targets.map((i) => m[i]!)), fields: fields.length },
     };
@@ -239,15 +248,19 @@ export class DikeBot implements Bot {
       }
       const commands: Command[] = [];
       const targets: number[] = [];
+      let dikes = 0;
+      let points = 0;
       for (const seg of segs) {
         if (seg.length < 2) continue;
-        commands.push({ type: 'planDike', points: seg.map((h) => h.p), width: 2, height: 1.5 });
+        dikes++;
+        commands.push(...shape('raise', seg.map((h) => h.p), 2, 1.5));
+        points += seg.length;
         for (const h of seg) done.add(h.k);
       }
       if (!commands.length) continue;
       // Protected: the village's homes and fields.
       targets.push(...homesOf(sim, s), ...fieldsOf(sim, s));
-      out.push({ day, village: s.state.id, note: `${commands.length} dike(s), ${commands.reduce((n, c) => n + (c.type === 'planDike' ? c.points.length : 0), 0)} points`, commands, targets });
+      out.push({ day, village: s.state.id, note: `${dikes} dike(s), ${points} points`, commands, targets });
     }
     return out;
   }
@@ -372,7 +385,7 @@ export class DrainBot extends PerVillageBot {
       day,
       village: s.state.id,
       note: `ditch ${Math.round(best.d)} cells from a wet patch of ${coreN} cells`,
-      commands: [{ type: 'planTrench', points: best.route, width: 2, depth: 0.8 }],
+      commands: shape('dig', best.route, 2, 0.8),
       targets,
       info: { wetCells: wet.length, saturationBefore: mean(targets.map((i) => saturation(w, i))) },
     };
@@ -394,6 +407,8 @@ export class VandalBot implements Bot {
   readonly name: string = 'vandal';
   readonly description: string = 'canal from the river upstream into the village, and a dam across the river below the intake';
   private done = false;
+  /** The canal and the dam, as lines (the undo bot cuts through them). */
+  lines: Line[] = [];
   check(sim: Simulation, day: number): BotAction[] {
     if (this.done) return [];
     const w = sim.world;
@@ -415,7 +430,9 @@ export class VandalBot implements Bot {
     this.done = true;
     const S = pt(w, best.j);
     const head = w.surface(best.j) - zv;
-    const commands: Command[] = [{ type: 'planTrench', points: [S, V], width: 3, depth: Math.max(1.5, 1 - head + 0.5) }];
+    const canal: Line = { tool: 'dig', points: [S, V], width: 3, amount: Math.max(1.5, 1 - head + 0.5) };
+    this.lines = [canal];
+    const commands: Command[] = shape(canal.tool, canal.points, canal.width, canal.amount);
     // Dam the river a few cells downstream of the intake.
     const d = flowDir(w, best.j);
     if (d) {
@@ -427,7 +444,9 @@ export class VandalBot implements Bot {
         if (!isWater(w, i)) continue;
         const line = crossLine(w, i, w.surface(i), 1.5);
         if (line && lineRevealed(sim, line[0], line[1])) {
-          commands.push({ type: 'planDike', points: line, width: 3, height: 3 });
+          const dam: Line = { tool: 'raise', points: line, width: 3, amount: 3 };
+          this.lines.push(dam);
+          commands.push(...shape(dam.tool, dam.points, dam.width, dam.amount));
           break;
         }
       }
@@ -436,13 +455,21 @@ export class VandalBot implements Bot {
       {
         day,
         village: s.state.id,
-        note: `diversion canal from ${Math.round(dist(w, best.j, x, y))} cells away (head ${head.toFixed(1)} m)${commands.length > 1 ? ' + dam' : ''}`,
+        note: `diversion canal from ${Math.round(dist(w, best.j, x, y))} cells away (head ${head.toFixed(1)} m)${this.lines.length > 1 ? ' + dam' : ''}`,
         commands,
         targets: homesOf(sim, s),
         info: { head },
       },
     ];
   }
+}
+
+/** A line the bots brushed: a canal (dig) or a bank (raise). */
+interface Line {
+  tool: 'dig' | 'raise';
+  points: Pt[];
+  width: number;
+  amount: number;
 }
 
 /** Days after the vandal's works that `undo` takes them out again. */
@@ -456,14 +483,14 @@ export const UNDO_AFTER = 48;
 export class UndoBot extends VandalBot {
   override readonly name = 'undo';
   override readonly description = "the vandal's works, cut through a year later (dam trenched, canal closed by its intake)";
-  private works: Command[] | null = null;
+  private works: Line[] | null = null;
   private at = 0;
   private undone = false;
   override check(sim: Simulation, day: number): BotAction[] {
     if (!this.works) {
       const acts = super.check(sim, day);
       if (acts.length) {
-        this.works = acts[0]!.commands;
+        this.works = this.lines;
         this.at = day;
       }
       return acts;
@@ -472,7 +499,7 @@ export class UndoBot extends VandalBot {
     this.undone = true;
     const commands: Command[] = [];
     for (const c of this.works) {
-      if (c.type === 'planDike') {
+      if (c.tool === 'raise') {
         // Trench through the dam along the river, its floor at the bed just up- and downstream.
         const [a, b] = c.points as [Pt, Pt];
         const m: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -481,8 +508,8 @@ export class UndoBot extends VandalBot {
         const ny = (b[0] - a[0]) / len;
         const u: Pt = [m[0] + nx * 4, m[1] + ny * 4];
         const d: Pt = [m[0] - nx * 4, m[1] - ny * 4];
-        commands.push({ type: 'planTrench', points: [u, d], width: Math.max(3, len - 3), depth: 0.1 });
-      } else if (c.type === 'planTrench') {
+        commands.push(...shape('dig', [u, d], Math.max(3, len - 3), 0.1));
+      } else {
         // Close the diversion canal a few cells from its intake.
         const [S, V] = c.points as [Pt, Pt];
         const len = Math.hypot(V[0] - S[0], V[1] - S[1]);
@@ -490,7 +517,7 @@ export class UndoBot extends VandalBot {
         const uy = (V[1] - S[1]) / len;
         const p: Pt = [S[0] + ux * 4, S[1] + uy * 4];
         const half = c.width / 2 + 3;
-        commands.push({ type: 'planDike', points: [[p[0] - uy * half, p[1] + ux * half], [p[0] + uy * half, p[1] - ux * half]], width: 3, height: c.depth + 2 });
+        commands.push(...shape('raise', [[p[0] - uy * half, p[1] + ux * half], [p[0] + uy * half, p[1] - ux * half]], 3, c.amount + 2));
       }
     }
     const s = villages(sim)[0];

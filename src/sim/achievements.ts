@@ -232,6 +232,61 @@ export class Achievements {
     return this.ground0.has(i);
   }
 
+  /** The ground of cell i before the player's first work on it (undefined: untouched). */
+  original(i: number): number | undefined {
+    return this.ground0.get(i);
+  }
+
+  /** The player sculpted (plans/brushwork.ts): First Spade once enough earth has moved. */
+  sculpted(w: World, day: number): void {
+    if (this.has.has('firstSpade')) return;
+    let moved = 0;
+    for (const [c, g] of this.ground0) moved += Math.abs(w.terrain(c) - g);
+    if (moved * CELL_AREA >= ACH.spadeM3) this.earn('firstSpade', day);
+  }
+
+  /**
+   * Long Canal: the longest run of ground the player dug at least DUG below
+   * its original height (8-connected; its length measured across the run,
+   * from one end to the farthest cell from it and back).
+   */
+  private longestCanal(w: World): number {
+    const dug = new Set<number>();
+    for (const [c, g] of this.ground0) if (w.terrain(c) < g - DUG) dug.add(c);
+    if (dug.size < ACH.canalCells / 3) return 0;
+    const W = this.width;
+    const far = (s: number, seen: Set<number>): { cell: number; d: number } => {
+      const dist = new Map<number, number>([[s, 0]]);
+      const queue = [s];
+      let best = { cell: s, d: 0 };
+      seen.add(s);
+      for (let q = 0; q < queue.length; q++) {
+        const i = queue[q]!;
+        const d = dist.get(i)!;
+        if (d > best.d) best = { cell: i, d };
+        const x = i % W;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            if ((!dx && !dy) || x + dx < 0 || x + dx >= W) continue;
+            const j = i + dy * W + dx;
+            if (!dug.has(j) || dist.has(j)) continue;
+            dist.set(j, d + (dx && dy ? Math.SQRT2 : 1));
+            seen.add(j);
+            queue.push(j);
+          }
+      }
+      return best;
+    };
+    let longest = 0;
+    const seen = new Set<number>();
+    for (const c of dug) {
+      if (seen.has(c)) continue;
+      const a = far(c, seen);
+      longest = Math.max(longest, far(a.cell, new Set()).d + 1);
+    }
+    return longest;
+  }
+
   /** An earthwork stroke was planned (its changed cells, path length in cells). */
   stroke(kind: Stroke['k'], cells: readonly number[], len: number): void {
     if (cells.length) this.strokes.push({ k: kind, len, c: [...cells], b: 0, x: 0 });
@@ -415,6 +470,10 @@ export class Achievements {
         if (s.k === 'trench' && s.len >= ACH.canalCells && built >= 0.7 * s.b) this.earn('longCanal', day);
       }
       this.strokes = left;
+    }
+    if (!this.has.has('longCanal') && this.ground0.size >= ACH.canalCells && this.longestCanal(h.world) >= ACH.canalCells) {
+      this.earn('firstSpade', day);
+      this.earn('longCanal', day);
     }
     if (!this.has.has('uphill') && h.structures.wheels?.some((wh) => wh.lifted >= ACH.liftedM3)) this.earn('uphill', day);
     const pw = h.power;

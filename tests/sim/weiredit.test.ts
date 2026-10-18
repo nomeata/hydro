@@ -61,7 +61,7 @@ describe('weir vs dike', () => {
   it('an overtopped dike notches and breaches; a weir of the same height holds its crest', async () => {
     const dike = new Simulation(channel(1.0, 1), 1);
     dike.vegetationOn = false;
-    dike.command({ type: 'planDike', points: [[32, 8], [32, 24]], width: 2, height: 1.5 });
+    dike.command({ type: 'shapeLine', tool: 'raise', points: [[32, 8], [32, 24]], width: 2, amount: 1.5 });
     const crest = crestMin(dike.world, 32) + 1.5;
     await build(dike, 10);
     await runDays(dike, 8);
@@ -84,7 +84,7 @@ describe('weir vs dike', () => {
 
   it('a dike that is not overtopped stays whole', async () => {
     const sim = new Simulation(channel(0, 1), 1);
-    sim.command({ type: 'planDike', points: [[32, 8], [32, 24]], width: 2, height: 2 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[32, 8], [32, 24]], width: 2, amount: 2 });
     await build(sim, 10);
     const before = crestMin(sim.world, 32);
     // A pond behind it, a metre below the crest.
@@ -195,7 +195,7 @@ describe('earthworks take up what stands on the ground', () => {
       w.landuse[w.idx(x, 6)] = LandUse.Field;
       w.crop[w.idx(x, 6)] = 120;
     }
-    sim.command({ type: 'planTrench', points: [[15, 3], [15, 9]], width: 2, depth: 1 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[15, 3], [15, 9]], width: 2, amount: 1 });
     // Untouched until the crew gets there.
     expect(w.landuse[w.idx(15, 6)]).toBe(LandUse.Field);
     await build(sim, 10);
@@ -209,7 +209,7 @@ describe('earthworks take up what stands on the ground', () => {
     const w = sim.world;
     w.landuse[w.idx(15, 6)] = LandUse.Building;
     w.landuse[w.idx(15, 16)] = LandUse.Bridge;
-    sim.command({ type: 'planDike', points: [[15, 2], [15, 24]], width: 2, height: 1 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[15, 2], [15, 24]], width: 2, amount: 1 });
     expect(Number.isNaN(w.plan[w.idx(15, 6)]!)).toBe(true);
     expect(Number.isNaN(w.plan[w.idx(15, 16)]!)).toBe(true);
     expect(Number.isNaN(w.plan[w.idx(15, 14)]!)).toBe(false);
@@ -224,7 +224,7 @@ describe('earthworks take up what stands on the ground', () => {
     sim.command({ type: 'planWeir', points: [[32, 4], [32, 28]], height: 1.5 });
     const id = sim.structures.weirs[0]!.id;
     await build(sim, 20);
-    sim.command({ type: 'planTrench', points: [[26, 16], [38, 16]], width: 2, depth: 0.5 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[26, 16], [38, 16]], width: 2, amount: 0.5 });
     const weirs = sim.structures.weirs;
     expect(weirs.length).toBe(2);
     expect(weirs.map((o) => o.id)).toContain(id);
@@ -234,25 +234,25 @@ describe('earthworks take up what stands on the ground', () => {
 
     // A gate tapped into a dike, and a pole: a trench through both.
     const g = new Simulation(channel(), 1);
-    g.command({ type: 'planDike', points: [[40, 6], [40, 26]], width: 2, height: 3 });
+    g.command({ type: 'shapeLine', tool: 'raise', points: [[40, 6], [40, 26]], width: 2, amount: 3 });
     await build(g, 10);
     g.command({ type: 'placeGate', points: [[40, 16]], width: 1, height: 0 });
     expect(g.structures.gates.length).toBe(1);
     g.command({ type: 'placePoles', points: [[44, 6], [44, 7]] });
     expect(g.power.poles.length).toBeGreaterThan(0);
     const pole = g.power.poles[0]!;
-    g.command({ type: 'planTrench', points: [[36, 16], [44, 16]], width: 2, depth: 0.5 });
+    g.command({ type: 'shapeLine', tool: 'dig', points: [[36, 16], [44, 16]], width: 2, amount: 0.5 });
     expect(g.structures.gates.length).toBe(0);
-    g.command({ type: 'planLevel', points: [[pole.x, pole.y]], width: 1 });
+    g.command({ type: 'shapeLine', tool: 'even', points: [[pole.x, pole.y]], width: 1 });
     // (A level stroke over flat ground changes nothing, so nothing is taken down.)
-    g.command({ type: 'planTrench', points: [[pole.x - 2, pole.y], [pole.x + 2, pole.y]], width: 2, depth: 0.5 });
+    g.command({ type: 'shapeLine', tool: 'dig', points: [[pole.x - 2, pole.y], [pole.x + 2, pole.y]], width: 2, amount: 0.5 });
     expect(g.power.poles.some((p) => p.id === pole.id)).toBe(false);
   }, 120_000);
 
   it('removing a gate plugs its opening; removing a pole drops its wires', async () => {
     const sim = new Simulation(channel(), 1);
     const w = sim.world;
-    sim.command({ type: 'planDike', points: [[40, 6], [40, 26]], width: 2, height: 3 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[40, 6], [40, 26]], width: 2, amount: 3 });
     await build(sim, 10);
     sim.command({ type: 'placeGate', points: [[40, 16]], width: 1, height: 0 });
     await build(sim, 10);
@@ -277,7 +277,7 @@ describe('earthworks take up what stands on the ground', () => {
     const run = async () => {
       const sim = new Simulation(channel(0.6, 1), 4);
       sim.command({ type: 'planWeir', points: [[32, 8], [32, 24]], height: 1.5 });
-      sim.command({ type: 'planDike', points: [[45, 8], [45, 24]], width: 2, height: 1 });
+      sim.command({ type: 'shapeLine', tool: 'raise', points: [[45, 8], [45, 24]], width: 2, amount: 1 });
       sim.run(DAY * 3);
       sim.command({ type: 'editWeir', id: sim.structures.weirs[0]!.id, points: [[32, 10], [32, 22]], top: sim.structures.weirs[0]!.top + 0.3 });
       sim.run(DAY * 2);
@@ -293,7 +293,7 @@ describe('the Remove brush', () => {
     const sim = new Simulation(channel(), 1);
     const w = sim.world;
     sim.command({ type: 'planWeir', points: [[10, 10], [10, 22]], height: 1.5 });
-    sim.command({ type: 'planDike', points: [[20, 6], [20, 26]], width: 2, height: 3 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[20, 6], [20, 26]], width: 2, amount: 3 });
     const st = sim.structures;
     st.wheels.push({ id: 900, cell: w.idx(30, 15), head: w.idx(30, 20), x: 30, y: 15, hx: 30, hy: 20, progress, speed: 0, flow: 0, lifted: 0 });
     const pw = sim.power;
@@ -361,8 +361,8 @@ describe('villagers do not farm on works', () => {
     const sim = new Simulation(channel(0, 1), 1);
     const w = sim.world;
     sim.command({ type: 'planWeir', points: [[10, 10], [10, 22]], height: 1.5 });
-    sim.command({ type: 'planDike', points: [[30, 10], [30, 22]], width: 2, height: 2 });
-    sim.command({ type: 'planLevel', points: [[44, 5], [52, 5]], width: 4 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[30, 10], [30, 22]], width: 2, amount: 2 });
+    sim.command({ type: 'shapeLine', tool: 'even', points: [[44, 5], [52, 5]], width: 4 });
     await build(sim, 20);
     const weirCell = w.idx(10, 16);
     const crest = w.idx(30, 16);

@@ -59,7 +59,7 @@ describe('welcome scenes', () => {
     const w = sim.world;
     const h = w.idx(SCENE_LAYOUT.hollow.x, SCENE_LAYOUT.hollow.y);
     expect(w.water[h]).toBeLessThan(0.05);
-    sim.command({ type: 'planTrench', points: SCENE_LAYOUT.trench, width: 3, depth: 1.5 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: SCENE_LAYOUT.trench, width: 3, amount: 1.5 });
     sim.run(900);
     expect(w.water[h]).toBeGreaterThan(0.4);
   });

@@ -93,7 +93,7 @@ describe('achievement table', () => {
 describe('waterworks', () => {
   it('First Spade and Long Canal when a long trench is finished', async () => {
     const sim = new Simulation(plain(), 1);
-    sim.command({ type: 'planTrench', points: [[5, 20], [5 + ACH.canalCells + 2, 20]], width: 2, depth: 1 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 20], [5 + ACH.canalCells + 2, 20]], width: 2, amount: 1 });
     expect(ids(sim.achievements)).toEqual([]);
     await build(sim);
     sim.run(100);
@@ -107,12 +107,12 @@ describe('waterworks', () => {
 
   it('a short trench is only a First Spade; a cancelled one is nothing', async () => {
     const sim = new Simulation(plain(), 1);
-    sim.command({ type: 'planTrench', points: [[5, 20], [40, 20]], width: 2, depth: 1 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 20], [40, 20]], width: 2, amount: 1 });
     sim.command({ type: 'cancelPlan', x: 22, y: 20, radius: 30 });
     await build(sim);
     sim.run(100);
     expect(ids(sim.achievements)).toEqual([]);
-    sim.command({ type: 'planTrench', points: [[5, 30], [15, 30]], width: 2, depth: 1 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 30], [15, 30]], width: 2, amount: 1 });
     await build(sim);
     sim.run(100);
     expect(ids(sim.achievements)).toEqual(['firstSpade']);
@@ -121,7 +121,7 @@ describe('waterworks', () => {
   it('Lake Maker: a pool held back by a ring dike, not dry land raised, a dug basin or a natural pond', async () => {
     // A ring dike (2 m) around x, y in 16..40 on the rock plain at 20 m.
     const ring = (sim: Simulation) =>
-      sim.command({ type: 'planDike', points: [[16, 16], [40, 16], [40, 40], [16, 40], [16, 16]], width: 2, height: 2 });
+      sim.command({ type: 'shapeLine', tool: 'raise', points: [[16, 16], [40, 16], [40, 40], [16, 40], [16, 16]], width: 2, amount: 2 });
     /** Water inside the ring up to `level` (m). */
     const fill = (w: World, level: number, x0 = 20, x1 = 36) => {
       for (let y = 20; y <= 36; y++) for (let x = x0; x <= x1; x++) w.water[w.idx(x, y)] = Math.max(0, level - w.terrain(w.idx(x, y)));
@@ -131,7 +131,7 @@ describe('waterworks', () => {
       const w = plain();
       const sim = new Simulation(w, 1);
       ring(sim);
-      sim.command({ type: 'planLevel', points: [[5, 50], [30, 50]], width: 4 });
+      sim.command({ type: 'shapeLine', tool: 'even', points: [[5, 50], [30, 50]], width: 4 });
       await build(sim);
       await runDays(sim, 5);
       expect(ids(sim.achievements)).not.toContain('lakeMaker');
@@ -140,7 +140,7 @@ describe('waterworks', () => {
     {
       const w = plain();
       const sim = new Simulation(w, 1);
-      for (const y of [25, 28, 31]) sim.command({ type: 'planTrench', points: [[20, y], [36, y]], width: 4, depth: 1.5 });
+      for (const y of [25, 28, 31]) sim.command({ type: 'shapeLine', tool: 'dig', points: [[20, y], [36, y]], width: 4, amount: 1.5 });
       await build(sim);
       fill(w, 19.9);
       await runDays(sim, 5);
@@ -152,7 +152,7 @@ describe('waterworks', () => {
       const sim = new Simulation(w, 1);
       fill(w, 21, 22, 28);
       sim.achievements.baseline(sim);
-      sim.command({ type: 'planDike', points: [[45, 10], [45, 50]], width: 2, height: 2 });
+      sim.command({ type: 'shapeLine', tool: 'raise', points: [[45, 10], [45, 50]], width: 2, amount: 2 });
       await build(sim);
       fill(w, 20.8, 20, 36);
       for (let d = 0; d < 5; d++) {
@@ -182,7 +182,7 @@ describe('waterworks', () => {
     const w = plain(64, true);
     const sim = new Simulation(w, 1);
     for (let y = 18; y <= 22; y++) w.inflow[w.idx(0, y)] = 0;
-    sim.command({ type: 'planTrench', points: [[1, 20], [31, 20]], width: 2, depth: 1 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[1, 20], [31, 20]], width: 2, amount: 1 });
     await build(sim);
     expect(sim.achievements.waterfall(sim)).toBe(false);
     for (const y of [19, 20, 21]) w.inflow[w.idx(1, y)] = 1;
@@ -200,7 +200,7 @@ describe('waterworks', () => {
     await build(sim);
     await runDays(sim, 1);
     expect(ids(sim.achievements)).toContain('weirBuilder');
-    sim.command({ type: 'planDike', points: [[45, 5], [45, 40]], width: 2, height: 2 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[45, 5], [45, 40]], width: 2, amount: 2 });
     await build(sim);
     sim.command({ type: 'placeGate', points: [[45, 20]], width: 1, height: 0 });
     const g = sim.structures.gates[0]!;
@@ -328,8 +328,8 @@ describe('saving', () => {
     const sim = new Simulation(w, 1);
     w.water.fill(1, w.idx(0, 5), w.idx(0, 6));
     sim.achievements.baseline(sim);
-    sim.command({ type: 'planTrench', points: [[5, 20], [20, 20]], width: 2, depth: 1 });
-    sim.command({ type: 'planTrench', points: [[5, 40], [20, 40]], width: 2, depth: 1 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 20], [20, 20]], width: 2, amount: 1 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 40], [20, 40]], width: 2, amount: 1 });
     sim.run(20);
     expect(ids(sim.achievements)).toEqual([]);
     const loaded = (await loadGame(await saveGame(sim))).sim;
@@ -371,7 +371,7 @@ describe('saving', () => {
     const run = async () => {
       const gen = generateWorld({ seed: 5, size: 64 });
       const sim = new Simulation(gen.world, 5, { people: { startX: gen.startX, startY: gen.startY } });
-      sim.command({ type: 'planTrench', points: [[gen.startX - 8, gen.startY], [gen.startX + 8, gen.startY]], width: 2, depth: 1 });
+      sim.command({ type: 'shapeLine', tool: 'dig', points: [[gen.startX - 8, gen.startY], [gen.startX + 8, gen.startY]], width: 2, amount: 1 });
       await runDays(sim, 4);
       return sim;
     };
@@ -386,7 +386,7 @@ describe('saving', () => {
     c.structures.onLined = null;
     const ach = c.achievements as unknown as Record<string, unknown>;
     for (const k of ['daily', 'update', 'touch', 'stroke', 'cancelled', 'lined']) ach[k] = () => {};
-    c.command({ type: 'planTrench', points: [[gen.startX - 8, gen.startY], [gen.startX + 8, gen.startY]], width: 2, depth: 1 });
+    c.command({ type: 'shapeLine', tool: 'dig', points: [[gen.startX - 8, gen.startY], [gen.startX + 8, gen.startY]], width: 2, amount: 1 });
     await runDays(c, 4);
     expect(c.stateHash()).toBe(a.stateHash());
   }, 120_000);

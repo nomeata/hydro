@@ -27,8 +27,10 @@ export const CATEGORY_NAMES: Readonly<Record<AchievementCategory, string>> = {
 
 /** Thresholds, shared so that descriptions and checks agree. */
 export const ACH = {
-  /** Long Canal: path length of a finished trench (cells; 5 m each). */
+  /** Long Canal: length of a run of ground dug 0.3 m or more below its original height (cells; 5 m each). */
   canalCells: 40,
+  /** First Spade: earth the player's brushes have moved (m³; one cell is 25 m²). */
+  spadeM3: 20,
   /** Lake Maker: a lake held back by the player's works: new cells, new water (m³), mean depth (m), days in a row. */
   lakeCells: 40,
   lakeM3: 2000,
@@ -62,8 +64,8 @@ export const ACH = {
 
 export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   // Waterworks
-  { id: 'firstSpade', title: 'First Spade', description: 'Your first earthwork is finished.', icon: 'spade', category: 'water' },
-  { id: 'longCanal', title: 'Long Canal', description: `Dig a canal at least ${ACH.canalCells * 5} m long.`, icon: 'canal', category: 'water' },
+  { id: 'firstSpade', title: 'First Spade', description: 'Shape the land for the first time: raise, dig or even some ground.', icon: 'spade', category: 'water' },
+  { id: 'longCanal', title: 'Long Canal', description: `Dig a canal at least ${ACH.canalCells * 5} m long (a ditch 30 cm deep or more, in one run).`, icon: 'canal', category: 'water' },
   { id: 'lakeMaker', title: 'Lake Maker', description: 'Dam up a new lake: a dike or weir holds water back where the land used to be dry.', icon: 'lake', category: 'water' },
   { id: 'waterfall', title: 'Waterfall', description: `Let water tumble ${ACH.fallDrop} m down over your works.`, icon: 'waterfall', category: 'water' },
   { id: 'weirBuilder', title: 'Weir Builder', description: 'Finish a weir across the water.', icon: 'weir', category: 'water' },

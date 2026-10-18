@@ -65,7 +65,7 @@ describe('first village', () => {
     const s = sim.people!.settlements[0]!.state;
     const x = Math.round(s.x) + 6;
     const y = Math.round(s.y);
-    sim.command({ type: 'planTrench', points: [[x, y - 3], [x, y + 3]], width: 1, depth: 0.8 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[x, y - 3], [x, y + 3]], width: 1, amount: 0.8 });
     const i = sim.world.idx(x, y);
     const before = sim.world.terrain(i);
     await runDays(sim, 4);

@@ -68,11 +68,11 @@ describe('fog of war', () => {
     expect(hidden).toBeGreaterThanOrEqual(0);
     const hx = hidden % w.width;
     const hy = (hidden / w.width) | 0;
-    sim.command({ type: 'planTrench', points: [[hx - 2, hy], [hx + 2, hy]], width: 1, depth: 1 });
-    sim.command({ type: 'planLevel', points: [[hx, hy - 2], [hx, hy + 2]], width: 2 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[hx - 2, hy], [hx + 2, hy]], width: 1, amount: 1 });
+    sim.command({ type: 'shapeLine', tool: 'even', points: [[hx, hy - 2], [hx, hy + 2]], width: 2 });
     for (let i = 0; i < w.size; i++) if (w.revealed[i]! < REVEALED) expect(Number.isNaN(w.plan[i]!)).toBe(true);
     // Known land takes plans.
-    sim.command({ type: 'planDike', points: [[gen.startX - 3, gen.startY], [gen.startX + 3, gen.startY]], width: 1, height: 1 });
+    sim.command({ type: 'shapeLine', tool: 'raise', points: [[gen.startX - 3, gen.startY], [gen.startX + 3, gen.startY]], width: 1, amount: 1 });
     expect(Number.isNaN(w.plan[w.idx(gen.startX, gen.startY)]!)).toBe(false);
   });
 
@@ -80,7 +80,7 @@ describe('fog of war', () => {
     const gen = generateWorld({ seed: 3, size: 64 });
     const sim = new Simulation(gen.world, 3);
     expect(sim.fog).toBe(false);
-    sim.command({ type: 'planTrench', points: [[2, 2], [8, 2]], width: 1, depth: 1 });
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[2, 2], [8, 2]], width: 1, amount: 1 });
     expect(Number.isNaN(sim.world.plan[sim.world.idx(5, 2)]!)).toBe(false);
   });
 });
