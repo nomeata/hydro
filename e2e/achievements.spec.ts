@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { openGame, recordTexts } from './helpers';
 
-test('finishing a trench earns First Spade: a toast, and the Achievements card lists it', async ({ page }) => {
+test('digging a canal earns First Spade: a toast, and the Achievements card lists it', async ({ page }) => {
   // A small world keeps the simulated day quick on slow CI machines.
   const errors = await openGame(page, '&size=128');
   // The toast stays only a few seconds: record it rather than race it.
   const toasts = await recordTexts(page, '[data-testid=achievement-toast][data-id=firstSpade]');
-  // Dig a little trench by the start and let a day pass.
+  // Dig a little canal by the start (at once) and let a day pass.
   await page.evaluate(async () => {
     const h = (window as any).__hydro;
     const { startX: x, startY: y } = h.data.info;

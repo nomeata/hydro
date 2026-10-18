@@ -21,10 +21,10 @@ import { cameraView, sound } from '../audio/bus';
 const DEG = Math.PI / 180;
 /**
  * The hand's Dig brush: the medium size, out along the line and back again;
- * it presses a little harder than a player's first try (BOOST × the hold
+ * it presses a little harder than a player's first try (boost × the hold
  * time), so the channel reaches the river within the scene.
  */
-const DIG = { radius: 2.5, boost: 2.2 };
+const DIG = { radius: 2.5, boost: 4 };
 
 interface Script {
   camera: Partial<CameraState>;

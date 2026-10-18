@@ -36,7 +36,7 @@ test('sound starts at the first gesture, the menu mutes it (persisted), no error
   expect(await page.evaluate(() => (window as any).__hydro.sound.volume)).toBeCloseTo(0.3);
   // UI sounds play without errors (a tool pick, a chime).
   await page.keyboard.press('Escape');
-  await page.locator('button[data-tool=trench]').click();
+  await page.locator('button[data-tool=dig]').click();
   await page.evaluate(() => (window as any).__hydro.sound.ui('chime'));
   await settleFrames(page, 10);
   expect(errors).toEqual([]);
