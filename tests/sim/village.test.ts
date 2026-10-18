@@ -96,8 +96,16 @@ describe('floods', () => {
     const s = p.settlements[0]!.state;
     sim.command({ type: 'debugWater', x: house.x, y: house.y, radius: 6, depth: 1.5 });
     sim.command({ type: 'debugWater', x: s.x, y: s.y, radius: 6, depth: 1.5 });
-    sim.run(40);
-    const fleeing = p.agents.filter((a) => a.flee).length;
+    // …and around a villager wherever they are (on a terrace the water soon runs off).
+    const caught = p.agents.find((a) => !a.child)!;
+    sim.command({ type: 'debugWater', x: Math.round(caught.x), y: Math.round(caught.y), radius: 4, depth: 1.5 });
+    // Whoever is caught in it runs (some may reach dry ground within the 40 steps).
+    const fled = new Set<number>();
+    for (let k = 0; k < 20; k++) {
+      sim.run(2);
+      for (const a of p.agents) if (a.flee) fled.add(a.id);
+    }
+    const fleeing = fled.size;
     await runDays(sim, 1);
     expect(p.buildings.find((b) => b.id === house.id)!.kind).toBe('ruin');
     expect(p.settlements[0]!.state.houses).toBeLessThan(housesBefore);
