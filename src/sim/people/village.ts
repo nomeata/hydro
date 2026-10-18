@@ -108,6 +108,14 @@ export const FARMING = {
   growPerDay: 11,
   /** In autumn the farmers bring in whatever stands (this crop stage at least), at its share of a full yield. */
   lateHarvest: 40,
+  /**
+   * Good land claimed per day at most, and while the village has fewer than
+   * `reclaimBelow` × the fields its farmers could work (after a flood took
+   * them: docs/PLAYTEST.md round 3, the seed-1 crash in years 4–5).
+   */
+  claimPerDay: 10,
+  reclaimPerDay: 30,
+  reclaimBelow: 0.5,
   /** Land is claimed only where crops would grow at least this well today (cropGrowth)... */
   minGrowth: 0.5,
   /** ...or this well by a starving village with less than a third of the fields it could work. */
@@ -1920,8 +1928,11 @@ export class PeopleSystem {
       this.fieldCrop[i] = kind;
       w.vegetation[i] = Math.min(w.vegetation[i]!, 0.15); // cleared
     };
-    // Good land first (at most 10 cells a day); hardy fields do not stand in its way.
-    const nGood = Math.max(0, Math.min(10, want - common, good.length));
+    // Good land first (at most FARMING.claimPerDay cells a day, more while the village has lost
+    // most of its fields, e.g. to a spring flood: the land is ready again once the water is
+    // gone); hardy fields do not stand in its way.
+    const perDay = common < want * FARMING.reclaimBelow ? FARMING.reclaimPerDay : FARMING.claimPerDay;
+    const nGood = Math.max(0, Math.min(perDay, want - common, good.length));
     for (let k = 0; k < nGood; k++) claim(good[k]![1], FieldCrop.Common);
     let total = fields.length + nGood;
     // More fields than hands now: give up bare hardy fields, the poorest first.
