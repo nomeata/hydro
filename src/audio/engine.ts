@@ -211,8 +211,12 @@ export class AudioEngine {
   private samples: Samples = {};
   private started = false;
   private alt = 0;
-  /** Live voices (spots), to cap the polyphony on phones. */
-  private voices = 0;
+  /**
+   * End times of the spot voices playing (or scheduled), to cap the
+   * polyphony on phones. Time-based, so it works offline too (where
+   * `ended` events only come after rendering).
+   */
+  private ends: number[] = [];
   private readonly rand = rng(7);
 
   constructor(ctx: BaseAudioContext) {
@@ -419,24 +423,29 @@ export class AudioEngine {
   /** Play a sample (with a voice limit); returns false when not loaded. */
   private sample(name: SampleName, gain: number, pan: number, at: number, rate = 1, offset = 0, dur?: number, fade = 0): boolean {
     const b = this.samples[name];
-    if (!b || this.voices >= 10) return false;
+    if (!b) return false;
+    const len = dur ?? (b.duration - offset) / rate;
+    if (!this.claim(at, at + len)) return false;
     const src = this.ctx.createBufferSource();
     src.buffer = b;
     src.playbackRate.value = rate;
     const g = this.out(gain, pan, at, fade || 0.004);
     src.connect(g);
-    const len = dur ?? (b.duration - offset) / rate;
     if (fade > 0) {
       g.gain.setValueAtTime(gain, at + Math.max(fade, len - fade));
       g.gain.linearRampToValueAtTime(0, at + len);
     }
     src.start(at, offset);
     src.stop(at + len + 0.05);
-    this.voices++;
-    src.onended = () => {
-      this.voices--;
-      g.disconnect();
-    };
+    src.onended = () => g.disconnect();
+    return true;
+  }
+
+  /** Room for one more voice from `at` to `end`? (At most 10 at a time.) */
+  private claim(at: number, end: number): boolean {
+    this.ends = this.ends.filter((e) => e > at);
+    if (this.ends.length >= 10) return false;
+    this.ends.push(end);
     return true;
   }
 
@@ -490,16 +499,15 @@ export class AudioEngine {
   }
 
   private voice(at: number, end: number, nodes: AudioScheduledSourceNode[], out: GainNode): void {
-    if (this.voices >= 10) return;
-    this.voices++;
+    if (!this.claim(at, end)) {
+      out.disconnect();
+      return;
+    }
     for (const n of nodes) {
       n.start(at);
       n.stop(end);
     }
-    nodes[0]!.onended = () => {
-      this.voices--;
-      out.disconnect();
-    };
+    nodes[0]!.onended = () => out.disconnect();
   }
 
   /** A chick's peep: a quick upward sine sweep. */

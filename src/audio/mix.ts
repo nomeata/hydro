@@ -249,6 +249,27 @@ export function precipitationAt(c: ClimateState, x: number, y: number): { rain: 
   return { rain, snow };
 }
 
+/**
+ * Rain and snow heard in the view: the strongest of the centre and four
+ * points half-way to the screen corners (those a little softer), so a
+ * front passing over part of the screen is heard.
+ */
+export function precipitationInView(c: ClimateState, v: View): { rain: number; snow: number } {
+  const out = precipitationAt(c, v.x, v.y);
+  for (const [sx, sy] of [
+    [-0.6, -0.6],
+    [0.6, -0.6],
+    [-0.6, 0.6],
+    [0.6, 0.6],
+  ] as const) {
+    const [x, y] = fromScreen(v, sx, sy);
+    const p = precipitationAt(c, x, y);
+    out.rain = Math.max(out.rain, p.rain * 0.8);
+    out.snow = Math.max(out.snow, p.snow * 0.8);
+  }
+  return out;
+}
+
 export interface AmbienceInput {
   view: View;
   summary: ViewSummary;
@@ -274,7 +295,7 @@ export function ambience(a: AmbienceInput): Layers {
   const near = 1 - 0.55 * zoom;
   const paused = a.speed <= 0;
   const calm = paused ? 0.6 : 1;
-  const { rain, snow } = precipitationAt(climate, view.x, view.y);
+  const { rain, snow } = precipitationInView(climate, view);
   const wet = Math.max(rain, snow);
   const winter = time.season === 3 ? 1 : 0;
   const warm = smooth(8, 20, climate.temperature);

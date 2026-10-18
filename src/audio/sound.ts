@@ -149,6 +149,8 @@ export class SoundSystem implements SoundSink {
   scene(s: Snapshot, view: View, width: number): void {
     if (!this.enabled) return;
     const run = s.sceneRun ?? 0;
+    // States of a scene run already left may still arrive: ignore them.
+    if (this.sceneFeed && run < this.sceneFeed.run) return;
     if (!this.sceneFeed || this.sceneFeed.run !== run) {
       const director = new SoundDirector({ width });
       this.sceneFeed = { director, run, at: 0, lastView: view, view: () => this.sceneFeed!.lastView };
