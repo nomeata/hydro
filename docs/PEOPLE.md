@@ -313,9 +313,19 @@ year; gardens give green within about one season.
   with far fields or such wishes looks for a crossing: from a dry bank it
   can reach, straight (8 directions) over 1–4 wet cells (at least one
   ≥ 0.24 m deep; no structures, outlets or plans) to a dry bank opposite.
-  The score is the walking it saves on the way to that land (≥ 60 cells
-  summed), less 6 per deck cell, plus a little for well-trodden banks
-  (traffic). One bridge at a time, three per village at most. A builder
+  The score is the walking it saves on the way to that land, less 6 per
+  deck cell, plus a little for well-trodden banks (traffic). The saving is
+  measured with every existing bridge (any village's, finished, being
+  built or waiting to be rebuilt) already in the walking network, and the
+  best few candidates are checked with a real walking map from the far
+  bank; it must reach 120 cells summed. So a second bridge beside one that
+  already joins the same shores saves next to nothing and is not built,
+  while one over the other arm of a fork still is. A bridge whose end the
+  river has reached (water too deep to wade) is "stranded": no crossing
+  within 4 cells of it is started for 24 days (it may dry out); after that
+  such a crossing replaces it. One bridge at a time, at most one per 25
+  people (started) and three per village, and 24 days between choosing
+  one and the next. A builder
   hammers it together from the village bank (10 visits; a stack of planks
   waits there); finished, its deck cells become `LandUse.Bridge`, walkable
   for people and herds (path.ts), its deck 0.35 m above the water. A
