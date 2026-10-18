@@ -59,7 +59,7 @@ export function snowCoverByte(swe: number): number {
 }
 
 export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger): void {
-  const { width: W, height: H, water, ground, soil, soilType, snow, inflow, vegetation, landuse } = world;
+  const { width: W, height: H, water, ground, soil, soilType, snow, inflow, vegetation, landuse, bedrock } = world;
   const vegInf = PARAMS.vegetationInfiltration;
   const { tileRain, tileElevation, tilesWide, seaLevelTemp, steps } = inp;
   const qScale = inp.inflowScale ?? 1;
@@ -83,11 +83,11 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
       const precip = tileRain[t]! * steps;
       // Temperature for the tile.
       const temp = seaLevelTemp - PARAMS.lapseRate * tileElevation[t]!;
-      const warm = Math.max(0, temp);
       const evapWater = PARAMS.evapPerDay * dayFrac * Math.max(0, (temp + 5) / 25);
       const evapSoil = PARAMS.soilEvapPerDay * dayFrac * Math.max(0, (temp + 5) / 25);
-      const isSnow = temp < 0.5;
-      const melt = meltK * warm;
+      // Snow or rain, and melt, follow each cell's own height (the snow
+      // line is a contour, not the edge of a tile).
+      const lapse = PARAMS.lapseRate;
 
       const x0 = tx * TILE;
       const y0 = ty * TILE;
@@ -106,6 +106,9 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
             inflowSum += add;
           }
 
+          const sn0 = snow[i]!;
+          const cellTemp = precip > 0 || sn0 > 0 ? seaLevelTemp - lapse * (bedrock[i]! + soil[i]!) : temp;
+          const isSnow = cellTemp < 0.5;
           // Precipitation.
           if (precip > 0) {
             if (isSnow) {
@@ -119,6 +122,7 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
 
           // Snow melt.
           const sn = snow[i]!;
+          const melt = meltK * Math.max(0, cellTemp);
           if (sn > 0 && melt > 0) {
             const m = Math.min(sn, melt);
             snow[i] = sn - m;
