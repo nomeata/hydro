@@ -56,7 +56,8 @@ test('a weir is selected with a tap, its crest raised and lowered, an end dragge
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('Weir');
   await expect(panel.locator('.sel-crest output')).toHaveText('1.5 m');
-  await expect(page.locator('.sel-handle').first()).toBeVisible();
+  // (Handles follow the camera every frame; a slow machine draws few.)
+  await expect(page.locator('.sel-handle[data-end="1"]')).toBeVisible({ timeout: 20_000 });
   await settleFrames(page);
   await page.screenshot({ path: `test-results/weir-selected-${info.project.name}.png` });
 
