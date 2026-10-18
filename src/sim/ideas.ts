@@ -61,7 +61,7 @@ export const IDEAS = {
 /** Order in the list (most pressing first). */
 const PRIORITY: Readonly<Record<IdeaKind, number>> = { flood: 6, dry: 5, mill: 4, poles: 3, turbine: 2.5, marsh: 2 };
 
-const TOOL: Readonly<Record<IdeaKind, string>> = { dry: 'trench', flood: 'dike', marsh: 'trench', mill: 'weir', turbine: 'turbine', poles: 'poles' };
+const TOOL: Readonly<Record<IdeaKind, string>> = { dry: 'dig', flood: 'raise', marsh: 'dig', mill: 'weir', turbine: 'turbine', poles: 'poles' };
 
 /** Looks in a row without the problem before an idea goes (a mill's stream runs low in late summer: half a year). */
 const KEEP: Readonly<Record<IdeaKind, number>> = { flood: 2, dry: 2, marsh: 3, mill: 12, turbine: 2, poles: 2 };
@@ -218,11 +218,11 @@ function ideaText(h: AchievementHost, f: Found): string {
   };
   switch (f.kind) {
     case 'dry':
-      return `The fields ${where('around')} dry out in summer — a trench from the water could keep them green.`;
+      return `The fields ${where('around')} dry out in summer — a channel dug from the water could keep them green.`;
     case 'flood':
-      return `The land ${where('around')} flooded last spring — a dike could keep it dry.`;
+      return `The land ${where('around')} flooded last spring — a bank of raised earth could keep it dry.`;
     case 'marsh':
-      return `The ground ${where('by')} is boggy — a trench down to lower land could drain it for fields.`;
+      return `The ground ${where('by')} is boggy — a ditch dug down to lower land could drain it for fields.`;
     case 'mill':
       return `The stream runs strong ${where('near')} — a weir there could turn a mill.`;
     case 'turbine':

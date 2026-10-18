@@ -133,13 +133,13 @@ const TOOLS: ToolDef[] = [
     id: 'weir',
     label: toolName('weir'),
     icon: ICONS.weir,
-    hint: 'Draw across a river: a stone crest that the water may flow over. It holds the pool at the crest’s height all summer and spills the rest safely, where a mill can use the fall. Tap a weir to change it.',
+    hint: 'Draw across a river: a stone wall (up to 4 m) that the water may flow over. It holds the pool at its crest all summer and spills the rest safely, where a mill can use the fall. Tap a weir to change it.',
   },
   {
     id: 'gate',
     label: toolName('gate'),
     icon: ICONS.gate,
-    hint: 'Tap a dike or weir to put a sluice gate in it. Villagers open it to water their fields in summer; it opens by itself before the water spills over.',
+    hint: 'Tap a weir or a bank to put a sluice gate in it, or draw across a channel for a wall with a gate. Villagers open it to water their fields in summer; it opens by itself before the water spills over.',
   },
   {
     id: 'wheel',

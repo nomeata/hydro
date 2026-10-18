@@ -2,8 +2,8 @@
  * Tool unlocks (docs/GAMEPLAY.md §4.5): tools become available as the
  * people prosper. The one table of population milestones, used by the tool
  * palette (locked tools are greyed out with a hint), the stats bar and the
- * history chart. Tools not listed are available from the start (trench,
- * dike, level, remove).
+ * history chart. Tools not listed are available from the start (the brushes
+ * raise, dig, even, and remove).
  */
 
 /**

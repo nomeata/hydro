@@ -82,7 +82,7 @@ describe('ideas for this valley', () => {
     expect(ids(sim)).toEqual([]);
     sim.ideas.look(sim, SUMMER + 2);
     const [idea] = sim.ideas.list();
-    expect(idea).toMatchObject({ id: 'dry:0', kind: 'dry', tool: 'trench' });
+    expect(idea).toMatchObject({ id: 'dry:0', kind: 'dry', tool: 'dig' });
     expect(idea!.text).toContain('the village');
     expect(idea!.text).toContain('dry out in summer');
     // Where: among the dry cells.
@@ -110,7 +110,7 @@ describe('ideas for this valley', () => {
     for (let x = 22; x <= 33; x++) w.floodMemory[w.idx(x, 40)] = 250;
     look(sim, AUTUMN);
     const [idea] = sim.ideas.list();
-    expect(idea).toMatchObject({ id: 'flood:0', kind: 'flood', tool: 'dike', achievement: 'weathered' });
+    expect(idea).toMatchObject({ id: 'flood:0', kind: 'flood', tool: 'raise', achievement: 'weathered' });
     expect(idea!.text).toContain('flooded last spring');
     // A dry spring behind a dike: the memory drops.
     for (let x = 22; x <= 33; x++) w.floodMemory[w.idx(x, 40)] = 100;
@@ -125,7 +125,7 @@ describe('ideas for this valley', () => {
     const w = sim.world;
     for (let y = 26; y <= 32; y++) for (let x = 38; x <= 43; x++) w.water[w.idx(x, y)] = 0.1;
     look(sim, AUTUMN);
-    expect(sim.ideas.list()[0]).toMatchObject({ id: 'marsh:0', kind: 'marsh', tool: 'trench' });
+    expect(sim.ideas.list()[0]).toMatchObject({ id: 'marsh:0', kind: 'marsh', tool: 'dig' });
     // Next to deep water it is a shore, not a marsh.
     const lake = village();
     const lw = lake.world;
