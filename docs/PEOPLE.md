@@ -42,8 +42,15 @@ economy cannot diverge:
 Today a cell's moisture is its own soil bucket, so a canal would not wet the
 fields beside it. Before villages, **lateral groundwater (M1c)** must exist,
 or at least a daily capillary proxy:
-`fieldMoisture = max(own, 0.8·exp(−d/2))`, with d the distance in cells to
-water (daily distance transform).
+`fieldMoisture = max(0.6·own, 0.8·exp(−d/2.5))`, with d the distance in
+cells to water (daily distance transform; `CAPILLARY` in `village.ts`). The
+own soil counts at 0.6 (GAMEPLAY §4.1: at full weight 60 % of the land was
+farmable without any water work), so where the water is decides what grows.
+Crops grow fully from moisture 0.4, not at all below 0.2 (`CROP_MOISTURE`),
+and villagers claim land only where crops would grow at least half as well
+today (`FARMING.minGrowth`). A field gives 8 person-days per harvest (×
+fertility; `FARMING.yield`, was 34) and a farmer keeps 14 fields (was 6):
+a village is bounded by the watered land around it (§4).
 
 Irrigated fields also **draw water**: crop evapotranspiration of about
 4 mm/day is taken from the nearest water or groundwater and booked in the
@@ -140,7 +147,8 @@ garden crop in summer and autumn) flatten the yearly sawtooth.
   - families leave with probability ∝ `max(0, 0.4 − w)`;
   - births and deaths are small, about ±5 %/yr, and children are cosmetic;
   - families stop arriving and births pause while food security is below
-    0.5 (`ECONOMY.growFood`), so a village levels off fed, not hungry.
+    1 (`ECONOMY.growFood`: the store would not last until the next
+    harvest), so a village levels off fed, not hungry.
 - **Recovery floor:** if land is attractive, a trickle of migrants keeps
   arriving, even to an empty site.
 
@@ -166,7 +174,7 @@ point: on most worlds a dry terrace 2–6 m above the river with a fertile,
 flood-prone floodplain below it (worldgen `chooseStart`, GAMEPLAY §4.3 P2;
 the old river meadow is the fallback). Further
 villages (code: `FOUNDING` in `village.ts`): once all villages together
-have ≥ 25 people, or one village has ≥ 18 people and no free house, and at
+have ≥ 40 people, or one village has ≥ 30 people and no free house, and at
 most once per game year, the best block scoring ≥ 0.6 (0..~1.15:
 fertility × wetness × flatness, averaged, plus 0.15 near water) both now
 and at the end of last summer (a survey kept from day 22: migrants judge
@@ -311,7 +319,7 @@ and behaviour.
   with fish unless the store is empty (`render/village/houses.ts`).
 - ☑ **Crops:** the sim sends a stress byte per field cell (third byte of
   `Snapshot.fields`, `cropStress` in `people/village.ts`, mirroring the
-  growth factor of `growCrops`): 1..127 dry (moisture < 0.35 while
+  growth factor of `growCrops`): 1..127 dry (moisture < 0.4 while
   growing), 128..255 waterlogged (moisture ≥ 0.9) or drowned (255, under
   water). The terrain shader paints dry fields pale with thin, patchy,
   straw-yellow crop rows, waterlogged ones as dark mud with brown crops and
