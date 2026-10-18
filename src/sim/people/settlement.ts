@@ -127,6 +127,12 @@ export interface SettlementState {
   ditches?: Ditch[];
   /** Share of the village's houses lit by the power grid yesterday, 0..1 (M6, power/grid.ts; absent: none). */
   light?: number;
+  /**
+   * Good land staked out for farmers still to come (pegged plots, daily;
+   * docs/PEOPLE.md §3.1; absent: none): only while the village has more good
+   * land than hands.
+   */
+  pegs?: number[];
 }
 
 export type Mood = -1 | 0 | 1;

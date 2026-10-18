@@ -5,6 +5,7 @@ import type { StaticModel } from '../../src/render/objects/loader';
 import { scatter, VegetationLayer, VegKind } from '../../src/render/objects/vegetation';
 import type { HeightSampler } from '../../src/render/coords';
 import { LandUse, SoilType } from '../../src/sim/world';
+import { FIELD_BYTES } from '../../src/shared/protocol';
 import {
   HOUSE_DESIGNS,
   MAX_FOOD_PROPS,
@@ -191,10 +192,10 @@ describe('fields', () => {
 
   it('places crop models only on sown field cells, inside the cell', () => {
     const n = 16;
-    const f = new Uint8Array(n * n * 3);
+    const f = new Uint8Array(n * n * FIELD_BYTES);
     const set = (x: number, y: number, lu: number, crop: number) => {
-      f[3 * (y * n + x)] = lu;
-      f[3 * (y * n + x) + 1] = crop;
+      f[FIELD_BYTES * (y * n + x)] = lu;
+      f[FIELD_BYTES * (y * n + x) + 1] = crop;
     };
     set(2, 2, LandUse.Field, 0); // ploughed: no plants
     set(3, 2, LandUse.Field, 120);
@@ -242,9 +243,9 @@ describe('vegetation and land use', () => {
     const layer = new VegetationLayer(scene, heights, look, n, n, 3, { library: stub, autoCull: false });
     await layer.ready;
     const before = layer.instanceCount;
-    const fields = new Uint8Array(n * n * 3);
-    for (let i = 0; i < n * n; i++) fields[3 * i] = landuse[i]!;
-    fields[3 * (40 * n + 40)] = LandUse.Building;
+    const fields = new Uint8Array(n * n * FIELD_BYTES);
+    for (let i = 0; i < n * n; i++) fields[FIELD_BYTES * i] = landuse[i]!;
+    fields[FIELD_BYTES * (40 * n + 40)] = LandUse.Building;
     layer.setFields(fields);
     layer.flush();
     const after = layer.instanceCount;

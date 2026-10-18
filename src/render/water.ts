@@ -23,6 +23,9 @@ export interface WaterUniforms extends FrontUniforms {
   uPlanOn: { value: number };
   uLining: { value: THREE.Texture | null };
   uLiningOn: { value: number };
+  /** The fields texture (render/village/fields.ts): paddies show their basins through clear water. */
+  uFields: { value: THREE.Texture | null };
+  uFieldsOn: { value: number };
   uPreviewOn: { value: number };
   uTerrain: { value: THREE.Texture };
   uDepthA: { value: THREE.Texture };
@@ -122,6 +125,8 @@ uniform highp sampler2D uPreview;
 uniform float uPlanOn;
 uniform float uPreviewOn;
 uniform vec2 uGrid;
+uniform sampler2D uFields;
+uniform float uFieldsOn;
 uniform sampler2D uNoise;
 uniform float uTime;
 uniform vec3 uSunDir;
@@ -147,6 +152,12 @@ void main() {
     vec2 fc = vWorld.xz - 0.5;
     fogA = smoothstep(0.45, 0.8, revealAt(fc) + (fogBillow(fc, uTime) - 0.5) * 0.3);
     if (fogA <= 0.0) discard;
+  }
+  // Paddies (FieldCrop 2 on a field): clear, still water over the basins and the rice.
+  float paddy = 0.0;
+  if (uFieldsOn > 0.5) {
+    vec4 fd = texelFetch(uFields, clamp(ivec2(floor(vWorld.xz)), ivec2(0), ivec2(uGrid) - 1), 0) * 255.0;
+    paddy = abs(fd.r - 1.0) < 0.5 && abs(fd.a - 2.0) < 0.5 ? 1.0 : 0.0;
   }
   vec3 fn = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   if (fn.y < 0.0) fn = -fn;
@@ -187,7 +198,7 @@ void main() {
   vec2 fdir = speed > 0.01 ? vVel / speed : vec2(1.0, 0.0);
   vec2 sp = vec2(dot(vWorld.xz, fdir), dot(vWorld.xz, vec2(-fdir.y, fdir.x)));
   float streak = texture(uNoise, vec2(sp.x * 0.08 - uTime * speed * 0.05, sp.y * 0.45)).b;
-  float mask = max(fast * 0.55, shore * mix(0.3, 0.6, shoreWave));
+  float mask = max(fast * 0.55, shore * mix(0.3, 0.6, shoreWave)) * (1.0 - paddy);
   float fn2 = mix(mix(nz.b, nf.b, 0.5), streak, fast);
   float foam = smoothstep(1.0 - mask, 1.0 - mask + 0.1, fn2);
   vec3 foamCol = uFoam * (amb + uSunColor) * RECIPROCAL_PI;
@@ -199,9 +210,9 @@ void main() {
   lit = mix(lit, refl, fres) + uSunColor * RECIPROCAL_PI * hl * 0.5;
   // Crisp foam line at the very edge of the water.
   float edge = 1.0 - smoothstep(0.015, 0.05 + 0.03 * nf.b, vDepth);
-  foam = max(foam, edge * 0.85);
+  foam = max(foam, edge * 0.85 * (1.0 - paddy));
   vec3 col = mix(lit + glint, foamCol, foam * 0.9);
-  float alpha = mix(0.62, 0.9, deepT);
+  float alpha = mix(mix(0.62, 0.9, deepT), 0.32, paddy);
   alpha = max(alpha, foam * 0.85);
   col *= cloudShadow(vWorld.xz);
 
@@ -259,6 +270,8 @@ export function createWaterUniforms(
     uPreviewOn: { value: 0 },
     uLining: { value: null },
     uLiningOn: { value: 0 },
+    uFields: { value: null },
+    uFieldsOn: { value: 0 },
     uTerrain: { value: tex.terrain },
     uDepthA: { value: tex.depthA },
     uDepthB: { value: tex.depthB },
