@@ -5,7 +5,7 @@ import { STEPS_PER_DAY } from '../../src/sim/constants';
 import { loadGame, saveGame } from '../../src/sim/persist';
 import { PathFinder } from '../../src/sim/people/path';
 import { WalkMap } from '../../src/sim/people/reach';
-import { BRIDGE, chooseCrossing } from '../../src/sim/people/bridges';
+import { BRIDGE, Bridges, chooseCrossing } from '../../src/sim/people/bridges';
 
 /**
  * A 64² valley: a river along y ≈ 20 (west → east) across the whole map,
@@ -87,6 +87,58 @@ describe('footbridges', () => {
     expect(new PathFinder(w).find(w.idx(24, 30), across, { bridge })).not.toBeNull();
     const after = new WalkMap(w, 24, 30, undefined, bridge);
     expect(after.tooFar(across)).toBe(false);
+  });
+
+  it('a bridge beside one that joins the same shores saves nothing; one over another arm does', () => {
+    // Two ditches (y 20–21 and y 36–37), the village between them at (24, 28).
+    const n = 64;
+    const w = new World(n, n, 1);
+    for (let i = 0; i < w.size; i++) w.soil[i] = 1;
+    for (let x = 0; x < n; x++) for (const y of [20, 21, 36, 37]) w.water[w.idx(x, y)] = 1;
+    const north: number[] = [];
+    const south: number[] = [];
+    for (let x = 20; x <= 28; x++)
+      for (let k = 0; k < 4; k++) {
+        north.push(w.idx(x, 12 + k));
+        south.push(w.idx(x, 41 + k));
+      }
+    const first = chooseCrossing(w, new WalkMap(w, 24, 28), north, () => false)!;
+    expect(first).not.toBeNull();
+    expect(first.saving).toBeGreaterThanOrEqual(BRIDGE.minSaving);
+    for (const k of first.cells) w.landuse[k] = LandUse.Bridge;
+    const bridge = (i: number) => w.landuse[i] === LandUse.Bridge;
+    const taken = (i: number) => first.cells.includes(i) || i === first.a || i === first.b;
+    const net = new WalkMap(w, 24, 28, undefined, bridge);
+    // The same shores again: nothing worth building, anywhere along the ditch.
+    expect(chooseCrossing(w, net, north, taken, bridge)).toBeNull();
+    // The other arm: a bridge over it, however near the first.
+    const second = chooseCrossing(w, net, [...north, ...south], taken, bridge)!;
+    expect(second).not.toBeNull();
+    expect((second.a / n) | 0).toBeGreaterThan(30);
+  });
+
+  it('bridges per village scale with its size, one project at a time, spaced in time', () => {
+    const n = 64;
+    const w = new World(n, n, 1);
+    for (let i = 0; i < w.size; i++) w.soil[i] = 1;
+    for (let x = 0; x < n; x++) for (const y of [20, 21, 36, 37]) w.water[w.idx(x, y)] = 1;
+    const demand: number[] = [];
+    for (let x = 20; x <= 28; x++) for (let k = 0; k < 4; k++) demand.push(w.idx(x, 12 + k), w.idx(x, 41 + k));
+    let id = 1;
+    const br = new Bridges(w, () => id++);
+    const onBridge = (i: number) => w.landuse[i] === LandUse.Bridge;
+    const plan = (pop: number, day: number) => br.plan(0, pop, new WalkMap(w, 24, 28, undefined, onBridge), demand, day);
+    plan(10, 0);
+    expect(br.list.length).toBe(1);
+    plan(10, 1);
+    expect(br.list.length).toBe(1); // being built
+    while (!br.work(br.list[0]!.id));
+    plan(10, 40);
+    expect(br.list.length).toBe(1); // ten people: one bridge
+    plan(40, 10);
+    expect(br.list.length).toBe(1); // too soon after the last
+    plan(40, 40);
+    expect(br.list.length).toBe(2);
   });
 
   it('villagers bridge the river to their fields, walk over it, and keep it across save/load', async () => {

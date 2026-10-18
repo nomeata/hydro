@@ -54,6 +54,14 @@ export const BRIDGE = {
   maxRaise: 1.2,
   /** An unfinished bridge whose crossing can't be worked for this long is given up. */
   giveUpDays: 60,
+  /**
+   * A finished bridge with an end in water too deep to wade (the river
+   * widened) is "stranded": no new crossing within `strandNear` cells of
+   * its ends is started while it may yet dry out; after `relocateDays`
+   * stranded, such a crossing replaces it (the old one is pulled down).
+   */
+  strandNear: 4,
+  relocateDays: 24,
   /** Demand cells considered at most. */
   maxDemand: 64,
 };
@@ -76,6 +84,8 @@ export interface Footbridge {
   broken?: boolean;
   /** Highest water surface seen at the deck while broken (m): rebuilt above it. */
   flood?: number;
+  /** Day an end was first seen in water too deep to wade (stranded), while it lasts. */
+  wet?: number;
 }
 
 const DIRS8: readonly [number, number][] = [
@@ -275,6 +285,12 @@ export class Bridges {
       return day - b.since < BRIDGE.giveUpDays;
     });
     if (this.list.length !== before) this.dirty = true;
+    // Bridges whose ends the river has reached.
+    for (const b of this.list) {
+      const wet = b.progress >= 1 && (w.water[b.a]! > MAX_WADE || w.water[b.b]! > MAX_WADE);
+      if (wet && b.wet === undefined) b.wet = day;
+      else if (!wet && b.wet !== undefined) delete b.wet;
+    }
     if (population < BRIDGE.minPeople || this.pending(settlement) || !demand.length) return;
     const mine = this.of(settlement);
     if (mine.length >= Math.min(BRIDGE.perVillage, Math.ceil(population / BRIDGE.perPeople))) return;
@@ -293,6 +309,15 @@ export class Bridges {
     const net = this.list.some((b) => b.progress < 1) ? new WalkMap(w, map.cx, map.cy, undefined, onBridge) : map;
     const c = chooseCrossing(w, net, dem, (i) => taken.has(i), onBridge);
     if (!c) return;
+    // Next to a stranded bridge: wait for the water, or in time move it here.
+    const W = w.width;
+    const near = (p: number, q: number) => octile(Math.abs((p % W) - (q % W)), Math.abs(((p / W) | 0) - ((q / W) | 0))) <= BRIDGE.strandNear;
+    const old = this.list.filter((b) => b.wet !== undefined && [b.a, b.b].some((e) => near(e, c.a) || near(e, c.b)));
+    if (old.some((b) => day - b.wet! < BRIDGE.relocateDays)) return;
+    if (old.length) {
+      for (const b of old) for (const k of b.cells) if (w.landuse[k] === LandUse.Bridge) w.landuse[k] = LandUse.None;
+      this.list = this.list.filter((b) => !old.includes(b));
+    }
     this.list.push({ id: this.nextId(), settlement, a: c.a, b: c.b, cells: c.cells, progress: 0, top: 0, since: day });
     this.dirty = true;
   }
