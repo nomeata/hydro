@@ -254,7 +254,8 @@ point: on most worlds a dry terrace 2–6 m above the river with a fertile,
 flood-prone floodplain below it (worldgen `chooseStart`, GAMEPLAY §4.3 P2;
 the old river meadow is the fallback). Further
 villages (code: `FOUNDING` in `village.ts`): once all villages together
-have ≥ 40 people, or one village has ≥ 30 people and no free house, and at
+have ≥ 40 people, or one village has ≥ 30 people and no free house (or
+is held back by its land or by room for houses: `limit`), and at
 most once per game year, the best block scoring ≥ 0.6 (0..~1.15:
 fertility × wetness × flatness, averaged, plus 0.15 near water) both now
 and at the end of last summer (a survey kept from day 22: migrants judge

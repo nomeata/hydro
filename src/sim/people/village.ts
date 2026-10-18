@@ -1245,7 +1245,10 @@ export class PeopleSystem {
   private wantsNewVillage(day: number): boolean {
     if (!this.settlements.length || day - this.lastFounding < FOUNDING.interval) return false;
     if (this.population >= FOUNDING.minPopulation) return true;
-    return this.settlements.some((s) => s.state.population >= FOUNDING.crowdedPopulation && s.freeHouses <= 0);
+    // Crowded: no free house, or newcomers turned away for want of room or land (a village
+    // held back by its land keeps one house free, so the free-house test alone never fired).
+    const full = (s: Settlement) => s.freeHouses <= 0 || s.state.limit === 'land' || s.state.limit === 'room';
+    return this.settlements.some((s) => s.state.population >= FOUNDING.crowdedPopulation && full(s));
   }
 
   /**
