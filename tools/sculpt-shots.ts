@@ -55,16 +55,18 @@ await page.evaluate(({ rx, ry }) => {
 }, site);
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${out}/0-before.png` });
-const screen = async (x: number, y: number) => (await page.evaluate(([a, b]) => (window as any).__hydro.project(a, b), [x, y])) as [number, number];
+/** Screen positions of ground points, all at once (one round trip: the camera stands still). */
+const screens = async (pts: [number, number][]) => (await page.evaluate((ps) => ps.map(([a, b]) => (window as any).__hydro.project(a, b)), pts)) as [number, number][];
+const screen = async (x: number, y: number) => (await screens([[x, y]]))[0]!;
 await page.keyboard.press('3'); // Dig
 const n = 24;
 const a = await screen(site.rx - site.ux * 1, site.ry - site.uy * 1);
 await page.mouse.move(a[0], a[1]);
 await page.mouse.down();
+const digLine = await screens(Array.from({ length: n + 1 }, (_, k) => [site.rx + site.ux * ((k / n) * 16 - 1), site.ry + site.uy * ((k / n) * 16 - 1)] as [number, number]));
 for (let pass = 0; pass < 3; pass++) {
   for (let k = 0; k <= n; k++) {
-    const f = pass % 2 ? 1 - k / n : k / n;
-    const p = await screen(site.rx + site.ux * (f * 16 - 1), site.ry + site.uy * (f * 16 - 1));
+    const p = digLine[pass % 2 ? n - k : k]!;
     await page.mouse.move(p[0], p[1]);
     await page.waitForTimeout(40);
   }
@@ -78,10 +80,10 @@ const py = site.ux;
 const b0 = await screen(site.rx + site.ux * 4 + px * 6, site.ry + site.uy * 4 + py * 6);
 await page.mouse.move(b0[0], b0[1]);
 await page.mouse.down();
+const bankLine = await screens(Array.from({ length: n + 1 }, (_, k) => [site.rx + site.ux * (4 + (k / n) * 12) + px * 6, site.ry + site.uy * (4 + (k / n) * 12) + py * 6] as [number, number]));
 for (let pass = 0; pass < 3; pass++)
   for (let k = 0; k <= n; k++) {
-    const f = pass % 2 ? 1 - k / n : k / n;
-    const p = await screen(site.rx + site.ux * (4 + f * 12) + px * 6, site.ry + site.uy * (4 + f * 12) + py * 6);
+    const p = bankLine[pass % 2 ? n - k : k]!;
     await page.mouse.move(p[0], p[1]);
     await page.waitForTimeout(40);
   }

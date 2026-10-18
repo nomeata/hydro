@@ -461,7 +461,7 @@ export class ToolPalette {
     // The power tool's options line holds its modes (when there is more than one to pick).
     const modes = id === 'power' && POWER_MODES.length > 1;
     const brush = isBrush(id);
-    if (this.brush) this.endBrush();
+    if (this.brush) this.endBrush(true);
     this.options.hidden = !st && !modes && !brush;
     this.modes.hidden = !modes;
     this.brushRow.hidden = !brush;
@@ -766,9 +766,15 @@ export class ToolPalette {
 
   /** Every frame while the brush is held: brush from where it was to where it is now, for the time since. */
   private readonly brushFrame = (): void => {
+    if (!this.brush) return;
+    this.brushRaf = requestAnimationFrame(this.brushFrame);
+    this.brushStep();
+  };
+
+  /** Brush for the time since the last step (each frame, and once more when let go: slow frames lose nothing). */
+  private brushStep(): void {
     const b = this.brush;
     if (!b) return;
-    this.brushRaf = requestAnimationFrame(this.brushFrame);
     const now = performance.now();
     // Real hold time (a slow frame still counts in full, up to a limit: the sim caps each sample too).
     const dt = Math.min(0.25, (now - b.t) / 1000);
@@ -795,10 +801,11 @@ export class ToolPalette {
     b.at = p;
     sc.flush();
     this.host.brushed?.(p.x, p.y, r);
-  };
+  }
 
   /** Let go of the brush (cancelled: a second finger came, nothing more is brushed). */
   private endBrush(cancelled = false): void {
+    if (!cancelled) this.brushStep();
     const b = this.brush;
     this.brush = null;
     cancelAnimationFrame(this.brushRaf);
