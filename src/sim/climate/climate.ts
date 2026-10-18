@@ -37,8 +37,27 @@ export const CLIMATE = {
   /** Range of the yearly factor exp(a). */
   factorMin: 0.55,
   factorMax: 1.6,
-  /** The first year is kept ordinary (the player's first impression). */
+  /** The first year is kept ordinary (the player's first impression)... */
   firstYear: [-0.1, 0.2] as readonly number[],
+  /**
+   * ...and the second one is dry at most this (factor ≈ 0.7): the first
+   * summer shortage comes while the player has just got the weir
+   * (docs/PLAYTEST.md round 2, the year-2 lull).
+   */
+  secondYearMax: -0.35,
+  /**
+   * Big freshets (rare spring floods that go over the floodplain): from the
+   * third year on, a year has one with chance `bigChance · exp(bigWet · a)`
+   * (clamped to `bigChanceRange`; return period ≈ 4 years, likelier in wet
+   * years), and its freshet is `bigFactor` (+ up to `bigSpread`) times the
+   * usual one, lasting `bigDays` days. Drawn from a hash of seed and year.
+   */
+  bigChance: 0.25,
+  bigWet: 1.5,
+  bigChanceRange: [0.1, 0.6] as readonly number[],
+  bigFactor: 3,
+  bigSpread: 1.5,
+  bigDays: 12,
   /** Rain fronts per day × exp(frontsAnomaly · a). */
   frontsAnomaly: 0.8,
   /** Per-tile rain factor range (generation climate: wetness, rain shadow). */
@@ -72,6 +91,19 @@ function clamp(v: number, lo: number, hi: number): number {
 /** The yearly innovation ε ~ N(0, 1) for `year`, a pure function of the seed. */
 function innovation(seed: number, year: number): number {
   return new Rng((seed * 0x9e3779b1) ^ (year * 0x85ebca6b) ^ 0xc11a7e).normal();
+}
+
+/**
+ * The size of `year`'s big freshet relative to an ordinary one (0: none),
+ * a pure function of the seed, the year and its anomaly `a`.
+ */
+export function bigFreshet(seed: number, year: number, a: number): number {
+  if (year < 2) return 0;
+  const r = new Rng((seed * 0x2545f491) ^ (year * 0x9e3779b1) ^ 0xf1d0);
+  const [lo, hi] = CLIMATE.bigChanceRange;
+  const chance = clamp(CLIMATE.bigChance * Math.exp(CLIMATE.bigWet * a), lo!, hi!);
+  const u = r.next();
+  return u < chance ? CLIMATE.bigFactor + CLIMATE.bigSpread * r.next() : 0;
 }
 
 export class Climate {
@@ -121,6 +153,7 @@ export class Climate {
       s.year = t.year;
       s.prevAnomaly = s.anomaly;
       s.anomaly = CLIMATE.anomalyRho * s.anomaly + CLIMATE.anomalyNoise * innovation(this.seed, t.year);
+      if (t.year === 1) s.anomaly = Math.min(s.anomaly, CLIMATE.secondYearMax);
       // Last winter's snowpack sizes this spring's freshet.
       if (s.winterStart >= 0) {
         const winter = precipTotal - s.winterStart;
@@ -135,7 +168,12 @@ export class Climate {
   /** Multiplier on every boundary inflow at time `t`. */
   inflowFactor(t: SimTime): number {
     if (!this.seasonal) return 1;
-    return seasonalInflow(t.yearFrac, this.state.snowFactor) * Climate.factor(this.anomalyAt(t));
+    return seasonalInflow(t.yearFrac, this.state.snowFactor, this.bigFreshet()) * Climate.factor(this.anomalyAt(t));
+  }
+
+  /** This year's big freshet relative to an ordinary one (0: none this year). */
+  bigFreshet(): number {
+    return bigFreshet(this.seed, this.state.year, this.state.anomaly);
   }
 
   /** Multiplier on the rain-front frequency. */
@@ -157,7 +195,7 @@ export class Climate {
  * The seasonal inflow profile at `yearFrac` (0 = first day of spring):
  * cosine interpolation between the season midpoints, plus the freshet.
  */
-export function seasonalInflow(yearFrac: number, snowFactor = 1): number {
+export function seasonalInflow(yearFrac: number, snowFactor = 1, big = 0): number {
   const p = CLIMATE.inflowSeason;
   // Season midpoints at 0.125, 0.375, …; u counts midpoints from spring's.
   const u = (((yearFrac - 0.125) * 4) % 4 + 4) % 4;
@@ -167,10 +205,11 @@ export function seasonalInflow(yearFrac: number, snowFactor = 1): number {
   const base = p[k % 4]! * (1 - c) + p[(k + 1) % 4]! * c;
   const day = yearFrac * 4 * DAYS_PER_SEASON;
   let fr = 0;
-  if (day < CLIMATE.freshetDays) {
+  const len = big > 0 ? CLIMATE.bigDays : CLIMATE.freshetDays;
+  if (day < len) {
     const pk = CLIMATE.freshetPeak;
-    const shape = day < pk ? Math.sin((Math.PI / 2) * (day / pk)) : Math.cos((Math.PI / 2) * ((day - pk) / (CLIMATE.freshetDays - pk)));
-    fr = CLIMATE.freshet * snowFactor * shape * shape;
+    const shape = day < pk ? Math.sin((Math.PI / 2) * (day / pk)) : Math.cos((Math.PI / 2) * ((day - pk) / (len - pk)));
+    fr = CLIMATE.freshet * Math.max(snowFactor, big > 0 ? 1 : 0) * Math.max(1, big) * shape * shape;
   }
   return base + fr;
 }
