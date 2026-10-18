@@ -272,7 +272,8 @@ describe('the land and the people', () => {
   it('a real village: Founders, First Harvest and Hamlet in its first weeks', async () => {
     const gen = generateWorld({ seed: 3, size: 128 });
     const sim = new Simulation(gen.world, 3, { people: { startX: gen.startX, startY: gen.startY } });
-    await runDays(sim, 20);
+    // Families arrive by chance as houses free up: a hamlet within the first season or so.
+    await runDays(sim, 30);
     expect(ids(sim.achievements)).toEqual(expect.arrayContaining(['founders', 'firstHarvest', 'pop10']));
   }, 120_000);
 });

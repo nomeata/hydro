@@ -25,6 +25,11 @@ export const ECONOMY = {
   /** Arrivals need w above this; departures happen below the second. */
   arriveAbove: 0.6,
   leaveBelow: 0.4,
+  /**
+   * Families stop arriving and births pause while food security is below
+   * this, so a village levels off fed rather than hungry (GAMEPLAY §4.1).
+   */
+  growFood: 1,
   /** Natural births/deaths per person per year (small, roughly balanced). */
   birthRate: 0.04,
   deathRate: 0.035,
@@ -188,7 +193,8 @@ export class Settlement {
 
     // Natural change (small, mostly cosmetic).
     const perDay = 1 / DAYS_PER_YEAR;
-    const births = s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3);
+    const fed = this.foodSecurity(dayOfYear) >= ECONOMY.growFood;
+    const births = fed ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
     const deaths = s.population * (ECONOMY.deathRate + (starving ? ECONOMY.starvationDeathRate : 0)) * perDay;
     if (rng.next() < births) {
       s.population++;
@@ -201,7 +207,7 @@ export class Settlement {
 
     // Migration: the main lever, rate-limited by housing.
     const free = Math.max(0, this.freeHouses);
-    const pArrive = ECONOMY.arrivalRate * Math.max(0, s.wellbeing - ECONOMY.arriveAbove) * free;
+    const pArrive = fed ? ECONOMY.arrivalRate * Math.max(0, s.wellbeing - ECONOMY.arriveAbove) * free : 0;
     if (free > 0 && rng.next() < pArrive) {
       const n = rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1);
       s.population += n;

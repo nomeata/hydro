@@ -4,7 +4,7 @@ import { STEPS_PER_DAY } from '../../src/sim/constants';
 import { loadGame, saveGame } from '../../src/sim/persist';
 import { Task } from '../../src/sim/people/agents';
 import { MOOD, nextMood, type Mood } from '../../src/sim/people/settlement';
-import { MAX_CHILDREN, cropStress } from '../../src/sim/people/village';
+import { CROP_MOISTURE, MAX_CHILDREN, cropGrowth, cropStress } from '../../src/sim/people/village';
 import { buildScene } from '../../src/sim/scenes';
 import { LandUse } from '../../src/sim/world';
 
@@ -33,14 +33,20 @@ describe('visible mood', () => {
 });
 
 describe('crop stress', () => {
-  it('mirrors the growth factor: dry below 0.35, waterlogged from 0.9, drowned under water', () => {
+  it('mirrors the growth factor: dry below CROP_MOISTURE.moist, waterlogged from .soggy, drowned under water', () => {
+    const c = CROP_MOISTURE;
     expect(cropStress(100, 0.6, 0, true)).toBe(0);
     expect(cropStress(0, 0.05, 0, true)).toBe(0); // nothing sown
     expect(cropStress(100, 0.05, 0, false)).toBe(0); // not growing
-    expect(cropStress(100, 0.15, 0, true)).toBe(127);
-    const mild = cropStress(100, 0.3, 0, true);
+    expect(cropStress(100, c.dry, 0, true)).toBe(127);
+    // A quarter of the way from bone dry to moist: clearly but not fully dry.
+    const mild = cropStress(100, c.dry + 0.75 * (c.moist - c.dry), 0, true);
     expect(mild).toBeGreaterThan(0);
     expect(mild).toBeLessThan(STRESS_WET / 2);
+    expect(cropStress(100, c.moist, 0, true)).toBe(0);
+    // The stress mirrors the growth factor.
+    expect(cropGrowth(c.dry)).toBe(0);
+    expect(cropGrowth(c.moist)).toBe(1);
     expect(cropStress(100, 0.95, 0, true)).toBeGreaterThanOrEqual(STRESS_WET);
     expect(cropStress(100, 0.6, 0.2, false)).toBe(255);
   });

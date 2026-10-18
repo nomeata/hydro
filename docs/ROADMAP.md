@@ -42,7 +42,7 @@ Fun on screen fast.
 ## M1c — Deep water ◐
 - ☑ Lateral groundwater (hourly Darcy diffusion), springs/bogs via overflow
 - ☑ Deep percolation sink so closed basins don't fill up over years
-- Snow + melt, climate anomaly (wet/dry years)
+- Snow + melt; ☑ climate anomaly (wet/dry years, GAMEPLAY §4.3 P1)
 - ☑ Phone bench page (`?bench=1`)
 - ☑ CPU cap on touch devices (sim duty cycle 45%, `?duty=` overrides)
 - Quality tiers (pending real-device numbers)
@@ -88,10 +88,12 @@ Player feedback: more direct progress hits; keep it all positive
 See docs/GAMEPLAY.md §7 (prioritised list).
 - ☑ Design note: tools vs villager works, villager-operated gates, help,
   agency diagnosis, unlock progression, climates (docs/GAMEPLAY.md)
-- River seasons, freshet and dry/wet years; live rain follows the
-  generation climate
-- Agency harness (unaided vs scripted plan), terrace start, flood memory
-  that forgets behind a dike, founding judged at the end of summer
+- ☑ River seasons, freshet and dry/wet years; live rain follows the
+  generation climate (`sim/climate/climate.ts`)
+- ◐ ☐ agency harness (unaided vs scripted plan); ☑ terrace start, flood
+  memory that forgets behind a dike, founding judged at the end of summer,
+  lining only by houses, growth pauses when food is short, economy retuned
+  so that water decides what is farmable
 - ☑ Unlocks without the Lining tool (weir 15, gate 30; milestones 50, 100,
   150, 250 reserved for wheel, turbine, poles, pump); hints that say why
 - ☑ Villager-operated gates (GAMEPLAY §2; `sim/structures/gatekeeper.ts`):

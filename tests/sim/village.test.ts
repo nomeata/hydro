@@ -40,8 +40,9 @@ describe('first village', () => {
   }, 240_000);
 
   it('fishers go fishing when there is stocked water nearby', async () => {
-    // Seed 3 has a lake by the village (see the year test).
-    const sim = village(3);
+    // Seed 3 has a lake by its river meadow at (74, 84) (the terrace start lies away from calm water).
+    const gen = generateWorld({ seed: 3, size: 128 });
+    const sim = new Simulation(gen.world, 3, { people: { startX: 74, startY: 84 } });
     await runDays(sim, 20);
     const p = sim.people!;
     const fishers = p.agents.filter((a) => a.job === 3);

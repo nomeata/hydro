@@ -437,6 +437,8 @@ export function buildScene(id: SceneId): Simulation {
   sim.fog = false;
   w.revealed.fill(255);
   sim.weather.autoFronts = false;
+  // A steady river: the staged scenes don't follow the river seasons.
+  sim.climate.seasonal = false;
   sim.weather.state.windDir = 0.35;
   sim.step = SCENE_START_STEP;
   sim.people!.stage(null);
