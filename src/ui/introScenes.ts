@@ -57,6 +57,9 @@ const SCRIPTS: Record<SceneId, Script> = {
   pump: { camera: { x: 72, y: 70, yaw: -20 * DEG, pitch: 40 * DEG, viewHeight: 24 }, speed: 3, duration: 16 },
 };
 
+/** Frames rendered from a scene's first state before it fades in over the drawing. */
+const FADE_IN_FRAMES = 3;
+
 /** Timeline of the 'shape' scene (seconds). */
 const T_TAP = 1.3;
 const T_DRAW = 2.0;
@@ -84,6 +87,8 @@ export class IntroScenes {
   private runStart = 0;
   private restartAt = 0;
   private live = false;
+  /** Frames still to render before the canvas fades in (0: not waiting). */
+  private fadeInAfter = 0;
   private disposed = false;
   private raf = 0;
   /** 'shape' timeline state. */
@@ -113,6 +118,7 @@ export class IntroScenes {
       ['look', 'Look'],
       ['raise', 'Raise'],
       ['dig', 'Dig'],
+      ['even', 'Even'],
     ] as const) {
       const b = document.createElement('button');
       b.tabIndex = -1;
@@ -195,6 +201,7 @@ export class IntroScenes {
 
   private restart(): void {
     this.container.classList.remove('live-on');
+    this.fadeInAfter = 0;
     this.wantRun = this.client.scene(this.scene, SCRIPTS[this.scene].speed);
     this.restartAt = 0;
     this.resetScript();
@@ -233,23 +240,28 @@ export class IntroScenes {
     sound.scene(s, cameraView(r.camera.getCurrentState(), this.canvas.clientWidth, this.canvas.clientHeight), r.info.width);
     r.applySnapshot(s);
     this.layers.applySnapshot(s);
-    if (first) {
-      // Let a frame or two render, then fade in.
-      setTimeout(() => {
-        if (this.disposed || this.shownRun !== this.wantRun) return;
-        this.container.classList.add('live-on');
-        if (!this.live) {
-          this.live = true;
-          this.onLive?.();
-        }
-      }, 120);
+    // Fade in once a few frames of this state are on screen (frame()):
+    // on a slow phone the first ones can take a while, and the drawing
+    // stays until then.
+    if (first) this.fadeInAfter = FADE_IN_FRAMES;
+  }
+
+  private fadeIn(): void {
+    if (this.disposed || this.shownRun !== this.wantRun) return;
+    this.container.classList.add('live-on');
+    this.runStart = performance.now();
+    if (!this.live) {
+      this.live = true;
+      this.onLive?.();
     }
   }
 
   private readonly frame = (now: number): void => {
     if (this.disposed || !this.renderer) return;
     this.raf = requestAnimationFrame(this.frame);
-    if (this.shownRun === this.wantRun) {
+    // The script's clock starts once the scene is on screen (fadeIn), so a
+    // slow start never eats into it.
+    if (this.shownRun === this.wantRun && this.fadeInAfter === 0) {
       const t = (now - this.runStart) / 1000;
       const sc = SCRIPTS[this.scene];
       if (this.scene === 'shape') this.shapeScript(t);
@@ -261,6 +273,7 @@ export class IntroScenes {
     }
     if (this.restartAt && now >= this.restartAt) this.restart();
     this.renderer.frame(now);
+    if (this.fadeInAfter > 0 && this.shownRun === this.wantRun && --this.fadeInAfter === 0) this.fadeIn();
   };
 
   // ---------------------------------------------------------------------------
@@ -277,7 +290,9 @@ export class IntroScenes {
     const rest: [number, number] = [tool[0] + cr.width * 0.18, tool[1] - cr.height * 0.25];
     let p: [number, number];
     let press = false;
-    const dt = this.lastT ? Math.min(0.25, Math.max(0, t - this.lastT)) : 0;
+    // The brush is held for the part of the draw window since the last frame:
+    // slow frames (software GL, a weak phone) still dig the whole channel.
+    const held = Math.max(0, Math.min(t, T_RELEASE) - Math.max(this.lastT, T_DRAW));
     this.lastT = t;
     if (t < T_TAP - 0.5) {
       p = rest;
@@ -306,7 +321,7 @@ export class IntroScenes {
         // From where the brush was last frame to here (slow frames: no gaps).
         const from = this.lastAt ?? at;
         const n = Math.max(1, Math.ceil(Math.hypot(at[0] - from[0], at[1] - from[1]) / (DIG.radius * 0.4)));
-        for (let k = 1; k <= n; k++) sc.sample(from[0] + ((at[0] - from[0]) * k) / n, from[1] + ((at[1] - from[1]) * k) / n, (dt * DIG.boost) / n);
+        for (let k = 1; k <= n; k++) sc.sample(from[0] + ((at[0] - from[0]) * k) / n, from[1] + ((at[1] - from[1]) * k) / n, (held * DIG.boost) / n);
         this.lastAt = at;
         sc.flush();
       }
@@ -314,6 +329,11 @@ export class IntroScenes {
     } else {
       if (this.drew) {
         this.drew = false;
+        // The rest of the hold, up to the release, where the brush last was.
+        if (this.sculptor && this.lastAt && held > 0) {
+          this.sculptor.sample(this.lastAt[0], this.lastAt[1], held * DIG.boost);
+          this.sculptor.flush();
+        }
         this.renderer?.brushCursor.set(null);
         // The brush stays in the hand; let the water come quickly.
         this.client.setSpeed(4);

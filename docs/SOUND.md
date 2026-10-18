@@ -53,9 +53,9 @@ sources feed all layers.
 
 | Layer | Sound | Driven by | Level |
 |---|---|---|---|
-| river | brown noise 160–800 Hz body + a pink "babble" band around 1.3 kHz whose centre and level wobble | flowing water in view, `1−e^(−9f)`; × (1 − 0.55·zoom); panned to the water | 0.5 |
+| river | brown noise 160–800 Hz body + a pink "babble" band around 1.3 kHz whose centre and level wobble | flowing water in view, `1−e^(−5f)`; × (1 − 0.4·zoom); panned to the water | 0.25 |
 | lake | low lapping swells (1.6–3.4 s, quick rise, slow fall) + a faint wash | still deep water, `1−e^(−4f)`, a bit more with wind | 0.45 |
-| rapids | broad rushing pink noise 300 Hz–4.2 kHz | fast water (weir spill, races, rapids) `1−e^(−14f)` | 0.32 |
+| rapids | broad rushing pink noise 300 Hz–4.2 kHz | fast water (races, rapids) `1−e^(−8f)`, or 0.8 × weir spill; × (1 − 0.25·zoom) | 0.16 |
 | rain | high-passed hiss + soft drop ticks | the rain front at the view centre (fades over a third of its radius beyond the edge) | 0.3 |
 | wind | a slowly sweeping band 200–650 Hz with gusts | 0.12 + 0.45·zoom + winter 0.2 + snow + rain + wind speed | 0.4 |
 | crickets | two sine singers at 4.4/4.7 kHz gated by chirp patterns | summer (late spring a little), warm, green land, a little more towards evening | 0.022 |
@@ -143,7 +143,7 @@ and writes WAVs, spectrograms and a loudness report (docs/TESTING.md
 | scenario | LUFS | momentary | peak dBFS | spots/min | notes |
 |---|---|---|---|---|---|
 | meadow | −33.3 | −39…−27 | −14.7 | 54 | wind, birds, distant work |
-| river close-up | −26.3 | −27…−24 | −14.6 | 3 | river + rapids, the loudest bed |
+| river close-up | −31.8 | −34…−26 | −18.3 | 5 | river + rapids (was −26.3 before the water beds went 6 dB down, October 2026) |
 | paused (same view) | −30.7 | −32…−27 | −16.9 | 6 (birds) | ambience on, activity off |
 | zoomed out | −33.7 | −37…−31 | −21.2 | 45 | wind; work taps faint |
 | village (scene) | −33.3 | −48…−27 | −12.6 | 57 | hammer, spade, birds, frogs, crickets |

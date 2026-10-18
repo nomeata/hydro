@@ -27,6 +27,8 @@ export class WorldLayers {
   private lookCounter = 0;
   private season = 0;
   private readonly unlisten: () => void;
+  /** Where the crew works on unfinished weirs: the dry bank at either end, next to the water. */
+  private sites: [number, number][] = [];
 
   constructor(
     private readonly renderer: GameRenderer,
@@ -44,13 +46,18 @@ export class WorldLayers {
     this.crowd = new CrowdLayer(renderer.scene, renderer.heights, { camera: renderer.camera.camera });
     this.fishJumps = new FishJumps(renderer.scene, renderer.heights);
     this.fishJumps.known = (x, y) => !renderer.fog.enabled || renderer.fog.at(x, y) >= 200;
-    this.sculptCrew = new SculptCrew((x, y) => !renderer.fog.enabled || renderer.fog.known(x, y));
-    this.unlisten = renderer.addFrameListener((dt, now) => {
-      this.fakeCrowd?.advance(dt);
-      this.sculptCrew.advance(dt);
-      this.crowd.update(dt, now);
+    this.sculptCrew = new SculptCrew(
+      (x, y) => !renderer.fog.enabled || renderer.fog.known(x, y),
+      (x, y) => renderer.heights.depthAt(x, y) < 0.05,
+    );
+    // All of it is game activity, on the game clock (frozen while paused; render/gameClock.ts).
+    this.unlisten = renderer.addFrameListener((_dt, clock) => {
+      this.fakeCrowd?.advance(clock.playDt);
+      if (clock.playDt > 0) for (const [x, y] of this.sites) this.sculptCrew.site(x, y);
+      this.sculptCrew.advance(clock.playDt);
+      this.crowd.update(clock.playDt, clock.playMs, clock.animDt);
       const cam = renderer.camera.getCurrentState();
-      this.fishJumps.update(dt, cam.x, cam.y, cam.viewHeight);
+      this.fishJumps.update(clock.animDt, cam.x, cam.y, cam.viewHeight);
     });
   }
 
@@ -73,8 +80,9 @@ export class WorldLayers {
     const animals = this.fakeCrowd?.frame();
     let entities = animals ? mergeFrames(s.entities, animals) : (s.entities ?? EMPTY);
     if (this.sculptCrew.count) entities = mergeFrames(entities, this.sculptCrew.frame());
-    this.crowd.setFrame(hideInFog(entities, r), performance.now());
+    this.crowd.setFrame(hideInFog(entities, r), r.clock.playMs);
     if (s.structures || s.terrain) this.crowd.setDecks(r.structures.decks());
+    if (s.structures || s.terrain || this.sites.length) this.sites = weirSites(r);
     const v = this.vegetation;
     if (s.revealed) v.setRevealed(s.revealed);
     if (s.terrain) v.invalidate(0, s.terrain.y0, W, s.terrain.y1);
@@ -97,6 +105,29 @@ export class WorldLayers {
     this.crowd.dispose();
     this.fishJumps.dispose();
   }
+}
+
+/** The bank at either end of each unfinished weir: the last dry point before the water, walking in from the end. */
+export function weirSites(r: Pick<GameRenderer, 'structures' | 'heights'>): [number, number][] {
+  const out: [number, number][] = [];
+  for (const w of r.structures.structures) {
+    if (w.kind !== 'weir' || w.progress >= 1 || w.x2 === undefined || w.y2 === undefined) continue;
+    const len = Math.hypot(w.x2 - w.x, w.y2 - w.y);
+    for (const [ax, ay, bx, by] of [
+      [w.x, w.y, w.x2, w.y2],
+      [w.x2, w.y2, w.x, w.y],
+    ] as const) {
+      let site: [number, number] = [ax, ay];
+      for (let u = 0; u <= len / 2; u += 0.5) {
+        const px = ax + ((bx - ax) * u) / len;
+        const py = ay + ((by - ay) * u) / len;
+        if (r.heights.depthAt(px, py) >= 0.05) break;
+        site = [px, py];
+      }
+      out.push(site);
+    }
+  }
+  return out;
 }
 
 const EMPTY: EntityFrame = { count: 0, id: new Uint16Array(0), info: new Uint8Array(0), pos: new Float32Array(0) };

@@ -12,6 +12,13 @@ type Weir = { id: number; x: number; y: number; x2: number; y2: number; top: num
 const weirs = (page: Page): Promise<Weir[]> =>
   page.evaluate(() => (window as any).__hydro.renderer.structures.structures.filter((s: any) => s.kind === 'weir'));
 
+/** Run the sim a day at a time until the (first) weir is built, for at most `days` days. */
+async function builtWithin(page: Page, days: number): Promise<void> {
+  const progress = async () => (await weirs(page))[0]?.progress ?? 0;
+  for (let d = 0; d < days && (await progress()) <= 0.999; d++) await runDays(page, 1);
+  await expect.poll(progress, { timeout: 30_000 }).toBeGreaterThan(0.999);
+}
+
 async function tap(page: Page, phone: boolean, p: [number, number]): Promise<void> {
   if (phone) await touchPath(page, [p]);
   else await page.mouse.click(p[0], p[1]);
@@ -41,8 +48,8 @@ test('a weir is selected with a tap, its crest raised and lowered, an end dragge
   expect(site).not.toBeNull();
   const { a, b } = site!;
   await page.evaluate(([pa, pb]) => (window as any).__hydro.client.command({ type: 'planWeir', points: [pa, pb], height: 1.5 }), [a, b]);
-  await runDays(page, 3);
-  await expect.poll(async () => (await weirs(page))[0]?.progress ?? 0, { timeout: 30_000 }).toBeGreaterThan(0.999);
+  // The crew builds it (a day at a time, as long as it takes, at most three).
+  await builtWithin(page, 3);
   const w0 = (await weirs(page))[0]!;
   const mx = (w0.x + w0.x2) / 2;
   const my = (w0.y + w0.y2) / 2;
@@ -90,7 +97,7 @@ test('a weir is selected with a tap, its crest raised and lowered, an end dragge
   expect(w1.id).toBe(w0.id);
   expect(Math.hypot(w1.x - w0.x, w1.y - w0.y)).toBeLessThan(0.01);
   // The crew builds the longer weir.
-  await runDays(page, 3);
+  await builtWithin(page, 3);
   await settleFrames(page);
   await page.screenshot({ path: `test-results/weir-edited-${info.project.name}.png` });
 

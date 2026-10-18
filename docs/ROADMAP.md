@@ -117,6 +117,10 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   strong stream without a mill, a weir without a turbine, houses far from
   power), "Show me" rings the spot, a dot on the menu for a new one;
   achievement Good Idea
+- ☑ Growth cues (GAMEPLAY §4.6): each village's growth limit named daily
+  (land, food, wellbeing, room; `?stats=1`), newcomers camping at the edge
+  when room or land is the limit, ideas that point at the limit (water the
+  dry ground once the good land is farmed; level ground for houses)
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
@@ -192,7 +196,9 @@ The interaction rework decided with the owner (DESIGN §4).
   rate × hold time, soft falloff, three sizes, sticky, work while paused;
   client prediction with the sim as the final word
 - ☑ Water conserved under the brush; sculpted earth loose (Fill, Canal);
-  houses, bridges and structures masked smoothly; fields cleared
+  houses, jetties and structures masked smoothly; fields cleared;
+  footbridges not masked: ground moved > 0.1 m at their banks or piles
+  breaks them (rebuilt by the villagers as after a flood)
 - ☑ Undo of the last strokes (button, Ctrl/Cmd+Z)
 - ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks); a
   gate drawn across a channel builds a wall with the gate
@@ -211,6 +217,8 @@ See docs/SOUND.md.
   when hidden; the welcome scenes have their own ambience
 - ☑ Review loop: `npm run sound-review` (offline renders, loudness,
   spectrograms)
+- ☑ Water beds 6 dB quieter (river close-up −31.8 LUFS); pausing freezes
+  all game animation (render/gameClock.ts)
 - ☐ Village chatter and children (no good CC0 voices yet), music
 
 ## Later / ideas

@@ -535,6 +535,52 @@ by the player's reservoirs raising the water table.
 - Measure with `tools/agency.ts` before touching `YIELD` or the economy;
   P1+P2 alone may hit the §4.2 targets.
 
+### 4.6 The growth loop and its cues
+
+A village grows when four things hold at once (`Settlement.day`,
+`PEOPLE.md` §4): families **want** to come (wellbeing above 0.6, 0.45 in
+a village under 12), the store **lasts** (food for `max(days to the
+harvest, 40) + 6` days: `growFood`, `growHorizon`), a **house** is free
+(one is built whenever none is free and wellbeing is above 0.5, if a
+dry, flat, unflooded site is left within 12 cells), and then chance
+(0.6 × (w − 0.6) per free house a day). Every day each village names the
+first condition that fails (`classifyGrowth`, settlement.ts; shown per
+village with `?stats=1` as `limit`):
+
+| limit | meaning | what the player sees | what helps |
+|---|---|---|---|
+| `land` | the store won't last and the good land within walking reach is used up | hardy crops (millet, paddies) at the edge, no pegged plots; **newcomers camp** at the edge; the idea "the good land … is all farmed" rings the dry ground water would make good | a canal to that ground, a footbridge, draining a marsh |
+| `food` | the store won't last though good land is left: yields too poor for a surplus (dry or tired fields) or a lean season | the dry-fields idea in summer; sacks by the store run low | water for the fields, fish |
+| `wellbeing` | fed, but not attractive (water access, safety, housing) | mood props (no smoke, idle people) | a well, keeping floods off |
+| `room` | fed and attractive, a house is wanted but no site is left | **newcomers camp** at the edge; the idea "no room left for houses" | level dry ground beside the village (Even), keep a flood plain dry |
+| `building` / `open` | a house is going up / waits for a family | builders at work; a family walking in | — |
+
+Why prosperity can read 90 % while the village stands still: prosperity
+is the wellbeing, whose food part only asks whether the store lasts **to
+the next harvest**; growth asks for 40 days ahead (most of the 48-day
+year), so a village whose harvest just covers the year is content and
+does not grow (`food`). It grows again on a surplus: better yields, not
+more land (every farmer works 28 fields, so food per head rises only
+with yield per field), until the good land runs out (`land`).
+
+**Houses and fields.** Houses go on open ground within 12 cells when
+there is some (`planHouses`); fields are claimed from 3 cells out,
+so on a farmed plain they can close in on the village and leave no site
+(`room`). Then a field next to the village gives way to the house (as
+real villages build on their farmland), so a village is never stalled for
+room by its own fields.
+
+**Camping newcomers** (`tendCamp`, village.ts; `CAMP` in settlement.ts):
+when the limit is `room` or `land` and families would come, one family
+(2–4) walks in from beyond the edge and camps 9–17 cells from the centre
+with a small tent, a loaded cart and a fire ring (BuildingInfo kind
+`camp`; the family are agents sitting by it, not villagers). They wait
+while a house goes up, move in (an arrival) the day one is free, and
+move on with their bundles after 24 days if nothing changes, or at once
+when the village stops drawing people; the next family tries 12 days
+later. So "they would come if there were room or land" is in the world,
+without words; the Ideas list says where.
+
 ### 4.5 Revised unlock progression (lining is no longer a player tool)
 
 Remove the Lining tool from the palette (villagers line banks by their

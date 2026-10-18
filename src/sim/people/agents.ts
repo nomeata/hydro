@@ -99,6 +99,12 @@ export interface Agent {
    * §7): cosmetic, never works, not counted in the population.
    */
   child?: boolean;
+  /**
+   * A newcomer camping at the village edge, waiting for room or land
+   * (docs/GAMEPLAY.md §4.6): idles by the camp, never works, not counted
+   * in the population until the family moves in.
+   */
+  camper?: boolean;
   /** Last movement velocity (cells per step), for extrapolation. */
   vx: number;
   vy: number;

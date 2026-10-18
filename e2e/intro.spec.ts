@@ -44,7 +44,15 @@ async function expectLive(page: Page, art: string, fallbacks: string[], timeout 
   if (fallbacks.length) throw new Error(`live scene fell back to the drawing: ${fallbacks.join(' | ')}`);
   expect(await page.evaluate((sel) => (document.querySelector(sel)!.classList.contains('live') ? 'live' : 'not live'), art)).toBe('live');
   await expect(page.locator(`${art} canvas.intro-live`)).toBeVisible();
-  await expect(page.locator(`${art} .intro-svg svg`)).toBeHidden();
+  // Once the canvas has faded in, the drawing goes (it shows again while a
+  // scene restarts or loads, which can take seconds on a slow phone).
+  await expect
+    .poll(() => page.evaluate((sel) => {
+      const a = document.querySelector(sel)!;
+      const svg = a.querySelector('.intro-svg svg');
+      return a.classList.contains('live-on') && !!svg && getComputedStyle(svg).visibility === 'hidden';
+    }, art), { timeout: 60_000, intervals: [250, 500, 1000] })
+    .toBe(true);
 }
 
 test('welcome panels show live scenes, navigate, and clean up', async ({ page }) => {
@@ -61,6 +69,13 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   await expect(intro.locator('h2')).toHaveText('Water shapes the land');
   // A second worker runs the scene; its first frames fade in over the drawing.
   expect(await workers()).toBe(2);
+  // Until the scene is on screen, the drawing shows (no blank box on a slow phone).
+  expect(
+    await page.evaluate(() => {
+      const a = document.querySelector('.intro .intro-art')!;
+      return a.classList.contains('live-on') || getComputedStyle(a.querySelector('.intro-svg svg')!).visibility === 'visible';
+    }),
+  ).toBe(true);
   // The live scene, not the drawing (which shows only when the scenes cannot run).
   await expectLive(page, '.intro .intro-art', fallbacks);
   // The live frames fade in over the drawing (a handful of colours); on CI's
@@ -81,17 +96,19 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
     throw new Error(`${String(e)}\nstate: ${JSON.stringify(state)}\nconsole errors: ${JSON.stringify(errors)}`);
   }
 
+  const t0 = await page.evaluate(() => {
+    const m = (window as any).__hydro.intro.scenes.mirror;
+    return m.terrainH[m.idx(58, 51)] as number;
+  });
   // Next: the same canvas switches to the next scene.
   await intro.locator('.next').click();
   await expect(intro.locator('h2')).toHaveText('You shape the water');
   await expect(intro).toHaveAttribute('data-page', '1');
   await expectLive(page, '.intro .intro-art', fallbacks, 60_000);
   await expect(page.locator('.intro-tools')).toBeVisible();
-  // The scripted hand brushes a real channel with Dig: the scene's ground drops.
-  const t0 = await page.evaluate(() => {
-    const m = (window as any).__hydro.intro.scenes.mirror;
-    return m.terrainH[m.idx(58, 51)] as number;
-  });
+  // The scripted hand brushes a real channel with Dig: the scene's ground
+  // drops below the untouched land's (read on the first page, the same land:
+  // on a slow machine this scene may have dug, or restarted, by now).
   await page.waitForFunction(
     (h0) => {
       const m = (window as any).__hydro.intro.scenes?.mirror;

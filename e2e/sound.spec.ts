@@ -6,7 +6,7 @@ const state = (page: import('@playwright/test').Page) => page.evaluate(() => (wi
 test('sound starts at the first gesture, the menu mutes it (persisted), no errors', async ({ page: first, context }) => {
   test.setTimeout(300_000);
   let page = first;
-  const errors = await openGame(page, '&sound=1');
+  const errors = await openGame(page, '&size=128&sound=1');
   // Autoplay rules: nothing before a gesture.
   expect(await state(page)).toBe('none');
   await page.locator('#view').click({ position: { x: 200, y: 300 } });
@@ -27,7 +27,7 @@ test('sound starts at the first gesture, the menu mutes it (persisted), no error
   // Muted in a new page of the same browser profile: a gesture starts nothing.
   await first.close();
   page = await context.newPage();
-  errors.push(...(await openGame(page, '&sound=1')));
+  errors.push(...(await openGame(page, '&size=128&sound=1')));
   await page.locator('#view').click({ position: { x: 200, y: 300 } });
   expect(await state(page)).toBe('none');
   await page.locator('.menu-button').click();

@@ -5,7 +5,9 @@
  * already has: the villagers' field moisture in summer (dry fields), the
  * flood memory (land flooded last spring), shallow standing water by a
  * village (a marsh), a strong stream near a village without a mill, a
- * finished weir without a turbine, houses far from power.
+ * finished weir without a turbine, houses far from power, and what holds a
+ * village's growth back (no good land left: the dry ground water would
+ * make good; no room for houses).
  *
  * An idea appears after it is found on two looks in a row and goes away
  * after two looks without it (no flicker after a shower); dry fields are
@@ -20,7 +22,7 @@
 import type { IdeaInfo, IdeaKind } from '../shared/protocol';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR } from './constants';
 import { CellFlag, LandUse } from './world';
-import { CROP_MOISTURE } from './people/village';
+import { CROP_MOISTURE, FARMING, cropGrowth } from './people/village';
 import { MILL } from './people/mills';
 import type { AchievementHost, Achievements } from './achievements';
 
@@ -56,15 +58,33 @@ export const IDEAS = {
   /** Turbine and poles: villages with at least this many houses; poles when less than this share is lit. */
   houses: 4,
   litShare: 0.25,
+  /**
+   * Growth limits (settlement.ts classifyGrowth): land, when the good land
+   * is used up — then the dry, fertile, flat ground within this reach that
+   * water would turn into good land (at least `landCells` of it, of
+   * fertility ≥ `landFertility`); room, when no site is left for a house.
+   */
+  landReach: 18,
+  landCells: 6,
+  landFertility: 0.35,
 };
 
 /** Order in the list (most pressing first). */
-const PRIORITY: Readonly<Record<IdeaKind, number>> = { flood: 6, dry: 5, mill: 4, poles: 3, turbine: 2.5, marsh: 2 };
+const PRIORITY: Readonly<Record<IdeaKind, number>> = { flood: 6, land: 5.5, dry: 5, room: 4.5, mill: 4, poles: 3, turbine: 2.5, marsh: 2 };
 
-const TOOL: Readonly<Record<IdeaKind, string>> = { dry: 'dig', flood: 'raise', marsh: 'dig', mill: 'weir', turbine: 'turbine', poles: 'poles' };
+const TOOL: Readonly<Record<IdeaKind, string>> = {
+  dry: 'dig',
+  flood: 'raise',
+  marsh: 'dig',
+  mill: 'weir',
+  turbine: 'turbine',
+  poles: 'poles',
+  land: 'dig',
+  room: 'even',
+};
 
 /** Looks in a row without the problem before an idea goes (a mill's stream runs low in late summer: half a year). */
-const KEEP: Readonly<Record<IdeaKind, number>> = { flood: 2, dry: 2, marsh: 3, mill: 12, turbine: 2, poles: 2 };
+const KEEP: Readonly<Record<IdeaKind, number>> = { flood: 2, dry: 2, marsh: 3, mill: 12, turbine: 2, poles: 2, land: 6, room: 4 };
 
 /** An idea's spot moves only when the problem moved at least this far (cells): fewer updates. */
 const MOVE = 3;
@@ -229,6 +249,10 @@ function ideaText(h: AchievementHost, f: Found): string {
       return `Your weir ${where('by')} could light the houses — try a turbine on its crest.`;
     case 'poles':
       return `${cap(label)}’s houses are far from power — a line of poles from the turbine could reach them.`;
+    case 'land':
+      return `The good land of ${label} is all farmed and newcomers are waiting — the dry ground ${where('around')} could feed them if a channel brought it water.`;
+    case 'room':
+      return `Newcomers are waiting, but ${label} has no room left for houses — level some dry ground ${where('beside')} for them.`;
   }
 }
 
@@ -353,6 +377,30 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
         out.push({ kind: 'mill', village: k, x, y, r: 4, weight: 0 });
       }
     }
+  }
+
+  // Growth limits (settlement.ts classifyGrowth): no good land left, or no room for a house.
+  for (let k = 0; k < n; k++) {
+    const s = p.settlements[k]!.state;
+    if (s.limit === 'room') out.push({ kind: 'room', village: k, x: Math.round(s.x), y: Math.round(s.y), r: 8, weight: 0 });
+    if (s.limit !== 'land') continue;
+    // Dry, fertile, flat open ground that water would make good land; the richest eighth around the village.
+    const sx: number[][] = Array.from({ length: 8 }, () => []);
+    const sy: number[][] = Array.from({ length: 8 }, () => []);
+    const sum = new Array<number>(8).fill(0);
+    r2(s.x, s.y, IDEAS.landReach, (i, x, y) => {
+      if (landuse[i] !== LandUse.None || water[i]! > 0.01 || w.fertility[i]! < IDEAS.landFertility) return;
+      if (cropGrowth(p.fieldMoisture[i]!) >= FARMING.minGrowth || p.slope(i) > 0.25 || Math.hypot(x - s.x, y - s.y) < 3) return;
+      const o = ((Math.round((Math.atan2(y - s.y, x - s.x) / (Math.PI * 2)) * 8) % 8) + 8) % 8;
+      sx[o]!.push(x);
+      sy[o]!.push(y);
+      sum[o]! += w.fertility[i]!;
+    });
+    let best = 0;
+    for (let o = 1; o < 8; o++) if (sum[o]! > sum[best]!) best = o;
+    if (sx[best]!.length < IDEAS.landCells) continue;
+    const a = area(sx[best]!, sy[best]!);
+    out.push({ kind: 'land', village: k, ...a, weight: Math.min(0.4, sx[best]!.length / 400) });
   }
 
   // Power: a finished weir without a turbine; houses far from power.

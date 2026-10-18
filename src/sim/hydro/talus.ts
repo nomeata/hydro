@@ -72,7 +72,8 @@ export function talusStep(
       const i = y * W + x;
       const so = soil[i]!;
       if (so <= 0) continue;
-      if ((flags[i]! & CellFlag.Lined) !== 0) continue;
+      // Lining and structures (stone work) do not slump.
+      if ((flags[i]! & (CellFlag.Lined | CellFlag.Structure)) !== 0) continue;
       const st = soilType[i]!;
       const zi = bedrock[i]! + so;
       const rep = loose ? reposeDry[st]! * (1 - p.looseRepose * loose[i]!) : reposeDry[st]!;
