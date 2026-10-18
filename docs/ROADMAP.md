@@ -126,8 +126,10 @@ See docs/GAMEPLAY.md §7 (prioritised list).
 - ☑ Weir vs dike made plain (playtest feedback): overtopped earthen banks
   scour and breach (`CellFlag.Fill`, `hydro/erosion.ts` overtopStep), weirs
   are lined stone crests drawn as a line, shape from the crest height;
-  select and edit what you built (`ui/selection.ts`: tap, drag a weir's
-  ends, −/+ crest, Remove); earthworks take up fields and structures in
+  select and edit what you built in place (`ui/selection.ts`: tap, drag a
+  weir's ends along its line and its crest handle, move a pump's outlet or
+  a wheel's trough, × to remove; a turbine's, pole's or pump's live power);
+  earthworks take up fields and structures in
   their way and go round houses
 - ☑ Player lining tool removed again: lining is left to the villagers near
   their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
@@ -170,6 +172,12 @@ See GAMEPLAY.md §1.5 "as built"; code in `sim/power/`, `render/power/`.
   turbine whose pool a pump on its network fills only covers the houses'
   shortfall (evening peak); card scene; Night and Day; demand curve by
   day/season
+- ☑ Power feedback (review 2026-10-18): a selected turbine, pole or pump
+  shows its live state (gauge, head, kW, houses lit, or why it idles); the
+  turbine's runner turns with its power and stands still when idle (no
+  foam then); pumped storage only when the pump's outlet is in the pool
+  and something else on the line can fill it (a pump beside a lone
+  turbine no longer stops it)
 - ☐ Mills rebuilt as power houses, turbine gate mode, power-dependent
   professions and population caps
 - Power-dependent professions and higher population caps
@@ -193,7 +201,16 @@ The interaction rework decided with the owner (DESIGN §4).
   client prediction with the sim as the final word
 - ☑ Water conserved under the brush; sculpted earth loose (Fill, Canal);
   houses, bridges and structures masked smoothly; fields cleared
-- ☑ Undo of the last strokes (button, Ctrl/Cmd+Z)
+- ☑ Undo of the last strokes (button, Ctrl/Cmd+Z), the undone ground flashing
+- ☑ Brushes read apart (review 2026-10-18): own cursor shapes (Raise arrows
+  up, Dig dashed with arrows down, Even a flat ring at its level), contour
+  lines under the brush, the stroke's ground tinted warm (raised) or cool
+  (dug) for a while, the villagers' fields under the brush tinted (and a
+  note when a stroke buried some)
+- ☑ Every tool stays selected (after placing, or a tap that placed
+  nothing) until Escape or Look; ghosts before placing: power lines (poles
+  and wires), pumps, a gate on hover, the weir's wall while drawn and while
+  built, a red wheel off its sites; bigger, pulsing wheel-site rings
 - ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks); a
   gate drawn across a channel builds a wall with the gate
 - ☑ Cosmetic crew tamping fresh earth; old saves' earthwork plans finished
