@@ -8,6 +8,7 @@ import { readSave, writeSave } from './persist/idb';
 import { Menu } from './ui/menu';
 import { Intro } from './ui/intro';
 import { WorldMirror } from './client/mirror';
+import { Sculptor } from './client/sculptor';
 import { GameRenderer } from './render/renderer';
 import { attachCameraInput } from './render/camera';
 import { WorldLayers } from './render/worldLayers';
@@ -81,6 +82,13 @@ async function main(): Promise<void> {
     cameraView(renderer.camera.getCurrentState(), canvas.clientWidth, canvas.clientHeight),
   );
   layers.fishJumps.onSplash = (x, y) => sound.splash(x, y);
+  layers.sculptCrew.onWork = (x, y) => sound.crewWork(x, y);
+  // The brushes: instant on the mirror and the renderer, sent to the sim every frame (client/sculptor.ts).
+  const sculptor = new Sculptor(
+    mirror,
+    (cmd) => client.command(cmd),
+    (y0, y1) => renderer.setTerrainRows(y0, y1 + 1, mirror.terrainH.subarray(y0 * mirror.width, (y1 + 1) * mirror.width)),
+  );
   // Soft clicks for the HUD's buttons; tools have their own.
   uiRoot.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('button');
@@ -167,9 +175,13 @@ async function main(): Promise<void> {
       client.command(cmd);
       sound.ui('place');
     },
+    sculptor,
+    setBrushCursor: (c) => renderer.brushCursor.set(c),
+    brushed: (x, y, r) => layers.sculptCrew.note(x, y, r),
   });
 
   client.onSnapshot((s) => {
+    sculptor.reconcile(s);
     mirror.apply(s);
     sound.feedMain(s);
     renderer.applySnapshot(s);
@@ -185,6 +197,7 @@ async function main(): Promise<void> {
       achievements.updateIdeas(s.ideas);
     }
     if (s.plan || s.lining) tools.planUpdated();
+    if (s.undoable !== undefined) tools.refreshUndo();
     if (s.structures || s.power) selection.refresh();
   });
   tools.insertPanel(selection.panel);
@@ -260,7 +273,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, sculptor, sculptCrew: layers.sculptCrew, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
   }
   document.getElementById('loading')?.classList.add('done');
 }

@@ -94,6 +94,12 @@ export class SoundDirector {
     }
   }
 
+  /** The cosmetic crew tamps sculpted ground at (x, y) (render/crowd/sculptCrew.ts): spade sounds there for a while. */
+  crewAt(x: number, y: number, now: number): void {
+    this.crew = [{ kind: 'dig', x: Math.round(x), y: Math.round(y), weight: 0.5 }];
+    this.crewUntil = now + 5;
+  }
+
   /** A fish jumped (renderer): splash if near enough. */
   splash(view: View, x: number, y: number): void {
     const e = this.sched.external('splash', view, x, y);

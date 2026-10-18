@@ -7,6 +7,7 @@ import type { EntityFrame, Snapshot } from '../shared/protocol';
 import { CrowdLayer } from './crowd/crowd';
 import { FakeCrowd, type FakeCrowdOptions } from './crowd/fakeCrowd';
 import { FishJumps } from './fishJumps';
+import { SculptCrew } from './crowd/sculptCrew';
 import { VegetationLayer } from './objects/vegetation';
 import type { GameRenderer, InitialData } from './renderer';
 
@@ -17,6 +18,8 @@ export class WorldLayers {
   readonly vegetation: VegetationLayer;
   readonly crowd: CrowdLayer;
   readonly fishJumps: FishJumps;
+  /** The cosmetic crew tamping freshly sculpted ground (crowd/sculptCrew.ts), merged into the entities. */
+  readonly sculptCrew: SculptCrew;
   /** Grazing animals merged into the entities; created on the first snapshot. */
   fakeCrowd: FakeCrowd | null = null;
   private animals: AnimalOptions | null;
@@ -41,8 +44,10 @@ export class WorldLayers {
     this.crowd = new CrowdLayer(renderer.scene, renderer.heights, { camera: renderer.camera.camera });
     this.fishJumps = new FishJumps(renderer.scene, renderer.heights);
     this.fishJumps.known = (x, y) => !renderer.fog.enabled || renderer.fog.at(x, y) >= 200;
+    this.sculptCrew = new SculptCrew((x, y) => !renderer.fog.enabled || renderer.fog.known(x, y));
     this.unlisten = renderer.addFrameListener((dt, now) => {
       this.fakeCrowd?.advance(dt);
+      this.sculptCrew.advance(dt);
       this.crowd.update(dt, now);
       const cam = renderer.camera.getCurrentState();
       this.fishJumps.update(dt, cam.x, cam.y, cam.viewHeight);
@@ -66,7 +71,8 @@ export class WorldLayers {
     const { width: W, height: H } = r.info;
     if (this.animals) this.fakeCrowd ??= new FakeCrowd(r.heights, { seed: this.seed, look: this.look, people: 0, ...this.animals });
     const animals = this.fakeCrowd?.frame();
-    const entities = animals ? mergeFrames(s.entities, animals) : (s.entities ?? EMPTY);
+    let entities = animals ? mergeFrames(s.entities, animals) : (s.entities ?? EMPTY);
+    if (this.sculptCrew.count) entities = mergeFrames(entities, this.sculptCrew.frame());
     this.crowd.setFrame(hideInFog(entities, r), performance.now());
     if (s.structures || s.terrain) this.crowd.setDecks(r.structures.decks());
     const v = this.vegetation;

@@ -18,6 +18,8 @@ export class WorldMirror implements PlanGrid {
   revealed: Uint8Array | null;
   /** Land use per cell (from the fields snapshots; plans go round houses). */
   readonly landuse: Uint8Array;
+  /** Cells the brushes leave alone (Snapshot.fixed; 1 = fixed). */
+  fixed: Uint8Array;
 
   constructor(data: ReadyData) {
     this.width = data.info.width;
@@ -27,6 +29,12 @@ export class WorldMirror implements PlanGrid {
     this.look = data.look.slice();
     this.revealed = data.revealed ? data.revealed.slice() : null;
     this.landuse = new Uint8Array(this.width * this.height);
+    this.fixed = data.fixed ? data.fixed.slice() : new Uint8Array(this.width * this.height);
+  }
+
+  /** Whether the brushes leave cell i alone (as the sim decides: Simulation.isFixed). */
+  isFixed(i: number): boolean {
+    return this.fixed[i] === 1 || (this.revealed !== null && this.revealed[i]! < 128);
   }
 
   /** Whether cell (x, y) is known land (revealed ≥ 128). */
@@ -75,6 +83,7 @@ export class WorldMirror implements PlanGrid {
     if (s.plan) this.plan = s.plan.slice();
     if (s.look) this.look = s.look.slice();
     if (s.revealed) this.revealed = s.revealed.slice();
+    if (s.fixed) this.fixed = s.fixed.slice();
     if (s.fields) {
       const lu = this.landuse;
       for (let i = 0; i < lu.length; i++) lu[i] = s.fields[i * FIELD_BYTES]!;

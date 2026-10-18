@@ -13,14 +13,18 @@ import { heightToY } from '../render/coords';
 import { GameRenderer } from '../render/renderer';
 import { WorldLayers, type AnimalOptions } from '../render/worldLayers';
 import type { Pt, SceneId, Snapshot } from '../shared/protocol';
-import { planTrench } from '../sim/plans/plans';
+import { Sculptor } from '../client/sculptor';
 import { SCENE_LAYOUT as L } from '../sim/sceneLayout';
 import { ICONS } from './icons';
 import { cameraView, sound } from '../audio/bus';
 
 const DEG = Math.PI / 180;
-/** Trench the hand draws (the real tool's defaults would be 2 wide; a bit wider reads better). */
-const TRENCH = { width: 3, depth: 1.5 };
+/**
+ * The hand's Dig brush: the medium size, out along the line and back again;
+ * it presses a little harder than a player's first try (BOOST × the hold
+ * time), so the channel reaches the river within the scene.
+ */
+const DIG = { radius: 2.5, boost: 2.2 };
 
 interface Script {
   camera: Partial<CameraState>;
@@ -56,8 +60,8 @@ const SCRIPTS: Record<SceneId, Script> = {
 /** Timeline of the 'shape' scene (seconds). */
 const T_TAP = 1.3;
 const T_DRAW = 2.0;
-const T_RELEASE = 4.4;
-const T_GONE = 5.4;
+const T_RELEASE = 5.2;
+const T_GONE = 6.2;
 
 export class IntroScenes {
   /** Called once the first live frame is on screen (the SVG fallback can go). */
@@ -84,8 +88,8 @@ export class IntroScenes {
   private raf = 0;
   /** 'shape' timeline state. */
   private drew = false;
-  private previewAt = 0;
-  private awaitingPlan = false;
+  private lastT = 0;
+  private sculptor: Sculptor | null = null;
   private readonly onResize = () => this.renderer?.resize();
   private readonly tmp = new THREE.Vector3();
 
@@ -106,8 +110,8 @@ export class IntroScenes {
     this.palette.className = 'toolrow panel intro-tools';
     for (const [id, label] of [
       ['look', 'Look'],
-      ['trench', 'Trench'],
-      ['dike', 'Dike'],
+      ['raise', 'Raise'],
+      ['dig', 'Dig'],
     ] as const) {
       const b = document.createElement('button');
       b.tabIndex = -1;
@@ -133,6 +137,12 @@ export class IntroScenes {
           return;
         }
         this.mirror = new WorldMirror(data);
+        const mirror = this.mirror;
+        this.sculptor = new Sculptor(
+          mirror,
+          (cmd) => this.client.command(cmd),
+          (y0, y1) => this.renderer?.setTerrainRows(y0, y1 + 1, mirror.terrainH.subarray(y0 * mirror.width, (y1 + 1) * mirror.width)),
+        );
         this.layers = new WorldLayers(this.renderer, data, data.info.seed, null);
         this.layers.fishJumps.onSplash = (x, y) => sound.sceneSplash(x, y);
         this.renderer.setSun(0.56, 1.2);
@@ -191,8 +201,9 @@ export class IntroScenes {
 
   private resetScript(): void {
     this.drew = false;
-    this.awaitingPlan = false;
-    this.renderer?.setPreviewPlan(null);
+    this.lastT = 0;
+    this.sculptor?.reset();
+    this.renderer?.brushCursor.set(null);
     this.hand.style.opacity = '0';
     this.palette.hidden = this.scene !== 'shape';
     this.pressTool('look');
@@ -214,15 +225,12 @@ export class IntroScenes {
       this.resetScript();
       this.runStart = performance.now();
     }
+    this.sculptor?.reconcile(s);
     this.mirror.apply(s);
     // The scene's own soft ambience, from its camera (audio/bus.ts).
     sound.scene(s, cameraView(r.camera.getCurrentState(), this.canvas.clientWidth, this.canvas.clientHeight), r.info.width);
     r.applySnapshot(s);
     this.layers.applySnapshot(s);
-    if (s.plan && this.awaitingPlan) {
-      this.awaitingPlan = false;
-      r.setPreviewPlan(null);
-    }
     if (first) {
       // Let a frame or two render, then fade in.
       setTimeout(() => {
@@ -254,19 +262,21 @@ export class IntroScenes {
   };
 
   // ---------------------------------------------------------------------------
-  // 'You shape the water': the hand picks the trench tool and draws a trench.
+  // 'You shape the water': the hand picks the Dig brush and digs a channel.
 
   private shapeScript(t: number): void {
     const hand = this.hand.style;
     const pts = L.trench;
     const start = this.toScreen(pts[0]!);
-    const btn = this.palette.querySelector<HTMLElement>('[data-tool=trench]')!;
+    const btn = this.palette.querySelector<HTMLElement>('[data-tool=dig]')!;
     const cr = this.canvas.getBoundingClientRect();
     const br = btn.getBoundingClientRect();
     const tool: [number, number] = [br.left + br.width / 2 - cr.left, br.top + br.height * 0.4 - cr.top];
     const rest: [number, number] = [tool[0] + cr.width * 0.18, tool[1] - cr.height * 0.25];
     let p: [number, number];
     let press = false;
+    const dt = this.lastT ? Math.min(0.1, Math.max(0, t - this.lastT)) : 0;
+    this.lastT = t;
     if (t < T_TAP - 0.5) {
       p = rest;
     } else if (t < T_TAP) {
@@ -274,29 +284,34 @@ export class IntroScenes {
     } else if (t < T_DRAW) {
       const k = (t - T_TAP) / (T_DRAW - T_TAP);
       press = k < 0.25;
-      if (k >= 0.15) this.pressTool('trench');
+      if (k >= 0.15) this.pressTool('dig');
       p = lerp2(tool, start, ease(Math.max(0, (k - 0.25) / 0.75)));
     } else if (t < T_RELEASE) {
       press = true;
+      // Out along the line and back: the brush digs where it is held.
       const k = (t - T_DRAW) / (T_RELEASE - T_DRAW);
-      const drawn = partialPath(pts, ease(k));
-      p = this.toScreen(drawn[drawn.length - 1]!);
-      if (t - this.previewAt > 0.08 || t < this.previewAt) {
-        this.previewAt = t;
-        this.preview(drawn);
+      const f = k < 0.5 ? ease(k * 2) : ease((1 - k) * 2);
+      const drawn = partialPath(pts, Math.max(0.02, f));
+      const at = drawn[drawn.length - 1]!;
+      p = this.toScreen(at);
+      const sc = this.sculptor;
+      if (sc) {
+        if (!this.drew) {
+          this.drew = true;
+          sc.begin('dig', DIG.radius);
+        }
+        sc.sample(at[0], at[1], dt * DIG.boost);
+        sc.flush();
       }
+      this.renderer?.brushCursor.set({ x: at[0], y: at[1], r: DIG.radius, tool: 'dig', active: true });
     } else {
-      if (!this.drew) {
-        this.drew = true;
-        this.preview(pts);
-        this.awaitingPlan = true;
-        this.client.command({ type: 'planTrench', points: pts, width: TRENCH.width, depth: TRENCH.depth });
-        // One stroke per tool use, as in the game: back to looking.
-        this.pressTool('look');
-        // Let the water come quickly.
+      if (this.drew) {
+        this.drew = false;
+        this.renderer?.brushCursor.set(null);
+        // The brush stays in the hand; let the water come quickly.
         this.client.setSpeed(4);
       }
-      const end = this.toScreen(pts[pts.length - 1]!);
+      const end = this.toScreen(pts[0]!);
       const k = Math.min(1, (t - T_RELEASE) / (T_GONE - T_RELEASE));
       p = lerp2(end, [end[0] + cr.width * 0.12, end[1] + cr.height * 0.12], ease(k));
     }
@@ -308,14 +323,6 @@ export class IntroScenes {
 
   private pressTool(id: string): void {
     for (const b of this.palette.querySelectorAll<HTMLElement>('button')) b.setAttribute('aria-pressed', String(b.dataset.tool === id));
-  }
-
-  /** The real tool preview: planTrench on a copy of the mirrored world. */
-  private preview(points: Pt[]): void {
-    if (!this.mirror || !this.renderer) return;
-    const grid = this.mirror.previewGrid();
-    planTrench(grid, points, TRENCH.width, TRENCH.depth);
-    this.renderer.setPreviewPlan(grid.plan);
   }
 
   /** Canvas CSS pixel position of a cell point on the ground. */

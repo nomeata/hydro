@@ -160,6 +160,17 @@ html, body {
 .options .modes button.locked > svg, .options .modes button.locked > span { filter: grayscale(1); opacity: 0.4; }
 .options .modes button.locked .lock { display: block; position: absolute; right: 2px; top: 2px; width: 13px; height: 13px; }
 .options .modes button.locked .lock svg { width: 13px; height: 13px; }
+.options .brushes { display: flex; gap: 4px; align-items: center; }
+.options .brushes[hidden] { display: none; }
+.options .brushes button {
+  width: 56px; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; font-size: 10px; font-weight: 600; line-height: 1.05;
+}
+.options .brushes button .dot { display: block; border-radius: 50%; border: 2px solid var(--wood); background: rgba(196, 154, 98, 0.35); }
+.options .brushes button[aria-pressed='true'] { background: var(--paper-2); box-shadow: inset 0 0 0 2px var(--wood); }
+.options .brushes .undo { margin-left: 6px; }
+.options .brushes .undo svg { width: 20px; height: 20px; }
+.options .brushes .undo:disabled { opacity: 0.4; }
 .options label[hidden] { display: none; }
 .options output { font-weight: 700; }
 .options input[type='range'] { width: 120px; accent-color: var(--accent-2); }
@@ -235,6 +246,7 @@ html, body {
   .toolrow button { width: 38px; height: 50px; font-size: 9px; letter-spacing: -0.2px; line-height: 1.05; text-align: center; }
   .toolrow button svg { width: 23px; height: 23px; }
   .options .modes button { width: 56px; }
+  .options .brushes button { width: 50px; }
   .options label { min-width: 92px; }
   .options input[type='range'] { width: 96px; }
   .date { font-size: 13px; }

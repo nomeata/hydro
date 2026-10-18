@@ -30,6 +30,7 @@ import { MillWheelsLayer } from './village/millwheels';
 import { fieldsToRgba } from './village/fields';
 import { StructuresLayer } from './structures/structures';
 import { WheelPreview } from './structures/wheelPreview';
+import { BrushCursor } from './brushCursor';
 import { PowerLayer } from './power/power';
 import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
@@ -89,6 +90,8 @@ export class GameRenderer {
   readonly structures: StructuresLayer;
   /** The water-wheel tool's ghost wheel and site marks. */
   readonly wheelPreview: WheelPreview;
+  /** The sculpting brush's ring under the pointer. */
+  readonly brushCursor: BrushCursor;
   /** Turbines, poles, pumps and lit cottages (M6). */
   readonly power: PowerLayer;
   /** Lining per cell as last received, and cells previewed by a lining tool. */
@@ -214,6 +217,7 @@ export class GameRenderer {
     this.millWheels = new MillWheelsLayer(this.scene, this.heights);
     this.structures = new StructuresLayer(this.scene, this.heights);
     this.wheelPreview = new WheelPreview(this.scene, this.heights);
+    this.brushCursor = new BrushCursor(this.scene, this.heights);
     this.power = new PowerLayer(this.scene, this.heights);
     this.updateBounds();
 
@@ -252,6 +256,17 @@ export class GameRenderer {
     canvas.addEventListener('webglcontextrestored', this.onRestored);
   }
 
+  /**
+   * New terrain heights for rows [y0, y1) (the brushes' instant feedback,
+   * client/sculptor.ts; snapshots go through applySnapshot).
+   */
+  setTerrainRows(y0: number, y1: number, data: Float32Array): void {
+    const W = this.info.width;
+    this.heights.setRows(y0, y1, data);
+    (this.tex.terrain.image.data as Float32Array).set(data.subarray(0, (y1 - y0) * W), y0 * W);
+    uploadFloatRows(this.gl, this.tex.terrain, y0, y1);
+  }
+
   /** Upload a snapshot: depth/vel always, terrain rows / look / plan when present. */
   applySnapshot(s: Snapshot): void {
     const W = this.info.width;
@@ -285,9 +300,7 @@ export class GameRenderer {
 
     if (s.terrain) {
       const { y0, y1, data } = s.terrain;
-      this.heights.setRows(y0, y1, data);
-      (this.tex.terrain.image.data as Float32Array).set(data.subarray(0, (y1 - y0) * W), y0 * W);
-      uploadFloatRows(this.gl, this.tex.terrain, y0, y1);
+      this.setTerrainRows(y0, y1, data);
       this.updateBounds();
       this.buildings.refreshHeights();
       this.cues.refreshHeights();
@@ -471,6 +484,7 @@ export class GameRenderer {
     this.millWheels.update(dt, this.flow.gameSpeed);
     this.structures.update(dt);
     this.wheelPreview.update(dt);
+    this.brushCursor.update();
     this.power.update(dt);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;

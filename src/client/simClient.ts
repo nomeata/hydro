@@ -11,6 +11,8 @@ export interface ReadyData {
   plan: Float32Array;
   /** Fog of war (absent: everything revealed). */
   revealed?: Uint8Array;
+  /** Cells the brushes leave alone (see Snapshot.fixed). */
+  fixed?: Uint8Array;
 }
 
 export class SimClient {
@@ -33,7 +35,7 @@ export class SimClient {
         const msg = ev.data;
         switch (msg.type) {
           case 'ready':
-            resolve({ info: msg.info, terrain: msg.terrain, look: msg.look, plan: msg.plan, revealed: msg.revealed });
+            resolve({ info: msg.info, terrain: msg.terrain, look: msg.look, plan: msg.plan, revealed: msg.revealed, fixed: msg.fixed });
             break;
           case 'snapshot': {
             const { type: _type, ...snap } = msg;
