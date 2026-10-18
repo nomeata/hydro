@@ -41,7 +41,7 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
   const stats = await page.evaluate(() => (window as any).__hydro.client.latest.stats.power);
   expect(stats.produced).toBeGreaterThan(1000);
   // Its runner turns.
-  await settleFrames(page);
+  await settleFrames(page, 2);
   expect((await page.evaluate(() => (window as any).__hydro.renderer.power.runnerSpeeds))[0].speed).toBeGreaterThan(0);
   // Selected (Look mode, a tap), it shows its head and power.
   await page.keyboard.press('Escape');

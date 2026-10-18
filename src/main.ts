@@ -188,7 +188,7 @@ async function main(): Promise<void> {
       const st = renderer.power.state;
       return st ? [...st.turbines.map((t): [number, number] => [t.x, t.y]), ...st.poles.map((p): [number, number] => [p.x, p.y])] : [];
     },
-    setGateGhost: (g) => renderer.gatePreview.set(g),
+    setGateGhost: (g) => renderer.gatePreview.set(g, renderer.structures.structures),
     setWeirGhost: (list) => renderer.weirGhost.setStructures(list),
     setCellTint: (key, cells, fade) => renderer.cellTint.set(key, cells, fade),
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),

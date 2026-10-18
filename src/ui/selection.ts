@@ -529,6 +529,8 @@ export class Selection {
     if (d.kind === 'end') ends[d.end] = d.at;
     else top = d.top;
     this.note.textContent = `crest ${fmt(top - w.sill)}`;
+    // (The handle's label follows at once, not only with the next frame.)
+    this.heightHandle.textContent = fmt(top - w.sill);
     this.host.setWeirGhost?.([weirGhost(ends, top, w.sill)]);
   }
 

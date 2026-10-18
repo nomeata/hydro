@@ -51,7 +51,7 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
   const R = (js: string) => page.evaluate((s) => new Function('h', `return ${s}`)((window as any).__hydro), js);
   const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
   await page.evaluate(([x, y]) => (window as any).__hydro.renderer.camera.setState({ x, y, viewHeight: 30 }, true), [startX, startY]);
-  await settleFrames(page);
+  await settleFrames(page, 3);
 
   // A turbine tapped on flat ground places nothing: the tool and its mode stay.
   await pick(page, phone, 'button[data-tool=power]');
@@ -81,7 +81,7 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
   // A weir drawn with the weir tool: a ghost wall while drawing; the tool stays.
   const site = (await findWeir(page))!;
   await page.evaluate(([x, y]) => (window as any).__hydro.renderer.camera.setState({ x, y, viewHeight: 18 }, true), [site.x, site.y]);
-  await settleFrames(page);
+  await settleFrames(page, 3);
   await pick(page, phone, 'button[data-tool=weir]');
   const wa = await toScreen(page, site.a[0], site.a[1]);
   const wb = await toScreen(page, site.b[0], site.b[1]);
@@ -150,7 +150,7 @@ test('brushes: distinct cursors, the fields under them tinted, the stroke tinted
   });
   expect(field).not.toBeNull();
   await page.evaluate(([x, y]) => (window as any).__hydro.renderer.camera.setState({ x, y, viewHeight: 24 }, true), [field!.x, field!.y]);
-  await settleFrames(page);
+  await settleFrames(page, 3);
   const at = await toScreen(page, field!.x, field!.y);
   await pick(page, phone, 'button[data-tool=raise]');
   // Held over the field (a touch shows the ring once the brush bites).

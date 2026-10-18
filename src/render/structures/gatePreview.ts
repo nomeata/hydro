@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { StructureInfo } from '../../shared/protocol';
 import type { HeightSampler } from '../coords';
-import { StructuresLayer } from './structures';
+import { StructuresLayer, alignGates } from './structures';
 
 export interface GateGhost {
   x: number;
@@ -36,7 +36,8 @@ export class GatePreview {
     return this.shown ? { ...this.shown } : null;
   }
 
-  set(g: GateGhost | null): void {
+  /** Show a ghost gate (aligned with a weir it is set into, from `weirs`), or hide it. */
+  set(g: GateGhost | null, weirs: readonly StructureInfo[] = []): void {
     const s = this.shown;
     if (!g && !s) return;
     if (g && s && g.x === s.x && g.y === s.y && g.rot === s.rot && g.width === s.width && Math.abs(g.top - s.top) < 0.01) return;
@@ -46,7 +47,7 @@ export class GatePreview {
       return;
     }
     const info: StructureInfo = { id: 1, kind: 'gate', x: g.x, y: g.y, rot: g.rot, width: g.width, top: g.top, sill: g.sill, open: false, progress: 1, lift: 0 };
-    this.layer.setStructures([info]);
+    this.layer.setStructures(alignGates([info], weirs));
   }
 
   /** Show these structures (whole, as ghosts), or none. */
