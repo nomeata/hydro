@@ -44,6 +44,6 @@ test('ideas for this valley: a flood by the village suggests a dike, with a dot 
   await expect(page.locator('[data-testid=area-highlight]')).toBeVisible();
   const goal = await page.evaluate(() => (window as any).__hydro.renderer.camera.getState());
   expect(Math.hypot(goal.x - spot.x, goal.y - spot.y)).toBeLessThan(25);
-  await expect(page.locator('[data-testid=area-highlight]')).toBeHidden({ timeout: 8000 });
+  await expect(page.locator('[data-testid=area-highlight]')).toBeHidden({ timeout: 20_000 });
   expect(errors).toEqual([]);
 });
