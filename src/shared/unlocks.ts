@@ -10,15 +10,15 @@
  * The progression, ascending. Each step names the tool it unlocks, or none
  * for a milestone whose tool is not built yet: the bar and the chart show
  * those milestones already, and a new tool slots in by adding its id.
- * Planned (GAMEPLAY.md §4.5): turbine 100, power pole 150, electric pump 250.
+ * The power modes (turbine, poles, pump) share the Power palette button (ui/tools.ts).
  */
 export const PROGRESSION: readonly { population: number; tool?: string }[] = [
   { population: 15, tool: 'weir' },
   { population: 30, tool: 'gate' },
   { population: 50, tool: 'wheel' },
-  { population: 100 }, // turbine (M6)
-  { population: 150 }, // power pole (M6)
-  { population: 250 }, // electric pump (M6)
+  { population: 100, tool: 'turbine' },
+  { population: 150, tool: 'poles' },
+  { population: 250, tool: 'pump' },
 ];
 
 /** Total villagers needed before a tool can be used. */

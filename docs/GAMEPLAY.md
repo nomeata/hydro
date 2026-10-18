@@ -184,6 +184,34 @@ Every step teaches the next one's physics without a word of UI:
    gated turbine when they make less. The gate rule (§2) gets a third
    mode for turbine gates: release to keep supply ≥ demand.
 
+*As built (M6, `sim/power/`).* The **turbine** is a tap on a weir, dike
+or dam crest (also beside a gate); its penstock runs across the wall to
+the lowest ground within 4 cells either side and moves
+`Q = min(5, 0.6·√(2gH))` m³/s from the higher to the lower side,
+`P = 0.8·ρgQH` (mass conserved; it takes water off the spillway and the
+gate). A turbine whose pool stands at its spill level (the lower of the
+crest and the pool's high-water mark, which sinks 1 cm/day) runs free
+(run of the river: with a small river it settles at what the river
+brings); a pool drawn below that is storage and runs only to cover the
+houses' demand. No mill conversion and no turbine gate mode (yet).
+Houses within 8 cells of a turbine (or a pole) are on its network;
+demand ~2 kW a house (`houseDemand`: low at night, evening peak, +25%
+in winter). Supply short of demand dims and flickers the lights. A
+village's daily lit share gives up to +0.05 wellbeing (no capacity
+change). Energy is booked per network (J): produced = houses + pumps +
+unused. The tools share one palette button, **Power**, with its modes
+on the options line.
+**Poles**: a stroke places poles every 6 cells (beside a house or a
+bridge, never in water), a stroke starting or ending at a turbine or pole
+joins it; wires join consecutive poles (a skipped wet spot leaves a longer
+span). **Electric pump**: a stroke from water (inlet) to the outlet (≤ 24
+cells, ≤ 30 m up); its pump house (the first dry cell along the pipe) must
+be within 8 cells of a pole or turbine. Pumps take only the surplus of the
+free turbines after the houses (20 kW each, `Q = 0.7 P/(ρgH)`), so a pump
+filling a basin whose turbine is on the same network makes **pumped
+storage**: that turbine (its intake within 12 cells of the pump's outlet,
+at the same level) never runs free, only to cover the evening peak.
+
 ---
 
 ## 2. The sluice gate: villager-operated

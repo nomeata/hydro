@@ -51,7 +51,7 @@ describe('prosperity and milestones', () => {
     const ms = unlockMilestones().map((m) => m.population);
     expect(ms).toEqual(PROGRESSION.map((m) => m.population));
     // Tools unlock at 15 and 30 (GAMEPLAY.md §4.5); later steps wait for their tools.
-    expect(TOOL_UNLOCKS).toEqual({ weir: 15, gate: 30, wheel: 50 });
+    expect(TOOL_UNLOCKS).toEqual({ weir: 15, gate: 30, wheel: 50, turbine: 100, poles: 150, pump: 250 });
     expect(unlockMilestones().slice(0, 3)).toEqual([
       { population: 15, tools: ['weir'] },
       { population: 30, tools: ['gate'] },

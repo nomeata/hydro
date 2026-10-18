@@ -52,6 +52,10 @@ export const ACH = {
   millNear: 3,
   /** Uphill: water lifted by one water wheel (m³). */
   liftedM3: 100,
+  /** Village Lights: houses on the power grid. */
+  gridHouses: 20,
+  /** Night and Day: energy (kWh) pumped up and given back by pumped storage on one day. */
+  storageKWh: 0.02,
 } as const;
 
 export const ACHIEVEMENTS: readonly AchievementInfo[] = [
@@ -64,6 +68,9 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'gatekeeper', title: 'Gatekeeper', description: 'Villagers open a sluice gate to water their fields.', icon: 'gate', category: 'water' },
   { id: 'millersHead', title: 'Miller’s Head', description: 'Villagers build a mill where your works make the water fall.', icon: 'mill', category: 'water' },
   { id: 'uphill', title: 'Uphill', description: `A water wheel lifts its first ${ACH.liftedM3} m³ of river water onto the bank.`, icon: 'wheel', category: 'water' },
+  { id: 'brightWindows', title: 'Bright Windows', description: 'A turbine in your weir or dam lights its first cottage.', icon: 'light', category: 'water' },
+  { id: 'villageLights', title: 'Village Lights', description: `${ACH.gridHouses} houses on the power grid.`, icon: 'pole', category: 'water' },
+  { id: 'nightAndDay', title: 'Night and Day', description: 'Pumped storage: a pump fills a basin with spare power, and its turbine gives it back in the evening.', icon: 'pump', category: 'water' },
   { id: 'safetyValve', title: 'Safety Valve', description: 'A sluice gate opens before the flood spills over its dike.', icon: 'valve', category: 'water' },
   // The land
   { id: 'newGround', title: 'New Ground', description: 'Villagers farm land that was too dry for fields at first.', icon: 'sprout', category: 'land' },

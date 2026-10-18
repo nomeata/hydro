@@ -14,6 +14,18 @@
  *  - 'wheel':   the tool card for the water wheel: dry fields on a terrace
  *               high above a fast river; a wheel (built) lifts water into a
  *               trench across the terrace (structures/wheel.ts).
+ *  - 'turbine': the tool card for the turbine: the weir card's weir with a
+ *               turbine in it (built), a hamlet on the bank whose cottages
+ *               light up (power/grid.ts).
+ *  - 'poles':   the tool card for the power line: the turbine card's weir
+ *               and turbine, and the village by the pond far from it; a
+ *               line of poles goes up from the turbine to the village and
+ *               its cottages light up.
+ *  - 'pump':    the tool card for the electric pump: the gate card's walled
+ *               basin above the river, a turbine on a low weir in the river,
+ *               an electric pump lifting river water into the basin on the
+ *               spare power, and a turbine in the basin's wall that gives it
+ *               back when the cottages want more (pumped storage).
  *
  * Everything here is deterministic (no Math.random / Date). Coordinates are
  * cells; see SCENE_LAYOUT for the landmarks the UI points the camera at.
@@ -27,7 +39,7 @@ import { CellFlag, FIELD_SPECS, SOIL_PROPS, SoilType, World } from './world';
 
 export type { SceneId };
 export { SCENE_LAYOUT };
-export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village', 'weir', 'gate', 'wheel'];
+export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village', 'weir', 'gate', 'wheel', 'turbine', 'poles', 'pump'];
 
 export const SCENE_SIZE = 96;
 const SEED = 20251;
@@ -243,9 +255,10 @@ function stageVillage(sim: Simulation): void {
 
 /** Let the spirit crew finish every plan and structure at once (staging). */
 function buildNow(sim: Simulation): void {
-  for (let k = 0; k < 200 && (sim.crew.pending > 0 || sim.structures.pending); k++) {
+  for (let k = 0; k < 200 && (sim.crew.pending > 0 || sim.structures.pending || sim.power.pending); k++) {
     sim.crew.work(sim.world, 100, 1e9, (i) => sim.markTerrainDirty(i));
     sim.structures.crewWork(1, 1e9);
+    sim.power.crewWork(1);
   }
   sim.lookDirty = true;
   sim.planDirty = true;
@@ -254,6 +267,63 @@ function buildNow(sim: Simulation): void {
 /** The weir card: low water, and a finished weir holding a pool. */
 function stageWeir(sim: Simulation): void {
   sim.command({ type: 'planWeir', points: SCENE_LAYOUT.weir, width: 2, height: 1.6 });
+  buildNow(sim);
+}
+
+/** The turbine card: the weir (built) with a turbine in it, and a hamlet on the bank. */
+function stageTurbine(sim: Simulation): void {
+  const T = SCENE_LAYOUT.turbine;
+  sim.command({ type: 'planWeir', points: SCENE_LAYOUT.weir, width: 2, height: 2.4 });
+  buildNow(sim);
+  sim.command({ type: 'placeTurbine', points: [T.turbine] });
+  buildNow(sim);
+  const R = Math.PI / 2;
+  sim.people!.stage({
+    x: T.village.x,
+    y: T.village.y,
+    food: 260,
+    houses: T.houses.map(([x, y], k) => ({ x, y, rot: (k % 4) * R })),
+    fields: [],
+    people: [
+      { x: T.village.x + 1, y: T.village.y + 1, job: 'builder' },
+      { x: T.village.x - 2, y: T.village.y, job: 'builder' },
+    ],
+  });
+}
+
+/** The power line card: the weir and its turbine (built), the village by the pond, and a line of poles (going up). */
+function stagePoles(sim: Simulation): void {
+  sim.command({ type: 'planWeir', points: SCENE_LAYOUT.weir, width: 2, height: 2.4 });
+  buildNow(sim);
+  sim.command({ type: 'placeTurbine', points: [SCENE_LAYOUT.turbine.turbine] });
+  buildNow(sim);
+  stageVillage(sim);
+  sim.command({ type: 'placePoles', points: SCENE_LAYOUT.poles });
+}
+
+/** The pump card: weir and turbine in the river, the pump up into the basin, the basin's turbine, poles, a village. */
+function stagePump(sim: Simulation): void {
+  const P = SCENE_LAYOUT.pump;
+  sim.command({ type: 'planWeir', points: P.weir, width: 2, height: P.weirHeight });
+  buildNow(sim);
+  sim.command({ type: 'placeTurbine', points: [P.turbine] });
+  sim.command({ type: 'placeTurbine', points: [P.storage] });
+  sim.command({ type: 'placePump', points: P.pump });
+  buildNow(sim);
+  const v = P.village;
+  const R = Math.PI / 2;
+  sim.people!.stage({
+    x: v.x,
+    y: v.y,
+    food: 260,
+    houses: P.houses.map(([x, y], k) => ({ x, y, rot: (k % 4) * R })),
+    fields: [],
+    people: [
+      { x: v.x + 1, y: v.y - 2, job: 'builder' },
+      { x: v.x - 1, y: v.y + 2, job: 'builder' },
+    ],
+  });
+  for (const line of P.poles) sim.command({ type: 'placePoles', points: line });
   buildNow(sim);
 }
 
@@ -428,10 +498,10 @@ function stageWheel(sim: Simulation): void {
 export function buildScene(id: SceneId): Simulation {
   const w = buildSceneWorld();
   const v = SCENE_LAYOUT.village;
-  if (id === 'gate') carveGate(w);
+  if (id === 'gate' || id === 'pump') carveGate(w);
   if (id === 'wheel') carveWheel(w);
-  // The weir card shows the low water of a dry summer.
-  if (id === 'weir') for (let i = 0; i < w.size; i++) w.inflow[i]! *= 0.35;
+  // The weir and turbine cards show the low water of a dry summer.
+  if (id === 'weir' || id === 'turbine' || id === 'poles') for (let i = 0; i < w.size; i++) w.inflow[i]! *= 0.35;
   const sim = new Simulation(w, SEED, { people: { startX: v.x, startY: v.y } });
   // Everything is known in the scenes.
   sim.fog = false;
@@ -447,6 +517,21 @@ export function buildScene(id: SceneId): Simulation {
   if (id === 'village') stageVillage(sim);
   if (id === 'weir') stageWeir(sim);
   if (id === 'wheel') stageWheel(sim);
+  if (id === 'pump') {
+    stagePump(sim);
+    sim.run(300);
+  }
+  if (id === 'poles') {
+    stagePoles(sim);
+    sim.run(600);
+    // The line goes up while the card is open.
+    for (const p of sim.power.poles) p.progress = 0;
+  }
+  if (id === 'turbine') {
+    stageTurbine(sim);
+    // The pool behind the new weir fills before the card opens.
+    sim.run(900);
+  }
   if (id === 'gate') {
     stageGate(sim);
     // Start a few game hours before the day's end: the fields show the water soon after it arrives.

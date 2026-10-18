@@ -31,6 +31,11 @@ export const ACHIEVEMENT_ICONS: Readonly<Record<string, string>> = {
   weir: ICONS.weir,
   gate: ICONS.gate,
   wheel: ICONS.wheel,
+  pole: ICONS.pole,
+  pump: ICONS.pump,
+  light: svg(
+    `<path d="M3 27h26" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="17" r="11" fill="#ffe7a3" opacity="0.55"/><path d="M8 27v-10h16v10z" fill="#f4e3c3" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 17.5L16 8l11 9.5z" fill="#d9694a" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><rect x="11" y="19" width="4" height="4" fill="#ffd27a" stroke="#c58a1c" stroke-width="1.2"/><rect x="18" y="19" width="4" height="4" fill="#ffd27a" stroke="#c58a1c" stroke-width="1.2"/>`,
+  ),
   valve: svg(
     `<path d="M2 10h9v14H2z" fill="${WATER}"/><path d="M5 13q2-1.5 4 0" stroke="#d8f1fc" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M8 27l5-15h8l5 15z" fill="#c49a62" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.5 27V12M19.5 27V12" stroke="#8d6438" stroke-width="2.2"/><rect x="14.5" y="8" width="5" height="9" fill="#b98a52" stroke="${INK}" stroke-width="1.4"/><path d="M12 7h10" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><path d="M11 24h19" stroke="${WATER}" stroke-width="3.4" stroke-linecap="round"/><path d="M26 21l4 3-4 3" fill="none" stroke="#2f86c4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
   ),

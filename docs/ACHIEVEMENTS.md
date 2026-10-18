@@ -41,6 +41,9 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | Gatekeeper | Villagers open a sluice gate to water their fields (GAMEPLAY §2.2 rule 3; not a gate held by the `toggleGate` command) |
 | Miller's Head | Villagers finish a mill whose head (the cell driving its wheel) is within 3 cells of the player's works (a weir's spill, a canal step) |
 | Uphill | A water wheel has lifted 100 m³ onto the bank in all |
+| Bright Windows | A house is on the power grid and gets power (a turbine within reach, or poles from one) |
+| Village Lights | 20 houses on the power grid at once |
+| Night and Day | On one day, pumps used ≥ 0.02 kWh of spare power and storage turbines gave back ≥ 0.02 kWh (a game day is 300 hydraulic seconds) |
 | Safety Valve | A sluice gate opens as flood relief (rule 1) and its dike is not overtopped that day |
 | **The land** | |
 | New Ground | A field on land that was too dry to farm at the start, near the works |

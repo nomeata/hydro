@@ -12,9 +12,41 @@ import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
 import { wheelSite, type WheelSite } from '../sim/structures/wheel';
+import { polePositions, pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
 import { toolName } from '../shared/progress';
 
-export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'weir' | 'gate' | 'wheel' | 'erase';
+export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'weir' | 'gate' | 'wheel' | 'power' | 'erase';
+
+/**
+ * The power tools share one palette button (so the palette stays one row
+ * on a phone); the options line picks the turbine, the power line or the
+ * electric pump. Each unlocks on its own (src/shared/unlocks.ts).
+ */
+export type PowerMode = 'turbine' | 'poles' | 'pump';
+
+interface ModeDef {
+  id: PowerMode;
+  icon: string;
+  hint: string;
+}
+
+const POWER_MODES: ModeDef[] = [
+  {
+    id: 'turbine',
+    icon: ICONS.turbine,
+    hint: 'Light for the village: tap the crest of a weir or dam. The water falling through it turns a turbine, and the houses near it light up.',
+  },
+  {
+    id: 'poles',
+    icon: ICONS.pole,
+    hint: 'The village too far from the turbine? Draw a line of poles from it to the houses: every house near a pole gets light.',
+  },
+  {
+    id: 'pump',
+    icon: ICONS.pump,
+    hint: 'Water up onto a plateau or into a high basin: draw from the water to where it should go. It runs on the turbines’ spare power; a turbine below a pumped basin gives it back in the evening.',
+  },
+];
 
 export interface ToolHost {
   canvas: HTMLCanvasElement;
@@ -24,12 +56,12 @@ export interface ToolHost {
   /** Optimistic lining preview (cell indices), or null. */
   setPreviewLining?(cells: readonly number[] | null): void;
   /**
-   * Tool cards (ui/toolCards.ts): whether `tool` has one, whether it should
-   * still be shown after its unlock, and show it.
+   * Tool cards (ui/toolCards.ts): whether `tool` (a palette tool or a power
+   * mode) has one, whether it should still be shown after its unlock, and show it.
    */
-  hasCard?(tool: ToolId): boolean;
-  cardDue?(tool: ToolId): boolean;
-  showCard?(tool: ToolId): void;
+  hasCard?(tool: string): boolean;
+  cardDue?(tool: string): boolean;
+  showCard?(tool: string): void;
   /** Water depth (m) at cell i of the latest snapshot (the wheel's preview). */
   depth?(i: number): number;
   /** Whether single-pointer drags pan the camera. */
@@ -73,7 +105,8 @@ const TOOLS: ToolDef[] = [
     icon: ICONS.wheel,
     hint: 'Fields too high above the river for a canal? Draw from fast water up onto the bank: the current turns the wheel and lifts water up to 5 m into your trench.',
   },
-  { id: 'erase', label: 'Remove', icon: ICONS.erase, hint: 'Brush over plans to remove them.' },
+  { id: 'power', label: toolName('power'), icon: ICONS.turbine, hint: '' },
+  { id: 'erase', label: 'Remove', icon: ICONS.erase, hint: 'Brush over plans, poles or pumps to remove them.' },
 ];
 
 /** Slider settings per tool: width (cells) and depth/height (m). */
@@ -101,8 +134,12 @@ export class ToolPalette {
   private readonly hint: HTMLElement;
   private readonly hintText: HTMLElement;
   private readonly hintInfo: HTMLButtonElement;
-  /** A tool just unlocked whose card shows at the next pick. */
-  private cardPending: ToolId | null = null;
+  /** A tool (or power mode) just unlocked whose card shows at the next pick. */
+  private cardPending: string | null = null;
+  /** The power tool's current mode, and its buttons on the options line. */
+  mode: PowerMode = 'turbine';
+  private readonly modes: HTMLElement;
+  private readonly modeButtons = new Map<PowerMode, HTMLButtonElement>();
   private readonly sizeOut: HTMLOutputElement;
   private readonly sizeInput: HTMLInputElement;
   private readonly amountOut: HTMLOutputElement;
@@ -142,6 +179,17 @@ export class ToolPalette {
     this.options.innerHTML = `
       <label>Width <output data-k="size"></output><input type="range" min="1" max="8" step="1" data-k="size"></label>
       <label><span data-k="amountLabel">Depth</span> <output data-k="amount"></output><input type="range" min="0.5" max="6" step="0.5" data-k="amount"></label>`;
+    this.modes = document.createElement('div');
+    this.modes.className = 'modes';
+    for (const m of POWER_MODES) {
+      const b = document.createElement('button');
+      b.dataset.mode = m.id;
+      b.innerHTML = `${m.icon}<span>${toolName(m.id)}</span><i class="lock">${ICONS.lock}</i>`;
+      b.addEventListener('click', () => this.selectMode(m.id));
+      this.modeButtons.set(m.id, b);
+      this.modes.append(b);
+    }
+    this.options.prepend(this.modes);
     this.sizeOut = this.options.querySelector('output[data-k=size]')!;
     this.amountOut = this.options.querySelector('output[data-k=amount]')!;
     this.amountLabel = this.options.querySelector('[data-k=amountLabel]')!;
@@ -187,17 +235,22 @@ export class ToolPalette {
   setPopulation(population: number): void {
     const before = this.population;
     this.population = Math.max(this.population, population);
-    for (const t of TOOLS) {
-      const need = unlockPopulation(t.id);
-      if (need > 0 && before < need && this.population >= need && this.host.cardDue?.(t.id)) this.cardPending = t.id;
+    for (const id of [...TOOLS.map((t) => t.id as string), ...POWER_MODES.map((m) => m.id)]) {
+      const need = unlockPopulation(id);
+      if (need > 0 && before < need && this.population >= need && this.host.cardDue?.(id)) this.cardPending = id;
+    }
+    for (const [id, b] of this.modeButtons) {
+      const locked = !isUnlocked(id, this.population);
+      b.classList.toggle('locked', locked);
+      b.title = locked ? `${toolName(id)}: unlocks at ${unlockPopulation(id)} villagers` : toolName(id);
     }
     for (const [id, b] of this.buttons) {
-      const locked = !isUnlocked(id, this.population);
+      const locked = this.isLocked(id);
       b.classList.toggle('locked', locked);
       const k = TOOLS.findIndex((t) => t.id === id);
       const key = hotkey(k);
       const name = `${TOOLS[k]!.label}${key ? ` (${key})` : ''}`;
-      b.title = locked ? `${name}: unlocks at ${unlockPopulation(id)} villagers` : name;
+      b.title = locked ? `${name}: unlocks at ${unlockPopulation(id === 'power' ? 'turbine' : id)} villagers` : name;
     }
   }
 
@@ -222,7 +275,32 @@ export class ToolPalette {
   }
 
   isLocked(id: ToolId): boolean {
-    return !isUnlocked(id, this.population);
+    return !isUnlocked(id === 'power' ? 'turbine' : id, this.population);
+  }
+
+  /** The hint (and card) key of a tool: the power tool's is its mode's. */
+  private hintOf(id: ToolId): { text: string; card: string } {
+    if (id === 'power') {
+      const m = POWER_MODES.find((o) => o.id === this.mode)!;
+      return { text: m.hint, card: m.id };
+    }
+    return { text: TOOLS.find((t) => t.id === id)!.hint, card: id };
+  }
+
+  private showHint(id: ToolId): void {
+    const h = this.hintOf(id);
+    this.setHint(h.text, this.host.hasCard?.(h.card) ?? false);
+  }
+
+  /** Pick a power mode (on the options line). */
+  selectMode(m: PowerMode): void {
+    if (!isUnlocked(m, this.population)) {
+      this.flashHint(`Unlocks at ${unlockPopulation(m)} villagers`);
+      return;
+    }
+    this.mode = m;
+    for (const [k, b] of this.modeButtons) b.setAttribute('aria-pressed', String(k === m));
+    if (this.tool === 'power') this.showHint('power');
   }
 
   /** Current width (cells) of the selected tool. */
@@ -238,11 +316,11 @@ export class ToolPalette {
   select(id: ToolId): void {
     if (this.isLocked(id)) {
       // A locked tool only says when it will be ready.
-      this.setHint(`Unlocks at ${unlockPopulation(id)} villagers`, false);
+      this.setHint(`Unlocks at ${unlockPopulation(id === 'power' ? 'turbine' : id)} villagers`, false);
       if (this.hintTimer) clearTimeout(this.hintTimer);
       this.hintTimer = setTimeout(() => {
         this.hintTimer = null;
-        this.setHint(TOOLS.find((t) => t.id === this.tool)!.hint, this.host.hasCard?.(this.tool) ?? false);
+        this.showHint(this.tool);
       }, 2500);
       return;
     }
@@ -256,9 +334,18 @@ export class ToolPalette {
     this.drawing = null;
     for (const [k, b] of this.buttons) b.setAttribute('aria-pressed', String(k === id));
     const st = this.settings[id];
-    this.options.hidden = !st;
+    // The power tool's options line holds its modes (when there is more than one to pick).
+    const modes = id === 'power' && POWER_MODES.length > 1;
+    this.options.hidden = !st && !modes;
+    this.modes.hidden = !modes;
+    this.sizeInput.closest('label')!.hidden = !st;
     this.amountInput.closest('label')!.hidden = st?.amount === undefined;
-    this.setHint(TOOLS.find((t) => t.id === id)!.hint, this.host.hasCard?.(id) ?? false);
+    if (id === 'power') {
+      // Stay with the last mode, unless it is still locked.
+      if (!isUnlocked(this.mode, this.population)) this.mode = 'turbine';
+      for (const [k, b] of this.modeButtons) b.setAttribute('aria-pressed', String(k === this.mode));
+    }
+    this.showHint(id);
     this.host.setCameraPrimaryPointer(id === 'look');
     if (!this.awaitingPlan) this.clearPreview();
     if (st) {
@@ -332,7 +419,7 @@ export class ToolPalette {
     const d = this.drawing;
     if (!d || d.id !== e.pointerId) return;
     this.drawing = null;
-    if (this.tool === 'wheel') {
+    if (this.tool === 'wheel' || this.tool === 'power') {
       // The wheel's stroke is short: count where it was let go, however close to the last point.
       const p = this.host.pick(e.clientX, e.clientY);
       if (p) d.points.push([p.x, p.y]);
@@ -365,6 +452,23 @@ export class ToolPalette {
         else if (site?.reason) reason = site.reason;
         break;
       }
+      case 'power': {
+        if (this.mode === 'turbine') {
+          const p = ends[1]!;
+          const site = this.turbinePreview(p);
+          if (site?.ok) {
+            cmd = { type: 'placeTurbine', points: [p] };
+            reason = headText(site);
+          } else if (site?.reason) reason = site.reason;
+        } else if (this.mode === 'poles') {
+          cmd = { type: 'placePoles', points };
+        } else {
+          const site = this.pumpPreview(ends);
+          if (site?.ok) cmd = { type: 'placePump', points: ends };
+          else if (site?.reason) reason = site.reason;
+        }
+        break;
+      }
     }
     if (cmd) {
       this.host.command(cmd);
@@ -382,7 +486,7 @@ export class ToolPalette {
     if (this.hintTimer) clearTimeout(this.hintTimer);
     this.hintTimer = setTimeout(() => {
       this.hintTimer = null;
-      this.setHint(TOOLS.find((t) => t.id === this.tool)!.hint, this.host.hasCard?.(this.tool) ?? false);
+      this.showHint(this.tool);
     }, 3000);
   }
 
@@ -395,6 +499,24 @@ export class ToolPalette {
       { width: m.width, height: m.height, terrain: (i) => m.terrain(i), depth, allowed: (i) => m.isRevealed(i % m.width, (i / m.width) | 0) },
       ends,
     );
+  }
+
+  /** The grid the power previews look at (the mirror and the latest depths). */
+  private powerGrid(): PowerGrid2D | null {
+    const m = this.host.mirror;
+    const depth = this.host.depth;
+    if (!depth) return null;
+    return { width: m.width, height: m.height, terrain: (i) => m.terrain(i), depth, allowed: (i) => m.isRevealed(i % m.width, (i / m.width) | 0) };
+  }
+
+  private turbinePreview(p: Pt): TurbineSite | null {
+    const g = this.powerGrid();
+    return g ? turbineSite(g, p) : null;
+  }
+
+  private pumpPreview(ends: Pt[]): PumpSite | null {
+    const g = this.powerGrid();
+    return g ? pumpSite(g, ends) : null;
   }
 
   private onCancel(e: PointerEvent): void {
@@ -438,6 +560,25 @@ export class ToolPalette {
           lining = [...rasterisePath(grid, [[site.x, site.y], [site.hx, site.hy]], 0.5).keys()];
           this.setHint(`Lifts the water ${site.lift.toFixed(1)} m onto the bank.`, false);
         } else if (site?.reason) this.setHint(site.reason, false);
+      } else if (this.tool === 'power') {
+        const W = this.host.mirror.width;
+        if (this.mode === 'turbine') {
+          const site = this.turbinePreview(ends[1]!);
+          if (site) {
+            lining = [site.y * W + site.x, ...(site.a >= 0 ? [site.a] : []), ...(site.b >= 0 ? [site.b] : [])];
+            if (site.ok) this.setHint(headText(site), false);
+            else if (site.reason) this.setHint(site.reason, false);
+          }
+        } else if (this.mode === 'poles') {
+          lining = polePositions(pts).map(([x, y]) => y * W + x);
+        } else {
+          const site = this.pumpPreview(ends);
+          if (site) {
+            lining = [...rasterisePath(grid, [[site.x, site.y], [site.ox, site.oy]], 0.5).keys()];
+            if (site.ok) this.setHint(`Lifts the water ${Math.max(0, site.lift).toFixed(1)} m.`, false);
+            else if (site.reason) this.setHint(site.reason, false);
+          }
+        }
       }
       // Plans only go on known land (the sim drops the rest too).
       const m = this.host.mirror;
@@ -447,6 +588,18 @@ export class ToolPalette {
       this.host.setPreviewLining?.(lining);
     });
   }
+}
+
+/** What a turbine site would give (the hint line). */
+function headText(site: TurbineSite): string {
+  return site.power > 0
+    ? `${site.head.toFixed(1)} m of head: about ${kw(site.power)} now.`
+    : 'No head here yet: it turns once the water stands higher on one side.';
+}
+
+/** Power in friendly units. */
+function kw(watts: number): string {
+  return watts >= 9500 ? `${Math.round(watts / 1000)} kW` : `${(watts / 1000).toFixed(1)} kW`;
 }
 
 /** Drop points closer than one cell to the previous kept point. */

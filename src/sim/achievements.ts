@@ -16,12 +16,15 @@ import { longestPath } from './people/desire';
 import { VEG } from './vegetation';
 import type { Structures } from './structures/structures';
 import type { GateEvent } from './structures/gatekeeper';
+import type { PowerGrid } from './power/grid';
 
 /** What the checks look at (the Simulation). */
 export interface AchievementHost {
   readonly world: World;
   readonly people: PeopleSystem | null;
   readonly structures: Structures;
+  /** The power grid (M6; absent in hosts that have none). */
+  readonly power?: PowerGrid;
 }
 
 /** Side (cells) of the blocks that track where the player has worked. */
@@ -313,6 +316,14 @@ export class Achievements {
       this.strokes = left;
     }
     if (!this.has.has('uphill') && h.structures.wheels?.some((wh) => wh.lifted >= ACH.liftedM3)) this.earn('uphill', day);
+    const pw = h.power;
+    if (pw && !pw.empty) {
+      const st = pw.stats();
+      if (st.houses > 0 && st.supplied > 0) this.earn('brightWindows', day);
+      if (st.houses >= ACH.gridHouses) this.earn('villageLights', day);
+      const d = pw.lastDay;
+      if (d.storage >= ACH.storageKWh * 3.6e6 && d.pumps >= ACH.storageKWh * 3.6e6) this.earn('nightAndDay', day);
+    }
     const p = h.people;
     if (p) {
       const n = p.settlements.length;

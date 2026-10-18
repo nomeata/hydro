@@ -21,6 +21,7 @@ export const COLORS = {
   pros: '#4e9a3c',
   rain: '#4aa3df',
   dry: '#d9a35b',
+  power: '#e0a91b',
   flood: '#2b6cb0',
   star: '#f2b705',
   starInk: '#a8740a',
@@ -271,6 +272,16 @@ export function buildChart(data: HistoryData, width: number): Chart {
     parts.push(`<path d="${seg}" fill="${COLORS.pop}" fill-opacity="0.08"/>`);
   for (const seg of line((s) => (s.p > 0 ? popY(s.p) : null), null))
     parts.push(`<path d="${seg}" fill="none" stroke="${COLORS.pop}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`);
+  // Power produced (M6), behind prosperity: a golden area scaled to its own peak.
+  const maxE = Math.max(0, ...samples.map((s) => s.e ?? 0));
+  if (maxE > 0) {
+    const eY = (e: number) => prosBot - (e / maxE) * prosH * 0.85;
+    for (const seg of line((s) => (s.e !== undefined ? eY(s.e) : null), prosBot))
+      parts.push(`<path class="power" d="${seg}" fill="${COLORS.power}" fill-opacity="0.22" stroke="${COLORS.power}" stroke-width="1.4" stroke-linejoin="round"/>`);
+    parts.push(
+      `<text x="${x1 - 6}" y="${prosTop + 14}" text-anchor="end" font-size="11" font-weight="700" fill="${COLORS.power}">Power (up to ${maxE >= 10 ? Math.round(maxE) : maxE.toFixed(1)} kW)</text>`,
+    );
+  }
   for (const seg of line((s) => (s.p > 0 ? prosY(s.w) : null), null))
     parts.push(`<path d="${seg}" fill="none" stroke="${COLORS.pros}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`);
   // Today's values as end dots.
@@ -389,6 +400,7 @@ export function describeSample(s: HistorySample): string {
   if (s.p > 0) parts.push(`${s.p} villager${s.p === 1 ? '' : 's'}`, `prosperity ${Math.round(s.w)}%`);
   else parts.push('no villagers yet');
   parts.push(s.r >= 0.05 ? `${s.r.toFixed(1)} mm rain${s.n > 1 ? '/day' : ''}` : 'dry', `${Math.round(s.t)} °C`);
+  if (s.e !== undefined && s.e > 0) parts.push(`${s.e >= 10 ? Math.round(s.e) : s.e.toFixed(1)} kW power${s.l ? `, ${s.l} house${s.l === 1 ? '' : 's'} lit` : ''}`);
   if (s.h > 0) parts.push(`flood: ${s.h} house${s.h === 1 ? '' : 's'} lost`);
   else if (s.f >= 20) parts.push('fields flooded');
   return parts.join(' · ');

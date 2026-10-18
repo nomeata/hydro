@@ -14,6 +14,10 @@ const TOOL_NAMES: Readonly<Record<string, string>> = {
   gate: 'Gate',
   well: 'Well',
   wheel: 'Water wheel',
+  power: 'Power',
+  turbine: 'Turbine',
+  poles: 'Power line',
+  pump: 'Electric pump',
 };
 
 export function toolName(id: string): string {

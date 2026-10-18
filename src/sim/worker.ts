@@ -264,6 +264,11 @@ function sendSnapshot(): boolean {
       transfer.push(f.buffer);
     }
   }
+  if (!sim.power.empty) snap.stats.power = sim.power.stats();
+  if (sim.power.dirty) {
+    snap.power = sim.power.info();
+    sim.power.dirty = false;
+  }
   const st = sim.structures;
   const people = sim.people;
   if (st.structuresDirty || people?.jettyDirty) {

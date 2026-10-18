@@ -29,6 +29,15 @@ export const ICONS = {
   wheel: svg(
     '<path d="M2 25c3 2 6 2 9 0s6-2 9 0 6 2 10 0" stroke="#59b3e6" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="13" cy="15" r="9.5" fill="none" stroke="#8d6438" stroke-width="2.6"/><g stroke="#7a5532" stroke-width="1.8" stroke-linecap="round"><path d="M13 6v18M4 15h18M6.5 8.5l13 13M19.5 8.5l-13 13"/></g><g fill="#c4935c" stroke="#5b3d1f" stroke-width="1.2"><rect x="11" y="3" width="4" height="3" rx="0.8"/><rect x="20.5" y="13.5" width="3" height="4" rx="0.8"/><rect x="11" y="23.5" width="4" height="3" rx="0.8"/><rect x="2.5" y="13.5" width="3" height="4" rx="0.8"/></g><circle cx="13" cy="15" r="2" fill="#5b3d1f"/><path d="M16 4.5h13" stroke="#8d6438" stroke-width="3" stroke-linecap="round"/><path d="M26 6.5c1 2 1 4 0 6" stroke="#59b3e6" stroke-width="2" fill="none" stroke-linecap="round"/>',
   ),
+  turbine: svg(
+    '<path d="M2 12h8" stroke="#59b3e6" stroke-width="5" stroke-linecap="round"/><rect x="8" y="9" width="6" height="18" rx="1.5" fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.6"/><path d="M14 13l3 0" stroke="#5d6670" stroke-width="3"/><path d="M16 15l6-5 6 5v12H16z" fill="#efe1c4" stroke="#6b4a2b" stroke-width="1.8" stroke-linejoin="round"/><path d="M15 15l7-6 7 6" fill="none" stroke="#b5523a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M22.5 16l-1.8 4h2.4l-1.8 4" fill="none" stroke="#e8a23a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 29c2 1 4 1 6 0s5-1 9 0" stroke="#8fd0f2" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  ),
+  pole: svg(
+    '<path d="M2 28h28" stroke="#6b4a2b" stroke-width="2.2" stroke-linecap="round"/><path d="M9 7v21M23 7v21" stroke="#7a5532" stroke-width="2.6" stroke-linecap="round"/><path d="M5 8h8M19 8h8" stroke="#6b4a2b" stroke-width="2.2" stroke-linecap="round"/><path d="M6 9c5 4 15 4 20 0M12 9c3 3 8 3 11 0" stroke="#3b3328" stroke-width="1.3" fill="none"/><circle cx="16" cy="21" r="3.5" fill="#ffd27a" stroke="#e8a23a" stroke-width="1.4"/>',
+  ),
+  pump: svg(
+    '<path d="M2 26c3 2 5 2 8 0" stroke="#59b3e6" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M6 25V17h6M18 12h6V5" fill="none" stroke="#5d6670" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><rect x="11" y="11" width="9" height="9" rx="1.5" fill="#7f97a8" stroke="#3e4e5a" stroke-width="1.6"/><path d="M16 13l-1.6 3h2.2l-1.6 3" fill="none" stroke="#ffd27a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 4h7v6h-7z" fill="#8fd0f2" stroke="#3d9bd6" stroke-width="1.4"/>',
+  ),
   erase: svg(
     '<circle cx="16" cy="16" r="11" fill="#fbe1d6" stroke="#b5482d" stroke-width="2.4"/><path d="M11 11l10 10M21 11L11 21" stroke="#b5482d" stroke-width="2.6" stroke-linecap="round"/>',
   ),

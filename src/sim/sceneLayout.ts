@@ -63,6 +63,68 @@ export const SCENE_LAYOUT = {
     trenchEnd: 85,
     village: { x: 85, y: 75 },
   },
+  /**
+   * The turbine card: a turbine tapped onto the weir card's weir, and a
+   * hamlet (store at `village`, cottages at `houses`) on the bank beside it.
+   */
+  turbine: {
+    turbine: [28, 42] as Pt,
+    village: { x: 34, y: 38 },
+    houses: [
+      [31, 35],
+      [33, 36],
+      [35, 40],
+      [34, 43],
+    ] as Pt[],
+  },
+  /** The power line card: from the turbine over the weir's south-west end to the village by the pond. */
+  poles: [
+    [28, 42],
+    [24, 47],
+    [25, 55],
+    [29, 62],
+    [32, 69],
+    [34, 75],
+  ] as Pt[],
+  /**
+   * The pump card, on the gate card's land (no gate): a low weir across the
+   * river with a turbine, a pump from the river up into the walled basin, a
+   * turbine in the basin's west wall draining into the canal, pole lines
+   * joining them and the village to the south.
+   */
+  pump: {
+    weir: [
+      [55, 73],
+      [66, 71],
+    ] as Pt[],
+    weirHeight: 0.9,
+    turbine: [60, 72] as Pt,
+    storage: [80, 66] as Pt,
+    pump: [
+      [61, 67],
+      [84, 62],
+    ] as Pt[],
+    poles: [
+      [
+        [80, 66],
+        [72, 70],
+        [61, 72],
+      ],
+      [
+        [72, 70],
+        [73, 78],
+      ],
+    ] as Pt[][],
+    village: { x: 74, y: 81 },
+    houses: [
+      [70, 79],
+      [77, 78],
+      [71, 83],
+      [76, 84],
+      [79, 81],
+      [68, 81],
+    ] as Pt[],
+  },
   /** The rain front of the 'water' scene: start, velocity (cells per step), size, lifetime (steps). */
   front: { x: 14, y: 116, vx: 0.11, vy: -0.11, rx: 20, ry: 22, life: 760 },
 };
