@@ -100,7 +100,9 @@ test('the water wheel: drawn from the river onto the bank, built, and turning wi
   await page.evaluate(() => (window as any).__hydro.client.runDays(1));
   await expect.poll(async () => (await wheel())?.progress, { timeout: 30_000 }).toBe(1);
   const w = await wheel();
-  expect([w.x, w.y, w.x2, w.y2]).toEqual([g.site.x, g.site.y, g.site.hx, g.site.hy]);
+  // Where the ghost stood (the head may move a cell with the point where the mouse was let go).
+  expect([w.x, w.y]).toEqual([g.site.x, g.site.y]);
+  expect(Math.max(Math.abs(w.x2 - g.site.hx), Math.abs(w.y2 - g.site.hy))).toBeLessThanOrEqual(1);
   expect(Math.hypot(w.x - x, w.y - y)).toBeLessThan(1.5);
   // In the current it turns, and water runs in its trough.
   expect(Math.abs(w.speed)).toBeGreaterThan(0);
