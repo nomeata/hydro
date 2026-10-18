@@ -333,7 +333,7 @@ function terracePass(
  * 0.05, and penalties for water farther than `near` cells or more than
  * `height` m below (or above) the site.
  */
-export const MEADOW = { slope: 6, steep: 20, near: 14, farPerCell: 0.06, height: 5, highPerMetre: 0.08 };
+export const MEADOW = { slope: 6, steep: 20, near: 14, farPerCell: 0.06, height: 5, highPerMetre: 0.08, riverQ: 0.5 };
 
 /** The old start: the best fertile meadow near the biggest river. */
 function meadowStart(
@@ -382,7 +382,9 @@ function meadowStart(
       // flatness and a river with some water in it count for more than fertility.
       const steep = Math.max(0, s - 0.05);
       // ...and so does open water within reach, not far below (or above) the village.
-      const far = Math.max(0, wdist[i]! - MEADOW.near) * MEADOW.farPerCell;
+      // (a river with some water in it, not a pond or a closed lake that a big freshet fills)
+      const river = carve.chanQ[i]! >= MEADOW.riverQ ? carve.riverDist[i]! : 255;
+      const far = Math.max(0, Math.max(wdist[i]!, river) - MEADOW.near) * MEADOW.farPerCell;
       const high = Math.max(0, Math.abs(z[i]! - surf[i]!) - MEADOW.height) * MEADOW.highPerMetre;
       // Not in a bog: the houses want dry feet.
       const score =

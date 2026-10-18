@@ -106,8 +106,10 @@ export const FARMING = {
   growPerDay: 11,
   /** In autumn the farmers bring in whatever stands (this crop stage at least), at its share of a full yield. */
   lateHarvest: 40,
-  /** Land is claimed only where crops would grow at least this well today (cropGrowth). */
+  /** Land is claimed only where crops would grow at least this well today (cropGrowth)... */
   minGrowth: 0.5,
+  /** ...or this well by a starving village with less than a third of the fields it could work. */
+  desperateGrowth: 0.15,
 };
 
 /**
@@ -638,12 +640,13 @@ export class PeopleSystem {
     return m / 5;
   }
 
-  private buildable(i: number): boolean {
+  /** Free, dry, flat land for a house or (`field`: flood memory does not matter, crops are re-sown) a field. */
+  private buildable(i: number, field = false): boolean {
     const w = this.world;
     return (
       w.water[i]! < 0.01 &&
       w.landuse[i] === LandUse.None &&
-      w.floodMemory[i]! < 60 &&
+      (field || w.floodMemory[i]! < 60) &&
       Number.isNaN(w.plan[i]!) &&
       !this.ditchCells.has(i) &&
       this.slope(i) < 0.25
@@ -1679,6 +1682,9 @@ export class PeopleSystem {
     }
     const fields = this.fieldsOf(s);
     if (fields.length >= want) return;
+    // A starving village that lost most of its land (to a lake, a drought) farms poorer, drier land too.
+    const desperate = s.state.hungryDays > 0 && fields.length < want / 3;
+    const minGrowth = desperate ? FARMING.desperateGrowth : FARMING.minGrowth;
     // Claim the best unclaimed cells nearby (at most 10 per day).
     const cands: [number, number][] = [];
     const cx = Math.round(s.state.x);
@@ -1688,11 +1694,11 @@ export class PeopleSystem {
         const r = Math.hypot(x - cx, y - cy);
         if (r > FIELD_RADIUS || r < 3) continue;
         const i = w.idx(x, y);
-        if (!this.buildable(i) || !this.spacious(x, y)) continue;
+        if (!this.buildable(i, true) || !this.spacious(x, y)) continue;
         if (this.settlements.length > 1 && this.ownerOf(x, y) !== s) continue;
         const m = this.fieldMoisture[i]!;
         const wet = cropGrowth(m);
-        if (wet < FARMING.minGrowth) continue;
+        if (wet < minGrowth) continue;
         const forest = Math.max(0, w.vegetation[i]! - 0.45);
         // Grow fields in solid patches next to existing ones.
         const W = w.width;
@@ -1702,7 +1708,7 @@ export class PeopleSystem {
         if (y > 0 && w.landuse[i - W] === LandUse.Field) adj++;
         if (y < w.height - 1 && w.landuse[i + W] === LandUse.Field) adj++;
         const suit = w.fertility[i]! * wet - r / (FIELD_RADIUS * 4) - forest + (wet > 0 ? 0.12 * adj : 0);
-        if (suit > 0.12) cands.push([suit, i]);
+        if (suit > (desperate ? -0.1 : 0.12)) cands.push([suit, i]);
       }
     cands.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
     for (let k = 0; k < Math.min(10, want - fields.length, cands.length); k++) {
