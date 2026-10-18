@@ -22,6 +22,13 @@ export interface ToolHost {
   setPreviewPlan(cells: Float32Array | null): void;
   /** Optimistic lining preview (cell indices), or null. */
   setPreviewLining?(cells: readonly number[] | null): void;
+  /**
+   * Tool cards (ui/toolCards.ts): whether `tool` has one, whether it should
+   * still be shown after its unlock, and show it.
+   */
+  hasCard?(tool: ToolId): boolean;
+  cardDue?(tool: ToolId): boolean;
+  showCard?(tool: ToolId): void;
   /** Whether single-pointer drags pan the camera. */
   setCameraPrimaryPointer(enabled: boolean): void;
   command(cmd: Command): void;
@@ -83,6 +90,10 @@ export class ToolPalette {
   private readonly buttons = new Map<ToolId, HTMLButtonElement>();
   private readonly options: HTMLElement;
   private readonly hint: HTMLElement;
+  private readonly hintText: HTMLElement;
+  private readonly hintInfo: HTMLButtonElement;
+  /** A tool just unlocked whose card shows at the next pick. */
+  private cardPending: ToolId | null = null;
   private readonly sizeOut: HTMLOutputElement;
   private readonly sizeInput: HTMLInputElement;
   private readonly amountOut: HTMLOutputElement;
@@ -107,6 +118,14 @@ export class ToolPalette {
 
     this.hint = document.createElement('div');
     this.hint.className = 'hint';
+    this.hint.hidden = true;
+    this.hintText = document.createElement('span');
+    this.hintInfo = document.createElement('button');
+    this.hintInfo.className = 'hint-info';
+    this.hintInfo.textContent = 'ⓘ';
+    this.hintInfo.hidden = true;
+    this.hintInfo.addEventListener('click', () => this.host.showCard?.(this.tool));
+    this.hint.append(this.hintText, this.hintInfo);
 
     this.options = document.createElement('div');
     this.options.className = 'options panel';
@@ -157,7 +176,12 @@ export class ToolPalette {
 
   /** Villagers in all villages (from snapshot stats): unlocks tools at milestones. */
   setPopulation(population: number): void {
+    const before = this.population;
     this.population = Math.max(this.population, population);
+    for (const t of TOOLS) {
+      const need = unlockPopulation(t.id);
+      if (need > 0 && before < need && this.population >= need && this.host.cardDue?.(t.id)) this.cardPending = t.id;
+    }
     for (const [id, b] of this.buttons) {
       const locked = !isUnlocked(id, this.population);
       b.classList.toggle('locked', locked);
@@ -205,13 +229,19 @@ export class ToolPalette {
   select(id: ToolId): void {
     if (this.isLocked(id)) {
       // A locked tool only says when it will be ready.
-      this.hint.textContent = `Unlocks at ${unlockPopulation(id)} villagers`;
+      this.setHint(`Unlocks at ${unlockPopulation(id)} villagers`, false);
       if (this.hintTimer) clearTimeout(this.hintTimer);
       this.hintTimer = setTimeout(() => {
         this.hintTimer = null;
-        this.hint.textContent = TOOLS.find((t) => t.id === this.tool)!.hint;
+        this.setHint(TOOLS.find((t) => t.id === this.tool)!.hint, this.host.hasCard?.(this.tool) ?? false);
       }, 2500);
       return;
+    }
+    // The first pick after a tool unlocked: its card.
+    if (this.cardPending) {
+      const t = this.cardPending;
+      this.cardPending = null;
+      this.host.showCard?.(t);
     }
     this.tool = id;
     this.drawing = null;
@@ -219,7 +249,7 @@ export class ToolPalette {
     const st = this.settings[id];
     this.options.hidden = !st;
     this.amountInput.closest('label')!.hidden = st?.amount === undefined;
-    this.hint.textContent = TOOLS.find((t) => t.id === id)!.hint;
+    this.setHint(TOOLS.find((t) => t.id === id)!.hint, this.host.hasCard?.(id) ?? false);
     this.host.setCameraPrimaryPointer(id === 'look');
     if (!this.awaitingPlan) this.clearPreview();
     if (st) {
@@ -228,6 +258,13 @@ export class ToolPalette {
       if (st.amount !== undefined) this.amountInput.value = String(st.amount);
     }
     this.refreshOptions();
+  }
+
+  /** The hint line, with an ⓘ to reopen the tool's card. */
+  private setHint(text: string, info: boolean): void {
+    this.hintText.textContent = text;
+    this.hint.hidden = !text;
+    this.hintInfo.hidden = !info;
   }
 
   private refreshOptions(): void {

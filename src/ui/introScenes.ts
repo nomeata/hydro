@@ -43,6 +43,9 @@ const SCRIPTS: Record<SceneId, Script> = {
     animals: { centerX: 26, centerY: 81, radius: 5, cows: 3, chicks: 4, pigs: 1, dogs: 1, searchRadius: 3 },
     fishRate: 8,
   },
+  // Tool cards (toolCards.ts).
+  weir: { camera: { x: 27, y: 41, yaw: 40 * DEG, pitch: 36 * DEG, viewHeight: 20 }, speed: 3, duration: 14 },
+  gate: { camera: { x: 76, y: 70, yaw: -20 * DEG, pitch: 40 * DEG, viewHeight: 22 }, speed: 3, duration: 20 },
 };
 
 /** Timeline of the 'shape' scene (seconds). */

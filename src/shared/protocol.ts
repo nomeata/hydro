@@ -318,7 +318,8 @@ export type Command =
 // Messages.
 
 /** Staged scenes of the welcome panels (sim/scenes.ts). */
-export type SceneId = 'water' | 'shape' | 'village';
+/** Staged scenes: the welcome panels, and the tool cards shown when a tool unlocks (weir, gate). */
+export type SceneId = 'water' | 'shape' | 'village' | 'weir' | 'gate';
 
 export type ToWorker =
   | { type: 'init'; seed: number; size: number; speed?: number; duty?: number }

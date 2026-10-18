@@ -153,7 +153,27 @@ html, body {
   border-radius: 10px;
   background: rgba(251, 245, 230, 0.85);
 }
-.hint:empty { display: none; }
+.hint[hidden] { display: none; }
+.hint-info {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 0 0 6px;
+  margin: -2px 0;
+  color: var(--accent-2);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.hint-info[hidden] { display: none; }
+/* Tool cards (toolCards.ts): a smaller welcome-style card. */
+.tool-card .intro-card { width: min(380px, 100%); }
+.tool-card .intro-svg { display: grid; place-items: center; height: 100%; }
+.tool-card .intro-svg svg { width: 30%; height: auto; opacity: 0.6; }
+.tool-card p { min-height: 0; font-size: 14px; }
+.tool-card h2 { margin-top: 10px; }
 
 /* --- stats ----------------------------------------------------------- */
 .stats {

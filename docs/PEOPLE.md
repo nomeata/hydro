@@ -190,6 +190,7 @@ list (`stats.villages`).
 | herder | pasture | leads the herd out, watches it graze, brings the milk | grass → dairy food |
 | woodcutter | forest edge | chop (axe), carry a log | vegetation ↓, woodpile |
 | idle | village | sit, chat; children play when w > 0.6 | — |
+| gatekeeper (a builder or idle adult, when called) | a sluice gate near the village | walks to the gate, turns its wheel while the leaf moves | gate opened or closed (GAMEPLAY.md §2, `structures/gatekeeper.ts`) |
 
 Fields are claimed and ploughed in any season but winter. Grain follows the
 year; gardens give green within about one season.

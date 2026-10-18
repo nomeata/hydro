@@ -16,6 +16,7 @@ import { StatsBar } from './ui/statsbar';
 import { HistoryPanel } from './ui/historyPanel';
 import { AchievementsUi } from './ui/achievements';
 import { ToolPalette } from './ui/tools';
+import { ToolCards } from './ui/toolCards';
 import { setUnlockAll } from './shared/unlocks';
 
 const params = new URLSearchParams(location.search);
@@ -70,7 +71,23 @@ async function main(): Promise<void> {
   const historyPanel = new HistoryPanel(uiRoot, () => client.history());
   const achievements = new AchievementsUi(uiRoot);
   const statsBar = new StatsBar(uiRoot.querySelector('.topbar')!, () => historyPanel.open());
+  // Tool cards at unlock (not in tests unless asked for with ?cards=1).
+  const cards = new ToolCards(uiRoot);
+  const cardsDue = !testMode || params.has('cards');
+  const showCard = (tool: string) => {
+    if (!ToolCards.has(tool)) return;
+    const before = client.getSpeed();
+    client.setSpeed(0);
+    hud.setSpeed(0);
+    cards.open(tool, () => {
+      client.setSpeed(before);
+      hud.setSpeed(before);
+    });
+  };
   const tools = new ToolPalette(uiRoot, {
+    hasCard: (t) => ToolCards.has(t),
+    cardDue: (t) => cardsDue && ToolCards.has(t) && !ToolCards.seen(t),
+    showCard,
     canvas,
     mirror,
     pick: (x, y) => renderer.pick(x, y),
@@ -99,7 +116,7 @@ async function main(): Promise<void> {
     last = now;
     hud.frame(dt);
     // The welcome panels cover the game (and render their own scenes).
-    if (!intro.isOpen) renderer.frame(now);
+    if (!intro.isOpen && !cards.isOpen) renderer.frame(now);
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
@@ -160,7 +177,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, SimClient, statsBar, historyPanel, achievements };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, data, autosave, crowd: layers.crowd, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements };
   }
   document.getElementById('loading')?.classList.add('done');
 }
