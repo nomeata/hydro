@@ -120,7 +120,7 @@ export const FARMING = {
  * the player's canals and the villagers' ditches wets the land within
  * `canalReach` (it runs at ground level, where a river is cut into it).
  */
-export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 4 };
+export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 6 };
 
 /** Crops drown under water deeper than `drown` (m); shallower standing water grows them at `soggyGrowth`. */
 export const CROP_MOISTURE = { dry: 0.22, moist: 0.46, soggy: 0.9, soggyGrowth: 0.4, drown: 0.15 };
@@ -250,7 +250,7 @@ export const FOUNDING = {
   food: 300,
   /** The first village: its founders, and the food they bring (enough to last until the first harvest). */
   startPeople: 4,
-  startFood: 400,
+  startFood: 500,
 };
 export const ATTRACT_BLOCK = 8;
 /** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
