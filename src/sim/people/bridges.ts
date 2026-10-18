@@ -64,6 +64,8 @@ export const BRIDGE = {
   relocateDays: 24,
   /** Demand cells considered at most. */
   maxDemand: 64,
+  /** Ground moved by the brushes more than this (m) at a bank or under the deck since it was built breaks the bridge. */
+  disturb: 0.1,
 };
 
 export interface Footbridge {
@@ -86,6 +88,13 @@ export interface Footbridge {
   flood?: number;
   /** Day an end was first seen in water too deep to wade (stranded), while it lasts. */
   wet?: number;
+  /** Ground the brushes moved (m, signed) at a, the deck cells and b since it was (re)built. */
+  moved?: number[];
+}
+
+/** The cells a bridge stands on: its banks and the cells under the deck. */
+function footing(b: Footbridge): number[] {
+  return [b.a, ...b.cells, b.b];
 }
 
 const DIRS8: readonly [number, number][] = [
@@ -250,6 +259,11 @@ export class Bridges {
     return s;
   }
 
+  /** Whether cell i is under a footbridge's deck (finished or not). */
+  onDeck(i: number): boolean {
+    return this.list.some((b) => b.cells.includes(i));
+  }
+
   /** A village has a bridge on the way (being built or waiting to be rebuilt). */
   pending(settlement: number): boolean {
     return this.list.some((b) => b.settlement === settlement && b.progress < 1);
@@ -339,6 +353,7 @@ export class Bridges {
       if (b.flood !== undefined) top = Math.max(top, Math.min(banks + BRIDGE.maxRaise, b.flood + BRIDGE.floodMargin));
     }
     b.top = top;
+    delete b.moved;
     for (const c of b.cells) if (w.landuse[c] === LandUse.None || w.landuse[c] === LandUse.Path) w.landuse[c] = LandUse.Bridge;
     delete b.broken;
     delete b.flood;
@@ -363,15 +378,64 @@ export class Bridges {
       let hi = -Infinity;
       for (const c of b.cells) hi = Math.max(hi, surface(w, c));
       if (hi <= b.top + BRIDGE.overtop) continue;
-      b.broken = true;
+      this.wreck(b, day);
       b.flood = hi;
-      b.progress = BRIDGE.wreck;
-      b.since = day;
-      for (const c of b.cells) if (w.landuse[c] === LandUse.Bridge) w.landuse[c] = LandUse.None;
       broke = true;
     }
     if (broke) this.dirty = true;
     return broke;
+  }
+
+  /** Ground heights under the standing bridges (for `disturbed`, around a brush stroke). */
+  footings(): number[][] {
+    const w = this.world;
+    return this.list.map((b) => (b.broken || b.progress < 1 ? [] : footing(b).map((c) => w.terrain(c))));
+  }
+
+  /**
+   * After the brushes moved ground (`before`: `footings()` from just
+   * before): a finished bridge whose banks or piles were dug out or buried
+   * (ground moved more than `disturb` since it was built, strokes summed)
+   * breaks as in a flood; the villagers rebuild it on the new ground if
+   * they still need it, or give it up or replace it like any other.
+   * Natural erosion does not count. Returns whether any broke.
+   */
+  disturbed(before: readonly number[][], day: number): boolean {
+    const w = this.world;
+    let broke = false;
+    this.list.forEach((b, n) => {
+      const h0 = before[n];
+      if (b.broken || b.progress < 1 || !h0?.length) return;
+      const cells = footing(b);
+      const moved = b.moved ?? cells.map(() => 0);
+      let any = false;
+      cells.forEach((c, k) => {
+        const d = w.terrain(c) - h0[k]!;
+        if (d === 0) return;
+        any = true;
+        moved[k] = moved[k]! + d;
+      });
+      if (!any) return;
+      if (moved.every((m) => Math.abs(m) <= BRIDGE.disturb)) {
+        if (moved.some((m) => Math.abs(m) > 1e-6)) b.moved = moved;
+        else delete b.moved; // undone
+        return;
+      }
+      this.wreck(b, day);
+      broke = true;
+    });
+    if (broke) this.dirty = true;
+    return broke;
+  }
+
+  /** The planks go, the piles stay: it waits to be rebuilt (`rebuildAfter`). */
+  private wreck(b: Footbridge, day: number): void {
+    const w = this.world;
+    b.broken = true;
+    b.progress = BRIDGE.wreck;
+    b.since = day;
+    delete b.moved;
+    for (const c of b.cells) if (w.landuse[c] === LandUse.Bridge) w.landuse[c] = LandUse.None;
   }
 }
 

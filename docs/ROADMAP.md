@@ -192,7 +192,9 @@ The interaction rework decided with the owner (DESIGN §4).
   rate × hold time, soft falloff, three sizes, sticky, work while paused;
   client prediction with the sim as the final word
 - ☑ Water conserved under the brush; sculpted earth loose (Fill, Canal);
-  houses, bridges and structures masked smoothly; fields cleared
+  houses, jetties and structures masked smoothly; fields cleared;
+  footbridges not masked: ground moved > 0.1 m at their banks or piles
+  breaks them (rebuilt by the villagers as after a flood)
 - ☑ Undo of the last strokes (button, Ctrl/Cmd+Z)
 - ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks); a
   gate drawn across a channel builds a wall with the gate

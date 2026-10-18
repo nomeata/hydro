@@ -236,6 +236,8 @@ export class ToolPalette {
     this.hintInfo.hidden = true;
     this.hintInfo.addEventListener('click', () => this.host.showCard?.(this.tool));
     this.hint.append(this.hintText, this.hintInfo);
+    // On a phone the hint is one line; a tap on it shows the rest (styles.css).
+    this.hintText.addEventListener('click', () => this.hint.classList.toggle('open'));
 
     this.options = document.createElement('div');
     this.options.className = 'options panel';
@@ -457,6 +459,9 @@ export class ToolPalette {
     this.tool = id;
     this.drawing = null;
     for (const [k, b] of this.buttons) b.setAttribute('aria-pressed', String(k === id));
+    // A tool button keeps no focus ring once another tool is picked (Escape, a one-shot tool done).
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.closest('.toolrow') && focused !== this.buttons.get(id)) focused.blur();
     const st = this.settings[id];
     // The power tool's options line holds its modes (when there is more than one to pick).
     const modes = id === 'power' && POWER_MODES.length > 1;
@@ -492,6 +497,7 @@ export class ToolPalette {
 
   /** The hint line, with an ⓘ to reopen the tool's card. */
   private setHint(text: string, info: boolean): void {
+    if (this.hintText.textContent !== text) this.hint.classList.remove('open');
     this.hintText.textContent = text;
     this.hint.hidden = !text;
     this.hintInfo.hidden = !info;

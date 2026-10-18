@@ -2,10 +2,34 @@
  * Stats bar (top right): the two headline stats, population and
  * prosperity, as small chunky bars. The population bar fills on a log scale
  * from the last tool-unlock milestone to the next and sparkles when a new
- * one is reached. Tapping the bar opens the history chart.
+ * one is reached; the next tool's icon sits at its end, so the bar reads
+ * "villagers → Weir" without words. Tapping the bar opens the history chart.
  */
+
+/** The icon of each tool that unlocks (the palette's icons). */
+const GOAL_ICONS: Readonly<Record<string, string>> = {
+  weir: ICONS.weir,
+  gate: ICONS.gate,
+  wheel: ICONS.wheel,
+  turbine: ICONS.turbine,
+  poles: ICONS.pole,
+  pump: ICONS.pump,
+};
+
+/**
+ * The population bar's goal: the next milestone above the highest
+ * population reached (unlocks follow the peak, so a shrinking village never
+ * shows progress towards a tool it already has), the milestone below it, and
+ * the tools it brings that are still locked.
+ */
+export function populationGoal(population: number, peak: number): { prev: number; next: number; tools: string[]; fraction: number } {
+  const { prev, next, nextTools } = milestoneSpan(Math.max(population, peak));
+  const fraction = population <= prev ? 0 : Math.min(1, Math.log(population / prev) / Math.log(next / prev));
+  return { prev, next, tools: nextTools.filter((t) => !isUnlocked(t, peak)), fraction };
+}
 import type { SimStats } from '../shared/protocol';
-import { milestoneFraction, milestoneSpan, prosperity, toolName, unlockMilestones } from '../shared/progress';
+import { milestoneSpan, prosperity, toolName, unlockMilestones } from '../shared/progress';
+import { isUnlocked } from '../shared/unlocks';
 import { ICONS } from './icons';
 import { sound } from '../audio/bus';
 
@@ -14,6 +38,8 @@ export class StatsBar {
   private readonly popFill: HTMLElement;
   private readonly popNum: HTMLElement;
   private readonly popRow: HTMLElement;
+  private readonly goalIco: HTMLElement;
+  private goalTool = '';
   private readonly prosFill: HTMLElement;
   private readonly prosNum: HTMLElement;
   private readonly prosRow: HTMLElement;
@@ -35,7 +61,7 @@ export class StatsBar {
       <span class="stat pop">
         <i class="ico">${ICONS.face}</i>
         <span class="track"><span class="fill"></span></span>
-        <i class="ico">${ICONS.faces}</i>
+        <i class="ico goal">${ICONS.faces}</i>
         <b class="num">0</b>
       </span>
       <span class="stat pros">
@@ -48,6 +74,7 @@ export class StatsBar {
     this.popRow = el.querySelector('.pop')!;
     this.popFill = this.popRow.querySelector('.fill')!;
     this.popNum = this.popRow.querySelector('.num')!;
+    this.goalIco = this.popRow.querySelector('.goal')!;
     this.prosRow = el.querySelector('.pros')!;
     this.prosFill = this.prosRow.querySelector('.fill')!;
     this.prosNum = this.prosRow.querySelector('.num')!;
@@ -68,13 +95,20 @@ export class StatsBar {
     const pop = v?.population ?? 0;
     const peak = Math.max(pop, v?.peak ?? 0);
     const pros = prosperity(stats?.villages);
-    const key = `${pop}|${pros?.toFixed(0)}`;
+    const key = `${pop}|${peak}|${pros?.toFixed(0)}`;
     if (key !== this.lastKey) {
       this.lastKey = key;
-      const { next, nextTools } = milestoneSpan(pop);
-      this.popFill.style.width = `${(milestoneFraction(pop) * 100).toFixed(1)}%`;
+      const { next, tools, fraction } = populationGoal(pop, peak);
+      this.popFill.style.width = `${(fraction * 100).toFixed(1)}%`;
       this.popNum.textContent = String(pop);
-      const goal = nextTools.length ? `${nextTools.map(toolName).join(' & ')} at ${next}` : `next milestone: ${next}`;
+      const tool = tools.find((t) => GOAL_ICONS[t]) ?? '';
+      if (tool !== this.goalTool) {
+        this.goalTool = tool;
+        this.goalIco.innerHTML = tool ? GOAL_ICONS[tool]! : ICONS.faces;
+        this.goalIco.classList.toggle('tool', !!tool);
+        this.goalIco.dataset.tool = tool;
+      }
+      const goal = tools.length ? `${tools.map(toolName).join(' & ')} at ${next}` : `next milestone: ${next}`;
       this.popRow.title = `${pop} villagers · ${goal}`;
       this.prosRow.classList.toggle('empty', pros === null);
       if (pros === null) {

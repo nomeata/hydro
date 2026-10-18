@@ -220,6 +220,10 @@ and tests.)
 On a keyboard, the digit keys 1…9, 0 pick the tools in palette order
 (1 Look, 2 Raise, 3 Dig, 4 Even, 5 Weir, …), Escape goes back to Look and
 Ctrl/Cmd+Z undoes the last stroke.
+On phones the hint is one line (tap it for the rest, ⓘ for the tool's
+card) and the options a slim strip (brush sizes as dots), so a held tool
+covers little of the view; the top bar is a fixed grid, so a longer date
+never moves the speed controls or the menu button.
 
 ## 4a. Progress you can feel
 
@@ -235,6 +239,10 @@ The player asked for "more direct endorphin hits". Decisions:
     scale from the last milestone to the next (the progression in
     `src/shared/unlocks.ts`: 15, 30, 50, 100, 150, 250; beyond, doublings).
     Reaching a milestone gives a small sparkle and a note of what unlocked.
+    The next tool's icon sits at the bar's end, so the bar reads
+    "villagers → Weir" without words; the goal follows the highest
+    population reached (unlocks are kept), so a shrinking village never aims
+    at a tool it already has.
   - **Prosperity**: the population-weighted mean of the settlements'
     wellbeing, in % ("waiting for settlers" before the first village).
 - **History chart**: tapping the stats bar opens the whole game's story:
@@ -242,7 +250,10 @@ The player asked for "more direct endorphin hits". Decisions:
   bands, rain drops, dry spells, floods, and stars at the tool-unlock
   milestones (filled with the day they were reached, outlined for the ones
   ahead). The sim records one sample per game day and saves it with the
-  world (thinned for long games).
+  world (thinned for long games). When the valley has an idea (the
+  Achievements card's "Ideas for this valley"), the first one shows above
+  the chart with its "Show me": a player who taps a falling prosperity bar
+  to see why finds what might help.
 - **Achievements, per world**: 30 little goals (docs/ACHIEVEMENTS.md),
   from "First Spade" and "Lake Maker" to "Weathered the Storm", none
   secret, all reachable in normal play. Earning one slides in a toast with
