@@ -3,6 +3,31 @@
  * delivery and buffer return, and promise-based test hooks.
  */
 import type { Command, FromWorker, HistoryData, SceneId, Snapshot, ToWorker, WorldInfo } from '../shared/protocol';
+import workerUrl from '../sim/worker.ts?worker&url';
+
+/**
+ * The worker script, kept in memory once the first worker has started. Every
+ * deploy replaces the hashed assets, so a tab that has been open across a
+ * deploy can no longer load `worker-<hash>.js` from the server; the welcome
+ * panels and tool cards start their scene workers long after the game's, and
+ * would fall back to their drawings. (Production only: in dev the worker
+ * imports other modules by path, which a blob URL cannot resolve.)
+ */
+let workerBlobUrl: string | null = null;
+let workerBlobPending = false;
+
+function keepWorkerScript(): void {
+  if (!import.meta.env.PROD || workerBlobUrl || workerBlobPending || typeof fetch !== 'function') return;
+  workerBlobPending = true;
+  fetch(workerUrl, { cache: 'force-cache' })
+    .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`))))
+    .then((src) => {
+      workerBlobUrl = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    })
+    .catch(() => {
+      workerBlobPending = false;
+    });
+}
 
 export interface ReadyData {
   info: WorldInfo;
@@ -24,7 +49,8 @@ export class SimClient {
 
   /** Start a new world, resume from save-game bytes, or run a staged scene (welcome panels). */
   constructor(start: ({ seed: number; size: number } | { bytes: ArrayBuffer } | { scene: SceneId }) & { speed?: number; duty?: number }) {
-    this.worker = new Worker(new URL('../sim/worker.ts', import.meta.url), { type: 'module' });
+    this.worker = new Worker(workerBlobUrl ?? workerUrl, { type: 'module' });
+    keepWorkerScript();
     SimClient.live++;
     this.ready = new Promise((resolve, reject) => {
       this.worker.onerror = (e) => reject(new Error(e.message));
