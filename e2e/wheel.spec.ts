@@ -64,6 +64,8 @@ async function toScreen(page: Page, x: number, y: number): Promise<[number, numb
 }
 
 test('the water wheel: drawn from the river onto the bank, built, and turning with the current', async ({ page }) => {
+  // A simulated game day on a 128² world is slow under SwiftShader on CI.
+  test.setTimeout(300_000);
   // Seed 3 has a lively river by the start (seed 1's are slow and lake-like).
   const errors = await openGame(page, '&size=128&cheat=1', './?test=1&seed=3');
   const site = await findSite(page);
@@ -98,9 +100,6 @@ test('the water wheel: drawn from the river onto the bank, built, and turning wi
   expect(Math.abs(w.speed)).toBeGreaterThan(0);
   expect(w.flow).toBeGreaterThan(0);
   expect(w.open).toBe(true);
-  await page.evaluate(([cx, cy]) => (window as any).__hydro.renderer.camera.setState({ x: cx, y: cy, viewHeight: 2.5 }, true), [x, y]);
-  await settleFrames(page, 20);
-  await page.screenshot({ path: test.info().outputPath('wheel.png') });
   expect(errors).toEqual([]);
 });
 
