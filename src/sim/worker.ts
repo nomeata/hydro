@@ -230,7 +230,7 @@ function sendSnapshot(): boolean {
     snap.entities = ent;
     transfer.push(ent.id.buffer, ent.info.buffer, ent.pos.buffer);
     if (sim.people.buildingsDirty) {
-      snap.buildings = sim.people.buildings.map(({ id, kind, x, y, rot, progress }) => ({ id, kind, x, y, rot, progress }));
+      snap.buildings = sim.people.buildingInfo();
       sim.people.buildingsDirty = false;
     }
     const vs = sim.people.settlements.map(({ state: v }) => ({

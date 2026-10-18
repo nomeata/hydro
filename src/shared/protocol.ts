@@ -165,8 +165,12 @@ export interface EntityFrame {
 /** A building (rarely changes; sent when the set changes). */
 export interface BuildingInfo {
   id: number;
-  /** A ruin is a house destroyed by a flood (or abandoned); it may be rebuilt. */
-  kind: 'house' | 'store' | 'ruin';
+  /**
+   * A ruin is a house destroyed by a flood (or abandoned); it may be rebuilt.
+   * A well is the village's (GAMEPLAY §1.1); a mill stands on the bank by
+   * a head of water, its wheel on the side facing `rot` (§1.2).
+   */
+  kind: 'house' | 'store' | 'ruin' | 'well' | 'mill';
   /** Cell coordinates of the footprint centre. */
   x: number;
   y: number;
@@ -174,6 +178,12 @@ export interface BuildingInfo {
   rot: number;
   /** Construction progress 0..1. */
   progress: number;
+  /** Wells: no water comes up (the table fell too deep). */
+  dry?: boolean;
+  /** Mills: speed of the water at the wheel (m/s; 0 = standing still). */
+  spin?: number;
+  /** Mills: grain waiting to be ground (sacks shown by the door, 0..3). */
+  sacks?: number;
 }
 
 /**

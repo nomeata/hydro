@@ -4,9 +4,9 @@
  * player's plans, and the agents doing all of it. Land grows crops, agents
  * collect them, the settlement only decides (see §2 of the design).
  */
-import { CarryKind, EntityAnim, FISH_BLOCK, STRESS_WET, type SimTime, type StructureInfo } from '../../shared/protocol';
+import { CarryKind, EntityAnim, FISH_BLOCK, STRESS_WET, type BuildingInfo, type SimTime, type StructureInfo } from '../../shared/protocol';
 import { Rng } from '../../shared/rng';
-import { DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../constants';
+import { CELL_AREA, DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../constants';
 import { REVEALED } from '../fog';
 import { PARAMS } from '../params';
 import { applyEarthwork } from '../plans/plans';
@@ -16,6 +16,8 @@ import { updateDesirePaths } from './desire';
 import { Herds, type HerdHome } from './herds';
 import { PathFinder } from './path';
 import { ECONOMY, Settlement, type SettlementState } from './settlement';
+import { MILL, chooseMillSite, headAt } from './mills';
+import { WELL, chooseWellSite, drawWell, waterAccess, wellWorks } from './wells';
 import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works';
 
 /** Hydro steps between agent updates. */
@@ -161,14 +163,28 @@ export const FLOOD_FORGET = 120;
 
 export interface Building {
   id: number;
-  kind: 'house' | 'store' | 'ruin';
+  kind: 'house' | 'store' | 'ruin' | 'well' | 'mill';
   settlement: number;
   x: number;
   y: number;
   rot: number;
   /** 0..1 construction progress. */
   progress: number;
+  /** Wells: no water comes up (wells.ts, with hysteresis). */
+  dry?: boolean;
+  /** Mills: the water cell of the wheel, the water's speed there (m/s, rounded), whether it grinds now. */
+  wheel?: number;
+  spin?: number;
+  running?: boolean;
+  /** Mills: grain waiting to be ground (person-days), and days in a row without a head. */
+  grain?: number;
+  idle?: number;
 }
+
+/** Steps between updates of the mills' wheels. */
+const MILL_EVERY = 30;
+/** Water carriers: share of idle moments spent fetching a bucket, and how far (cells) they walk for it at most. */
+const CARRY = { chance: 0.2, maxDist: 32, fetchSteps: 36, pourSteps: 12 };
 
 /** A ready-made village (PeopleSystem.stage). Coordinates are cells. */
 export interface StagedVillage {
@@ -213,7 +229,7 @@ export interface PeopleState {
 }
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
-export type PeopleEvent = 'harvest' | 'catch' | 'rebuilt';
+export type PeopleEvent = 'harvest' | 'catch' | 'rebuilt' | 'well' | 'mill';
 
 export interface PeopleHost {
   /** Called when a cell's terrain changed. */
@@ -239,6 +255,8 @@ export class PeopleSystem {
   /** Nearest water cell for each cell (or -1), recomputed daily. */
   private readonly nearestWater: Int32Array;
   private readonly waterDist: Float32Array;
+  /** For field cells watered from a working well: that well's cell (else -1), recomputed with the moisture. */
+  private readonly wellGarden: Int32Array;
   private readonly pf: PathFinder;
   /** Fish stock per block (person-days of food), and the block's capacity. */
   readonly fish: Float32Array;
@@ -278,7 +296,11 @@ export class PeopleSystem {
    * nothing to do there any more. Set by the simulation (not saved).
    */
   onGate: ((gate: number, agent: number) => readonly [number, number] | null) | null = null;
-  /** Told of harvests, catches (at the water cell) and rebuilt ruins; an observer only (not saved). */
+  /**
+   * Told of harvests, catches (at the water cell), rebuilt ruins, finished
+   * wells (at the well) and mills (at the wheel's water cell); an observer
+   * only (not saved).
+   */
   onEvent: ((e: PeopleEvent, cell: number) => void) | null = null;
   private readonly onBridge = (i: number): boolean => this.world.landuse[i] === LandUse.Bridge;
 
@@ -294,6 +316,7 @@ export class PeopleSystem {
     this.fieldMoisture = new Float32Array(world.size);
     this.nearestWater = new Int32Array(world.size).fill(-1);
     this.waterDist = new Float32Array(world.size);
+    this.wellGarden = new Int32Array(world.size).fill(-1);
     this.quay = new Uint8Array(world.size);
     this.fbw = Math.ceil(world.width / FISH_BLOCK);
     const blocks = this.fbw * Math.ceil(world.height / FISH_BLOCK);
@@ -393,6 +416,7 @@ export class PeopleSystem {
       this.daily(time, host);
     }
     if (step % 30 === 0) this.floodHouses();
+    if (step % MILL_EVERY === 0) this.updateMills();
     for (const a of this.agents) this.updateAgent(a, time, host);
     // Remove agents who have left.
     this.agents = this.agents.filter((a) => !(a.task === Task.Leave && a.pathPos >= a.path.length));
@@ -613,11 +637,15 @@ export class PeopleSystem {
     this.growFish(time);
     updateDesirePaths(this.world);
     for (const s of this.settlements) {
+      this.tendWells(s, host);
+      this.tendMill(s);
       this.updateSafety(s);
       s.day(doy, this.rng);
       this.syncPopulation(s);
       this.syncChildren(s);
       this.planHouses(s);
+      this.planWell(s);
+      if (time.day % MILL.everyDays === 0) this.planMill(s);
       this.planWorks(s);
       this.planWoods(s);
       this.herds.daily(s, this.herdHome(s), time.season === 3, !this.noAnimals);
@@ -728,6 +756,169 @@ export class PeopleSystem {
       if (stand >= 0) return [i, stand];
     }
     return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wells and mills (wells.ts, mills.ts; docs/GAMEPLAY.md §1.1–1.2)
+
+  /** The village's mill (built or being built), if any. */
+  millOf(id: number): Building | null {
+    return this.buildings.find((b) => b.settlement === id && b.kind === 'mill') ?? null;
+  }
+
+  /** Wells of a village (built or being built). */
+  wellsOf(id: number): Building[] {
+    return this.buildings.filter((b) => b.settlement === id && b.kind === 'well');
+  }
+
+  /** Whether cell i is the village's land (one village: all of it). */
+  private owns(s: Settlement, i: number): boolean {
+    const W = this.world.width;
+    return this.settlements.length < 2 || this.ownerOf(i % W, (i / W) | 0) === s;
+  }
+
+  /**
+   * Daily: a village far from surface water digs a well where the water
+   * table is within reach (one per WELL.perPeople people, the first at once).
+   */
+  private planWell(s: Settlement): void {
+    const st = s.state;
+    if (st.population < WELL.minPeople) return;
+    const w = this.world;
+    if (this.waterDist[w.idx(Math.round(st.x), Math.round(st.y))]! < WELL.minDist) return;
+    const wells = this.wellsOf(st.id);
+    if (wells.some((b) => b.progress < 1)) return;
+    if (wells.length >= Math.min(WELL.max, Math.max(1, Math.floor(st.population / WELL.perPeople)))) return;
+    // Houses first.
+    if (this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress < 1)) return;
+    const site = chooseWellSite(w, st.x, st.y, wells, (i) => this.owns(s, i), (i) => this.slope(i));
+    if (site < 0) return;
+    this.addBuilding('well', st.id, site % w.width, (site / w.width) | 0);
+  }
+
+  /** Daily: whether each well gives water, and the water the village draws from them. */
+  private tendWells(s: Settlement, host: PeopleHost): void {
+    const w = this.world;
+    const wells = this.wellsOf(s.state.id).filter((b) => b.progress >= 1);
+    if (!wells.length) return;
+    let working = 0;
+    for (const b of wells) {
+      const dry = !wellWorks(w, w.idx(b.x, b.y), b.dry ?? false);
+      if (dry !== (b.dry ?? false)) {
+        b.dry = dry;
+        this.buildingsDirty = true;
+      }
+      if (!dry) working++;
+    }
+    if (!working) return;
+    const m3 = (WELL.drawPerPerson * s.state.population) / working;
+    for (const b of wells) if (!b.dry) host.waterUsed(drawWell(w, w.idx(b.x, b.y), m3, CELL_AREA));
+  }
+
+  /**
+   * Every few days: a big farming village without a mill looks for a head
+   * site near home (mills.ts) and its builders put a mill on the bank there.
+   */
+  private planMill(s: Settlement): void {
+    const st = s.state;
+    if (st.population < MILL.minPeople || this.millOf(st.id)) return;
+    if (this.fieldsOf(s).length < MILL.minFields) return;
+    const w = this.world;
+    const W = w.width;
+    const site = chooseMillSite(
+      w,
+      st.x,
+      st.y,
+      (i) => this.owns(s, i) && w.revealed[i]! >= REVEALED,
+      (i) => this.slope(i),
+    );
+    if (!site) return;
+    const bx = site.bank % W;
+    const by = (site.bank / W) | 0;
+    const b = this.addBuilding('mill', st.id, bx, by);
+    // The wheel side faces the water (local +x; three.js turns +x towards −z).
+    b.rot = Math.round(Math.atan2(-(((site.wheel / W) | 0) - by), (site.wheel % W) - bx) / (Math.PI / 2)) * (Math.PI / 2);
+    b.wheel = site.wheel;
+    b.spin = 0;
+    b.running = false;
+    b.grain = 0;
+    b.idle = 0;
+  }
+
+  /** Daily: is the head still there? A mill without one for long is given up. */
+  private tendMill(s: Settlement): void {
+    const st = s.state;
+    const m = this.millOf(st.id);
+    st.milling = false;
+    if (!m || m.wheel === undefined) return;
+    const live = headAt(this.world, m.wheel).power >= MILL.runShare * MILL.minPower;
+    m.idle = live ? 0 : (m.idle ?? 0) + 1;
+    st.milling = m.progress >= 1 && (m.running ?? false);
+    if (m.idle < (m.progress >= 1 ? MILL.abandonDays : MILL.abandonDays / 2)) return;
+    // Given up: the house is taken down (whatever grain was left rots).
+    const w = this.world;
+    const i = w.idx(m.x, m.y);
+    if (w.landuse[i] === LandUse.Building) w.landuse[i] = LandUse.None;
+    this.buildings = this.buildings.filter((b) => b !== m);
+    st.milling = false;
+    this.buildingsDirty = true;
+  }
+
+  /** Every MILL_EVERY steps: the wheels turn with the water; a mill grinds while the head gives enough power. */
+  private updateMills(): void {
+    for (const m of this.buildings) {
+      if (m.kind !== 'mill' || m.wheel === undefined) continue;
+      const hd = headAt(this.world, m.wheel);
+      const turn = m.progress >= 1 && hd.power >= MILL.turnShare * MILL.minPower;
+      const spin = turn ? Math.round(hd.speed * 20) / 20 : 0;
+      m.running = m.progress >= 1 && hd.power >= MILL.runShare * MILL.minPower;
+      if (spin !== m.spin) {
+        m.spin = spin;
+        this.buildingsDirty = true;
+      }
+    }
+  }
+
+  /**
+   * Water carriers (GAMEPLAY §4.3 P7): an idle villager fetches a bucket
+   * from the village well, or, with none, walks down to the water if home
+   * is far from it; then carries it to a house. Returns whether a task was set.
+   */
+  private fetchWater(a: Agent, s: Settlement, time: SimTime): boolean {
+    const w = this.world;
+    const st = s.state;
+    if (!this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress >= 1)) return false;
+    let well: Building | null = null;
+    let bestD = Infinity;
+    for (const b of this.wellsOf(st.id)) {
+      if (b.progress < 1) continue;
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      if (d < bestD) {
+        bestD = d;
+        well = b;
+      }
+    }
+    if (well) return this.goTo(a, this.near(w.idx(well.x, well.y), 1), SiteKind.Fetch, time, well.id);
+    const c = w.idx(Math.round(st.x), Math.round(st.y));
+    const d = this.waterDist[c]!;
+    // Near the water nobody needs to carry it far; too far, they would not go.
+    if (d < WELL.accessNear || d > CARRY.maxDist) return false;
+    const src = this.nearestWater[c]!;
+    const stand = src >= 0 ? standCell(w, src, st.x, st.y) : -1;
+    return stand >= 0 && this.goTo(a, stand, SiteKind.Fetch, time, -src - 1);
+  }
+
+  /** Buildings for the snapshot (wells say whether they are dry, mills how fast the wheel turns). */
+  buildingInfo(): BuildingInfo[] {
+    return this.buildings.map((b) => {
+      const o: BuildingInfo = { id: b.id, kind: b.kind, x: b.x, y: b.y, rot: b.rot, progress: b.progress };
+      if (b.kind === 'well') o.dry = b.dry ?? false;
+      if (b.kind === 'mill') {
+        o.spin = b.spin ?? 0;
+        o.sacks = Math.min(3, Math.ceil((b.grain ?? 0) / MILL.grind));
+      }
+      return o;
+    });
   }
 
   /** Lined banks by the houses that face open water read as quays. */
@@ -960,6 +1151,20 @@ export class PeopleSystem {
       const own = cap > 0 ? ground[i]! / cap : 0;
       this.fieldMoisture[i] = Math.max(own * CAPILLARY.own, CAPILLARY.max * Math.exp(-d[i]! / CAPILLARY.reach));
     }
+    // A few fields by a working well are watered from it (bucket by bucket).
+    this.wellGarden.fill(-1);
+    const R = WELL.garden;
+    for (const b of this.buildings) {
+      if (b.kind !== 'well' || b.progress < 1 || b.dry) continue;
+      const c = w.idx(b.x, b.y);
+      for (let y = Math.max(0, b.y - R); y <= Math.min(H - 1, b.y + R); y++)
+        for (let x = Math.max(0, b.x - R); x <= Math.min(W - 1, b.x + R); x++) {
+          const i = y * W + x;
+          if (i === c || this.wellGarden[i]! >= 0) continue;
+          this.wellGarden[i] = c;
+          if (this.fieldMoisture[i]! < WELL.gardenMoisture) this.fieldMoisture[i] = WELL.gardenMoisture;
+        }
+    }
   }
 
   /**
@@ -1008,13 +1213,14 @@ export class PeopleSystem {
     let houses = 0;
     let wet = 0;
     for (const b of this.buildings) {
-      if (b.settlement !== s.state.id) continue;
+      if (b.settlement !== s.state.id || (b.kind !== 'house' && b.kind !== 'store')) continue;
       houses++;
       if (w.water[w.idx(b.x, b.y)]! > 0.1) wet++;
     }
     s.state.safety = houses ? 1 - wet / houses : 1;
     const c = w.idx(Math.round(s.state.x), Math.round(s.state.y));
-    s.state.waterAccess = this.waterDist[c]! < 25 ? 1 : 0.5;
+    const well = this.buildings.some((b) => b.settlement === s.state.id && b.kind === 'well' && b.progress >= 1 && !b.dry);
+    s.state.waterAccess = waterAccess(this.waterDist[c]!, well);
   }
 
   /** Crops grow from moisture and season (land grows it). */
@@ -1035,9 +1241,13 @@ export class PeopleSystem {
         c = Math.min(255, c + Math.round(16 * f));
         // Growing crops draw water from the nearest water body, or the soil.
         const src = this.nearestWater[i]!;
+        const well = this.wellGarden[i]!;
         if (src >= 0 && this.waterDist[i]! < 8 && w.water[src]! > FIELD_DRAW) {
           w.water[src]! -= FIELD_DRAW;
           used += FIELD_DRAW;
+        } else if (well >= 0) {
+          // Watered from the well: its drawdown cone gives the water.
+          used += drawWell(w, well, FIELD_DRAW * CELL_AREA, CELL_AREA) / CELL_AREA;
         } else if (w.ground[i]! > FIELD_DRAW) {
           w.ground[i]! -= FIELD_DRAW;
           used += FIELD_DRAW;
@@ -1045,7 +1255,7 @@ export class PeopleSystem {
       }
       w.crop[i] = c;
     }
-    host.waterUsed(used * 25);
+    host.waterUsed(used * CELL_AREA);
   }
 
   /** Fish need calm (< 0.4 m/s), not too shallow (> 0.5 m) water. */
@@ -1311,7 +1521,7 @@ export class PeopleSystem {
   private assignJobs(s: Settlement, host: PeopleHost): void {
     const mine = this.agents.filter((a) => a.settlement === s.state.id && a.task !== Task.Leave && !a.child);
     const n = mine.length;
-    const houseWork = this.buildings.some((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
+    const houseWork = this.buildings.some((b) => b.settlement === s.state.id && b.kind !== 'store' && b.kind !== 'ruin' && b.progress < 1);
     const planWork =
       PARAMS.villagersBuildPlans && host.planCells().some((i) => !Number.isNaN(this.world.plan[i]!) && this.settlementNear(i) === s);
     const want = new Map<Job, number>();
@@ -1329,6 +1539,9 @@ export class PeopleSystem {
     // Woodcutters: a small share of bigger villages, while the woodpile needs logs.
     const wood = n >= WOOD.minPeople && (st.chopSites?.length ?? 0) > 0 && (st.wood ?? 0) < WOOD.enough;
     want.set(Job.Woodcutter, wood ? Math.min(WOOD.max, Math.max(1, Math.round(n * WOOD.share))) : 0);
+    // A miller while there is grain at the mill.
+    const mill = this.millOf(st.id);
+    want.set(Job.Miller, mill && mill.progress >= 1 && (mill.grain ?? 0) > 0 ? 1 : 0);
     // Move at most two people per day, lowest ids first (deterministic, no flip-flop).
     let moves = 2;
     for (const [job, target] of want) {
@@ -1339,7 +1552,7 @@ export class PeopleSystem {
           a.job = job;
           have++;
           moves--;
-        } else if (have > target && a.job === job) {
+        } else if (have > target && a.job === job && (job !== Job.Miller || a.load <= 0)) {
           a.job = Job.Farmer;
           have--;
           moves--;
@@ -1504,6 +1717,32 @@ export class PeopleSystem {
         a.heading = Math.atan2(at[1] - a.y, at[0] - a.x);
         break;
       }
+      case SiteKind.Fetch: {
+        // Wind up a bucket at the well, or dip it at the water's edge.
+        a.timer = CARRY.fetchSteps;
+        const well = a.site >= 0 ? this.buildings.find((b) => b.id === a.site && b.kind === 'well') : undefined;
+        a.anim = well ? EntityAnim.Build : EntityAnim.Work;
+        const W = this.world.width;
+        const t = well ? this.world.idx(well.x, well.y) : a.site < 0 ? -a.site - 1 : this.cellOf(a);
+        const here = this.cellOf(a);
+        if (here !== t) a.heading = Math.atan2(((t / W) | 0) - ((here / W) | 0), (t % W) - (here % W));
+        break;
+      }
+      case SiteKind.Pour:
+        a.timer = CARRY.pourSteps;
+        a.anim = EntityAnim.Idle;
+        break;
+      case SiteKind.Mill:
+        a.timer = 10;
+        a.anim = EntityAnim.Idle;
+        break;
+      case SiteKind.Grind: {
+        a.timer = MILL.grindSteps;
+        a.anim = EntityAnim.Build;
+        const m = this.buildings.find((b) => b.id === a.site);
+        if (m) a.heading = Math.atan2(m.y - a.y, m.x - a.x);
+        break;
+      }
       case SiteKind.Herd:
         // Watch the herd graze: mostly sitting in the grass.
         a.timer = HERDING.outing;
@@ -1554,7 +1793,9 @@ export class PeopleSystem {
         const b = this.buildings.find((b) => b.id === a.site);
         if (b && b.progress < 1) {
           b.progress = Math.min(1, b.progress + BUILD_PER_VISIT);
-          if (b.progress >= 1 && s) s.state.houses++;
+          if (b.progress >= 1 && s && b.kind === 'house') s.state.houses++;
+          if (b.progress >= 1 && b.kind === 'well') this.onEvent?.('well', w.idx(b.x, b.y));
+          if (b.progress >= 1 && b.kind === 'mill') this.onEvent?.('mill', b.wheel ?? w.idx(b.x, b.y));
           this.buildingsDirty = true;
         }
         break;
@@ -1649,6 +1890,39 @@ export class PeopleSystem {
       case SiteKind.Quarry:
         a.carry = CarryKind.Stone;
         break;
+      case SiteKind.Fetch: {
+        // A full bucket, unless the well has run dry (it comes up empty).
+        const well = a.site >= 0 ? this.buildings.find((b) => b.id === a.site && b.kind === 'well') : undefined;
+        a.carry = well && well.dry ? CarryKind.None : CarryKind.Bucket;
+        a.load = 0;
+        break;
+      }
+      case SiteKind.Pour:
+        if (a.carry === CarryKind.Bucket && a.load <= 0) a.carry = CarryKind.None;
+        break;
+      case SiteKind.Mill: {
+        const m = this.buildings.find((b) => b.id === a.site && b.kind === 'mill');
+        if (m && a.carry === CarryKind.Sack && a.load > 0) {
+          m.grain = (m.grain ?? 0) + a.load;
+          a.load = 0;
+          a.carry = CarryKind.None;
+          this.buildingsDirty = true;
+        }
+        break;
+      }
+      case SiteKind.Grind: {
+        // Ground while the wheel turns (flour keeps better); else the grain goes to the store as it is.
+        const m = this.buildings.find((b) => b.id === a.site && b.kind === 'mill');
+        const g = m ? Math.min(m.grain ?? 0, MILL.grind) : 0;
+        if (m && g > 0) {
+          m.grain = (m.grain ?? 0) - g;
+          if (m.grain < 1e-6) m.grain = 0;
+          a.load = g * (m.running ? MILL.bonus : 1);
+          a.carry = CarryKind.Sack;
+          this.buildingsDirty = true;
+        }
+        break;
+      }
       case SiteKind.Line: {
         const i = a.site;
         if (a.carry === CarryKind.Stone && (w.flags[i]! & CellFlag.Lined) === 0) {
@@ -1695,11 +1969,24 @@ export class PeopleSystem {
       ((a.carry === CarryKind.Sack || a.carry === CarryKind.Fish || a.carry === CarryKind.Bucket) && a.load > 0) ||
       (a.carry === CarryKind.Log && a.job === Job.Woodcutter);
     if (delivering) {
+      // Grain goes to the mill while its wheel turns (not the miller's own flour, nor fish or milk).
+      const mill = a.carry === CarryKind.Sack && a.job !== Job.Miller ? this.millOf(s.state.id) : null;
+      if (mill && mill.progress >= 1 && mill.running && this.goTo(a, w.idx(mill.x, mill.y), SiteKind.Mill, time, mill.id)) return;
       const store = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store');
       if (store && this.goTo(a, w.idx(store.x, store.y), SiteKind.Deliver, time)) return;
     }
+    // A bucket of water goes home to a house.
+    if (a.carry === CarryKind.Bucket && a.load <= 0) {
+      const homes = this.buildings.filter((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress >= 1);
+      const h = homes.length ? homes[this.rng.int(0, homes.length)]! : null;
+      if (h && this.goTo(a, this.near(w.idx(h.x, h.y), 1), SiteKind.Pour, time)) return;
+      a.carry = CarryKind.None;
+    }
     if (a.job === Job.Builder) {
-      const house = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
+      // Houses first, then the well or the mill.
+      const house =
+        this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1) ??
+        this.buildings.find((b) => b.settlement === s.state.id && (b.kind === 'well' || b.kind === 'mill') && b.progress < 1 && !this.blocked.has(w.idx(b.x, b.y)));
       if (house && this.goTo(a, w.idx(house.x, house.y), SiteKind.House, time, house.id)) return;
       const jt = s.state.jetty;
       if (jt && jt.progress < 1 && !this.blocked.has(jt.shore) && this.goTo(a, jt.shore, SiteKind.Jetty, time)) {
@@ -1735,6 +2022,10 @@ export class PeopleSystem {
       }
     }
     if (a.job === Job.Herder && this.herd(a, s, time)) return;
+    if (a.job === Job.Miller) {
+      const m = this.millOf(s.state.id);
+      if (m && m.progress >= 1 && (m.grain ?? 0) > 0 && this.goTo(a, this.near(w.idx(m.x, m.y), 1), SiteKind.Grind, time, m.id)) return;
+    }
     if (a.job === Job.Fisher && time.season !== 3) {
       const spot = this.fishingSpot(a, s);
       if (spot >= 0 && this.goTo(a, spot, SiteKind.Fish, time)) {
@@ -1749,7 +2040,8 @@ export class PeopleSystem {
         return;
       }
     }
-    // Nothing to do: wander near home and rest (in hard times: by the store).
+    // Nothing to do: now and then fetch a bucket of water; else wander near home and rest (in hard times: by the store).
+    if (this.rng.next() < CARRY.chance && this.fetchWater(a, s, time)) return;
     const tired = s.state.mood === -1;
     const store = tired ? this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store') : undefined;
     const r = store ? 1 + this.rng.int(0, 2) : 2 + this.rng.int(0, 6);
@@ -1809,7 +2101,7 @@ export class PeopleSystem {
   /** Children: run to a spot between the houses, pause, run on. */
   private play(a: Agent, s: Settlement, time: SimTime): void {
     const w = this.world;
-    const homes = this.buildings.filter((b) => b.settlement === s.state.id && b.kind !== 'ruin' && b.progress >= 1);
+    const homes = this.buildings.filter((b) => b.settlement === s.state.id && (b.kind === 'house' || b.kind === 'store') && b.progress >= 1);
     const h = homes.length ? homes[this.rng.int(0, homes.length)]! : { x: s.state.x, y: s.state.y };
     const r = 1.5 + this.rng.range(0, 2.5);
     const ang = this.rng.range(0, Math.PI * 2);
