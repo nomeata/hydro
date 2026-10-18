@@ -557,6 +557,17 @@ export class StructuresLayer {
     u0 -= 0.3;
     u1 += 0.3;
     const prog = Math.min(1, Math.max(0, w.progress));
+    // Which side is downstream: the lower water surface a little off the line.
+    const um = (u0 + u1) / 2;
+    const side = (o: number) => {
+      const px = w.x + c * um - sn * o;
+      const py = w.y + sn * um + c * o;
+      return hs.terrainAt(px, py) + hs.depthAt(px, py);
+    };
+    const down = side(2.5) <= side(-2.5) ? 1 : -1;
+    const ox = -sn * down;
+    const oy = c * down;
+    const surfAt = (px: number, py: number) => hs.terrainAt(px, py) + hs.depthAt(px, py);
     // The coping goes on block by block as the stone work gets done.
     const span = u1 - u0;
     const blocks = Math.max(1, Math.round(span / 0.7));
@@ -572,21 +583,21 @@ export class StructuresLayer {
       if (inGate(px, py)) continue;
       // The wall stands on the ground at its foot (the lower side).
       const foot = Math.min(hs.terrainAt(px, py), hs.terrainAt(px - sn * 1.2, py + c * 1.2), hs.terrainAt(px + sn * 1.2, py - c * 1.2));
-      const g = Math.min(y, heightToY(foot));
-      this.put(P.ashlar, w.x, w.y, w.rot, u, g - 0.25, bl * 0.98, y - g + 0.25 - 0.08, 1.15);
-      this.put(P.coping, w.x, w.y, w.rot, u, y - 0.09, bl * 0.94, 0.13, k % 2 ? 0.95 : 1.05);
+      // A drowned weir (the water below it as high as its crest, as in a
+      // flood) would vanish under the river: its coping stands a little
+      // proud of the water so the wall always reads as a line across it,
+      // with a white line of water tumbling over its lower edge.
+      const tail = surfAt(px + ox * 1.6, py + oy * 1.6);
+      const drowned = tail > w.top - 0.05;
+      const yc = drowned ? Math.max(y, heightToY(Math.max(surfAt(px, py), surfAt(px - ox * 1.2, py - oy * 1.2))) + 0.06) : y;
+      const g = Math.min(yc, heightToY(foot));
+      this.put(P.ashlar, w.x, w.y, w.rot, u, g - 0.25, bl * 0.98, yc - g + 0.25 - 0.08, 1.15);
+      this.put(P.coping, w.x, w.y, w.rot, u, yc - 0.09, bl * 0.94, 0.13, k % 2 ? 0.95 : 1.05);
+      if (drowned && hs.depthAt(px, py) > 0.05) this.put(P.foam, px + ox * 0.75 - c * u, py + oy * 0.75 - sn * u, w.rot, u, yc - 0.1, bl * 1.02, 0.06, 0.4);
     }
     if (prog < 0.999) return;
     // Little stone posts at either end of the crest.
     for (const u of [u0, u1]) this.put(P.post, w.x, w.y, w.rot, u, y - 0.25, 0.5, 0.6, 0.6);
-    // Which side is downstream: the lower water surface a little off the line.
-    const um = (u0 + u1) / 2;
-    const side = (o: number) => {
-      const px = w.x + c * um - sn * o;
-      const py = w.y + sn * um + c * o;
-      return hs.terrainAt(px, py) + hs.depthAt(px, py);
-    };
-    const down = side(2.5) <= side(-2.5) ? 1 : -1;
     // Water sheeting over: per stretch of crest with water on it, a falling sheet and foam below.
     for (let u = u0 + 0.5; u < u1; u += 1) {
       const cx = w.x + c * u;
@@ -597,8 +608,6 @@ export class StructuresLayer {
       const fy = cy + c * down * 1.6;
       const tail = heightToY(hs.terrainAt(fx, fy) + hs.depthAt(fx, fy));
       const fall = y - tail;
-      const ox = -sn * down;
-      const oy = c * down;
       const thick = Math.min(0.12, 0.03 + d * 0.4);
       if (fall > 0.06) {
         // The sheet: from the crest's edge down its face (leaning out), in three steps.

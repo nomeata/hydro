@@ -18,6 +18,7 @@ import { perlin } from '../../shared/noise';
 import { LandUse, SoilType } from '../../sim/world';
 import { FIELD_BYTES, LOOK_CHANNELS } from '../../shared/protocol';
 import { modelLibrary, type StaticModel } from './loader';
+import { SNOW_ATTRIBUTE, snowCapMaterial } from './snowCap';
 import type { ModelName } from './manifest';
 
 export const enum VegKind {
@@ -88,6 +89,8 @@ export interface Placement {
   scale: number;
   /** Multiplicative colour tint (linear). */
   tint: number;
+  /** Snow cover at the cell (0..1): a white cap on the upward faces. */
+  snow?: number;
 }
 
 export interface ScatterInput {
@@ -174,11 +177,11 @@ export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y
         const pRock = soil === SoilType.Rock ? 0.32 : 0.1;
         if (r < pRock) {
           const big = h(15) < (soil === SoilType.Rock ? 0.3 : 0.08);
-          out.push({ kind: big ? VegKind.BigRock : VegKind.Rock, variant: h(16), x: jx, y: jy, yaw, scale: 0.7 + 0.7 * h(17), tint: 0.9 + 0.15 * h(18) });
+          out.push({ kind: big ? VegKind.BigRock : VegKind.Rock, variant: h(16), x: jx, y: jy, yaw, scale: 0.7 + 0.7 * h(17), tint: 0.9 + 0.15 * h(18), snow });
           large = true;
         }
       } else if (r < 0.006 && slope < 1) {
-        out.push({ kind: VegKind.Rock, variant: h(16), x: jx, y: jy, yaw, scale: 0.6 + 0.5 * h(17), tint: 0.9 + 0.15 * h(18) });
+        out.push({ kind: VegKind.Rock, variant: h(16), x: jx, y: jy, yaw, scale: 0.6 + 0.5 * h(17), tint: 0.9 + 0.15 * h(18), snow });
         large = true;
       }
 
@@ -211,12 +214,13 @@ export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y
             yaw,
             scale: fringe * (0.8 + 0.45 * h(33)),
             tint,
+            snow,
           });
           large = true;
         } else {
           const pBush = 0.22 * smooth(0.3, 0.5, veg) * (1 - 0.5 * smooth(0.75, 1, veg));
           if (h(34) < pBush) {
-            out.push({ kind: VegKind.Bush, variant: h(35), x: jx, y: jy, yaw, scale: 0.8 + 0.6 * h(36), tint });
+            out.push({ kind: VegKind.Bush, variant: h(35), x: jx, y: jy, yaw, scale: 0.8 + 0.6 * h(36), tint, snow });
             large = true;
           }
         }
@@ -243,6 +247,12 @@ export function scatter(inp: ScatterInput, x0: number, y0: number, x1: number, y
 
 /** Moisture and snow bands the scatter distinguishes (look bytes; see `scatter`). */
 const MOIST_BANDS = [77, 102, 153];
+/** Snow bands: the detail objects go under 102; trees, bushes and rocks carry a cap that steps with the cover. */
+const SNOW_BANDS = [26, 77, 102, 153, 204];
+/** Snow cover → the cap's strength, in the steps the chunks are rebuilt at. */
+export function snowCap(snow: number): number {
+  return band(Math.round(snow * 255), SNOW_BANDS) / SNOW_BANDS.length;
+}
 const band = (v: number, edges: readonly number[]) => {
   let k = 0;
   for (const e of edges) if (v >= e) k++;
@@ -268,7 +278,7 @@ export function changedChunks(prev: Uint8Array, next: Uint8Array, width: number,
             prev[o] !== next[o] ||
             prev[o + 2] !== next[o + 2] ||
             band(prev[o + 1]!, MOIST_BANDS) !== band(next[o + 1]!, MOIST_BANDS) ||
-            prev[o + 3]! > 102 !== next[o + 3]! > 102
+            band(prev[o + 3]!, SNOW_BANDS) !== band(next[o + 3]!, SNOW_BANDS)
           ) {
             changed = true;
             break;
@@ -285,7 +295,7 @@ function signature(ps: readonly Placement[], palette: readonly (readonly ModelNa
   for (const p of ps) {
     const m = palette[p.kind]!;
     const v = Math.floor(p.variant * m.length);
-    s = Math.imul(s ^ ((p.kind << 8) | v), 0x01000193);
+    s = Math.imul(s ^ ((p.kind << 8) | v | (Math.round(snowCap(p.snow ?? 0) * 8) << 16)), 0x01000193);
     s = Math.imul(s ^ Math.round(p.x * 64), 0x01000193);
     s = Math.imul(s ^ Math.round(p.y * 64), 0x01000193);
   }
@@ -295,6 +305,8 @@ function signature(ps: readonly Placement[], palette: readonly (readonly ModelNa
 interface ChunkModelData {
   matrices: Float32Array;
   colors: Float32Array;
+  /** Per instance: snow cap, winter dulling of the leaves (snowCap.ts). */
+  snow: Float32Array;
   count: number;
 }
 
@@ -537,10 +549,11 @@ export class VegetationLayer {
   }
 
   setSeason(season: number): void {
-    const autumnNow = season === 2;
-    const autumnBefore = this.season === 2;
+    // Autumn swaps models; winter dulls the leaves.
+    const look = (k: number) => (k === 2 ? 2 : k === 3 ? 3 : 0);
+    const changed = look(season) !== look(this.season);
     this.season = season;
-    if (autumnNow !== autumnBefore) {
+    if (changed) {
       this.chunks.forEach((c, i) => {
         c.forced = true;
         this.pending.add(i);
@@ -591,14 +604,20 @@ export class VegetationLayer {
       const mesh = b.mesh!;
       const mArr = mesh.instanceMatrix.array as Float32Array;
       const cArr = mesh.instanceColor!.array as Float32Array;
+      const snowAttr = mesh.geometry.getAttribute(SNOW_ATTRIBUTE) as THREE.InstancedBufferAttribute;
+      const sArr = snowAttr.array as Float32Array;
       let o = 0;
       for (const c of vis) {
         const d = c.data.get(b.name);
         if (!d) continue;
         mArr.set(d.matrices.subarray(0, d.count * 16), o * 16);
         cArr.set(d.colors.subarray(0, d.count * 3), o * 3);
+        sArr.set(d.snow.subarray(0, d.count * 2), o * 2);
         o += d.count;
       }
+      snowAttr.clearUpdateRanges();
+      snowAttr.addUpdateRange(0, n * 2);
+      snowAttr.needsUpdate = true;
       mesh.count = n;
       mesh.instanceMatrix.clearUpdateRanges();
       mesh.instanceMatrix.addUpdateRange(0, n * 16);
@@ -639,7 +658,16 @@ export class VegetationLayer {
       b.mesh.dispose();
     }
     const model = this.models.get(b.name)!;
-    const mesh = new THREE.InstancedMesh(model.geometry, model.material, capacity);
+    // A geometry of its own per batch (sharing the model's buffers): it carries the per-instance snow.
+    const geometry = new THREE.BufferGeometry();
+    for (const [k, a] of Object.entries(model.geometry.attributes)) geometry.setAttribute(k, a);
+    geometry.setIndex(model.geometry.index);
+    geometry.boundingBox = model.geometry.boundingBox;
+    geometry.boundingSphere = model.geometry.boundingSphere;
+    const snow = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 2), 2);
+    snow.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute(SNOW_ATTRIBUTE, snow);
+    const mesh = new THREE.InstancedMesh(geometry, snowCapMaterial(model.material), capacity);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.setColorAt(0, this.tmpC.setRGB(1, 1, 1));
     mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
@@ -718,14 +746,22 @@ export class VegetationLayer {
       arr.push(p);
     }
     const autumn = this.season === 2;
+    const winter = this.season === 3;
     c.data = new Map();
     let minY = Infinity;
     let maxY = -Infinity;
     for (const [name, ps] of byModel) {
       const model = this.models.get(name);
       if (!model) continue;
-      const d: ChunkModelData = { matrices: new Float32Array(ps.length * 16), colors: new Float32Array(ps.length * 3), count: ps.length };
+      const d: ChunkModelData = {
+        matrices: new Float32Array(ps.length * 16),
+        colors: new Float32Array(ps.length * 3),
+        snow: new Float32Array(ps.length * 2),
+        count: ps.length,
+      };
       const kind = ps[0]!.kind;
+      // Bare-ish in winter: deciduous trees most, bushes and conifers a little.
+      const dull = winter ? (kind === VegKind.Deciduous ? 1 : kind === VegKind.Bush ? 0.7 : kind === VegKind.Conifer ? 0.25 : 0) : 0;
       const isTree = kind === VegKind.Deciduous || kind === VegKind.Conifer || kind === VegKind.BigRock;
       // Rocks and logs lie on the ground: tilt them with the slope and bury
       // them partly, so they share the slope's lighting and never float.
@@ -770,6 +806,8 @@ export class VegetationLayer {
         if (autumn && kind === VegKind.Deciduous) this.tmpC.setRGB(tint * 1.04, tint, tint * 0.92);
         else this.tmpC.setRGB(tint, tint * (0.98 + (0.04 * ((k * 7919) % 13)) / 13), tint);
         this.tmpC.toArray(d.colors, k * 3);
+        d.snow[k * 2] = snowCap(p.snow ?? 0) * (isTree || kind === VegKind.Bush || lying ? 0.95 : 0);
+        d.snow[k * 2 + 1] = dull;
       }
       c.data.set(name, d);
     }

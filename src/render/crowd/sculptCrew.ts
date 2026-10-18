@@ -1,7 +1,9 @@
 /**
  * The crew at freshly sculpted ground (DESIGN.md §4): a few little workers
  * walk up to where the player has been brushing and pat and tamp the earth
- * with their spades for a while, then wander off. Purely cosmetic: they live
+ * with their spades for a while, then wander off. They also gather on the
+ * banks at a weir that is being built (`site`), working from the dry
+ * ground beside the water. Purely cosmetic: they live
  * on the main thread, are merged into the entity frames like the welcome
  * scenes' animals (render/worldLayers.ts), and change nothing in the sim.
  */
@@ -47,7 +49,11 @@ export class SculptCrew {
   /** Called when a worker starts tamping at (x, y) (sound). */
   onWork: ((x: number, y: number) => void) | null = null;
 
-  constructor(private readonly known: (x: number, y: number) => boolean = () => true) {}
+  constructor(
+    private readonly known: (x: number, y: number) => boolean = () => true,
+    /** Dry ground (workers do not stand in the water); everywhere by default. */
+    private readonly dry: (x: number, y: number) => boolean = () => true,
+  ) {}
 
   private rand(): number {
     // xorshift32: cosmetic only.
@@ -77,7 +83,15 @@ export class SculptCrew {
     }
   }
 
-  /** A sculpted spot near (x, y) to go to, a little off its centre. */
+  /**
+   * A building site at (x, y) (a weir's end on the bank): keeps workers
+   * coming while it is called, like brushing there would.
+   */
+  site(x: number, y: number): void {
+    this.note(x, y, 1.5);
+  }
+
+  /** A sculpted spot near (x, y) to go to, a little off its centre (on dry ground when there is some). */
   private pick(x: number, y: number): { x: number; y: number } {
     const fresh = this.spots.filter((s) => this.now - s.t < SPOT_LIFE);
     let s = fresh[Math.floor(this.rand() * fresh.length)] ?? { x, y };
@@ -86,9 +100,14 @@ export class SculptCrew {
       const o = fresh[Math.floor(this.rand() * fresh.length)];
       if (o && Math.hypot(o.x - x, o.y - y) < Math.hypot(s.x - x, s.y - y)) s = o;
     }
-    const a = this.rand() * Math.PI * 2;
-    const d = 1 + this.rand() * 1.5;
-    return { x: s.x + Math.cos(a) * d, y: s.y + Math.sin(a) * d };
+    let g = { x: s.x, y: s.y };
+    for (let k = 0; k < 6; k++) {
+      const a = this.rand() * Math.PI * 2;
+      const d = 1 + this.rand() * 1.5;
+      g = { x: s.x + Math.cos(a) * d, y: s.y + Math.sin(a) * d };
+      if (this.dry(g.x, g.y)) break;
+    }
+    return g;
   }
 
   /** Advance by dt real seconds. */

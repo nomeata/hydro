@@ -291,6 +291,8 @@ export class GameRenderer {
     this.structures.refreshWater();
     this.power.gameSpeed = this.flow.gameSpeed;
     this.weather.setFronts(s.climate.fronts);
+    // Hoar frost on the grass below freezing (the day's temperature).
+    this.terrain.uniforms.uFrost.value = Math.min(1, Math.max(0, -s.climate.temperature / 4));
     const wu = this.water.uniforms;
     wu.uDepthA.value = this.prevDepthTex();
     wu.uDepthB.value = this.curDepthTex();

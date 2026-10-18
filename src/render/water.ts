@@ -190,9 +190,14 @@ void main() {
   float sparkle = smoothstep(0.82, 0.95, nf.a) * pow(max(dot(fn, H), 0.0), 8.0) * 0.6;
   vec3 glint = uSunColor * (spec + sparkle) * RECIPROCAL_PI;
 
+  // How fast the depth changes across the ground (m per cell): high at a
+  // bank, low on a sheet of flood water over a meadow, which then gets no
+  // shore foam (it would speckle the whole sheet white).
+  float dDepth = length(vec2(dFdx(vDepth), dFdy(vDepth))) / max(length(vec2(length(dFdx(vWorld.xz)), length(dFdy(vWorld.xz)))), 1e-4);
+  float bank = smoothstep(0.03, 0.16, dDepth);
   // Foam: on fast flow and along the shore.
   float fast = smoothstep(1.0, 3.0, speed);
-  float shore = 1.0 - smoothstep(0.0, 0.15, vDepth);
+  float shore = (1.0 - smoothstep(0.0, 0.15, vDepth)) * bank;
   float shoreWave = 0.5 + 0.5 * sin(uTime * 2.0 + nz.b * 12.0);
   // Foam streaks stretched along the flow.
   vec2 fdir = speed > 0.01 ? vVel / speed : vec2(1.0, 0.0);
@@ -210,9 +215,11 @@ void main() {
   lit = mix(lit, refl, fres) + uSunColor * RECIPROCAL_PI * hl * 0.5;
   // Crisp foam line at the very edge of the water.
   float edge = 1.0 - smoothstep(0.015, 0.05 + 0.03 * nf.b, vDepth);
-  foam = max(foam, edge * 0.85 * (1.0 - paddy));
+  foam = max(foam, edge * 0.85 * bank * (1.0 - paddy));
   vec3 col = mix(lit + glint, foamCol, foam * 0.9);
-  float alpha = mix(mix(0.62, 0.9, deepT), 0.32, paddy);
+  // Thin water is clear: the ground shows through, and the sheet's edge blends into it.
+  float body = mix(0.3, 0.62, smoothstep(0.03, 0.45, vDepth));
+  float alpha = mix(mix(body, 0.9, deepT), 0.32, paddy);
   alpha = max(alpha, foam * 0.85);
   col *= cloudShadow(vWorld.xz);
 
@@ -240,7 +247,8 @@ void main() {
     col = mix(col, pc, pa);
     alpha = max(alpha, pa);
   }
-  alpha *= smoothstep(0.0, 0.05, vDepth) * fogA;
+  // A soft, irregular waterline (not the triangles' straight edges).
+  alpha *= smoothstep(0.0, 0.03 + 0.1 * nf.b, vDepth) * fogA;
   gl_FragColor = vec4(col, alpha);
   #include <colorspace_fragment>
 }
