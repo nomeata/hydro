@@ -55,6 +55,8 @@ export interface CanalOptions {
   /** Earth the canal may move at most (m³). */
   maxEarth?: number;
   width?: number;
+  /** The village centre: the canal keeps out of the ring its houses grow into (forbidden within `r`/2, dearer within `r`). */
+  village?: { x: number; y: number; r: number };
 }
 
 /** Cells within `r` of any building or fixed cell (the canal keeps clear of the houses). */
@@ -187,7 +189,13 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
       if (cut > maxCut) continue;
       // Digging through fields costs the land; a cut costs earth.
       const field = w.landuse[j] === LandUse.Field ? 1.5 : 0;
-      const nc = c + l * (1 + cut * 1.2 + field);
+      let home = 0;
+      if (opts.village) {
+        const dv = Math.hypot(nx - opts.village.x, ny - opts.village.y);
+        if (dv < opts.village.r / 2) continue;
+        if (dv < opts.village.r) home = 2;
+      }
+      const nc = c + l * (1 + cut * 1.2 + field + home);
       if (nc < cost[j]!) {
         cost[j] = nc;
         len[j] = s;

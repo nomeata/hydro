@@ -120,6 +120,9 @@ class Earth {
   }
 }
 
+/** Houses are built within 12 cells of a village's centre: canals keep out of most of that ring. */
+const HOME_RING = 10;
+
 /** Field radius of a village (people/village.ts FIELD_RADIUS). */
 const FIELD_RADIUS = 18;
 
@@ -397,7 +400,7 @@ function planWeirCanal(sim: Simulation, s: Settlement, earth: number): { site: W
     const w = sim.world;
     const grid: PlanGrid = { width: w.width, height: w.height, plan: new Float32Array(0), idx: (a, b) => w.idx(a, b), terrain: (j) => w.terrain(j) };
     const wallCells = new Set(rasterisePath(grid, site.line, 3.5).keys());
-    const canal = planCanal(sim, starts, targets, { blocked: (i) => site.pool.has(i) || wallCells.has(i), maxEarth: earth });
+    const canal = planCanal(sim, starts, targets, { village: { x: s.state.x, y: s.state.y, r: HOME_RING }, blocked: (i) => site.pool.has(i) || wallCells.has(i), maxEarth: earth });
     if (!canal) continue;
     weirWhy.canals++;
     const score = canal.covered.length - 1.5 * site.poolFields - canal.earth / 200;
@@ -472,7 +475,7 @@ function planRiverCanal(sim: Simulation, s: Settlement, earth: number): CanalPla
       starts.push({ cell: c, level: w.surface(i) - 0.05 });
     }
   }
-  const canal = planCanal(sim, starts, targets, { maxEarth: earth }, 20);
+  const canal = planCanal(sim, starts, targets, { village: { x: s.state.x, y: s.state.y, r: HOME_RING }, maxEarth: earth }, 20);
   return canal && canal.covered.length >= 25 ? canal : null;
 }
 
@@ -555,7 +558,7 @@ export class WheelCanalBot implements Bot {
             }
           // A wheel's water keeps only a short canal wet (it soaks into the bed and evaporates).
           const maxLen = Math.max(8, Math.min(30, ws.perDay / 2.5));
-          const canal = planCanal(sim, starts, targets, { maxEarth: this.earth.left, maxLen, blocked: (i) => i === head || i === w.idx(ws.x, ws.y) }, 10);
+          const canal = planCanal(sim, starts, targets, { village: { x: s.state.x, y: s.state.y, r: HOME_RING }, maxEarth: this.earth.left, maxLen, blocked: (i) => i === head || i === w.idx(ws.x, ws.y) }, 10);
           if (!canal) continue;
           // The wheel's water spreads over a short canal only: favour what it can keep wet.
           const score = Math.min(canal.covered.length, ws.perDay * 1.5) - canal.earth / 200 - canal.path.length * 0.2;
