@@ -5,7 +5,7 @@
  */
 import { DAYS_PER_YEAR } from '../../src/sim/constants';
 import { realMinutes } from './observe';
-import type { JobResult, Outcome } from './run';
+import { outcomeAt, type JobResult, type Outcome } from './run';
 
 const f = (x: number | null | undefined, d = 1): string => (x === null || x === undefined || Number.isNaN(x) ? '–' : x.toFixed(d));
 const sgn = (x: number | null | undefined, d = 1): string => (x === null || x === undefined || Number.isNaN(x) ? '–' : `${x > 0 ? '+' : ''}${x.toFixed(d)}`);
@@ -120,13 +120,19 @@ export function summarise(results: JobResult[], meta: { commit?: string; command
 
   // ---- Bots -------------------------------------------------------------
   if (bots.length && base.length) {
+    const botDays = results.find((r) => r.spec.bot !== 'baseline')?.spec.days ?? 0;
     lines.push('', '## Player bots vs baseline (mean of per-seed differences)', '');
+    lines.push(`Bot runs last ${f(botDays / DAYS_PER_YEAR, 1)} years; they are compared with the baseline of the same seed on the same day. Seeds where a bot never acted are left out of the means. Prosperity and food security are means over the last year.`, '');
     const rows: (string | number)[][] = [];
     const detail: string[] = [];
     for (const b of bots) {
       const pairs = results
         .filter((r) => r.spec.bot === b)
-        .map((r) => ({ r, base: base.find((x) => x.spec.seed === r.spec.seed) }))
+        .map((r) => {
+          // Compare with the baseline as it stood on the same day.
+          const b0 = base.find((x) => x.spec.seed === r.spec.seed);
+          return { r: { ...r, outcome: outcomeAt(r, r.spec.days, true) }, base: b0 && { ...b0, outcome: outcomeAt(b0, r.spec.days, true) } };
+        })
         .filter((p): p is { r: JobResult; base: JobResult } => !!p.base)
         .sort((a, b2) => a.r.spec.seed - b2.r.spec.seed);
       const acted = pairs.filter((p) => p.r.actions.length > 0);

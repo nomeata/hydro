@@ -401,3 +401,39 @@ export async function runJob(spec: JobSpec, log: (msg: string) => void = () => {
     runtimeSec: Math.round((performance.now() - t0) / 1000),
   };
 }
+
+/**
+ * The outcome of a run as it stood after its first `days` days, recomputed
+ * from the recorded series (to compare runs of different lengths). Forest
+ * and the final village count come from the series too; houses and totals
+ * from the last seasonal sample before then.
+ */
+export function outcomeAt(r: JobResult, days: number, force = false): Outcome {
+  if (days >= r.spec.days && !force) return r.outcome;
+  const d = r.daily;
+  const lastYear = Math.max(0, days - DAYS_PER_YEAR);
+  const ss = r.seasons.filter((s) => s.day < days);
+  const last = ss[ss.length - 1];
+  const milestones: Record<number, number> = {};
+  for (const [k, v] of Object.entries(r.outcome.milestones)) if (v < days) milestones[Number(k)] = v;
+  return {
+    population: d.population[days - 1] ?? 0,
+    peak: Math.max(0, ...d.population.slice(0, days)),
+    prosperity: meanOf(d.prosperity.slice(lastYear, days)),
+    foodSecurity: meanOf(d.foodSecurity.slice(lastYear, days)),
+    villages: d.villages[days - 1] ?? 0,
+    maxVillages: Math.max(0, ...d.villages.slice(0, days)),
+    houses: d.houses?.[days - 1] ?? last?.houses ?? 0,
+    fields: d.fields?.[days - 1] ?? last?.fields ?? 0,
+    revealed: last?.revealed ?? 0,
+    dryStress: meanOf(d.dryStress.slice(0, days)),
+    dryStressLastYear: meanOf(d.dryStress.slice(lastYear, days)),
+    forestStart: r.outcome.forestStart,
+    forestEnd: last?.forest ?? r.outcome.forestEnd,
+    milestones,
+    foundings: r.outcome.foundings.filter((x) => x < days),
+    totals: last
+      ? { floodCells: last.floodCells, housesRuined: last.housesRuined, fled: last.fled, arrived: last.arrived, left: last.left, born: last.born, died: last.died }
+      : r.outcome.totals,
+  };
+}
