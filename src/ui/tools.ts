@@ -1,8 +1,9 @@
 /**
  * Tool palette and drawing interaction. The three sculpting brushes (Raise,
  * Dig, Even) change the ground at once while the pointer is held (the sim
- * applies it, the client predicts it: client/sculptor.ts); they stay
- * selected. The structure tools place *plans* the crew builds, one per use.
+ * applies it, the client predicts it: client/sculptor.ts). The structure
+ * tools place *plans* the crew builds. Every tool stays selected (after a
+ * placement, or a tap that placed nothing) until Escape or Look.
  * While a tool is active, one finger / the left mouse button draws or
  * brushes, and two fingers still pan and zoom.
  * Each tool's hint says which problem of the land it solves (GAMEPLAY.md
@@ -18,7 +19,8 @@ import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
 import { wheelSite, wheelSites, type WheelGrid, type WheelSite } from '../sim/structures/wheel';
-import { polePositions, pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
+import { LINK_SPAN, POLE_SNAP, POLE_SPACING, polePositions, pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
+import { gateTapSite, type GateSite } from '../sim/structures/structures';
 import { toolName } from '../shared/progress';
 
 export type ToolId = 'look' | BrushTool | 'weir' | 'gate' | 'wheel' | 'power' | 'erase';
@@ -83,6 +85,14 @@ export interface ToolHost {
   /** The wheel tool's ghost wheel (good site or not), or none; and the good sites it marks on the map. */
   setWheelGhost?(site: { x: number; y: number; hx: number; hy: number } | null, ok: boolean): void;
   setWheelSites?(sites: readonly { x: number; y: number; hx: number; hy: number }[] | null): void;
+  /** The power tools' ghost: new poles and wires (x, y, x, y, … cells) of a line being drawn, or a pump; null hides it. */
+  setPowerGhost?(g: { poles: readonly Pt[]; wires: readonly number[]; pump?: PumpGhost } | null): void;
+  /** The grid's turbines and poles (finished or not), as [x, y]: a drawn line snaps to them. */
+  powerNodes?(): readonly Pt[];
+  /** The gate tool's ghost gate, or none. */
+  setGateGhost?(g: { x: number; y: number; rot: number; width: number; top: number; sill: number } | null): void;
+  /** Tinted cells (fields under a brush, a stroke's raised and dug ground, an undo's flash), per channel; null clears. */
+  setCellTint?(key: string, cells: readonly { i: number; c: number; a: number }[] | null, fadeMs?: number): void;
   /** Whether single-pointer drags pan the camera. */
   setCameraPrimaryPointer(enabled: boolean): void;
   /**
@@ -100,6 +110,23 @@ export interface ToolHost {
   /** The brush worked around (x, y) this frame (the cosmetic crew comes to look). */
   brushed?(x: number, y: number, r: number): void;
 }
+
+/** A pump as the ghost shows it (PowerInfo's pump). */
+export interface PumpGhost {
+  id: number;
+  x: number;
+  y: number;
+  hx: number;
+  hy: number;
+  ox: number;
+  oy: number;
+  progress: number;
+  flow: number;
+  power: number;
+}
+
+/** Tints: fields a brush would bury, ground a stroke raised and dug, an undo's flash. */
+const TINT = { field: 0xff4a2a, raised: 0xffa040, dug: 0x3f8fff, undo: 0xffffff };
 
 interface ToolDef {
   id: ToolId;
@@ -313,7 +340,8 @@ export class ToolPalette {
     window.addEventListener('keydown', (e) => this.onKey(e));
     c.addEventListener('pointerleave', () => {
       this.hover = null;
-      if (!this.brush) this.host.setBrushCursor?.(null);
+      if (!this.brush) this.cursor(null);
+      if (this.tool === 'gate' && !this.drawing) this.host.setGateGhost?.(null);
     });
     this.select('look');
     this.setPopulation(0);
@@ -336,8 +364,14 @@ export class ToolPalette {
     const sc = this.host.sculptor;
     if (!sc) return;
     if (this.brush) this.endBrush();
-    sc.undo();
+    const had = sc.undoable > 0;
+    const cells = sc.undo();
     this.refreshUndo();
+    if (!had) return;
+    // The undone stroke flashes as its ground goes back.
+    this.host.setCellTint?.('stroke', null);
+    if (cells?.size) this.host.setCellTint?.('undo', [...cells.keys()].map((i) => ({ i, c: TINT.undo, a: 0.6 })), 1400);
+    this.flashHint('Undone: the ground is back as it was.');
   }
 
   /** Enable Undo when there is a stroke to undo (after each snapshot). */
@@ -465,7 +499,9 @@ export class ToolPalette {
     this.options.hidden = !st && !modes && !brush;
     this.modes.hidden = !modes;
     this.brushRow.hidden = !brush;
-    if (!brush) this.host.setBrushCursor?.(null);
+    if (!brush) this.cursor(null);
+    this.host.setGateGhost?.(null);
+    this.host.setPowerGhost?.(null);
     this.refreshUndo();
     this.sizeInput.closest('label')!.hidden = !st || !!st.noWidth;
     this.amountInput.closest('label')!.hidden = st?.amount === undefined;
@@ -509,6 +545,8 @@ export class ToolPalette {
     this.host.setPreviewPlan(null);
     this.host.setPreviewLining?.(null);
     this.host.setWheelGhost?.(null, false);
+    this.host.setGateGhost?.(null);
+    this.host.setPowerGhost?.(null);
   }
 
   /** Called when a snapshot with a new plan (or lining) arrives. */
@@ -556,6 +594,7 @@ export class ToolPalette {
     if (!b && isBrush(this.tool) && e.pointerType === 'mouse' && this.pointers.size === 0) this.hoverBrush(e.clientX, e.clientY);
     const d = this.drawing;
     if (!d && this.tool === 'wheel' && e.pointerType === 'mouse' && this.pointers.size === 0) this.hoverWheel(e.clientX, e.clientY);
+    if (!d && this.tool === 'gate' && e.pointerType === 'mouse' && this.pointers.size === 0) this.hoverGate(e.clientX, e.clientY);
     if (!d || d.id !== e.pointerId) return;
     const p = this.host.pick(e.clientX, e.clientY);
     if (!p) return;
@@ -612,10 +651,16 @@ export class ToolPalette {
         cmd = { type: 'placeGate', points: ends, width, height: amount };
         break;
       case 'wheel': {
-        // A bad site is shown by the red ghost alone; letting go there places nothing.
+        // Letting go on a bad site places nothing: the red ghost stays a moment, and the hint says why.
         const site = this.wheelPreview(ends);
-        if (site?.ok) cmd = { type: 'placeWheel', points: ends };
-        this.host.setWheelGhost?.(null, false);
+        if (site?.ok) {
+          cmd = { type: 'placeWheel', points: ends };
+          this.host.setWheelGhost?.(null, false);
+        } else {
+          this.showWheelGhost(site, ends);
+          if (site?.reason) reason = site.reason;
+          this.holdWheelGhost(e.clientX, e.clientY);
+        }
         break;
       }
       case 'power': {
@@ -638,18 +683,31 @@ export class ToolPalette {
     }
     if (cmd) {
       this.host.command(cmd);
-      this.awaitingPlan = true;
+      // Earthworks (weir, gate) keep their preview until the sim's plan arrives; the rest show up built from the ground.
+      if (this.tool === 'weir' || this.tool === 'gate') this.awaitingPlan = true;
       if (this.housesSkipped && !reason) reason = 'The plan goes round the houses: the crew never builds over them.';
     }
-    // A wheel let go on a bad site places nothing: the tool stays, its red ghost said why.
-    if (this.tool === 'wheel' && !cmd) {
-      if (e.pointerType === 'mouse') this.hoverWheel(e.clientX, e.clientY);
-      return;
+    if (!this.awaitingPlan) {
+      this.host.setPreviewPlan(null);
+      this.host.setPreviewLining?.(null);
     }
-    // One structure per tool use: go back to looking around, so a stray
-    // touch never places a second one (the brushes stay selected).
-    this.select('look');
+    this.host.setGateGhost?.(null);
+    this.host.setPowerGhost?.(null);
+    // The tool stays selected (placed or not); Escape or Look goes back to looking around.
     if (reason) this.flashHint(reason);
+    else if (!this.hintTimer) this.showHint(this.tool);
+  }
+
+  /** A failed wheel stays shown in red for a moment (the mouse hovering where it let go does not replace it). */
+  private wheelHold: { x: number; y: number; until: number } | null = null;
+  private holdWheelGhost(x: number, y: number): void {
+    this.wheelHold = { x, y, until: performance.now() + 1800 };
+    setTimeout(() => {
+      if (this.wheelHold && performance.now() >= this.wheelHold.until) {
+        this.wheelHold = null;
+        if (!this.drawing && this.tool === 'wheel') this.host.setWheelGhost?.(null, false);
+      }
+    }, 1850);
   }
 
   /** Show a passing message on the hint line, then the current tool's hint again. */
@@ -676,8 +734,21 @@ export class ToolPalette {
     return g ? wheelSite(g, ends) : null;
   }
 
-  /** Show the ghost wheel for a site (or hide it). */
-  private showWheelGhost(site: WheelSite | null): void {
+  /** Show the ghost wheel for a site (or hide it); a bad site whose wheel has no trough yet points it along the stroke. */
+  private showWheelGhost(site: WheelSite | null, ends?: Pt[]): void {
+    if (site && !site.ok && site.hx === site.x && site.hy === site.y) {
+      const e = ends?.[ends.length - 1];
+      let hx = e ? Math.round(e[0]) : site.x + 1;
+      let hy = e ? Math.round(e[1]) : site.y;
+      if (hx === site.x && hy === site.y) hx = site.x + 1;
+      // (A short trough, at most a few cells: it is only a sign.)
+      const l = Math.hypot(hx - site.x, hy - site.y);
+      if (l > 3) {
+        hx = Math.round(site.x + ((hx - site.x) * 3) / l);
+        hy = Math.round(site.y + ((hy - site.y) * 3) / l);
+      }
+      site = { ...site, hx, hy };
+    }
     this.host.setWheelGhost?.(site, site?.ok ?? false);
   }
 
@@ -692,9 +763,40 @@ export class ToolPalette {
       const h = this.hoverPending;
       this.hoverPending = null;
       if (!h || this.drawing || this.tool !== 'wheel') return;
+      const hold = this.wheelHold;
+      if (hold && performance.now() < hold.until && Math.hypot(h.x - hold.x, h.y - hold.y) < 24) return;
+      this.wheelHold = null;
       const p = this.host.pick(h.x, h.y);
       this.showWheelGhost(p ? this.wheelPreview([[p.x, p.y]]) : null);
     });
+  }
+
+  private gatePending: { x: number; y: number } | null = null;
+
+  /** The mouse over the map with the gate tool: the ghost of a gate tapped there (only where one fits). */
+  private hoverGate(clientX: number, clientY: number): void {
+    const first = !this.gatePending;
+    this.gatePending = { x: clientX, y: clientY };
+    if (!first) return;
+    requestAnimationFrame(() => {
+      const h = this.gatePending;
+      this.gatePending = null;
+      if (!h || this.drawing || this.tool !== 'gate') return;
+      const p = this.host.pick(h.x, h.y);
+      this.showGateGhost(p ? this.gatePreview([p.x, p.y]) : null);
+    });
+  }
+
+  /** Where a gate tapped at `p` would go (the sim's rule, on the mirror's ground and plans). */
+  private gatePreview(p: Pt): GateSite | null {
+    const m = this.host.mirror;
+    const site = gateTapSite({ width: m.width, height: m.height, current: (i) => (Number.isNaN(m.plan[i]!) ? m.terrain(i) : m.plan[i]!) }, p, this.width);
+    if (!site?.ok || !m.isRevealed(site.cx, site.cy)) return null;
+    return site;
+  }
+
+  private showGateGhost(site: GateSite | null): void {
+    this.host.setGateGhost?.(site ? { x: site.x, y: site.y, rot: site.rot, width: site.width, top: site.top, sill: site.sill } : null);
   }
 
   private sitesTimer: ReturnType<typeof setInterval> | null = null;
@@ -731,6 +833,57 @@ export class ToolPalette {
   private pumpPreview(ends: Pt[]): PumpSite | null {
     const g = this.powerGrid();
     return g ? pumpSite(g, ends) : null;
+  }
+
+  /**
+   * The poles and wires a line drawn along `pts` would make (as the sim's
+   * PowerGrid.placePoles: snapping to the grid's nodes, skipping water,
+   * houses and bridges, the first and last pole hooking onto the grid nearby).
+   */
+  private poleLine(pts: Pt[]): { poles: Pt[]; wires: number[] } {
+    const m = this.host.mirror;
+    const W = m.width;
+    const depth = this.host.depth;
+    const nodes = [...(this.host.powerNodes?.() ?? [])];
+    const spot = (x: number, y: number): Pt | null => {
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= m.height) continue;
+        const i = ny * W + nx;
+        // (LandUse Building 5, Bridge 7.)
+        const lu = m.landuse[i]!;
+        if ((depth?.(i) ?? 0) >= 0.1 || lu === 5 || lu === 7 || !m.isRevealed(nx, ny)) continue;
+        return [nx, ny];
+      }
+      return null;
+    };
+    const poles: Pt[] = [];
+    const wires: number[] = [];
+    const wire = (a: Pt, b: Pt) => wires.push(a[0], a[1], b[0], b[1]);
+    let prev: Pt | null = null;
+    polePositions(pts).forEach(([x0, y0], k) => {
+      let at = nearestNode(nodes, x0, y0, POLE_SNAP);
+      if (!at) {
+        at = spot(x0, y0);
+        if (!at) return;
+        poles.push(at);
+        if (!prev && k === 0) {
+          const n = nearestNode(nodes, at[0], at[1], LINK_SPAN);
+          if (n) wire(at, n);
+        }
+        nodes.push(at);
+      }
+      if (prev && Math.hypot(prev[0] - at[0], prev[1] - at[1]) <= 2 * POLE_SPACING + 1) wire(prev, at);
+      prev = at;
+    });
+    if (prev && poles.length) {
+      const p: Pt = prev;
+      const linked = wires.some((v, k) => k % 2 === 0 && v === p[0] && wires[k + 1] === p[1]);
+      const n = nearestNode(nodes, p[0], p[1], LINK_SPAN, p);
+      if (!linked && n) wire(p, n);
+    }
+    return { poles, wires };
   }
 
   private onCancel(e: PointerEvent): void {
@@ -783,12 +936,12 @@ export class ToolPalette {
     const tool = this.tool as BrushTool;
     const r = this.brushRadius;
     if (!p) {
-      this.host.setBrushCursor?.(null);
+      this.cursor(null);
       b.at = null;
       return;
     }
     const waiting = b.touch && now - b.start < TOUCH_DELAY;
-    this.host.setBrushCursor?.({ x: p.x, y: p.y, r, tool, active: !waiting });
+    this.cursor({ x: p.x, y: p.y, r, tool, active: !waiting });
     if (waiting) return;
     const sc = this.host.sculptor;
     if (!sc) return;
@@ -801,6 +954,43 @@ export class ToolPalette {
     b.at = p;
     sc.flush();
     this.host.brushed?.(p.x, p.y, r);
+    this.tintStroke();
+  }
+
+  /** The brush's ring (or none), with the villagers' fields under it tinted: the brush would bury their crop. */
+  private cursor(c: { x: number; y: number; r: number; tool: BrushTool; active: boolean } | null): void {
+    this.host.setBrushCursor?.(c);
+    if (!this.host.setCellTint) return;
+    if (!c) {
+      this.host.setCellTint('fields', null);
+      return;
+    }
+    const m = this.host.mirror;
+    const W = m.width;
+    const out: { i: number; c: number; a: number }[] = [];
+    const R = c.r + 0.5;
+    for (let y = Math.max(0, Math.floor(c.y - R)); y <= Math.min(m.height - 1, Math.ceil(c.y + R)); y++)
+      for (let x = Math.max(0, Math.floor(c.x - R)); x <= Math.min(W - 1, Math.ceil(c.x + R)); x++) {
+        if (Math.hypot(x - c.x, y - c.y) > R) continue;
+        const i = y * W + x;
+        // (LandUse Field, Garden, Pasture.)
+        const lu = m.landuse[i]!;
+        if (lu >= 1 && lu <= 3 && m.isRevealed(x, y)) out.push({ i, c: TINT.field, a: c.active ? 0.55 : 0.4 });
+      }
+    this.host.setCellTint('fields', out);
+  }
+
+  /** The ground the stroke raised (warm) and dug (cool), so Raise, Dig and Even read apart; fades after the stroke. */
+  private tintStroke(fadeMs?: number): void {
+    const sc = this.host.sculptor;
+    if (!sc || !this.host.setCellTint) return;
+    const out: { i: number; c: number; a: number }[] = [];
+    for (const [i, dz] of sc.strokeDz) {
+      const a = Math.abs(dz);
+      if (a < 0.02) continue;
+      out.push({ i, c: dz > 0 ? TINT.raised : TINT.dug, a: Math.min(0.5, 0.12 + a * 0.4) });
+    }
+    this.host.setCellTint('stroke', out, fadeMs);
   }
 
   /** Let go of the brush (cancelled: a second finger came, nothing more is brushed). */
@@ -812,8 +1002,10 @@ export class ToolPalette {
     const sc = this.host.sculptor;
     sc?.flush();
     if (!b) return;
-    if (b.touch || cancelled) this.host.setBrushCursor?.(null);
-    if (sc?.touchedFixed && !cancelled) this.flashHint('The brushes go round houses, bridges and structures: those stay as they are.');
+    if (b.touch || cancelled) this.cursor(null);
+    this.tintStroke(2500);
+    if (sc?.touchedField && !cancelled) this.flashHint('The brush went over the villagers’ fields: the crop there is lost. Undo brings the ground back.');
+    else if (sc?.touchedFixed && !cancelled) this.flashHint('The brushes go round houses, bridges and structures: those stay as they are.');
     this.refreshUndo();
   }
 
@@ -828,7 +1020,7 @@ export class ToolPalette {
       const h = this.hover;
       if (!h || this.brush || !isBrush(this.tool)) return;
       const p = this.host.pick(h.x, h.y);
-      this.host.setBrushCursor?.(p ? { x: p.x, y: p.y, r: this.brushRadius, tool: this.tool as BrushTool, active: false } : null);
+      this.cursor(p ? { x: p.x, y: p.y, r: this.brushRadius, tool: this.tool as BrushTool, active: false } : null);
     });
   }
 
@@ -853,13 +1045,16 @@ export class ToolPalette {
           const low = weirLowest(grid, ends[0]!, ends[1]!);
           if (Number.isFinite(low)) lining = planWeirPreview(grid, ends[0]!, ends[1]!, low + amount);
         }
-      } else if (this.tool === 'gate' && Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
-        // Drawn across a channel: a stone wall with the gate at its lowest point (a tap previews nothing).
-        const low = weirLowest(grid, ends[0]!, ends[1]!);
-        if (Number.isFinite(low)) lining = planWeirPreview(grid, ends[0]!, ends[1]!, low + amount);
+      } else if (this.tool === 'gate') {
+        if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
+          // Drawn across a channel: a stone wall with the gate at its lowest point.
+          this.showGateGhost(null);
+          const low = weirLowest(grid, ends[0]!, ends[1]!);
+          if (Number.isFinite(low)) lining = planWeirPreview(grid, ends[0]!, ends[1]!, low + amount);
+        } else this.showGateGhost(this.gatePreview(ends[0]!));
       } else if (this.tool === 'wheel') {
         // The ghost wheel and its trough, pointing where the water goes: as built when the site is good, red when not.
-        this.showWheelGhost(this.wheelPreview(ends));
+        this.showWheelGhost(this.wheelPreview(ends), ends);
       } else if (this.tool === 'power') {
         const W = this.host.mirror.width;
         if (this.mode === 'turbine') {
@@ -870,13 +1065,19 @@ export class ToolPalette {
             else if (site.reason) this.setHint(site.reason, false);
           }
         } else if (this.mode === 'poles') {
-          lining = polePositions(pts).map(([x, y]) => y * W + x);
+          // Ghost poles and wires, hanging on the grid where the line starts or ends at it.
+          const line = this.poleLine(pts);
+          lining = line.poles.map(([x, y]) => y * W + x);
+          this.host.setPowerGhost?.(line);
         } else {
           const site = this.pumpPreview(ends);
           if (site) {
             lining = [...rasterisePath(grid, [[site.x, site.y], [site.ox, site.oy]], 0.5).keys()];
             if (site.ok) this.setHint(`Lifts the water ${Math.max(0, site.lift).toFixed(1)} m.`, false);
             else if (site.reason) this.setHint(site.reason, false);
+            this.host.setPowerGhost?.(
+              site.ok ? { poles: [], wires: [], pump: { id: -1, x: site.x, y: site.y, hx: site.hx, hy: site.hy, ox: site.ox, oy: site.oy, progress: 1, flow: 0, power: 0 } } : null,
+            );
           }
         }
       }
@@ -888,6 +1089,21 @@ export class ToolPalette {
       this.host.setPreviewLining?.(lining);
     });
   }
+}
+
+/** Nearest of `nodes` to (x, y) within `max` cells. */
+function nearestNode(nodes: readonly Pt[], x: number, y: number, max: number, except?: Pt): Pt | null {
+  let best: Pt | null = null;
+  let bd = max;
+  for (const n of nodes) {
+    if (n === except) continue;
+    const d = Math.hypot(n[0] - x, n[1] - y);
+    if (d <= bd) {
+      bd = d;
+      best = n;
+    }
+  }
+  return best;
 }
 
 /** What a turbine site would give (the hint line). */

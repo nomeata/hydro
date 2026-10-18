@@ -72,6 +72,14 @@ function wireGeometry(): THREE.BufferGeometry {
   return paint(new THREE.BoxGeometry(1, 1, 1), 0x2e2a26);
 }
 
+/** A turbine's runner as seen on the powerhouse's side: an iron ring with three spokes, its axle along z. */
+function runnerGeometry(): THREE.BufferGeometry {
+  const ring = new THREE.TorusGeometry(0.15, 0.028, 4, 14);
+  const spokes = [0, 1, 2].map((k) => paint(new THREE.BoxGeometry(0.3, 0.045, 0.03).rotateZ((k * Math.PI) / 3), 0xc9a14a));
+  const hub = new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8).rotateX(Math.PI / 2);
+  return mergeGeometries([paint(ring, 0x3e6b8a), ...spokes, paint(hub, 0x2e2a26)], false)!;
+}
+
 /** Unit pump house (base at 0; corrugated grey-blue walls, a darker roof). */
 function pumpHouseGeometry(): THREE.BufferGeometry {
   const body = new THREE.BoxGeometry(0.62, 0.42, 0.52).translate(0, 0.21, 0);
@@ -122,6 +130,14 @@ export class PowerLayer {
   private lamps: THREE.InstancedMesh;
   private glows: Glow[] = [];
   private foams: { x: number; z: number; y: number; dx: number; dz: number; s: number; seed: number }[] = [];
+  /** Turbine runners on the powerhouses' sides: where, facing, turning speed (rad/s; 0: idle) and angle. */
+  private runnerMesh: THREE.InstancedMesh;
+  private runners: { id: number; x: number; y: number; z: number; yaw: number; speed: number }[] = [];
+  private readonly angles = new Map<number, number>();
+  /** Where wires attach to each node ("x,y"), after the last layout (a ghost line hangs on these). */
+  nodeTops = new Map<string, { y: number; yaw: number }>();
+  /** A ghost layer: attachment points of the real grid's nodes its wires may end at. */
+  anchors: ReadonlyMap<string, { y: number; yaw: number }> | null = null;
   private time = 0;
   /** Winter glows a little more (0..1 from the season). */
   private winter = 0;
@@ -133,14 +149,20 @@ export class PowerLayer {
   private readonly up = new THREE.Vector3(0, 1, 0);
   private readonly c = new THREE.Color();
 
+  /** Wire thickness (three.js units; a ghost line draws them thicker). */
+  private readonly wireThick: number;
+
   constructor(
     scene: THREE.Object3D,
     private readonly heights: HeightSampler,
+    /** One material for every piece (a ghost preview), or each its own vertex colours. */
+    material?: THREE.Material,
   ) {
-    this.group.name = 'power';
+    this.group.name = material ? 'power-ghost' : 'power';
+    this.wireThick = material ? 0.035 : 0.012;
     scene.add(this.group);
     const make = (name: string, g: THREE.BufferGeometry, cap = 32): Piece => {
-      const mesh = new THREE.InstancedMesh(g, vertexColorMaterial(), cap);
+      const mesh = new THREE.InstancedMesh(g, material ?? vertexColorMaterial(), cap);
       mesh.name = `power-${name}`;
       mesh.count = 0;
       mesh.frustumCulled = false;
@@ -165,6 +187,7 @@ export class PowerLayer {
     this.panes = this.dynamic('power-panes', new THREE.PlaneGeometry(1, 1).rotateY(Math.PI / 2), glass, 128, true);
     const lamp = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
     this.lamps = this.dynamic('power-lamps', new THREE.BoxGeometry(1, 1.2, 1), lamp, 64, true);
+    this.runnerMesh = this.dynamic('power-runners', runnerGeometry(), vertexColorMaterial(), 16);
   }
 
   private dynamic(name: string, g: THREE.BufferGeometry, mat: THREE.Material, cap: number, colour = false): THREE.InstancedMesh {
@@ -197,13 +220,18 @@ export class PowerLayer {
   get drawCalls(): number {
     let n = 0;
     for (const p of Object.values(this.pieces)) if (p.mesh.count > 0) n++;
-    for (const m of [this.foam, this.panes, this.lamps]) if (m.count > 0) n++;
+    for (const m of [this.foam, this.panes, this.lamps, this.runnerMesh]) if (m.count > 0) n++;
     return n;
   }
 
   /** The latest grid (tests). */
   get state(): PowerInfo | null {
     return this.info;
+  }
+
+  /** Turbine runners and how fast they turn (rad/s, 0 = idle), for tests. */
+  get runnerSpeeds(): { id: number; speed: number }[] {
+    return this.runners.map((r) => ({ id: r.id, speed: r.speed }));
   }
 
   /** Houses currently lit (tests). */
@@ -235,6 +263,7 @@ export class PowerLayer {
     this.time += Math.min(0.1, Math.max(0, dt)) * (this.gameSpeed > 0 ? 1 : 0.15);
     this.animateFoam();
     this.animateGlows();
+    this.animateRunners(dt);
   }
 
   dispose(): void {
@@ -242,7 +271,7 @@ export class PowerLayer {
       p.mesh.geometry.dispose();
       p.mesh.dispose();
     }
-    for (const m of [this.foam, this.panes, this.lamps]) {
+    for (const m of [this.foam, this.panes, this.lamps, this.runnerMesh]) {
       m.geometry.dispose();
       (m.material as THREE.Material).dispose();
       m.dispose();
@@ -290,6 +319,7 @@ export class PowerLayer {
   private layout(): void {
     for (const p of Object.values(this.pieces)) p.n = 0;
     this.foams = [];
+    this.runners = [];
     const info = this.info;
     /** Where the wires attach, per node position "x,y". */
     const tops = new Map<string, { y: number; yaw: number }>();
@@ -326,6 +356,7 @@ export class PowerLayer {
         tops.set(key, { y: tops.get(key)!.y, yaw });
         this.put(this.pieces.pole, p.x + 0.5, this.ground(p.x, p.y) - 0.02, p.y + 0.5, yaw, 1, 1, 1);
       }
+      if (this.anchors) for (const [k, v] of this.anchors) if (!tops.has(k)) tops.set(k, v);
       for (let k = 0; k + 3 < W.length; k += 4) {
         const a = tops.get(`${W[k]},${W[k + 1]}`);
         const b = tops.get(`${W[k + 2]},${W[k + 3]}`);
@@ -336,6 +367,7 @@ export class PowerLayer {
       p.mesh.count = p.n;
       p.mesh.instanceMatrix.needsUpdate = true;
     }
+    this.nodeTops = tops;
     this.layoutGlows();
   }
 
@@ -382,6 +414,14 @@ export class PowerLayer {
     seg(sx + 0.5, y0, sy + 0.5, mx + 0.5, midY, my + 0.5);
     seg(mx + 0.5, midY, my + 0.5, hx - ux * 0.3 + 0.5, y1, hy - uy * 0.3 + 0.5);
     void len;
+    // The runner on each side wall: it turns with the power, and stands still when the turbine idles.
+    const speed = t.power > 0 ? Math.min(9, 1.5 + Math.sqrt(t.power / 1000) * 0.9) : 0;
+    for (const side of [-1, 1]) {
+      // Local z (across the house) in the world: (sin yaw, cos yaw).
+      const ox = Math.sin(yaw) * 0.43 * HOUSE * side;
+      const oz = Math.cos(yaw) * 0.43 * HOUSE * side;
+      this.runners.push({ id: t.id, x: hx + 0.5 + ox, y: base + 0.02 + 0.3 * HOUSE, z: hy + 0.5 + oz, yaw, speed });
+    }
     // Foam in the tailrace below the house while it runs.
     const q = Math.abs(t.flow);
     if (q > 0.05) {
@@ -455,7 +495,7 @@ export class PowerLayer {
         const l = prev.distanceTo(cur);
         const yaw = -Math.atan2(cur.z - prev.z, cur.x - prev.x);
         const pitch = Math.atan2(cur.y - prev.y, Math.hypot(cur.x - prev.x, cur.z - prev.z));
-        this.put(P.wire, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2, (prev.z + cur.z) / 2, yaw, l + 0.01, 0.012, 0.012, pitch);
+        this.put(P.wire, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2, (prev.z + cur.z) / 2, yaw, l + 0.01, this.wireThick, this.wireThick, pitch);
         prev = cur;
       }
     }
@@ -532,6 +572,26 @@ export class PowerLayer {
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
+  }
+
+  private animateRunners(dt: number): void {
+    const rs = this.runners;
+    this.grow(this.runnerMesh, rs.length, (m) => (this.runnerMesh = m));
+    const step = Math.min(0.1, Math.max(0, dt)) * (this.gameSpeed > 0 ? 1 : 0.15);
+    const e = new THREE.Euler();
+    rs.forEach((r, k) => {
+      const a = ((this.angles.get(r.id) ?? 0) + r.speed * step) % (Math.PI * 2);
+      // (Both sides of one turbine share an angle: advance it once.)
+      if (k === 0 || rs[k - 1]!.id !== r.id) this.angles.set(r.id, a);
+      e.set(0, r.yaw, a, 'YXZ');
+      this.q.setFromEuler(e);
+      this.p.set(r.x, r.y, r.z);
+      this.s.setScalar(HOUSE);
+      this.m.compose(this.p, this.q, this.s);
+      this.runnerMesh.setMatrixAt(k, this.m);
+    });
+    this.runnerMesh.count = rs.length;
+    this.runnerMesh.instanceMatrix.needsUpdate = true;
   }
 
   private animateFoam(): void {

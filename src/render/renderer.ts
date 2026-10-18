@@ -4,7 +4,7 @@
  * subscribe to `addFrameListener`.
  */
 import * as THREE from 'three';
-import type { Snapshot, WorldInfo } from '../shared/protocol';
+import type { PowerInfo, Snapshot, WorldInfo } from '../shared/protocol';
 import { CameraController } from './camera';
 import { HEIGHT_SCALE, heightToY } from './coords';
 import { CHUNK, makeChunkGeometry, setChunkBounds } from './grid';
@@ -32,6 +32,8 @@ import { fieldsToRgba } from './village/fields';
 import { StructuresLayer } from './structures/structures';
 import { WheelPreview } from './structures/wheelPreview';
 import { BrushCursor } from './brushCursor';
+import { CellTint } from './cellTint';
+import { GatePreview } from './structures/gatePreview';
 import { PowerLayer } from './power/power';
 import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
@@ -96,6 +98,12 @@ export class GameRenderer {
   readonly brushCursor: BrushCursor;
   /** Turbines, poles, pumps and lit cottages (M6). */
   readonly power: PowerLayer;
+  /** The power tools' ghost: a line of poles with its wires, or a pump, while drawing. */
+  readonly powerGhost: PowerLayer;
+  /** The gate tool's hover ghost. */
+  readonly gatePreview: GatePreview;
+  /** Tinted cells for the brushes: fields under the brush, the stroke's raised and dug ground, an undo's flash. */
+  readonly cellTint: CellTint;
   /** Lining per cell as last received, and cells previewed by a lining tool. */
   private liningBase: Uint8Array;
   private liningPreview: readonly number[] | null = null;
@@ -224,6 +232,11 @@ export class GameRenderer {
     this.wheelPreview = new WheelPreview(this.scene, this.heights);
     this.brushCursor = new BrushCursor(this.scene, this.heights);
     this.power = new PowerLayer(this.scene, this.heights);
+    const ghostMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, color: 0xd8f0ff, emissive: 0x203040 });
+    this.powerGhost = new PowerLayer(this.scene, this.heights, ghostMat);
+    this.powerGhost.group.renderOrder = 12;
+    this.gatePreview = new GatePreview(this.scene, this.heights);
+    this.cellTint = new CellTint(this.scene, this.heights);
     this.updateBounds();
 
     this.sky = new SkyLighting(this.scene);
@@ -313,6 +326,8 @@ export class GameRenderer {
       this.structures.refreshHeights();
       this.wheelPreview.refreshHeights();
       this.power.refreshHeights();
+      this.gatePreview.refreshHeights();
+      this.cellTint.refreshHeights();
       this.crops.invalidate();
       this.plots.invalidate();
     }
@@ -381,6 +396,21 @@ export class GameRenderer {
     const any = packPlan(cells, this.tex.preview.image.data as Float32Array);
     u.uPreviewOn.value = any ? 1 : 0;
     this.tex.preview.needsUpdate = true;
+  }
+
+  /**
+   * The power tools' ghost (ui/tools.ts): new poles and the wires of a line
+   * being drawn (wires may end at the grid's own nodes), or a pump; null hides it.
+   */
+  setPowerGhost(g: { poles: readonly (readonly [number, number])[]; wires: readonly number[]; pump?: PowerInfo['pumps'][number] } | null): void {
+    this.powerGhost.anchors = this.power.nodeTops;
+    this.powerGhost.setInfo({
+      turbines: [],
+      poles: (g?.poles ?? []).map(([x, y], k) => ({ id: -1 - k, x, y, progress: 1 })),
+      wires: [...(g?.wires ?? [])],
+      pumps: g?.pump ? [g.pump] : [],
+      lit: [],
+    });
   }
 
   /** Optimistic lining overlay (cells to show as planned lining), or null to clear. */
@@ -493,6 +523,7 @@ export class GameRenderer {
     this.structures.update(dt);
     this.wheelPreview.update(dt);
     this.brushCursor.update();
+    this.cellTint.update();
     this.power.update(dt);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;
@@ -547,6 +578,7 @@ export class GameRenderer {
     this.millWheels.dispose();
     this.structures.dispose();
     this.power.dispose();
+    this.powerGhost.dispose();
     this.fog.dispose();
     this.sky.dispose();
     this.geometry.dispose();
