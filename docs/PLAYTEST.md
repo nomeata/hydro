@@ -86,7 +86,10 @@ per village (new villages get theirs later):
 - `irrigate`: a trench (2 wide, 1–3 m deep, as deep as gravity feed
   needs) from the nearest shore whose water can reach them to the middle
   of the driest quarter of a village's fields, with a dogleg around the
-  houses if needed;
+  houses if needed (round 2: aimed at the driest quarter of the dry fields
+  *and fertile open land* within 17 cells, preferring an intake up to 70
+  cells away whose water stands near field level, never onto land below
+  the intake's water; else as before);
 - `dike`: dikes (1.5 m) 3 cells inside the water's edge on rays from the
   village where the land is low (< 2.5 m above the water) or remembers
   floods; looks again when new flood memory appears;
@@ -96,7 +99,10 @@ per village (new villages get theirs later):
 - `drain`: a ditch (0.8 m) from the wettest patch near a village (soil
   saturation or field moisture ≥ 0.9, or puddles) down to lower water;
 - `vandal`: a canal from the shore with the most head straight into the
-  first village's store, and a dam across the river just below the intake.
+  first village's store, and a dam across the river just below the intake;
+- `undo` (round 2): the vandal's works, and a year later a trench through
+  the dam down to the river bed and a dike across the canal by its intake,
+  as a player would undo them: does the village recover?
 
 **Agency and response latency.** The day a bot first acts, the game is
 forked (save → load; the state hashes are compared) and the untouched copy
