@@ -102,7 +102,8 @@ describe('hardy crops', () => {
     manage(s2.p, time(0), 6);
     const c2 = census(s2.w, s2.p);
     expect(c2.millet.length).toBe(0);
-    expect(c2.paddy.sort()).toEqual(land.pond.sort());
+    expect(c2.paddy.length).toBe(Math.min(land.pond.length, Math.floor(HARDY.base + HARDY.share * land.good.length)));
+    for (const i of c2.paddy) expect(land.pond).toContain(i);
   });
 
   it('no hardy crops while the village has food enough to grow', () => {
