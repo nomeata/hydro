@@ -67,8 +67,9 @@ html, body {
   font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-.date .icon { width: 28px; height: 28px; }
+.date .icon { width: 28px; height: 28px; flex: none; }
 .date small { display: block; font-weight: 400; font-size: 12px; opacity: 0.75; }
 
 .speed { display: flex; padding: 3px; gap: 2px; }
@@ -251,6 +252,22 @@ html, body {
   .options input[type='range'] { width: 96px; }
   .date { font-size: 13px; }
 }
+@media (max-width: 640px) {
+  /* Phones: the hint is one line (tap it for the rest, ⓘ for the card) and
+     the options line is a slim strip, so a held tool covers little of the view. */
+  .hint { display: flex; align-items: center; max-width: 100%; padding: 3px 8px; }
+  .hint > span { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .hint.open > span { white-space: normal; }
+  .hint-info { flex: none; font-size: 17px; padding: 2px 2px 2px 8px; }
+  .options { padding: 2px 6px; gap: 8px; border-radius: 12px; }
+  .options .brushes { gap: 2px; }
+  .options .brushes button { width: 40px; height: 34px; }
+  .options .brushes button span { display: none; }
+  .options .brushes .undo { width: auto; flex-direction: row; gap: 4px; padding: 0 8px; margin-left: 4px; font-size: 12px; }
+  .options .brushes .undo span { display: inline; }
+  .options .modes button { width: auto; height: 36px; flex-direction: row; gap: 4px; padding: 0 7px; font-size: 11px; }
+  .options .modes button svg { width: 20px; height: 20px; }
+}
 
 /* --- menu ------------------------------------------------------------ */
 .topbar .speed { margin-left: auto; }
@@ -324,7 +341,9 @@ html, body {
   background: #bfe3f2;
 }
 .intro-svg svg { display: block; width: 100%; height: auto; }
-/* Live scenes (introScenes.ts): the canvas fades in over the drawing, then replaces it. */
+/* Live scenes (introScenes.ts): the canvas fades in over the drawing once it
+   has rendered, then hides it; whenever the scene is not on screen (still
+   loading on a slow phone, between pages and loops) the drawing shows. */
 .intro-live, .intro-overlay {
   position: absolute;
   inset: 0;
@@ -335,7 +354,7 @@ html, body {
 .intro-live { display: block; opacity: 0; transition: opacity 0.35s ease; }
 .intro-overlay { opacity: 0; transition: opacity 0.35s ease; overflow: hidden; }
 .intro-art.live-on .intro-live, .intro-art.live-on .intro-overlay { opacity: 1; }
-.intro-art.live .intro-svg { visibility: hidden; }
+.intro-art.live-on .intro-svg { visibility: hidden; transition: visibility 0s 0.35s; }
 .intro-hand {
   position: absolute;
   left: 0;
@@ -391,6 +410,10 @@ html, body {
   background: transparent;
 }
 .intro-nav .dot[aria-current='true'] { background: var(--wood); }
+@media (max-width: 480px) {
+  /* The phone palette's 38 px buttons, scaled down, run their labels together. */
+  .intro-tools button { width: 50px; }
+}
 @media (max-width: 440px) {
   .intro-tools { transform: scale(0.58); }
 }
@@ -417,6 +440,11 @@ html, body {
 .statsbar .stat { position: relative; display: flex; align-items: center; gap: 3px; height: 18px; }
 .statsbar .ico { display: block; width: 18px; height: 18px; flex: none; }
 .statsbar .ico svg { display: block; width: 100%; height: 100%; }
+/* The next tool to unlock, at the end of the population bar (its goal). */
+.statsbar .ico.goal.tool {
+  width: 22px; height: 22px; padding: 2px; margin: -2px 0 -2px -7px; position: relative; z-index: 1;
+  border-radius: 50%; background: var(--paper); box-shadow: inset 0 0 0 1.5px var(--wood);
+}
 .statsbar .track {
   position: relative;
   width: 84px;
@@ -492,6 +520,16 @@ html, body {
   .statsbar .track { width: 56px; }
   .statsbar .num { min-width: 24px; font-size: 12px; }
   .statsbar .pros.empty .wait { width: auto; }
+  /* A fixed grid, so a longer date ("Summer, day 24") never pushes the menu
+     button onto a second row or slides the speed controls: the date's column
+     takes what is left (and clips as a last resort on a very narrow screen). */
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 6px; row-gap: 8px; }
+  .topbar > .date { grid-area: 1 / 1; justify-self: start; max-width: 100%; overflow: hidden; padding-right: 10px; gap: 6px; }
+  .topbar > .date > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .topbar > .speed { grid-area: 1 / 2; margin-left: 0; }
+  .topbar > .menu-button { grid-area: 1 / 3; }
+  .topbar > .statsbar { grid-area: 2 / 1 / 3 / -1; justify-self: end; margin-left: 0; }
+  .speed button { min-width: 36px; }
 }
 
 /* --- history chart --------------------------------------------------- */
