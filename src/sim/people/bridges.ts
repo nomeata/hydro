@@ -26,14 +26,12 @@ export const BRIDGE = {
   perVillage: 3,
   /** Villages this small don't build bridges. */
   minPeople: 4,
-  /** Plan a new bridge every this many days at most. */
-  everyDays: 3,
   /** Walking saved (cost units, ≈ cells, summed over the land it serves) to be worth a bridge. */
   minSaving: 60,
   /** Score penalty per deck cell. */
   spanCost: 6,
   /** Progress per builder visit. */
-  perVisit: 0.2,
+  perVisit: 0.1,
   /** Deck clearance above the water when built (m). */
   clearance: 0.35,
   /** A flood breaks the bridge when the water surface rises this far above the deck (m). */
@@ -238,7 +236,7 @@ export class Bridges {
       return day - b.since < BRIDGE.giveUpDays;
     });
     if (this.list.length !== before) this.dirty = true;
-    if (population < BRIDGE.minPeople || this.pending(settlement) || day % BRIDGE.everyDays !== 0) return;
+    if (population < BRIDGE.minPeople || this.pending(settlement)) return;
     if (this.of(settlement).length >= BRIDGE.perVillage || !demand.length) return;
     let dem = demand;
     if (dem.length > BRIDGE.maxDemand) {
