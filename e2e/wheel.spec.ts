@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openGame, settleFrames } from './helpers';
+import { openGame, recordTexts, settleFrames } from './helpers';
 
 /**
  * Find a water-wheel site near the start: a river cell (≥ 0.3 m deep,
@@ -127,8 +127,9 @@ test('a wheel drawn on dry land is refused with a reason', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(a[0] + 30, a[1] + 10);
   await page.mouse.move(a[0] + 60, a[1] + 20);
+  const hints = await recordTexts(page, '.tools .hint');
   await page.mouse.up();
-  await expect(page.locator('.tools .hint')).toContainText('Start in the river');
+  await expect.poll(hints).toContainEqual(expect.stringContaining('Start in the river'));
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as any).__hydro.renderer.structures.structures.some((s: any) => s.kind === 'wheel'))).toBe(false);
 });

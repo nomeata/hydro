@@ -97,8 +97,10 @@ html, body {
 .tools {
   position: absolute;
   bottom: calc(10px + var(--safe-bottom));
-  left: 50%;
-  transform: translateX(-50%);
+  /* Span the screen (not left: 50%, which caps the shrink-to-fit width at half
+     of it and wrapped the tools into two rows on phones); children centre. */
+  left: 8px;
+  right: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -106,7 +108,9 @@ html, body {
   pointer-events: none;
 }
 .tools > * { pointer-events: auto; }
-.toolrow { display: flex; flex-wrap: wrap; justify-content: center; padding: 4px; gap: 4px; max-width: calc(100vw - 16px); box-sizing: border-box; }
+/* One row; on a very narrow screen it scrolls sideways rather than wrap. */
+.toolrow { display: flex; padding: 4px; gap: 4px; max-width: 100%; box-sizing: border-box; overflow-x: auto; scrollbar-width: none; }
+.toolrow button { flex: none; }
 .toolrow button {
   width: 58px;
   height: 58px;
