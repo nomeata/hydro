@@ -291,14 +291,15 @@ export class AchievementsPanel {
   private ideasHtml(): string {
     const list = this.ideas();
     if (!list.length) return '';
-    const items = list
-      .map((i) => {
-        const a = i.achievement ? achievementInfo(i.achievement) : undefined;
-        const towards = a ? `<em>Towards ${a.title}</em>` : '';
-        const icon = (ICONS as Readonly<Record<string, string>>)[TOOL_ICONS[i.tool] ?? i.tool] ?? '';
-        return `<li class="idea" data-id="${i.id}" data-kind="${i.kind}"><span class="idea-icon">${icon}</span><span class="txt"><span>${i.text}</span>${towards}</span><button class="idea-show" data-id="${i.id}" data-testid="idea-show">Show me</button></li>`;
-      })
-      .join('');
+    const items = list.map(ideaItemHtml).join('');
     return `<section class="ideas" data-testid="ideas"><h3>Ideas for this valley</h3><ul>${items}</ul></section>`;
   }
+}
+
+/** One idea as a list item: the tool's icon, the text, and "Show me" (also in the history panel). */
+export function ideaItemHtml(i: IdeaInfo): string {
+  const a = i.achievement ? achievementInfo(i.achievement) : undefined;
+  const towards = a ? `<em>Towards ${a.title}</em>` : '';
+  const icon = (ICONS as Readonly<Record<string, string>>)[TOOL_ICONS[i.tool] ?? i.tool] ?? '';
+  return `<li class="idea" data-id="${i.id}" data-kind="${i.kind}"><span class="idea-icon">${icon}</span><span class="txt"><span>${i.text}</span>${towards}</span><button class="idea-show" data-id="${i.id}" data-testid="idea-show">Show me</button></li>`;
 }

@@ -130,7 +130,7 @@ const PANELS: Panel[] = [
 
 /** Shown under the last panel's text. */
 const NOTE =
-  'Hydro is a work in progress. Coming later: herders and woodcutters, sluices, pumps and mills, hydro power with lit cottages, and a world that keeps growing.';
+  'Hydro is a work in progress. Still to come: a world that keeps growing beyond the fog, mills rebuilt as power houses, and music.';
 
 export class Intro {
   private readonly el: HTMLElement;
