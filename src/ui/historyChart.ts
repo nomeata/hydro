@@ -2,12 +2,14 @@
  * History chart: the whole game at a glance, drawn as inline SVG. Two
  * stacked plots share the time axis (villagers on a log scale, prosperity
  * in %), over bands coloured by season; a weather strip below shows rain,
- * dry spells and floods; stars along the top mark the tool-unlock
- * milestones (filled once reached, outlined for the ones still ahead), and
- * little medals between prosperity and weather mark the achievements.
+ * dry spells and floods. Stars on the villagers' right-hand axis mark the
+ * population levels that unlock tools (filled once reached, outlined for the
+ * ones still ahead, labelled where there is room), with a faint tick on the
+ * time axis for the day each was reached; little medals between prosperity
+ * and weather mark the achievements.
  */
 import type { HistoryData, HistorySample } from '../shared/protocol';
-import { toolName, unlockMilestones } from '../shared/progress';
+import { toolName, unlockMilestones, type Milestone } from '../shared/progress';
 import { STAR_PATH } from './icons';
 import { achievementInfo } from '../shared/achievements';
 import { CATEGORY_COLORS } from './achievementIcons';
@@ -103,7 +105,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 
 function star(cx: number, cy: number, r: number, filled: boolean, attrs: string): string {
   const k = r / 13;
-  return `<g ${attrs} transform="translate(${f1(cx - 16 * k)} ${f1(cy - 15 * k)}) scale(${k.toFixed(3)})"><path d="${STAR_PATH}" fill="${filled ? COLORS.star : '#fffdf6'}" stroke="${COLORS.starInk}" stroke-width="${f1(1.8 / k)}" stroke-linejoin="round"${filled ? '' : ' stroke-dasharray="3 2.2"'}/></g>`;
+  return `<g ${attrs} transform="translate(${f1(cx - 16 * k)} ${f1(cy - 15 * k)}) scale(${k.toFixed(3)})"><path d="${STAR_PATH}" fill="${filled ? COLORS.star : '#fffdf6'}" stroke="${COLORS.starInk}" stroke-width="${f1(1.8 / k)}" stroke-linejoin="round"/></g>`;
 }
 
 function drop(cx: number, top: number, r: number): string {
@@ -113,34 +115,34 @@ function drop(cx: number, top: number, r: number): string {
   return `<path d="M${f1(cx)} ${f1(y - h)}C${f1(cx + r * 0.3)} ${f1(y - h * 0.55)} ${f1(cx + r)} ${f1(y - r * 1.1)} ${f1(cx + r)} ${f1(y - r)}A${f1(r)} ${f1(r)} 0 0 1 ${f1(cx - r)} ${f1(y - r)}C${f1(cx - r)} ${f1(y - r * 1.1)} ${f1(cx - r * 0.3)} ${f1(y - h * 0.55)} ${f1(cx)} ${f1(y - h)}z" fill="${COLORS.rain}" fill-opacity="0.85"/>`;
 }
 
-/**
- * Build the chart for `data` at `width` CSS pixels. `peak` is the highest
- * population so far (for the milestones still ahead).
- */
+/** Text for a milestone star (and the readout when it is tapped). */
+export function milestoneInfo(m: Milestone, day: number | undefined): string {
+  const tools = m.tools.length ? m.tools.map(toolName).join(' & ') : 'A new step';
+  return day === undefined ? `${tools} — unlocks at ${m.population} villagers` : `${tools} — unlocked at ${m.population} villagers, ${dayLabel(day)}`;
+}
+
+/** Build the chart for `data` at `width` CSS pixels. */
 export function buildChart(data: HistoryData, width: number): Chart {
   const W = Math.max(280, Math.round(width));
   const narrow = W < 480;
+  // Wide charts name the tools next to the axis stars; narrow ones only on tap.
+  const labels = W >= 560;
   const ML = narrow ? 34 : 40;
-  const MR = 10;
+  const MR = labels ? 104 : 28;
   const samples = data.samples;
   const last = samples[samples.length - 1];
   const now = last ? last.d + last.n : 0;
   const milestones = unlockMilestones();
   const reached = new Map(data.milestones.map((m) => [m.population, m.day]));
   const ahead = milestones.filter((m) => !reached.has(m.population));
-  // Leave a little "future" on the right for the stars still ahead.
-  const span = Math.max(DAYS_PER_SEASON, now);
-  const future = ahead.length ? Math.max(span * 0.12, (ahead.length * 22 * span) / Math.max(100, W - ML - MR - ahead.length * 22)) : 0;
-  const dEnd = span + future;
+  const dEnd = Math.max(DAYS_PER_SEASON, now);
   const x0 = ML;
   const x1 = W - MR;
   const dayToX = (d: number) => x0 + (d / dEnd) * (x1 - x0);
   const xToDay = (x: number) => ((x - x0) / (x1 - x0)) * dEnd;
 
   // Vertical layout.
-  const starTop = 4;
-  const starH = 26;
-  const popTop = starTop + starH;
+  const popTop = 10;
   const popH = Math.round(Math.min(170, Math.max(110, W * 0.26)));
   const popBot = popTop + popH;
   const prosTop = popBot + 20;
@@ -154,9 +156,10 @@ export function buildChart(data: HistoryData, width: number): Chart {
   const axisH = 30;
   const H = wxBot + axisH;
 
-  // Population: log scale from 1 to a power of ten covering the data and the next milestone.
-  const maxP = Math.max(10, ...samples.map((s) => s.p), ahead[0]?.population ?? 0);
-  const topP = 10 ** Math.ceil(Math.log10(maxP * 1.02));
+  // Population: log scale from 1 to a power of ten covering the data (with
+  // a little headroom) and the next milestone.
+  const maxP = Math.max(10, ...samples.map((s) => s.p * 1.02), ahead[0]?.population ?? 0);
+  const topP = 10 ** Math.ceil(Math.log10(maxP) - 1e-9);
   const popY = (p: number) => popBot - (Math.log10(Math.max(1, p)) / Math.log10(topP)) * popH;
   const prosY = (w: number) => prosBot - (w / 100) * prosH;
 
@@ -176,12 +179,6 @@ export function buildChart(data: HistoryData, width: number): Chart {
     ] as const)
       parts.push(`<rect x="${f1(a)}" y="${t}" width="${f1(b - a + 0.5)}" height="${bt - t}" fill="${c}"/>`);
   }
-  // The future, faded.
-  if (future > 0) {
-    const a = dayToX(now);
-    parts.push(`<rect x="${f1(a)}" y="${popTop}" width="${f1(x1 - a)}" height="${wxBot - popTop}" fill="#fbf5e6" fill-opacity="0.7"/>`);
-  }
-
   // Dry spells: a warm wash with a hatch, across everything.
   for (const [a, b] of drySpells(samples)) {
     const xa = dayToX(a);
@@ -195,11 +192,11 @@ export function buildChart(data: HistoryData, width: number): Chart {
     parts.push(`<line x1="${x0}" x2="${x1}" y1="${f1(y)}" y2="${f1(y)}" stroke="${COLORS.grid}"/>`);
     parts.push(`<text x="${x0 - 5}" y="${f1(y + 4)}" text-anchor="end" font-size="11" ${font}>${p >= 1000 ? `${p / 1000}k` : p}</text>`);
   }
-  // Milestone levels.
+  // Milestone levels (faint; the stars on the right axis say what they are).
   for (const m of milestones) {
     if (m.population > topP) continue;
     const y = popY(m.population);
-    parts.push(`<line x1="${x0}" x2="${x1}" y1="${f1(y)}" y2="${f1(y)}" stroke="${COLORS.starInk}" stroke-opacity="0.45" stroke-dasharray="2 4"/>`);
+    parts.push(`<line x1="${x0}" x2="${x1}" y1="${f1(y)}" y2="${f1(y)}" stroke="${COLORS.starInk}" stroke-opacity="${reached.has(m.population) ? 0.3 : 0.45}" stroke-dasharray="2 4"/>`);
   }
   // Prosperity.
   for (const w of [0, 50, 100]) {
@@ -293,12 +290,6 @@ export function buildChart(data: HistoryData, width: number): Chart {
     parts.push(`<text x="${f1((x0 + x1) / 2)}" y="${f1((popTop + popBot) / 2 + 4)}" text-anchor="middle" font-size="13" ${font}>Waiting for the first settlers…</text>`);
   }
 
-  // "Now" marker.
-  if (future > 0) {
-    const x = dayToX(now);
-    parts.push(`<line x1="${f1(x)}" x2="${f1(x)}" y1="${popTop}" y2="${wxBot}" stroke="${COLORS.muted}" stroke-opacity="0.5"/>`);
-  }
-
   // Plot frames.
   for (const [t, b] of [
     [popTop, popBot],
@@ -325,29 +316,37 @@ export function buildChart(data: HistoryData, width: number): Chart {
     }
   }
 
-  // Stars along the top: reached at their day, upcoming in the future zone.
-  const starY = starTop + starH / 2;
-  const starR = 10;
-  let prevStar = -Infinity;
-  for (const m of milestones) {
+  // Milestone stars on the right-hand axis at their population level (those
+  // within the axis range): filled once reached, outlined while ahead. Stars
+  // too close to the one below step outwards; labels are nudged apart.
+  const starR = narrow ? 6 : 7;
+  const shown = milestones.filter((m) => m.population <= topP);
+  let prevY = Infinity;
+  let col = 0;
+  let labelY = Infinity;
+  for (const m of shown) {
     const day = reached.get(m.population);
-    if (day === undefined) continue;
-    // Keep close stars (and their labels) apart.
-    const x = Math.max(prevStar + 2 * starR + 18, Math.max(x0 + starR, Math.min(x1 - starR, dayToX(day))));
-    prevStar = x;
-    const info = `${m.population} villagers on ${dayLabel(day)} — ${m.tools.map(toolName).join(' & ')} unlocked`;
-    parts.push(`<line x1="${f1(dayToX(day))}" x2="${f1(dayToX(day))}" y1="${starY + starR}" y2="${f1(popY(m.population))}" stroke="${COLORS.starInk}" stroke-opacity="0.35" stroke-dasharray="2 3"/>`);
-    parts.push(star(x, starY, starR, true, `class="star reached" data-info="${esc(info)}"`));
-    parts.push(`<text x="${f1(x + starR + 2)}" y="${f1(starY + 4)}" font-size="10" font-weight="700" fill="${COLORS.starInk}" pointer-events="none">${m.population}</text>`);
-  }
-  if (ahead.length) {
-    const a = dayToX(now) + starR + 2;
-    const step = Math.min(30, (x1 - starR - a) / Math.max(1, ahead.length - 1));
-    ahead.forEach((m, k) => {
-      const x = ahead.length === 1 ? (a + x1 - starR) / 2 : a + k * step;
-      const info = `${m.tools.map(toolName).join(' & ')} — unlocks at ${m.population} villagers`;
-      parts.push(star(x, starY, starR - 1, false, `class="star ahead" data-info="${esc(info)}"`));
-    });
+    const y = popY(m.population);
+    col = prevY - y < 2 * starR - 1 ? (col + 1) % 2 : 0;
+    prevY = y;
+    const x = x1 + starR + 2 + col * (starR + 3);
+    const cls = day === undefined ? 'star ahead' : 'star reached';
+    parts.push(
+      `<g class="${cls}" data-info="${esc(milestoneInfo(m, day))}" data-population="${m.population}"${day === undefined ? ' opacity="0.7"' : ''}><title>${esc(milestoneInfo(m, day))}</title><circle cx="${f1(x)}" cy="${f1(y)}" r="${starR + 3}" fill="transparent"/>${star(x, y, starR, day !== undefined, 'pointer-events="none"')}</g>`,
+    );
+    if (labels) {
+      const ly = Math.min(y + 3.5, labelY - 11);
+      labelY = ly;
+      const name = m.tools.length ? m.tools.map(toolName).join(' & ') : String(m.population);
+      parts.push(
+        `<text x="${f1(x1 + 3 * starR + 12)}" y="${f1(ly)}" font-size="10" font-weight="${day === undefined ? 400 : 700}" fill="${COLORS.starInk}"${day === undefined ? ' fill-opacity="0.75"' : ''} pointer-events="none">${esc(name)}</text>`,
+      );
+    }
+    // A faint tick on the time axis for the day it was reached.
+    if (day !== undefined) {
+      const tx = dayToX(day + 0.5);
+      parts.push(`<path d="M${f1(tx)} ${wxBot}v5" stroke="${COLORS.starInk}" stroke-opacity="0.55" stroke-width="1.5"/>`);
+    }
   }
 
   // Achievement medals along the timeline; those close together share one (with a count).
