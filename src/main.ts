@@ -2,6 +2,7 @@
  * Bootstrap: start the simulation worker, build the renderer and UI, wire
  * snapshots to them, and expose a test hook with ?test=1.
  */
+import type { IdeaInfo } from './shared/protocol';
 import './ui/styles.css';
 import { SimClient, type ReadyData } from './client/simClient';
 import { readSave, writeSave } from './persist/idb';
@@ -97,7 +98,6 @@ async function main(): Promise<void> {
   });
 
   const hud = new Hud(uiRoot, (s) => client.setSpeed(s), params.has('stats'));
-  const historyPanel = new HistoryPanel(uiRoot, () => client.history());
   // Ideas for this valley: "Show me" glides there and rings the spot.
   const tmp = new THREE.Vector3();
   const highlight = new AreaHighlight(uiRoot, (x, y) => {
@@ -113,16 +113,21 @@ async function main(): Promise<void> {
   const cards = new ToolCards(uiRoot);
   /** A dialog covers the game: achievement toasts and milestone notes wait. */
   const quiet = () => intro.isOpen || cards.isOpen;
+  const showIdea = (idea: IdeaInfo) => {
+    renderer.camera.focus(idea.x, idea.y);
+    renderer.camera.setState({ viewHeight: Math.min(70, Math.max(26, idea.r * 5)) }, false);
+    highlight.show(idea.x, idea.y, idea.r + 1);
+  };
   const achievements = new AchievementsUi(uiRoot, {
     seed: data.info.seed,
     unlocked: (t) => isUnlocked(t, peak),
-    show: (idea) => {
-      renderer.camera.focus(idea.x, idea.y);
-      renderer.camera.setState({ viewHeight: Math.min(70, Math.max(26, idea.r * 5)) }, false);
-      highlight.show(idea.x, idea.y, idea.r + 1);
-    },
+    show: showIdea,
     news: (on) => menu?.setNews(on),
     quiet,
+  });
+  const historyPanel = new HistoryPanel(uiRoot, () => client.history(), {
+    top: () => achievements.visibleIdeas()[0],
+    show: showIdea,
   });
   const statsBar = new StatsBar(uiRoot.querySelector('.topbar')!, () => historyPanel.open(), quiet);
   const cardsDue = !testMode || params.has('cards');

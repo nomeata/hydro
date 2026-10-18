@@ -1,9 +1,19 @@
 /**
  * The history panel: a closable card (like the welcome panels) with the
  * history chart, a readout line for the day under the finger/mouse, and a
- * legend. While open it refreshes every few seconds.
+ * legend. While open it refreshes every few seconds. When the valley has an
+ * idea (sim/ideas.ts), the first one shows above the chart: the player who
+ * taps the bar to see why prosperity fell finds what might help.
  */
-import type { HistoryData } from '../shared/protocol';
+
+export interface HistoryIdeas {
+  /** The first idea for an unlocked tool, if any. */
+  top: () => IdeaInfo | undefined;
+  /** "Show me" (the panel has closed). */
+  show: (idea: IdeaInfo) => void;
+}
+import type { HistoryData, IdeaInfo } from '../shared/protocol';
+import { ideaItemHtml } from './achievements';
 import { COLORS, SEASON_COLORS, buildChart, describeSample, sampleAt, type ChartLayout } from './historyChart';
 import { STAR_PATH } from './icons';
 import { toolName, unlockMilestones } from '../shared/progress';
@@ -57,10 +67,12 @@ export class HistoryPanel {
   private info: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private onClose: (() => void) | null = null;
+  private readonly ideaEl: HTMLElement;
 
   constructor(
     root: HTMLElement,
     private readonly fetch: () => Promise<HistoryData>,
+    private readonly ideas: HistoryIdeas | null = null,
   ) {
     const el = document.createElement('div');
     el.className = 'history-overlay';
@@ -71,12 +83,21 @@ export class HistoryPanel {
           <h2 id="history-title">Your valley so far</h2>
           <button class="close" aria-label="Close" data-testid="history-close">×</button>
         </header>
+        <ul class="history-idea" data-testid="history-idea" hidden></ul>
         <div class="history-chart"></div>
         <p class="history-readout">${HINT}</p>
         <ul class="history-legend">${LEGEND.map(([icon, label]) => `<li>${icon}<span>${label}</span></li>`).join('')}</ul>
       </div>`;
     this.chartEl = el.querySelector('.history-chart')!;
     this.readout = el.querySelector('.history-readout')!;
+    this.ideaEl = el.querySelector('.history-idea')!;
+    this.ideaEl.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('.idea-show');
+      const idea = b && this.ideas?.top();
+      if (!idea || idea.id !== b.dataset.id) return;
+      this.close();
+      this.ideas!.show(idea);
+    });
     el.querySelector('.close')!.addEventListener('click', () => this.close());
     el.addEventListener('click', (e) => {
       if (e.target === el) this.close();
@@ -106,6 +127,7 @@ export class HistoryPanel {
     this.day = null;
     this.info = null;
     this.readout.textContent = HINT;
+    this.showIdea();
     void this.refresh();
     this.timer ??= setInterval(() => void this.refresh(), REFRESH_MS);
   }
@@ -124,7 +146,15 @@ export class HistoryPanel {
     const data = await this.fetch();
     if (this.el.hidden) return;
     this.data = data;
+    this.showIdea();
     this.render();
+  }
+
+  private showIdea(): void {
+    const idea = this.ideas?.top();
+    const html = idea ? ideaItemHtml(idea) : '';
+    if (this.ideaEl.innerHTML !== html) this.ideaEl.innerHTML = html;
+    this.ideaEl.hidden = !idea;
   }
 
   private render(): void {
