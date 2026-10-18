@@ -54,7 +54,10 @@ See docs/PEOPLE.md (phases §10).
   houses, farmers, fields/gardens, granary props, footbridges, baked-
   animation characters
 - ◐ M3-β ☑ fishers (fish stock per calm-water block), ☑ flood flight,
-  ☑ flood memory, ☑ flooded houses become ruins (rebuilt once forgotten);
+  ☑ flood memory, ☑ flooded houses become ruins (rebuilt once forgotten;
+  drawn wrecked, muddy and overgrown); ☑ footbridges over narrow water to
+  far fields (swept away by floods, rebuilt), fields chosen and given up
+  by walking distance;
   ☐ fish-jump visuals
 - ☑ M3-γ Fog of war (revealed land grows with villages, cloud-sea
   rendering, plans only on known land, camera bounds), more settlements

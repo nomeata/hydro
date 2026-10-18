@@ -63,6 +63,8 @@ export const enum SiteKind {
   Mill = 17,
   /** Grind grain at the mill (site = the mill's building id). */
   Grind = 18,
+  /** Build or rebuild a footbridge (site = the bridge's id; bridges.ts). */
+  Bridge = 19,
 }
 
 export interface Agent {

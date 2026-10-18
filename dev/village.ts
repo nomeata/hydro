@@ -1,6 +1,6 @@
 /**
  * Dev check for render/village: building variants at every construction
- * stage, the store at every food level, and (with ?parts=1) the raw
+ * stage (and as flood ruins: fresh, a season old, a year old), the store at every food level, and (with ?parts=1) the raw
  * fantasy-town parts with axis markers (red = +x, blue = +z).
  *
  *   npx vite --port 5175   →   http://localhost:5175/dev/village.html
@@ -11,6 +11,7 @@ import type { HeightSampler } from '../src/render/coords';
 import { modelLibrary } from '../src/render/objects/loader';
 import { MODELS, type ModelName } from '../src/render/objects/manifest';
 import { BuildingsLayer } from '../src/render/village/buildings';
+import { houseVariant } from '../src/render/village/houses';
 import { MillWheelsLayer } from '../src/render/village/millwheels';
 import type { BuildingInfo } from '../src/shared/protocol';
 
@@ -67,6 +68,12 @@ async function main(): Promise<void> {
       for (let s = 0; s < progresses.length; s++) list.push({ id: v + 4 * id++, kind: 'house', x: 10 + s * 2.5, y: 10 + v * 2.5, rot: 0, progress: progresses[s]! });
     // Force variants by id: ids chosen so variant = v.
     list.forEach((b, k) => (b.id = Math.floor(k / progresses.length) + 1000 * (k % progresses.length)));
+    // Flood ruins of each variant (rows as above) beside the stages: fresh, after a season, after a year.
+    for (let v = 0; v < 4; v++) {
+      let rid = 20000;
+      while (houseVariant(rid) !== houseVariant(list[v * progresses.length]!.id)) rid++;
+      for (let k = 0; k < 3; k++) list.push({ id: rid, kind: 'ruin', x: 10 + (progresses.length + k) * 2.5 + 0.5, y: 10 + v * 2.5, rot: 0, progress: 0, weeds: k });
+    }
     list.push({ id: 9000, kind: 'store', x: 10, y: 21, rot: 0, progress: 1 });
     list.push({ id: 9001, kind: 'store', x: 13, y: 21, rot: Math.PI / 2, progress: 1 });
     // Wells (four stages, then a dry one) and mills (four stages, then with 1–3 sacks), wheels facing +x.
