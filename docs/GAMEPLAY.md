@@ -127,10 +127,9 @@ richer.
   and draws a trench from it across the terrace. The wheel turns, buckets
   tip into a wooden trough, a thin stream runs along the trench, and
   fields follow it in a season.
-- **Placement.** A short stroke (like the gate's dam mode) *along* the
-  bank: the wheel sits in the water cell, its trough on the next dry cell
-  inland (the **head cell**), up to `maxLift = 5 m` above the water
-  surface. The preview shows the head cell; the crew builds the wheel and
+- **Placement.** A short stroke from the river onto the bank: the wheel
+  sits in the water cell, its trough runs to the **head cell** inland, up
+  to `maxLift = 10 m` above the water surface (see As built). The preview shows the head cell; the crew builds the wheel and
   lines the head cell.
 - **Sim.** Each step: `v` = flow speed at the wheel cell, `h` = depth.
   Available power of an undershot wheel `P = 0.25·½ ρ A v³` with
@@ -141,21 +140,44 @@ richer.
   stands still, which teaches the rule. At v = 1 m/s, h = 0.6 m,
   H = 3 m: Q ≈ 2.5 L/s ≈ 215 m³/day — enough to keep a 150 m trench wet
   and ~40 fields growing (fields draw 0.1 m³/day each).
-- **As built** (`sim/structures/wheel.ts`, tool `wheel`): a stroke from
-  the river onto the bank; the wheel stands where it starts (in water
-  ≥ 0.2 m deep, or the deepest water next to it), the head cell is the
-  first dry cell along the stroke within 3 cells; a tap picks the lowest
-  dry cell within 2. Refused (the hint line says why, live while
-  drawing): dry start, no bank in reach, head > 5 m or < 0.2 m above the
-  river's surface, unknown land. The spirit crew builds the wheel and
+- **As built** (`sim/structures/wheel.ts`, tool `wheel`). Story: a
+  noria lifts river water up to a canal on the terrace above, so fields
+  beyond the floodplain can be watered; set it where the current is
+  quick — in the main channel, a narrowed reach, or the race below your
+  weir. A stroke from the river onto the bank: the wheel stands in the
+  quickest water at or beside where it starts (≥ 0.05 m deep, so the thin
+  fast spill below a weir counts), its trough (an aqueduct on stilts)
+  runs along the stroke to the **head cell**, the last dry cell of the
+  stroke within 6 cells (30 m); a tap picks the lowest dry cell within 2
+  that is above the water. Lift up to 10 m (historic norias stand
+  10–20 m); the wheel is drawn as tall as its lift (and broader, on
+  stouter posts), so the size follows the bank, and the lifted flow falls
+  as 1/H. Refused: dry start, no dry bank on the stroke, head > 10 m or
+  < 0.2 m above the river's surface, a rise under the trough more than
+  0.5 m above the head, current < 0.3 m/s, unknown land. The preview has
+  no text: while the tool is held, gold rings stand in the river at the
+  good sites (`wheelSites`: a tapped wheel would lift ≥ 10 m³/day; the
+  best within 4 cells; refreshed every 2 s), each facing its bank; under
+  the mouse or while drawing a ghost wheel and trough show the site —
+  turning, its trough running, when good; red and still when not. Letting
+  go on a bad site places nothing and keeps the tool. The tool hint and
+  card tell the story. The spirit crew builds the wheel and
   lines the head cell. Lift `Q = min(gain·P/(ρ g H), 0.2 m³/s)` per
   hydraulic second with `gain = 10` (`PARAMS.wheelGain`, standing for
   the fast hydraulic clock; a hydraulic day is only 300 s), so the
   reference case lifts ≈ 0.13 m³/s ≈ 38 m³ per game day: a thin stream
-  that wets a trench and its fields. The trough stops while 0.5 m of
-  water stands at its outlet. Ledger: `lifted`. Achievement **Uphill**
-  (100 m³ lifted). Rivers vary by world: some valleys have no current
-  fast enough (seed 1 is lake-like), which is the rule teaching itself.
+  that wets a trench and its fields; on a low river the race below a
+  1.5 m weir lifts more than twice what the open reach does (up to the
+  cap, ≈ 60 m³ per day). The trough stops while 0.5 m of water stands at its
+  outlet. Ledger: `lifted`. Achievement **Uphill** (100 m³ lifted).
+  Site survey (`tools/wheel-sites.ts`, seeds 1–8 at 256², after spin-up):
+  revealed wet cells at the banks are mostly quick enough (slow ones
+  240–400 per seed; seed 8 is lake-like, 25 sites only); the first dry
+  cell is almost always < 2 m above the water (a floodplain), and 5 cells
+  further in the land stands 2–10 m up (seeds 7–8 also > 10 m). So the
+  old rule (first dry cell, ≤ 3 cells, ≤ 5 m) only reached the
+  floodplain, which a gravity trench waters anyway; the terrace beyond
+  needed the longer trough and the higher lift.
 - **Why not a pump?** The wheel's lift comes from the river's own
   movement, so it fits "water is the protagonist"; it fails gracefully
   in a dry summer (slow river ⇒ slow wheel), which is the kind of

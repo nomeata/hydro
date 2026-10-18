@@ -32,8 +32,10 @@ const persist = !testMode || params.has('persist');
 /** Resume the autosave unless a specific or new world was requested. */
 const resume = persist && !params.has('seed') && !params.has('new');
 const AUTOSAVE = 'autosave';
-/** Tests start paused so that their state is exactly reproducible. */
-const initialSpeed = testMode ? 0 : 1;
+/** The welcome panels on a first visit: the game waits until they close. */
+const introDue = !testMode && !Intro.seen();
+/** Tests start paused so that their state is exactly reproducible; so does a first visit (the intro). */
+const initialSpeed = testMode || introDue ? 0 : 1;
 const AUTOSAVE_MS = 60_000;
 /** Phones: let the sim use at most ~45% of a core (battery, heat); ?duty= overrides. */
 const duty = Number(params.get('duty') ?? (matchMedia('(pointer: coarse)').matches ? 0.45 : 1));
@@ -82,6 +84,11 @@ async function main(): Promise<void> {
   });
   let peak = 0;
   let menu: Menu | null = null;
+  const intro = new Intro(uiRoot);
+  // Tool cards at unlock (not in tests unless asked for with ?cards=1).
+  const cards = new ToolCards(uiRoot);
+  /** A dialog covers the game: achievement toasts and milestone notes wait. */
+  const quiet = () => intro.isOpen || cards.isOpen;
   const achievements = new AchievementsUi(uiRoot, {
     seed: data.info.seed,
     unlocked: (t) => isUnlocked(t, peak),
@@ -91,19 +98,19 @@ async function main(): Promise<void> {
       highlight.show(idea.x, idea.y, idea.r + 1);
     },
     news: (on) => menu?.setNews(on),
+    quiet,
   });
-  const statsBar = new StatsBar(uiRoot.querySelector('.topbar')!, () => historyPanel.open());
-  // Tool cards at unlock (not in tests unless asked for with ?cards=1).
-  const cards = new ToolCards(uiRoot);
+  const statsBar = new StatsBar(uiRoot.querySelector('.topbar')!, () => historyPanel.open(), quiet);
   const cardsDue = !testMode || params.has('cards');
   const showCard = (tool: string) => {
-    if (!ToolCards.has(tool)) return;
+    if (!ToolCards.has(tool) || intro.isOpen) return;
     const before = client.getSpeed();
     client.setSpeed(0);
     hud.setSpeed(0);
     cards.open(tool, () => {
       client.setSpeed(before);
       hud.setSpeed(before);
+      statsBar.update(client.latest?.stats);
     });
   };
   const tools = new ToolPalette(uiRoot, {
@@ -116,6 +123,9 @@ async function main(): Promise<void> {
     setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
     setPreviewLining: (cells) => renderer.setPreviewLining(cells),
     depth: (i) => renderer.heights.depth[i] ?? 0,
+    speed: (i) => renderer.flow.speed(i),
+    setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
+    setWheelSites: (sites) => renderer.wheelPreview.setSites(sites),
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),
     command: (cmd) => client.command(cmd),
   });
@@ -137,7 +147,6 @@ async function main(): Promise<void> {
     if (s.plan || s.lining) tools.planUpdated();
   });
 
-  const intro = new Intro(uiRoot);
   let last = performance.now();
   const loop = (now: number) => {
     const dt = Math.min(0.1, (now - last) / 1000);
@@ -170,19 +179,21 @@ async function main(): Promise<void> {
   });
 
   // Welcome panels: first visit, and from the menu. The game waits meanwhile.
-  const showIntro = () => {
-    const before = client.getSpeed();
+  const showIntro = (resumeAt?: number) => {
+    const before = resumeAt ?? client.getSpeed();
     client.setSpeed(0);
     hud.setSpeed(0);
     intro.open(() => {
       client.setSpeed(before);
       hud.setSpeed(before);
+      statsBar.update(client.latest?.stats);
     });
   };
-  if (!testMode && !Intro.seen()) showIntro();
+  // A first visit started paused (initialSpeed); play begins when the panels close.
+  if (introDue) showIntro(1);
 
   menu = new Menu(uiRoot, {
-    howToPlay: showIntro,
+    howToPlay: () => showIntro(),
     achievements: () => achievements.panel.open(),
     newWorld: () => {
       location.search = '?new=1';

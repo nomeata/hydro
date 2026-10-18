@@ -72,7 +72,7 @@ console.log('render stats', JSON.stringify(stats));
 for (let k = 0; k < shots; k++) {
   if (k > 0) await page.waitForTimeout(interval);
   const path = shots > 1 ? `out/${name}-${k}.png` : `out/${name}.png`;
-  await page.screenshot({ path });
+  await page.screenshot({ path, timeout: 120_000 });
   console.log(`wrote ${path}`);
 }
 await browser.close();
