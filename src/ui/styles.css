@@ -685,3 +685,37 @@ html, body {
 .area-highlight .glow { fill: rgba(255, 226, 120, 0.2); stroke: rgba(80, 55, 25, 0.35); stroke-width: 6; stroke-linejoin: round; }
 .area-highlight .ring { fill: none; stroke: #ffe58a; stroke-width: 2.6; stroke-dasharray: 7 6; stroke-linejoin: round; animation: area-ring 1.4s linear infinite; }
 @keyframes area-ring { to { stroke-dashoffset: -26; } }
+
+/* --- selection (ui/selection.ts) -------------------------------------- */
+.select-panel { padding: 6px 10px 8px; font-size: 13px; min-width: 230px; max-width: min(420px, 100%); box-sizing: border-box; }
+.select-panel[hidden] { display: none; }
+.select-panel .sel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.select-panel button {
+  appearance: none; border: 0; font: inherit; color: var(--ink); cursor: pointer; border-radius: 10px;
+  min-width: 44px; min-height: 44px; background: var(--paper-2); font-weight: 700;
+}
+.select-panel button:disabled { opacity: 0.4; cursor: default; }
+.select-panel .sel-close { background: transparent; font-size: 22px; min-height: 36px; }
+.select-panel .sel-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.select-panel .sel-crest { display: flex; align-items: center; gap: 8px; }
+.select-panel .sel-crest[hidden] { display: none; }
+.select-panel .sel-crest button { font-size: 20px; }
+.select-panel .sel-crest output { font-weight: 700; }
+.select-panel .sel-remove { padding: 0 14px; margin-left: auto; }
+.select-panel .sel-remove.armed { background: #c0392b; color: #fff; }
+.select-panel .sel-note { font-size: 11.5px; opacity: 0.8; margin-top: 4px; }
+.select-panel .sel-note[hidden] { display: none; }
+.sel-overlay { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none !important; overflow: visible; }
+.sel-overlay line { stroke: #ffe58a; stroke-width: 3; stroke-dasharray: 8 6; stroke-linecap: round; filter: drop-shadow(0 1px 1px rgba(60, 40, 20, 0.6)); }
+.sel-overlay circle { fill: rgba(255, 226, 120, 0.18); stroke: #ffe58a; stroke-width: 3; stroke-dasharray: 7 5; }
+/* Drag handles at a weir's ends: 44 px to touch, a small knob to see. */
+.sel-handle {
+  position: fixed; left: -22px; top: -22px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent;
+  cursor: grab; touch-action: none; z-index: 5;
+}
+.sel-handle[hidden] { display: none; }
+.sel-handle::after {
+  content: ''; position: absolute; left: 11px; top: 11px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff7d6; border: 3px solid var(--wood-dark); box-shadow: 0 1px 3px rgba(40, 30, 10, 0.5);
+}
+.sel-handle:active { cursor: grabbing; }

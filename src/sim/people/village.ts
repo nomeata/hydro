@@ -9,7 +9,7 @@ import { Rng } from '../../shared/rng';
 import { CELL_AREA, DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../constants';
 import { REVEALED } from '../fog';
 import { PARAMS } from '../params';
-import { applyEarthwork } from '../plans/plans';
+import { applyEarthwork, takenGround } from '../plans/plans';
 import { CellFlag, LandUse, SOIL_PROPS, type World } from '../world';
 import { Job, SiteKind, Task, packEntities, walk, type Agent, type Animal } from './agents';
 import { updateDesirePaths } from './desire';
@@ -661,6 +661,7 @@ export class PeopleSystem {
       (field || w.floodMemory[i]! < 60) &&
       Number.isNaN(w.plan[i]!) &&
       !this.ditchCells.has(i) &&
+      !takenGround(w, i) &&
       this.slope(i) < 0.25
     );
   }
@@ -677,7 +678,7 @@ export class PeopleSystem {
       for (let dx = -1; dx <= 1; dx++) {
         if ((dx || dy) && w.inBounds(x + dx, y + dy)) {
           const j = w.idx(x + dx, y + dy);
-          if (w.landuse[j] === LandUse.None && w.water[j]! < 0.05) {
+          if (w.landuse[j] === LandUse.None && w.water[j]! < 0.05 && !takenGround(w, j)) {
             w.landuse[j] = LandUse.Yard;
             w.vegetation[j] = Math.min(w.vegetation[j]!, 0.25);
           }

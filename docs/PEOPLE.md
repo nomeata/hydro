@@ -244,7 +244,9 @@ list (`stats.villages`).
 | water carrier (any idle adult, now and then) | the village well, or the water's edge if home is ≥ 8 cells from it | winds up / dips a bucket, carries it to a house | cosmetic (GAMEPLAY §4.3 P7) |
 | gatekeeper (a builder or idle adult, when called) | a sluice gate near the village | walks to the gate, turns its wheel while the leaf moves | gate opened or closed (GAMEPLAY.md §2, `structures/gatekeeper.ts`) |
 
-Fields are claimed and ploughed in any season but winter. Grain follows the
+Fields are claimed and ploughed in any season but winter (never on the
+player's works: structures, lining, planned cells, bank crests and slopes;
+DESIGN §4). Grain follows the
 year; gardens give green within about one season.
 
 ### 5.2 Movement

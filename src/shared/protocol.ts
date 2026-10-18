@@ -225,7 +225,8 @@ export interface BuildingInfo {
  * - gate: a sluice gate across the line through (x, y) along `rot`
  *   (`width` cells wide); the leaf rises to `top` when closed and lifts
  *   clear when open; water passes down to `sill` when open.
- * - weir: a lined overflow wall from (x, y) to (x2, y2) with its crest at `top`.
+ * - weir: a lined overflow wall from (x, y) to (x2, y2) with its crest at
+ *   `top`; `sill` is the lowest ground under the crest.
  * - jetty: a villagers' wooden jetty from the shore cell (x, y) out over
  *   the water to (x2, y2), its deck at `top`.
  * - wheel: a water wheel standing in the river cell (x, y) on its bed
@@ -235,6 +236,9 @@ export interface BuildingInfo {
  *   wet cells to the bank cell (x2, y2), its deck at `top` (`broken`
  *   after a flood swept the planks away).
  */
+/** Things the player can select and edit or remove (ui/selection.ts). */
+export type SelectableKind = 'weir' | 'gate' | 'wheel' | 'turbine' | 'pole' | 'pump';
+
 export interface StructureInfo {
   id: number;
   kind: 'gate' | 'weir' | 'jetty' | 'wheel' | 'bridge';
@@ -352,8 +356,22 @@ export type Command =
   | { type: 'planLevel'; points: Pt[]; width: number }
   /** Stone lining on the cells brushed by a path (built after any earthworks there). */
   | { type: 'planLining'; points: Pt[]; width: number }
-  /** Weir: a lined wall along the straight line from the first to the last point, crest `height` above the lowest ground. */
-  | { type: 'planWeir'; points: Pt[]; width: number; height: number }
+  /**
+   * Weir: a lined stone wall along the straight line from the first to the
+   * last point, crest `height` above the lowest ground; its faces and apron
+   * follow from the height (`width` is ignored; older callers pass it).
+   */
+  | { type: 'planWeir'; points: Pt[]; width?: number; height: number }
+  /**
+   * Edit a weir (selection handles): its line now runs from points[0] to
+   * points[1], its crest at `top` (absolute, m). The crew rebuilds it.
+   */
+  | { type: 'editWeir'; id: number; points: Pt[]; top: number }
+  /**
+   * Take a structure down (the selection's Remove): a weir is lowered back
+   * to its ground, a gate's opening plugged up to the dam's crest.
+   */
+  | { type: 'removeStructure'; kind: SelectableKind; id: number }
   /**
    * Sluice gate. A tap (or a very short stroke) on a dike or weir puts a
    * gate into it; a stroke across a channel builds a dike of crest `height`
