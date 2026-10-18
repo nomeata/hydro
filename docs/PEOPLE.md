@@ -46,17 +46,39 @@ or at least a daily capillary proxy:
 cells to water (daily distance transform; `CAPILLARY` in `village.ts`). The
 own soil counts at 0.6 (GAMEPLAY §4.1: at full weight 60 % of the land was
 farmable without any water work), so where the water is decides what grows.
-Crops grow fully from moisture 0.4, not at all below 0.2 (`CROP_MOISTURE`),
-and villagers claim land only where crops would grow at least half as well
-today (`FARMING.minGrowth`). A field gives 8 person-days per harvest (×
-fertility; `FARMING.yield`, was 34) and a farmer keeps 14 fields (was 6):
-a village is bounded by the watered land around it (§4).
+Crops grow fully from moisture 0.46, not at all below 0.22 (`CROP_MOISTURE`;
+was 0.4/0.2 before playtest round 2), and villagers claim land only where
+crops would grow at least half as well today (`FARMING.minGrowth`). A crop
+grows 11 stages a day at full growth (`FARMING.growPerDay`, was 16), so a
+field sown early in spring only just ripens by late summer if it never
+lacked water: dry spells cost yield. Ripe crops (≥ 230) are harvested any
+time; in autumn the farmers bring in whatever stands (≥ 40) at its share of
+a full yield (`FARMING.lateHarvest`). A field gives 10 person-days per full
+harvest (× fertility; `FARMING.yield`, was 8) and a farmer keeps 28 fields
+(was 14): a village is bounded by the watered land around it (§4), not by
+its hands. Water in the player's canals and in field ditches wets the land
+a little further than a river (`CAPILLARY.canalReach` 4 cells, rivers 2.5).
+
+**Field ditches** (`people/ditches.ts`, playtest round 2): once the
+player's canal carries water within a village's field radius, farmers dig
+small ditches off it into the dry land beside it, one every couple of days
+up to 1 + population/6 (at most 12): a straight line of up to 10 cells, one
+cell wide, cut through the canal's bank, its floor 0.12 m below the canal's
+water and at most 0.9 m below ground, only where the ground stands above
+the canal's water (it would spill otherwise) and only where at least 8 dry
+field or fertile cells lie within 2 cells. Farmers spend about a third of
+their task choices on it while one is open, 0.35 m per visit, and wait for
+the harvest before cutting through a standing crop. The water sim fills the
+ditch; the land beside it greens like any canal bank.
 
 Irrigated fields also **draw water**: crop evapotranspiration of about
 4 mm/day is taken from the nearest water or groundwater and booked in the
 ledger. In a dry spell, rivers below heavily irrigated land visibly shrink.
-Too wet is bad too: saturation above 0.9, or standing water over 5 cm for
-more than 2 days, drowns crops.
+Too wet is bad too: saturation above 0.9 slows crops to 0.4; standing
+water over 5 cm slows them to 0.4 as well (a spilling canal, a wet spring),
+and water over 15 cm drowns them (`CROP_MOISTURE.drown`). Fields that stand
+in water when they should be sown are given up, and the village claims dry
+land elsewhere.
 
 ### 3.2 Vegetation (M3-δ, `sim/vegetation.ts`)
 Once a game day every cell's `vegetation` (0..1) moves towards what the
@@ -128,8 +150,12 @@ Effects:
 - **Wellbeing** `w`, 0..1.
 
 **Food security is measured against the season, not the raw stock:**
-`S = F / (P · (daysToNextHarvest + 6))`. Wellbeing reads `min(1, S)` together
-with housing, water access and safety, smoothed with τ ≈ 6 days. Several food
+`S = F / (P · (daysToNextHarvest + 6))`. Wellbeing multiplies food in
+(playtest round 2): target `(0.1 + 0.9·min(1, S)) · (0.6 + 0.4·comfort)`,
+comfort = 0.4·housing + 0.35·water access + 0.25·safety (plus the warm
+hearth, the mill and lit houses), smoothed with τ ≈ 6 days. A hungry
+village therefore falls well below 0.4 (before: never below 0.45, so
+nobody ever left). Several food
 sources on different schedules (fish all year except winter, dairy, a quick
 garden crop in summer and autumn) flatten the yearly sawtooth.
 
@@ -144,13 +170,20 @@ garden crop in summer and autumn) flatten the yearly sawtooth.
   migration. A discrete yearly map converges for r < 1.
 - **Migration is the main lever, rate-limited by housing:**
   - families arrive with probability ∝ `max(0, w − 0.6) × freeHouses`;
-  - families leave with probability ∝ `max(0, 0.4 − w)`;
+  - families leave with probability 0.05 × households × `max(0, 0.4 − w)`
+    a day, but the last four people stay (`ECONOMY.stayers`: no failure);
   - births and deaths are small, about ±5 %/yr, and children are cosmetic;
-  - families stop arriving and births pause while food security is below
-    1 (`ECONOMY.growFood`: the store would not last until the next
-    harvest), so a village levels off fed, not hungry.
-- **Recovery floor:** if land is attractive, a trickle of migrants keeps
-  arriving, even to an empty site.
+  - families stop arriving and births pause while the store would not
+    feed everyone for `max(daysToNextHarvest, 40) + 6` days
+    (`ECONOMY.growFood`, `growHorizon`): without the 40-day horizon the
+    store of a harvest just brought in looked like plenty a few days before
+    the harvest day, families poured in and starved through the spring.
+    So a village grows on a surplus and levels off fed, and shrinks by
+    departures when hunger comes (a dry year, a flood).
+- **Recovery floor:** a village under 12 people (`ECONOMY.smallVillage`)
+  takes migrants above w 0.45 (`arriveSmall`) and builds a house for them
+  above 0.4 (`houseSmall`), so a village refills after a setback once its
+  land feeds it again.
 
 **Job quotas:** once a day the settlement computes target worker counts per
 job from marginal returns (value of the best unworked site minus travel
@@ -217,7 +250,8 @@ year; gardens give green within about one season.
 ### 5.2 Movement
 - Walking speed is about 1.5 cells per real second at 1× (0.075 cells per
   step). People can wade up to 0.4 m deep, slowly; deeper water is
-  impassable.
+  impassable. They run from water only when it is deeper than that
+  (`MAX_WADE`; before, anyone in a ford deeper than 0.3 m "fled").
 - Pathfinding is bounded A* (a 64×64 window around the settlement, octile
   heuristic), time-sliced to at most 4 searches per tick. Paths are cached
   per (settlement, site).
@@ -322,7 +356,7 @@ and behaviour.
   with fish unless the store is empty (`render/village/houses.ts`).
 - ☑ **Crops:** the sim sends a stress byte per field cell (third byte of
   `Snapshot.fields`, `cropStress` in `people/village.ts`, mirroring the
-  growth factor of `growCrops`): 1..127 dry (moisture < 0.4 while
+  growth factor of `growCrops`): 1..127 dry (moisture < 0.46 while
   growing), 128..255 waterlogged (moisture ≥ 0.9) or drowned (255, under
   water). The terrain shader paints dry fields pale with thin, patchy,
   straw-yellow crop rows, waterlogged ones as dark mud with brown crops and
