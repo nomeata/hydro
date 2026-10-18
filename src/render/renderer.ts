@@ -201,6 +201,8 @@ export class GameRenderer {
     wu.uPreviewOn = tu.uPreviewOn;
     wu.uLining = tu.uLining;
     wu.uLiningOn = tu.uLiningOn;
+    wu.uFields = tu.uFields;
+    wu.uFieldsOn = tu.uFieldsOn;
     this.water = new WaterLayer(this.geometry, wu, W, H);
     this.updateFogChunks();
     this.scene.add(this.water.group);

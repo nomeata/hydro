@@ -90,7 +90,7 @@ function milletLook(crop: number): { model: ModelName; scale: number; tint: [num
 function riceLook(crop: number): { model: ModelName; scale: number; tint: [number, number, number] } {
   const g = Math.min(1, Math.max(0, (crop - CROP_SOWN) / (CROP_RIPE - CROP_SOWN)));
   const k = Math.max(0, (g - 0.75) / 0.25);
-  return { model: 'grass', scale: 0.35 + 0.4 * Math.min(1, g / 0.6), tint: [0.62 + 0.6 * k, 1.05 - 0.05 * k, 0.4 - 0.05 * k] };
+  return { model: 'grass', scale: 0.45 + 0.5 * Math.min(1, g / 0.6), tint: [0.7 + 0.6 * k, 1.2 - 0.1 * k, 0.42 - 0.05 * k] };
 }
 
 /**

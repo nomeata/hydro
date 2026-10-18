@@ -108,59 +108,6 @@ float fieldLine(float d, float w) {
   return (1.0 - smoothstep(ww - px * 0.5, ww + px * 0.5, d)) * min(1.0, w / ww);
 }
 
-// Pegged plot (good land staked out, not ploughed): the meadow a little trodden and
-// paler inside, a string along the plot's outline and a peg at each corner of it.
-vec3 peggedColour(vec3 ground, ivec2 c, vec2 f) {
-  bool w = fieldCropAt(c + ivec2(-1, 0)) != 3 || int(fieldAt(c + ivec2(-1, 0)).r + 0.5) != 0;
-  bool e = fieldCropAt(c + ivec2(1, 0)) != 3 || int(fieldAt(c + ivec2(1, 0)).r + 0.5) != 0;
-  bool s = fieldCropAt(c + ivec2(0, -1)) != 3 || int(fieldAt(c + ivec2(0, -1)).r + 0.5) != 0;
-  bool n = fieldCropAt(c + ivec2(0, 1)) != 3 || int(fieldAt(c + ivec2(0, 1)).r + 0.5) != 0;
-  vec3 col = mix(ground, ground * vec3(1.08, 1.06, 0.92) + vec3(0.02, 0.02, 0.0), 0.7);
-  float str = 0.0;
-  if (w) str = max(str, fieldLine(f.x, 0.022));
-  if (e) str = max(str, fieldLine(1.0 - f.x, 0.022));
-  if (s) str = max(str, fieldLine(f.y, 0.022));
-  if (n) str = max(str, fieldLine(1.0 - f.y, 0.022));
-  col = mix(col, vec3(0.93, 0.9, 0.78), str * 0.9);
-  // Pegs: dark wood at the outline's corners (shadow-like dots; the 3D pegs stand on them).
-  float peg = 0.0;
-  vec2 g = vec2(f.x < 0.5 ? f.x : 1.0 - f.x, f.y < 0.5 ? f.y : 1.0 - f.y);
-  bool xe = f.x < 0.5 ? w : e;
-  bool ye = f.y < 0.5 ? s : n;
-  if (xe || ye) peg = fieldLine(length(g), 0.06);
-  return mix(col, vec3(0.28, 0.2, 0.12), peg * 0.85);
-}
-
-// Paddies: small basins of standing water between low earth bunds, the rice planted in clumps.
-vec3 paddyColour(vec3 soil, vec3 world, ivec2 c, vec2 f, float crop, float g, vec2 st) {
-  // Bunds on the plot's outline and between pairs of cells.
-  float bund = 0.0;
-  bool wx = int(fieldAt(c + ivec2(-1, 0)).r + 0.5) != 1 || fieldCropAt(c + ivec2(-1, 0)) != 2 || (c.x & 1) == 0;
-  bool ex = int(fieldAt(c + ivec2(1, 0)).r + 0.5) != 1 || fieldCropAt(c + ivec2(1, 0)) != 2 || (c.x & 1) == 1;
-  bool sy = int(fieldAt(c + ivec2(0, -1)).r + 0.5) != 1 || fieldCropAt(c + ivec2(0, -1)) != 2 || (c.y & 1) == 0;
-  bool ny = int(fieldAt(c + ivec2(0, 1)).r + 0.5) != 1 || fieldCropAt(c + ivec2(0, 1)) != 2 || (c.y & 1) == 1;
-  if (wx) bund = max(bund, fieldLine(f.x, 0.07));
-  if (ex) bund = max(bund, fieldLine(1.0 - f.x, 0.07));
-  if (sy) bund = max(bund, fieldLine(f.y, 0.07));
-  if (ny) bund = max(bund, fieldLine(1.0 - f.y, 0.07));
-  float sheen = 0.9 + 0.1 * sin(uTime * 1.1 + world.x * 1.7 + world.z * 2.3);
-  vec3 water = mix(vec3(0.2, 0.27, 0.24), vec3(0.4, 0.55, 0.6), 0.45 + 0.2 * fieldNoise(world.xz * 3.1)) * sheen;
-  vec3 col = water;
-  // Rice clumps on a 4 x 4 grid per cell, growing from points into tufts.
-  if (crop >= ${CROP_SOWN}.0) {
-    vec2 q = fract(world.xz * 4.0) - 0.5;
-    float r = mix(0.12, 0.36, smoothstep(0.0, 0.6, g)) * (1.0 - 0.5 * st.x);
-    float tuft = 1.0 - smoothstep(r - 0.1, r + 0.04, length(q));
-    vec3 rice = mix(vec3(0.38, 0.62, 0.2), vec3(0.3, 0.55, 0.16), smoothstep(0.1, 0.5, g));
-    rice = mix(rice, vec3(0.78, 0.7, 0.3), smoothstep(0.78, 1.0, g));
-    rice = mix(rice, vec3(0.62, 0.42, 0.12), st.x * 0.7);
-    float aa = 1.0 - smoothstep(0.3, 0.6, fwidth(world.x * 4.0));
-    col = mix(col, rice, mix(r * 1.6, tuft, aa) * 0.95);
-  }
-  vec3 bundCol = mix(vec3(0.42, 0.34, 0.2), vec3(0.36, 0.5, 0.2), 0.35 + 0.3 * fieldNoise(world.xz * 5.0));
-  return mix(col, bundCol, bund);
-}
-
 // Smooth value noise (patches of stressed crops, puddles); tHash from the terrain shader.
 float fieldNoise(vec2 p) {
   vec2 i = floor(p);
@@ -210,6 +157,59 @@ vec3 pathColour(vec3 ground, vec3 world) {
   // Tufts of grass survive where fewer feet go.
   float tuft = smoothstep(0.62, 0.8, fieldNoise(world.xz * 9.0 + 3.3)) * (1.0 - smoothstep(0.75, 1.0, p));
   return mix(ground, earth, m * (0.92 - 0.6 * tuft));
+}
+
+// Pegged plot (good land staked out, not ploughed): the meadow a little trodden and
+// paler inside, a string along the plot's outline and a peg at each corner of it.
+vec3 peggedColour(vec3 ground, ivec2 c, vec2 f) {
+  bool w = fieldCropAt(c + ivec2(-1, 0)) != 3 || int(fieldAt(c + ivec2(-1, 0)).r + 0.5) != 0;
+  bool e = fieldCropAt(c + ivec2(1, 0)) != 3 || int(fieldAt(c + ivec2(1, 0)).r + 0.5) != 0;
+  bool s = fieldCropAt(c + ivec2(0, -1)) != 3 || int(fieldAt(c + ivec2(0, -1)).r + 0.5) != 0;
+  bool n = fieldCropAt(c + ivec2(0, 1)) != 3 || int(fieldAt(c + ivec2(0, 1)).r + 0.5) != 0;
+  vec3 col = mix(ground, ground * vec3(1.08, 1.06, 0.92) + vec3(0.02, 0.02, 0.0), 0.7);
+  float str = 0.0;
+  if (w) str = max(str, fieldLine(f.x, 0.022));
+  if (e) str = max(str, fieldLine(1.0 - f.x, 0.022));
+  if (s) str = max(str, fieldLine(f.y, 0.022));
+  if (n) str = max(str, fieldLine(1.0 - f.y, 0.022));
+  col = mix(col, vec3(0.93, 0.9, 0.78), str * 0.9);
+  // Pegs: dark wood at the outline's corners (shadow-like dots; the 3D pegs stand on them).
+  float peg = 0.0;
+  vec2 g = vec2(f.x < 0.5 ? f.x : 1.0 - f.x, f.y < 0.5 ? f.y : 1.0 - f.y);
+  bool xe = f.x < 0.5 ? w : e;
+  bool ye = f.y < 0.5 ? s : n;
+  if (xe || ye) peg = fieldLine(length(g), 0.06);
+  return mix(col, vec3(0.28, 0.2, 0.12), peg * 0.85);
+}
+
+// Paddies: small basins of standing water between low earth bunds, the rice planted in clumps.
+vec3 paddyColour(vec3 soil, vec3 world, ivec2 c, vec2 f, float crop, float g, vec2 st) {
+  // Bunds on the plot's outline and between pairs of cells.
+  float bund = 0.0;
+  bool wx = int(fieldAt(c + ivec2(-1, 0)).r + 0.5) != 1 || fieldCropAt(c + ivec2(-1, 0)) != 2 || (c.x & 1) == 0;
+  bool ex = int(fieldAt(c + ivec2(1, 0)).r + 0.5) != 1 || fieldCropAt(c + ivec2(1, 0)) != 2 || (c.x & 1) == 1;
+  bool sy = int(fieldAt(c + ivec2(0, -1)).r + 0.5) != 1 || fieldCropAt(c + ivec2(0, -1)) != 2 || (c.y & 1) == 0;
+  bool ny = int(fieldAt(c + ivec2(0, 1)).r + 0.5) != 1 || fieldCropAt(c + ivec2(0, 1)) != 2 || (c.y & 1) == 1;
+  if (wx) bund = max(bund, fieldLine(f.x, 0.09));
+  if (ex) bund = max(bund, fieldLine(1.0 - f.x, 0.09));
+  if (sy) bund = max(bund, fieldLine(f.y, 0.09));
+  if (ny) bund = max(bund, fieldLine(1.0 - f.y, 0.09));
+  float sheen = 0.9 + 0.1 * sin(uTime * 1.1 + world.x * 1.7 + world.z * 2.3);
+  vec3 water = mix(vec3(0.2, 0.27, 0.24), vec3(0.4, 0.55, 0.6), 0.45 + 0.2 * fieldNoise(world.xz * 3.1)) * sheen;
+  vec3 col = water;
+  // Rice clumps on a 4 x 4 grid per cell, growing from points into tufts.
+  if (crop >= ${CROP_SOWN}.0) {
+    vec2 q = fract(world.xz * 4.0) - 0.5;
+    float r = mix(0.12, 0.36, smoothstep(0.0, 0.6, g)) * (1.0 - 0.5 * st.x);
+    float tuft = 1.0 - smoothstep(r - 0.1, r + 0.04, length(q));
+    vec3 rice = mix(vec3(0.5, 0.8, 0.24), vec3(0.4, 0.72, 0.2), smoothstep(0.1, 0.5, g));
+    rice = mix(rice, vec3(0.78, 0.7, 0.3), smoothstep(0.78, 1.0, g));
+    rice = mix(rice, vec3(0.62, 0.42, 0.12), st.x * 0.7);
+    float aa = 1.0 - smoothstep(0.3, 0.6, fwidth(world.x * 4.0));
+    col = mix(col, rice, mix(r * 1.6, tuft, aa) * 0.95);
+  }
+  vec3 bundCol = mix(vec3(0.52, 0.42, 0.24), vec3(0.45, 0.62, 0.24), 0.4 + 0.35 * fieldNoise(world.xz * 5.0));
+  return mix(col, bundCol, bund);
 }
 
 bool isField(ivec2 c) {
