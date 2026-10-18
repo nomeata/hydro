@@ -712,7 +712,7 @@ near the start) as a 25 % variant: two regimes, one of them flashier.
     population 23/61/63/42 → 22/65/46/55 (sum 189 → 188; seed 3 founded
     its third village later, seed 4 its second earlier), year 2 21/31/27/24
     → 21/26/30/21, prosperity 76/92/92/98 → 83/88/87/98 %. A first cap
-    of 4 + ½ (4 a day) gave +19 % population and was halved. On seeds 1
+    of 4 + ½ (4 a day) gave +19 % population and was halved. With it, on seeds 1
     and 3 millet covers 5–25 % of the fields from the first summer on,
     paddies appear by the river on seed 1 (10–20 cells), pegs while a
     village has fewer hands than land (after departures, on new villages).
