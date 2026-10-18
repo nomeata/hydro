@@ -51,7 +51,7 @@ const HELD = 0.2;
 /** A cell dug at least this deep below its original ground counts as dug (m). */
 const DUG = 0.3;
 
-/** An earthwork stroke by the player, followed until it is built. */
+/** An earthwork plan stroke (saves from before the brushes; finished on load, DESIGN §4). */
 interface Stroke {
   k: 'trench' | 'dike' | 'level';
   /** Path length (cells). */

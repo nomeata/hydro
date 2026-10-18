@@ -408,8 +408,8 @@ export class Structures {
   }
 
   /**
-   * Earthworks planned through structures take them down (a trench, dike or
-   * level over them): gates and wheels on those cells go; a weir loses the
+   * Take down what stands on these cells (a removed weir takes the gates and
+   * turbines in it along; scripts and old tests): gates and wheels there go; a weir loses the
    * part the plan crosses (its stone there comes off) and what is left on
    * either side stays a weir of its own if it is long enough.
    */
