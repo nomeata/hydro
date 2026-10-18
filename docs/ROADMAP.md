@@ -133,6 +133,11 @@ See docs/GAMEPLAY.md §7 (prioritised list).
 - ☑ Water wheel (noria) tool at 50 villagers (GAMEPLAY §1.3,
   `sim/structures/wheel.ts`): lift from the current, trough to the bank,
   Uphill achievement, tool card scene
+- ☑ Wheel rework (playtest: "banks too high"): lift up to 10 m with a
+  wheel as tall as its lift, a 6-cell aqueduct to the end of the stroke,
+  the quickest water (race below a weir) counts; gold rings mark good
+  sites while the tool is held, a ghost wheel (red when bad) instead of
+  text; `tools/wheel-sites.ts` surveys sites per seed
 - ☑ Villager wells (water table within 4 m; water carriers until then;
   dry wells) and mills at head sites (the wheel turns with the flow, a
   miller, flour) — GAMEPLAY §1.1–1.2, `sim/people/wells.ts`, `mills.ts`;

@@ -144,6 +144,9 @@ async function main(): Promise<void> {
     setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
     setPreviewLining: (cells) => renderer.setPreviewLining(cells),
     depth: (i) => renderer.heights.depth[i] ?? 0,
+    speed: (i) => renderer.flow.speed(i),
+    setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
+    setWheelSites: (sites) => renderer.wheelPreview.setSites(sites),
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),
     command: (cmd) => client.command(cmd),
   });

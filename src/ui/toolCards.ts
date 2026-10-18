@@ -39,7 +39,7 @@ export const TOOL_CARDS: Readonly<Record<string, CardDef>> = {
   },
   wheel: {
     scene: 'wheel',
-    text: 'Fields on a terrace too high for a canal? The river’s own current turns a wheel that lifts water up to 5 m into your trench. In still water it stands still.',
+    text: 'A noria lifts river water up to a canal on the terrace above, so fields beyond the floodplain can be watered. Set it where the current is quick: in the main channel, a narrows, or the race below your weir. The higher the bank, the taller the wheel and the less it lifts; in still water it stands still.',
   },
 };
 

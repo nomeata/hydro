@@ -29,6 +29,7 @@ import { VillageCuesLayer } from './village/cues';
 import { MillWheelsLayer } from './village/millwheels';
 import { fieldsToRgba } from './village/fields';
 import { StructuresLayer } from './structures/structures';
+import { WheelPreview } from './structures/wheelPreview';
 import { PowerLayer } from './power/power';
 import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
@@ -86,6 +87,8 @@ export class GameRenderer {
   readonly millWheels: MillWheelsLayer;
   /** Sluice gates and weirs from the snapshot's structure list. */
   readonly structures: StructuresLayer;
+  /** The water-wheel tool's ghost wheel and site marks. */
+  readonly wheelPreview: WheelPreview;
   /** Turbines, poles, pumps and lit cottages (M6). */
   readonly power: PowerLayer;
   /** Lining per cell as last received, and cells previewed by a lining tool. */
@@ -210,6 +213,7 @@ export class GameRenderer {
     this.cues = new VillageCuesLayer(this.scene, this.heights);
     this.millWheels = new MillWheelsLayer(this.scene, this.heights);
     this.structures = new StructuresLayer(this.scene, this.heights);
+    this.wheelPreview = new WheelPreview(this.scene, this.heights);
     this.power = new PowerLayer(this.scene, this.heights);
     this.updateBounds();
 
@@ -289,6 +293,7 @@ export class GameRenderer {
       this.cues.refreshHeights();
       this.millWheels.refreshHeights();
       this.structures.refreshHeights();
+      this.wheelPreview.refreshHeights();
       this.power.refreshHeights();
       this.crops.invalidate();
     }
@@ -465,6 +470,7 @@ export class GameRenderer {
     this.cues.update(dt, cs.viewHeight);
     this.millWheels.update(dt, this.flow.gameSpeed);
     this.structures.update(dt);
+    this.wheelPreview.update(dt);
     this.power.update(dt);
     for (const fn of this.listeners) fn(dt, nowMs);
     if (this.contextLost) return;

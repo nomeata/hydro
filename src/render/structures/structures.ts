@@ -195,6 +195,11 @@ interface Piece {
 const OPEN_LIFT = 0.92;
 /** Wheel spin (rad per real second at 1×) per m/s of current. */
 const WHEEL_SPIN = 1.1;
+/** Breadth (along the axle) of a wheel `d` tall, as a multiple of the unit noria's. */
+function wheelBreadth(d: number): number {
+  return Math.min(2.2, 0.8 + 0.3 * d);
+}
+
 /** The trough's lip above the head cell's ground (three.js units). */
 const TROUGH_LIP = 0.1;
 
@@ -223,14 +228,16 @@ export class StructuresLayer {
   private readonly up = new THREE.Vector3(0, 1, 0);
   private readonly local = new THREE.Vector3();
 
+  /** `material`: one material for every piece instead of the shared vertex-colour one (the tool's ghost wheel). */
   constructor(
     scene: THREE.Object3D,
     private readonly heights: HeightSampler,
+    material?: THREE.Material,
   ) {
     this.group.name = 'structures';
     scene.add(this.group);
     const make = (name: string, g: THREE.BufferGeometry, cap = 64): Piece => {
-      const mesh = new THREE.InstancedMesh(g, vertexColorMaterial(), cap);
+      const mesh = new THREE.InstancedMesh(g, material ?? vertexColorMaterial(), cap);
       mesh.name = `structure-${name}`;
       mesh.count = 0;
       mesh.frustumCulled = false;
@@ -447,7 +454,8 @@ export class StructuresLayer {
       this.q.setFromAxisAngle(this.up, -wh.rot);
       this.spinQ.setFromAxisAngle(this.xAxis, this.spin.get(wh.id) ?? 0);
       this.q.multiply(this.spinQ);
-      this.s.set(1, d, d);
+      // Taller wheels are built broader too.
+      this.s.set(wheelBreadth(d), d, d);
       this.m.compose(this.p, this.q, this.s);
       piece.mesh.setMatrixAt(piece.n++, this.m);
     }
@@ -467,12 +475,14 @@ export class StructuresLayer {
     const prog = Math.min(1, Math.max(0, wh.progress));
     const c = Math.cos(wh.rot);
     const sn = Math.sin(wh.rot);
-    // Posts either side of the wheel, rising with the work.
-    for (const u of [-0.17, 0.17]) this.put(P.beam, wh.x, wh.y, wh.rot, u, bed - 0.05, 0.08, (yc + 0.06 - bed + 0.05) * Math.max(0.15, prog), 0.1);
+    // Posts either side of the wheel, rising with the work (stouter for a tall wheel).
+    const half = 0.17 * wheelBreadth(d);
+    const post = 0.08 + 0.02 * d;
+    for (const u of [-half, half]) this.put(P.beam, wh.x, wh.y, wh.rot, u, bed - 0.05, post, (yc + 0.06 - bed + 0.05) * Math.max(0.15, prog), post * 1.2);
     if (prog < 0.5) return;
-    this.put(P.beam, wh.x, wh.y, wh.rot, 0, yc - 0.03, 0.46, 0.06, 0.06);
+    this.put(P.beam, wh.x, wh.y, wh.rot, 0, yc - 0.03, 2 * half + 0.12, 0.06, 0.06);
     // The trough: from beside the wheel's top to over the head cell.
-    const u0 = 0.1;
+    const u0 = 0.1 * wheelBreadth(d);
     const u1 = Math.max(u0 + 0.3, Math.hypot((wh.x2 ?? wh.x) - wh.x, (wh.y2 ?? wh.y) - wh.y) + 0.05);
     const tH = 0.09;
     const tFrom = prog >= 1 ? u1 : u0 + (u1 - u0) * (prog - 0.5) * 2;
@@ -480,7 +490,9 @@ export class StructuresLayer {
     // Stilts under it, down to the ground (or the river bed).
     for (let u = u0 + 0.25; u < tFrom; u += 0.6) {
       const g = heightToY(this.heights.terrainAt(wh.x + c * u, wh.y + sn * u));
-      if (yTrough - g > 0.04) this.put(P.beam, wh.x, wh.y, wh.rot, u, g - 0.03, 0.05, yTrough - g + 0.03, 0.05);
+      // (Stouter the higher they stand: an aqueduct onto a high terrace.)
+      const t = 0.05 + 0.025 * Math.max(0, yTrough - g);
+      if (yTrough - g > 0.04) this.put(P.beam, wh.x, wh.y, wh.rot, u, g - 0.03, t, yTrough - g + 0.03, t);
     }
     if (prog < 1 || !wh.open) return;
     // Running water in the trough, and a little fall into the head cell.
