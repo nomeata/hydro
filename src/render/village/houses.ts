@@ -407,7 +407,8 @@ export function wellDesign(dry: boolean): Design {
   const parts: Part[] = [
     // The dug pit and the stones waiting by it.
     { m: 'soil', x: 0, y: -0.02, z: 0, s: [0.7, 0.06, 0.7], stages: F },
-    { m: 'survival_resource_stone', x: 0.62, y: 0, z: 0.3, rot: 1, s: [1.0, 1.0, 1.0], stages: F | W },
+    { m: 'survival_resource_stone', x: 0.55, y: 0, z: 0.35, rot: 1, s: [2.2, 2.2, 2.2], stages: F | W },
+    { m: 'survival_resource_stone', x: 0.62, y: 0, z: -0.15, rot: 2, s: [1.8, 1.8, 1.8], stages: F },
     ...[
       [1, 1],
       [1, -1],
@@ -424,11 +425,12 @@ export function wellDesign(dry: boolean): Design {
     { m: 'beam', x: 0, y: 0.76, z: 0, s: [0.05, 0.05, 0.84], stages: TOPPED },
     { m: 'beam', x: 0.04, y: 0.74, z: 0.44, s: [0.12, 0.03, 0.03], stages: D },
     { m: 'pole', x: 0, y: dry ? 0.44 : 0.54, z: 0, s: [0.012, dry ? 0.32 : 0.22, 0.012], stages: D },
-    { m: 'survival_bucket', x: 0, y: dry ? 0.32 : 0.42, z: 0, s: [0.75, 0.75, 0.75], stages: D },
+    { m: 'survival_bucket', x: 0, y: dry ? 0.3 : 0.4, z: 0, s: [1.5, 1.5, 1.5], stages: D },
+    { m: 'survival_bucket', x: 0.3, y: 0, z: 0.4, rot: 1, s: [1.4, 1.4, 1.4], stages: D },
     // A little shingle roof over it.
     { m: 'gable', x: 0, y: 0.98, z: 0, s: [0.62, 0.24, 0.96], stages: D },
   ];
-  return { name: dry ? 'well-dry' : 'well', scale: 1.0, vscale: 1.0, parts };
+  return { name: dry ? 'well-dry' : 'well', scale: 1.25, vscale: 1.2, parts };
 }
 
 /** The mill house: timber walls, door on the landward side (−x), the wheel turns on the water side (+x). */
@@ -447,7 +449,7 @@ const MILL_SHELL: Shell = {
 
 /** Scale of the mill design (world units per tile), and where its wheel turns (world units, building-local). */
 export const MILL_SCALE = 1.05;
-export const MILL_WHEEL = { x: 0.5 * MILL_SCALE + 0.2, y: 0.38, radius: 0.46, width: 0.24 };
+export const MILL_WHEEL = { x: 0.5 * MILL_SCALE + 0.22, y: 0.38, radius: 0.56, width: 0.26 };
 
 /**
  * The water mill (GAMEPLAY §1.2): a timber house with a shingle gable roof
