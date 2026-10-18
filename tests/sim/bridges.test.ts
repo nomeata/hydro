@@ -8,6 +8,7 @@ import { WalkMap } from '../../src/sim/people/reach';
 import { BRIDGE, Bridges, chooseCrossing } from '../../src/sim/people/bridges';
 import { standCell } from '../../src/sim/people/works';
 import type { Agent } from '../../src/sim/people/agents';
+import type { BrushTool, Command } from '../../src/shared/protocol';
 
 /**
  * A 64² valley: a river along y ≈ 20 (west → east) across the whole map,
@@ -50,6 +51,13 @@ function village(fields: { x0: number; y0: number; x1: number; y1: number; crop:
   });
   sim.run(STEPS_PER_DAY);
   return sim;
+}
+
+/** Hold a brush at cell (x, y) for `seconds`. */
+function hold(tool: BrushTool, x: number, y: number, seconds: number, stroke: number, radius = 1.5): Command {
+  const samples: number[] = [];
+  for (let t = 0; t < seconds - 1e-9; t += 1 / 60) samples.push(x, y, 1 / 60);
+  return { type: 'sculpt', tool, radius, stroke, samples };
 }
 
 async function runDays(sim: Simulation, days: number): Promise<void> {
@@ -217,6 +225,62 @@ describe('footbridges', () => {
     }
     expect(over).toBeGreaterThan(0);
     expect(back).toBe(0);
+  }, 240_000);
+
+  it('the brushes do not go round a footbridge: ground moved at its banks or piles breaks it, and it is rebuilt', async () => {
+    const sim = village([{ x0: 26, y0: 13, x1: 33, y1: 16, crop: 40 }]);
+    const p = sim.people!;
+    const w = sim.world;
+    await runDays(sim, 18);
+    const br = p.bridges.list[0]!;
+    expect(br.progress).toBe(1);
+    const W = w.width;
+    const xy = (i: number): [number, number] => [i % W, (i / W) | 0];
+    // Not fixed for the brushes, here or in the client's copy.
+    const fixed = new Uint8Array(w.size);
+    sim.packFixed(fixed);
+    for (const c of [br.a, br.b, ...br.cells]) {
+      expect(sim.isFixed(c)).toBe(false);
+      expect(fixed[c]).toBe(0);
+    }
+    // Brushing well away leaves it standing.
+    const [ax, ay] = xy(br.a);
+    sim.command(hold('raise', ax + 6, ay + 2, 0.3, 1));
+    expect(br.broken).toBeUndefined();
+    // Raising the bank under its end: the ground changes as anywhere, and the bridge breaks.
+    const z0 = w.terrain(br.a);
+    sim.command(hold('raise', ax, ay, 0.3, 2));
+    expect(w.terrain(br.a)).toBeGreaterThan(z0 + BRIDGE.disturb);
+    expect(br.broken).toBe(true);
+    expect(br.progress).toBe(BRIDGE.wreck);
+    for (const c of br.cells) expect(w.landuse[c]).not.toBe(LandUse.Bridge);
+    // Under the deck too: the brush reaches the bare piles' ground.
+    const c0 = br.cells[1]!;
+    const zc = w.terrain(c0);
+    sim.command(hold('dig', ...xy(c0), 0.2, 3));
+    expect(w.terrain(c0)).toBeLessThan(zc - 0.05);
+    // The villagers still need it: rebuilt on the new ground.
+    await runDays(sim, 20);
+    expect(br.broken).toBeUndefined();
+    expect(br.progress).toBe(1);
+    for (const c of br.cells) expect(w.landuse[c]).toBe(LandUse.Bridge);
+  }, 240_000);
+
+  it('a light touch under a bridge, or one undone, leaves it standing', async () => {
+    const sim = village([{ x0: 26, y0: 13, x1: 33, y1: 16, crop: 40 }]);
+    const p = sim.people!;
+    const w = sim.world;
+    await runDays(sim, 18);
+    const br = p.bridges.list[0]!;
+    expect(br.progress).toBe(1);
+    const W = w.width;
+    const c0 = br.cells[0]!;
+    sim.command(hold('raise', c0 % W, (c0 / W) | 0, 0.05, 7));
+    expect(br.moved?.some((m) => m > 0)).toBe(true);
+    expect(br.broken).toBeUndefined();
+    sim.command({ type: 'undoSculpt' });
+    expect(br.moved).toBeUndefined();
+    expect(br.broken).toBeUndefined();
   }, 240_000);
 
   it('a flood sweeps the deck away; the villagers rebuild it, higher', async () => {
