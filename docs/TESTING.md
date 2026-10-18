@@ -133,6 +133,15 @@ after a fixed number of simulated days. CI copies them into
 those URLs. They are therefore always the screenshots of the deployed build,
 and CI never has to commit to the repository.
 
+The same spec renders the social link preview (`og:image` in `index.html`,
+1200×630): `tools/og-image.ts` grows a fixed scene headless (seed, days, a
+weir and a wheel by the village), loads it as the autosave, hides the HUD
+and adds the wordmark; CI writes it to `dist/og.png`, served at
+`https://hydro.nomeata.de/og.png`. `public/og.png` is the committed fallback
+for local builds; refresh it with `npx tsx tools/og-image.ts make` then
+`npx tsx tools/og-image.ts shoot --out public/og.png` (against `vite preview`).
+`e2e/meta.spec.ts` checks the tags and that the image is served.
+
 ## 5b. Sound review — `tools/sound-review.ts`
 The ears' analogue of the screenshots (docs/SOUND.md). `npm run
 sound-review -- [--seconds 20] [--only river,village]` (needs a preview

@@ -1,6 +1,7 @@
 import { test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { openGame, runDays, settleFrames } from './helpers';
+import { OG, makeOgScene, showOgScene } from '../tools/og-image';
 
 /**
  * Showcase screenshots for the README. CI publishes dist/screenshots/ with
@@ -28,5 +29,17 @@ test.describe('@readme', () => {
       await settleFrames(page, 3);
       await page.screenshot({ path: `${OUT}/closeup.png`, timeout: 120_000 });
     }
+  });
+
+  // The link preview (index.html's og:image): published at /og.png, over the
+  // committed fallback copy from public/.
+  test('og image', async ({ browser }, info) => {
+    test.skip(info.project.name !== 'desktop', 'one image is enough');
+    test.setTimeout(480_000);
+    const scene = await makeOgScene();
+    const page = await browser.newPage({ viewport: { width: OG.width, height: OG.height }, baseURL: info.project.use.baseURL });
+    await showOgScene(page, './', scene);
+    await page.screenshot({ path: 'dist/og.png', timeout: 120_000 });
+    await page.close();
   });
 });
