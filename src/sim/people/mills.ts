@@ -19,7 +19,7 @@ export const MILL = {
   /** Head sites within this many cells of the centre. */
   radius: 20,
   /** A head site: the water surface drops this much within `reach` cells… */
-  minDrop: 0.6,
+  minDrop: 0.8,
   reach: 2,
   /** The head may be this many cells from the mill's bank (a short race leads the water to the wheel). */
   race: 2,

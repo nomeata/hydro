@@ -49,6 +49,28 @@ being used. Something that is neither is cosmetic.
   "dry" (bucket comes up empty, `waterAccess` falls back) until it recovers.
 - **Effect.** Wellbeing via `waterAccess` (0.15 weight) only. No economy.
 
+*As built (October 2026, `sim/people/wells.ts`).* As specified, with: the
+aquifer must be ≥ 0.5 m thick (`ground/porosity`, so thin soil over rock
+gives no well); a dry well (table > 6 m or aquifer < 0.15 m) works again
+only above 5.5 m / 0.3 m; the first well at 6+ people, then one per 20, at
+most 3, within 7 cells of the centre and 6 apart; houses are built first.
+The people's draw takes from the 5×5 cone in proportion to what each cell
+holds (booked in the ledger). A small garden effect: fields within 2 cells
+of a working well get field moisture ≥ 0.42 and draw their 4 mm/day from
+the well's cone (a handful of fields, ~1–2 people's food). Water carriers
+(P7): an idle adult now and then (20 %) fetches a bucket (from the well,
+or from the water's edge when home is 8–32 cells from it) and carries it
+to a house. Rendering: stone ring with water (bare earth when dry), posts,
+winding beam, shingle roof, buckets; built in four stages.
+Measured hands-off (128², 3 years, seeds 1/3/5/7/11): the temperate
+terrace starts all have the table 0.6–1.2 m down, so every village of 6+
+that lives ≥ 8 cells from water digs its well in the first weeks (seed 7
+lives by the water and digs none; seed 5's well runs dry in late summer).
+So on today's temperate worlds a well is the norm, not yet a reward; it
+becomes one on dry climates (§5.1, steppe) where the table is deep and a
+reservoir raises it. Achievement **Wellspring**: a well within 10 cells of
+the player's works.
+
 ### 1.2 Mill (villagers)
 - **Story.** The player builds a weir by the village. Next spring a small
   mill house with a turning wheel appears on the bank beside the spill;
@@ -70,6 +92,33 @@ being used. Something that is neither is cosmetic.
   (weir removed, river moved) for 20 days the mill becomes a ruin.
 - **Sim.** Run-of-river: no water removed. Optionally a small extra
   Manning roughness on the wheel cell (n × 2) — not needed at first.
+
+*As built (October 2026, `sim/people/mills.ts`).* The head at a water cell
+is the surface drop along the flow (from 2 cells upstream to 2 downstream,
+so a river's sloping banks don't count) and `Q` is the stream's whole
+discharge through its cross-section there (a race takes what the wheel
+needs; one cell's `depth·speed·5 m` underrated every spill that spreads
+over a weir's width). Thresholds as specified (drop ≥ 0.8 m, speed
+≥ 0.3 m/s, Q ≥ 0.5 m³/s, P ≥ 3 kW); the mill house stands on a dry bank
+cell with the head within 2 cells, its wheel in the wet cell beside it.
+A built mill grinds while P and Q are ≥ half the thresholds; the wheel
+turns (speed ∝ the water's speed, sent as `BuildingInfo.spin`) above a
+fifth. Farmers bring grain sacks to the mill while it grinds, a miller
+(one, while grain waits) grinds 24 person-days per visit and carries the
+flour to the store, booked ×1.1; with the wheel still he carries the grain
+over as it is. +0.04 wellbeing while it turns. Given up after a whole year
+(48 days) without a head. Achievement **Miller's Head**: the mill's head
+within 3 cells of the player's works.
+Measured hands-off (seeds 1/3/5/7/11, 3 years): one natural mill (seed 11,
+a steep reach by the start). A scripted weir across the nearest fast river
+(1.5 or 2.5 m, probe bot) gave heads of only 0.3–0.7 m on seeds 1/3/5: the
+pool spilled round its ends over the flat floodplain, so the villagers
+built no mill there; a weir tied into the banks (the scenario in
+`tests/sim/wells.test.ts`, a lined 1.5 m step) gives ~1 m and a mill in
+days. Village populations at year 3 stayed within the run-to-run noise of
+the economy (48/29/27/12/43 vs 41/23/37/15/79 before; the differences come
+from founding times), so wells and mills do not make hands-off villages
+richer.
 
 ### 1.3 Water wheel / noria (player tool)
 - **Story.** The good fields are on a terrace 3–5 m above a fast river and
@@ -551,8 +600,8 @@ near the start) as a 25 % variant: two regimes, one of them flashier.
 6. **Help**: hint rewrite (§3.1) — an hour's work, do it with item 4;
    then "Ideas for this valley" in the Achievements card; then unlock
    cards with staged scenes (weir, gate, wheel).
-7. **Wells** (§1.1) with the water-carrier cue.
-8. **Mills** (§1.2) at head sites.
+7. ☑ **Wells** (§1.1) with the water-carrier cue.
+8. ☑ **Mills** (§1.2) at head sites.
 9. **Water wheel** tool (§1.3).
 10. **Climates and start-site types** (§5): temperate first as today's
     default, then steppe and lowland marsh (they exercise P1 and P4

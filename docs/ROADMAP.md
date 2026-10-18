@@ -117,7 +117,11 @@ See docs/GAMEPLAY.md §7 (prioritised list).
 - ☑ Water wheel (noria) tool at 50 villagers (GAMEPLAY §1.3,
   `sim/structures/wheel.ts`): lift from the current, trough to the bank,
   Uphill achievement, tool card scene
-- Wells, pumps (manual/animal) and mills
+- ☑ Villager wells (water table within 4 m; water carriers until then;
+  dry wells) and mills at head sites (the wheel turns with the flow, a
+  miller, flour) — GAMEPLAY §1.1–1.2, `sim/people/wells.ts`, `mills.ts`;
+  achievements Wellspring and Miller's Head
+- Pumps (manual/animal): cosmetic only, not planned
 - NPCs build their own small works (irrigation ditches, little dams, paths)
 
 ## M5 — Human impact ☐
