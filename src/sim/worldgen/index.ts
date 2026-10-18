@@ -240,7 +240,36 @@ export function chooseStart(world: World, slope: Float32Array, carve: CarveResul
     const cap = world.soil[i]! * SOIL_PROPS[world.soilType[i]!]!.porosity;
     moist[i] = cap > 0 ? world.ground[i]! / cap : 0;
   }
-  const T = TERRACE;
+  const pick = terracePass(world, slope, carve, z, dist, surf, moist, TERRACE) ?? terracePass(world, slope, carve, z, dist, surf, moist, TERRACE_RELAXED);
+  if (pick) return pick;
+  const m = meadowStart(world, slope, carve, moist);
+  const i = m.y * W + m.x;
+  return { ...m, terrace: false, height: z[i]! - surf[i]!, dist: dist[i]!, plain: 0 };
+}
+
+/** A second try when no terrace qualifies: a lower or higher bench, a smaller floodplain. */
+export const TERRACE_RELAXED: typeof TERRACE = {
+  ...TERRACE,
+  minDist: 6,
+  maxDist: 26,
+  minHeight: 1,
+  maxHeight: 12,
+  plainHeight: 1.2,
+  plainMin: 30,
+};
+
+function terracePass(
+  world: World,
+  slope: Float32Array,
+  carve: CarveResult,
+  z: Float32Array,
+  dist: Float32Array,
+  surf: Float32Array,
+  moist: Float32Array,
+  T: typeof TERRACE,
+): StartInfo | null {
+  const W = world.width;
+  const H = world.height;
   const margin = Math.max(16, Math.floor(W / 8));
   const cx = W / 2;
   const cy = H / 2;
@@ -296,14 +325,11 @@ export function chooseStart(world: World, slope: Float32Array, carve: CarveResul
         pick = { x, y, terrace: true, height: h, dist: d, plain };
       }
     }
-  if (pick) return pick;
-  const m = meadowStart(world, slope, carve);
-  const i = m.y * W + m.x;
-  return { ...m, terrace: false, height: z[i]! - surf[i]!, dist: dist[i]!, plain: 0 };
+  return pick;
 }
 
 /** The old start: the best fertile meadow near the biggest river. */
-function meadowStart(world: World, slope: Float32Array, carve: CarveResult): { x: number; y: number } {
+function meadowStart(world: World, slope: Float32Array, carve: CarveResult, moist: Float32Array): { x: number; y: number } {
   const W = world.width;
   const H = world.height;
   const margin = Math.max(16, Math.floor(W / 8));
@@ -321,11 +347,13 @@ function meadowStart(world: World, slope: Float32Array, carve: CarveResult): { x
       let f = 0;
       let wet = 0;
       let k = 0;
+      let bog = 0;
       for (let dy = -4; dy <= 4; dy += 2)
         for (let dx = -4; dx <= 4; dx += 2) {
           const j = (y + dy) * W + x + dx;
           s += slope[j]!;
           f += world.fertility[j]!;
+          bog += Math.max(0, moist[j]! - 0.6);
           if (world.water[j]! > 0.01) wet++;
           k++;
         }
@@ -335,7 +363,8 @@ function meadowStart(world: World, slope: Float32Array, carve: CarveResult): { x
       const nearRiver = d < 255 ? Math.max(0, 1 - Math.abs(d - 14) / 22) : 0;
       const big = Math.min(1, carve.chanQ[i]! / 20);
       const centre = Math.hypot(x - cx, y - cy) / (0.5 * W);
-      const score = 1.2 * f + 1.0 * nearRiver * (0.6 + 0.4 * big) - 6 * s - 0.15 * wet - 0.5 * centre * centre;
+      // Not in a bog: the houses want dry feet.
+      const score = 1.2 * f + 1.0 * nearRiver * (0.6 + 0.4 * big) - 6 * s - 0.15 * wet - 0.5 * centre * centre - (3 * bog) / k;
       if (score > best) {
         best = score;
         bx = x;

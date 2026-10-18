@@ -90,7 +90,12 @@ const TIRED_SPEED = 0.6;
  * Farming: fields a farmer looks after, and the food a ripe field cell gives
  * (person-days, × fertility). Exported so tools can tune them.
  */
-export const FARMING = { fieldsPerFarmer: 6, yield: 34 };
+export const FARMING = {
+  fieldsPerFarmer: 6,
+  yield: 34,
+  /** Land is claimed only where crops would grow at least this well today (cropGrowth). */
+  minGrowth: 0,
+};
 
 /**
  * Field moisture: the cell's own soil saturation × `own`, or capillary
@@ -1324,6 +1329,7 @@ export class PeopleSystem {
         if (this.settlements.length > 1 && this.ownerOf(x, y) !== s) continue;
         const m = this.fieldMoisture[i]!;
         const wet = cropGrowth(m);
+        if (wet < FARMING.minGrowth) continue;
         const forest = Math.max(0, w.vegetation[i]! - 0.45);
         // Grow fields in solid patches next to existing ones.
         const W = w.width;
