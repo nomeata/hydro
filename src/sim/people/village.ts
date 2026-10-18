@@ -25,10 +25,8 @@ const FOUND_AFTER = STEPS_PER_DAY / 3;
 /** How far (cells) a settlement works: fields, houses, plans. */
 export const REACH = 40;
 const FIELD_RADIUS = 18;
-const FIELDS_PER_FARMER = 6;
 const CROP_RIPE = 230;
 /** Food (person-days) per harvested cell at fertility 1 and good moisture. */
-const YIELD = 34;
 /** Earth moved per builder visit (m). */
 const DIG_PER_VISIT = 0.5;
 /** House construction progress per builder visit. */
@@ -88,8 +86,17 @@ const TIRED_SPEED = 0.6;
  * below `dry`, growth ramps up to full at `moist`, and waterlogged soil
  * (≥ `soggy`) gives `soggyGrowth`. Exported so tools can tune it.
  */
-/** Capillary wetting from nearby water: max · exp(−d / reach), d in cells. */
-export const CAPILLARY = { max: 0.8, reach: 2.5 };
+/**
+ * Farming: fields a farmer looks after, and the food a ripe field cell gives
+ * (person-days, × fertility). Exported so tools can tune them.
+ */
+export const FARMING = { fieldsPerFarmer: 6, yield: 34 };
+
+/**
+ * Field moisture: the cell's own soil saturation × `own`, or capillary
+ * wetting from nearby water, max · exp(-d / reach) with d in cells.
+ */
+export const CAPILLARY = { own: 1, max: 0.8, reach: 2.5 };
 
 export const CROP_MOISTURE = { dry: 0.15, moist: 0.35, soggy: 0.9, soggyGrowth: 0.4 };
 
@@ -907,7 +914,7 @@ export class PeopleSystem {
     for (let i = 0; i < w.size; i++) {
       const cap = soil[i]! * SOIL_PROPS[soilType[i]!]!.porosity;
       const own = cap > 0 ? ground[i]! / cap : 0;
-      this.fieldMoisture[i] = Math.max(own, CAPILLARY.max * Math.exp(-d[i]! / CAPILLARY.reach));
+      this.fieldMoisture[i] = Math.max(own * CAPILLARY.own, CAPILLARY.max * Math.exp(-d[i]! / CAPILLARY.reach));
     }
   }
 
@@ -1301,7 +1308,7 @@ export class PeopleSystem {
   private manageFields(s: Settlement): void {
     const w = this.world;
     const farmers = this.agents.filter((a) => a.settlement === s.state.id && a.job === Job.Farmer).length;
-    const want = farmers * FIELDS_PER_FARMER;
+    const want = farmers * FARMING.fieldsPerFarmer;
     const fields = this.fieldsOf(s);
     if (fields.length >= want) return;
     // Claim the best unclaimed cells nearby (at most 10 per day).
@@ -1523,7 +1530,7 @@ export class PeopleSystem {
       case SiteKind.Harvest: {
         const i = a.site;
         if (w.landuse[i] === LandUse.Field && w.crop[i]! >= CROP_RIPE) {
-          a.load = YIELD * Math.max(0.2, w.fertility[i]!) * (w.crop[i]! / 255);
+          a.load = FARMING.yield * Math.max(0.2, w.fertility[i]!) * (w.crop[i]! / 255);
           a.carry = CarryKind.Sack;
           w.crop[i] = 0;
           w.fertility[i] = Math.max(0.1, w.fertility[i]! * 0.985);
