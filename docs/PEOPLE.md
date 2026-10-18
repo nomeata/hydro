@@ -79,7 +79,7 @@ hardy fields are given up when good land is claimed beyond the hands.
 - **Shortage → hardy crops.** When no good land is left within reach, the
   village has more hands than fields and not food enough to grow (food
   security over the growth horizon below `ECONOMY.growFood`), farmers sow
-  marginal land too, at most 4 cells a day and at most 4 + ½ × its
+  marginal land too, at most 2 cells a day and at most 2 + ¼ × its
   ordinary fields (gentle): **millet** on dry land (grows from moisture
   0.1, fully from 0.3; 40 % of an ordinary harvest) and small **rice
   paddies** in shallow, still standing water (2–25 cm, slower than

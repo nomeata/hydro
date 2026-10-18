@@ -151,10 +151,10 @@ export const HARDY = {
   paddyDrown: 0.4,
   paddySpeed: 0.1,
   /** A village keeps at most `base` + `share` × its ordinary fields of hardy ones (gentle). */
-  base: 4,
-  share: 0.5,
+  base: 2,
+  share: 0.25,
   /** Hardy fields claimed per day at most. */
-  perDay: 4,
+  perDay: 2,
   /**
    * Hardy fields go back to the ordinary crop where it would grow this well
    * (cropGrowth; above the claiming threshold, so a wet spring alone does
