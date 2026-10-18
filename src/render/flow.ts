@@ -122,6 +122,7 @@ export class FlowParticles {
   private readonly dir = new THREE.Vector3();
   /** Game speed (0 = paused); set from snapshot stats. */
   gameSpeed = 1;
+  private renewTimer = 3;
   /** Fog of war (revealed 0..255 per cell, live): no flecks on unknown water. */
   revealed: Uint8Array | null = null;
   /** Particle size multiplier (zoom-dependent). */
@@ -368,8 +369,11 @@ export class FlowParticles {
     const gs = this.gameSpeed;
     const motion = gs <= 0 ? 0 : Math.min(2.5, Math.max(0.5, gs) ** 0.4);
     const adv = dt * motion * VISUAL_K;
-    // While paused, flecks still slowly renew so the view fills when panning.
-    const ageRate = gs <= 0 ? 0.25 : motion;
+    // While paused the picture holds still, but for a few seconds after a
+    // camera move flecks renew slowly so the newly shown water fills in.
+    if (moved) this.renewTimer = 3;
+    this.renewTimer = Math.max(0, this.renewTimer - dt);
+    const ageRate = gs <= 0 ? (this.renewTimer > 0 ? 0.25 : 0) : motion;
     const vtmp: [number, number] = [0, 0];
     const d = this.heights.depth;
     const W = this.W;
