@@ -24,6 +24,7 @@ import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
 import { Achievements, type AchievementsState } from './achievements';
 import { Vegetation } from './vegetation';
 import { ActiveSet } from './active';
+import { PowerGrid, type PowerState } from './power/grid';
 
 export interface SimOptions {
   /** Enable villages; founding happens near the start point. */
@@ -53,6 +54,8 @@ export interface SimState {
   achievements?: AchievementsState;
   /** River seasons and wet/dry years (absent in older saves). */
   climate?: ClimateRunState;
+  /** The power grid (M6; absent in older saves). */
+  power?: PowerState;
 }
 
 /** Erosion state that must survive save/load: the ledger and sparse per-cell accumulators. */
@@ -111,6 +114,8 @@ export class Simulation {
   readonly structures: Structures;
   /** Who opens and closes the gates (villagers, or the gates themselves as flood relief). */
   readonly gatekeeper: Gatekeeper;
+  /** Turbines, poles and electric pumps (M6; power/grid.ts). */
+  readonly power: PowerGrid;
   /** Sediment budget (m³). */
   readonly sedLedger: SedimentLedger = newSedimentLedger();
   /** Geomorphology tunables (a copy of PARAMS; tools and tests may change it). */
@@ -179,6 +184,10 @@ export class Simulation {
     this.structures = new Structures(world);
     this.structures.allow = (i) => !this.fog || isRevealed(this.world, i);
     this.gatekeeper = new Gatekeeper(world, this.structures, () => this.time);
+    this.power = new PowerGrid(world);
+    this.power.allow = this.structures.allow;
+    this.power.houses = () => this.people?.houses() ?? [];
+    this.power.onVillageLight = (id, share) => this.people?.setLight(id, share);
     if (opts.people) {
       this.people = new PeopleSystem(world, seed, opts.people.startX, opts.people.startY);
       this.fog = true;
@@ -248,6 +257,7 @@ export class Simulation {
       temperature: seaLevelTemperature({ ...t, timeOfDay: 0.375 }),
       floodCells: p?.floods.cells ?? 0,
       ruined: p?.floods.ruined ?? 0,
+      power: this.power.empty ? undefined : { kwh: this.power.lastDay.produced / 3.6e6, lit: this.power.stats().houses },
     });
   }
 
@@ -344,6 +354,8 @@ export class Simulation {
     this.outflowToday += out;
     // Water wheels lift river water onto the bank (conserved: an internal transfer).
     if (this.structures.wheels.length) this.ledger.lifted = (this.ledger.lifted ?? 0) + this.structures.stepWheels();
+    // Turbines and pumps move water across their walls and up their pipes (conserved too).
+    this.power.step(this.time);
     this.sedLedger.outflow += sedOut;
     this.sedLedger.inflow += sedIn;
 
@@ -403,6 +415,7 @@ export class Simulation {
     if (this.step % BUILD_EVERY === 0 && this.structures.pending) {
       this.structures.crewWork((PARAMS.liningPerDay * BUILD_EVERY) / STEPS_PER_DAY, PARAMS.builderCells);
     }
+    if (this.step % BUILD_EVERY === 0 && this.power.pending) this.power.crewWork((PARAMS.liningPerDay * BUILD_EVERY) / STEPS_PER_DAY);
 
     this.step++;
     const today = timeAt(this.step).day;
@@ -412,6 +425,7 @@ export class Simulation {
         this.vegetation.daily(seaLevelTemperature({ ...t, timeOfDay: 0.375 }), today - 1, act);
         this.lookDirty = true;
       }
+      this.power.daily();
       this.recordHistory(today - 1);
       this.achievements.daily(this, today - 1);
     }
@@ -479,6 +493,15 @@ export class Simulation {
       case 'placeWheel':
         if (this.structures.placeWheel(cmd.points)) this.lookDirty = true;
         break;
+      case 'placeTurbine':
+        if (cmd.points.length) this.power.placeTurbine(cmd.points[0]!);
+        break;
+      case 'placePoles':
+        this.power.placePoles(cmd.points);
+        break;
+      case 'placePump':
+        this.power.placePump(cmd.points);
+        break;
       case 'toggleGate':
         this.structures.toggleGate(cmd.id, cmd.open);
         break;
@@ -487,6 +510,7 @@ export class Simulation {
         this.achievements.cancelled(gone);
         if (gone.length) this.planDirty = true;
         this.structures.cancel(cmd.x, cmd.y, cmd.radius);
+        this.power.cancel(cmd.x, cmd.y, cmd.radius);
         break;
       }
       case 'debugVillage':
@@ -570,6 +594,7 @@ export class Simulation {
       history: this.history.getState(),
       achievements: this.achievements.getState(),
       climate: this.climate.getState(),
+      power: this.power.empty ? undefined : this.power.getState(),
     };
   }
 
@@ -597,6 +622,7 @@ export class Simulation {
     }
     this.fieldsDirty = true;
     if (st.structures) this.structures.setState(st.structures);
+    if (st.power) this.power.setState(st.power);
     if (st.geo) {
       Object.assign(this.sedLedger, st.geo.sedLedger);
       this.erosionScratch.time = st.geo.time;
@@ -665,6 +691,10 @@ export class Simulation {
       for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
     }
     mix(w.revealed);
+    if (!this.power.empty) {
+      const json = JSON.stringify(this.power.getState());
+      for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
+    }
     {
       const json = JSON.stringify(this.climate.state);
       for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);

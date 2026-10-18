@@ -47,6 +47,9 @@ const SCRIPTS: Record<SceneId, Script> = {
   weir: { camera: { x: 27, y: 41, yaw: 40 * DEG, pitch: 36 * DEG, viewHeight: 20 }, speed: 3, duration: 14 },
   gate: { camera: { x: 77, y: 69, yaw: -20 * DEG, pitch: 40 * DEG, viewHeight: 16 }, speed: 3, duration: 16 },
   wheel: { camera: { x: 71, y: 84, yaw: -30 * DEG, pitch: 34 * DEG, viewHeight: 9 }, speed: 3, duration: 16 },
+  turbine: { camera: { x: 28, y: 42, yaw: 40 * DEG, pitch: 36 * DEG, viewHeight: 16 }, speed: 3, duration: 14 },
+  poles: { camera: { x: 30, y: 58, yaw: 30 * DEG, pitch: 40 * DEG, viewHeight: 34 }, speed: 3, duration: 14 },
+  pump: { camera: { x: 76, y: 66, yaw: -20 * DEG, pitch: 40 * DEG, viewHeight: 22 }, speed: 3, duration: 16 },
 };
 
 /** Timeline of the 'shape' scene (seconds). */

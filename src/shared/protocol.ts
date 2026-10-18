@@ -61,6 +61,38 @@ export interface SimStats {
   village?: VillageStats;
   /** Each village on its own (M3-γ: more settlements). */
   villages?: VillageStats[];
+  /** The power grid (M6; absent before the first turbine, pole or pump). */
+  power?: PowerStats;
+}
+
+/** Power grid totals (W, on the hydraulic clock) as of the latest step. */
+export interface PowerStats {
+  /** Made by all turbines, wanted and received by the houses on the grid, drawn by the pumps. */
+  produced: number;
+  demand: number;
+  supplied: number;
+  pumping: number;
+  /** Houses on the grid. */
+  houses: number;
+  /** Energy produced on the last full game day (kWh). */
+  lastDay: number;
+}
+
+/**
+ * The power grid for the renderer (sent when it changes). Cell coordinates.
+ * - turbines: on the crest (x, y) of a wall along `rot`, the penstock from
+ *   (ax, ay) to (bx, by); `flow` > 0 runs from a to b (< 0: b to a), m³/s.
+ * - wires: flat [x1, y1, x2, y2, …] between poles, turbines and pumps.
+ * - pumps: inlet (x, y) in the water, pump house (hx, hy), outlet (ox, oy).
+ * - lit: flat [houseId, level, …], level 0..1 the share of the house's
+ *   demand the grid meets now (only houses on the grid are listed).
+ */
+export interface PowerInfo {
+  turbines: { id: number; x: number; y: number; rot: number; ax: number; ay: number; bx: number; by: number; progress: number; flow: number; power: number }[];
+  poles: { id: number; x: number; y: number; progress: number }[];
+  wires: number[];
+  pumps: { id: number; x: number; y: number; hx: number; hy: number; ox: number; oy: number; progress: number; flow: number; power: number }[];
+  lit: number[];
 }
 
 /** Static information sent once when the world is ready. */
@@ -295,6 +327,8 @@ export interface Snapshot {
   sceneRun?: number;
   /** Achievements, when changed (see the Achievements section). */
   achievements?: AchievementsUpdate;
+  /** The power grid, when it changed (M6). */
+  power?: PowerInfo;
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +359,19 @@ export type Command =
    */
   | { type: 'placeWheel'; points: Pt[] }
   /**
+   * Turbine (M6): a tap on the crest of a weir, dike or dam; its penstock
+   * runs through the wall from the high side to the low side
+   * (sim/power/power.ts turbineSite).
+   */
+  | { type: 'placeTurbine'; points: Pt[] }
+  /**
+   * Power poles along a stroke, every 6 cells; a stroke starting or ending
+   * at a turbine or pole joins it (wires between consecutive poles).
+   */
+  | { type: 'placePoles'; points: Pt[] }
+  /** Electric pump: a stroke from the water (inlet) to the outlet cell, up to 24 cells and 30 m up. */
+  | { type: 'placePump'; points: Pt[] }
+  /**
    * Open or close a gate by hand (open = !open when omitted) and hold it
    * there: tests, scenes and debugging. In the game, villagers work the
    * gates (sim/structures/gatekeeper.ts).
@@ -342,7 +389,7 @@ export type Command =
 
 /** Staged scenes of the welcome panels (sim/scenes.ts). */
 /** Staged scenes: the welcome panels, and the tool cards shown when a tool unlocks (weir, gate, wheel). */
-export type SceneId = 'water' | 'shape' | 'village' | 'weir' | 'gate' | 'wheel';
+export type SceneId = 'water' | 'shape' | 'village' | 'weir' | 'gate' | 'wheel' | 'turbine' | 'poles' | 'pump';
 
 export type ToWorker =
   | { type: 'init'; seed: number; size: number; speed?: number; duty?: number }
@@ -400,6 +447,10 @@ export interface HistorySample {
   h: number;
   /** Number of villages (end of the period). */
   v: number;
+  /** Power produced, kWh per day (mean over the period; absent before M6 and without turbines). */
+  e?: number;
+  /** Houses lit at the end of the period (absent before M6). */
+  l?: number;
 }
 
 export interface HistoryMilestone {
