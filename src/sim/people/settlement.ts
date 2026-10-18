@@ -29,7 +29,7 @@ export const ECONOMY = {
    * Families stop arriving and births pause while food security is below
    * this, so a village levels off fed rather than hungry (GAMEPLAY §4.1).
    */
-  growFood: 0.5,
+  growFood: 1,
   /** Natural births/deaths per person per year (small, roughly balanced). */
   birthRate: 0.04,
   deathRate: 0.035,

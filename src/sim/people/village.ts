@@ -91,19 +91,19 @@ const TIRED_SPEED = 0.6;
  * (person-days, × fertility). Exported so tools can tune them.
  */
 export const FARMING = {
-  fieldsPerFarmer: 6,
-  yield: 34,
+  fieldsPerFarmer: 14,
+  yield: 8,
   /** Land is claimed only where crops would grow at least this well today (cropGrowth). */
-  minGrowth: 0,
+  minGrowth: 0.5,
 };
 
 /**
  * Field moisture: the cell's own soil saturation × `own`, or capillary
  * wetting from nearby water, max · exp(-d / reach) with d in cells.
  */
-export const CAPILLARY = { own: 1, max: 0.8, reach: 2.5 };
+export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5 };
 
-export const CROP_MOISTURE = { dry: 0.15, moist: 0.35, soggy: 0.9, soggyGrowth: 0.4 };
+export const CROP_MOISTURE = { dry: 0.2, moist: 0.4, soggy: 0.9, soggyGrowth: 0.4 };
 
 /** Crop growth factor 0..1 for a field moisture. */
 export function cropGrowth(m: number): number {
@@ -138,9 +138,9 @@ export const FOUNDING = {
   /** Minimum days between two foundings. */
   interval: DAYS_PER_YEAR,
   /** Total population of all villages that makes people look for new land. */
-  minPopulation: 25,
+  minPopulation: 40,
   /** A single village this big without free houses also sends people out. */
-  crowdedPopulation: 18,
+  crowdedPopulation: 30,
   /** Minimum distance (cells) to every other settlement. */
   minSpacing: 26,
   /**
