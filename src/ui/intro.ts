@@ -137,8 +137,6 @@ export class Intro {
   private page = 0;
   private onCloseFn: (() => void) | null = null;
   private scenes: IntroScenes | null = null;
-  /** Live scenes failed once: stay with the drawings. */
-  private noLive = false;
 
   constructor(root: HTMLElement) {
     this.el = document.createElement('div');
@@ -226,19 +224,18 @@ export class Intro {
   private startScenes(): void {
     const art = this.el.querySelector<HTMLElement>('.intro-art')!;
     art.classList.remove('live', 'live-on');
-    if (this.noLive || this.scenes) return;
+    // Each opening tries afresh (a failure last time may have passed); on failure the drawings stay.
+    if (this.scenes) return;
     try {
       const sc = new IntroScenes(art, PANELS[this.page]!.scene);
       sc.onLive = () => art.classList.add('live');
       sc.onFail = () => {
-        this.noLive = true;
         this.scenes = null;
         art.classList.remove('live', 'live-on');
       };
       this.scenes = sc;
     } catch (e) {
       console.warn('Welcome scenes unavailable', e);
-      this.noLive = true;
     }
   }
 
