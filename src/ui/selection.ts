@@ -208,25 +208,29 @@ export class Selection {
 
   /** What is at cell (x, y), if anything (weirs: anywhere along their line; small things win). */
   hit(x: number, y: number, only?: SelectableKind): Target | null {
+    // Small things (in or by a weir: a gate, a turbine, a pump) win over the weir round them.
     let best: Target | null = null;
     let bd = Infinity;
+    let weir: Target | null = null;
+    let wd = Infinity;
     for (const t of this.targets()) {
       if (only && t.kind !== only) continue;
-      let d: number;
-      let r: number;
       if (t.kind === 'weir') {
-        d = segDist(x, y, t.x, t.y, t.x2!, t.y2!) + 0.4;
-        r = 2.2;
-      } else {
-        d = Math.hypot(x - t.x, y - t.y);
-        r = t.kind === 'pole' ? 1.3 : 1.8;
+        const d = segDist(x, y, t.x, t.y, t.x2!, t.y2!);
+        if (d <= 1.8 && d < wd) {
+          wd = d;
+          weir = t;
+        }
+        continue;
       }
+      const d = Math.hypot(x - t.x, y - t.y);
+      const r = t.kind === 'pole' ? 1.3 : 1.8;
       if (d <= r && d < bd) {
         bd = d;
         best = t;
       }
     }
-    return best;
+    return best ?? weir;
   }
 
   /** A tap at a client position: select what is there (or let go). Returns whether something was selected. */

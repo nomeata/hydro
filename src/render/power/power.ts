@@ -151,6 +151,7 @@ export class PowerLayer {
 
   /** Wire thickness (three.js units; a ghost line draws them thicker). */
   private readonly wireThick: number;
+  private readonly poleScale: number;
 
   constructor(
     scene: THREE.Object3D,
@@ -159,7 +160,9 @@ export class PowerLayer {
     material?: THREE.Material,
   ) {
     this.group.name = material ? 'power-ghost' : 'power';
-    this.wireThick = material ? 0.035 : 0.012;
+    this.wireThick = material ? 0.05 : 0.012;
+    // (A ghost line's poles stand a little taller, so the line reads at a distance.)
+    this.poleScale = material ? 1.6 : 1;
     scene.add(this.group);
     const make = (name: string, g: THREE.BufferGeometry, cap = 32): Piece => {
       const mesh = new THREE.InstancedMesh(g, material ?? vertexColorMaterial(), cap);
@@ -331,7 +334,7 @@ export class PowerLayer {
           this.put(this.pieces.pole, p.x + 0.5, g - 0.02, p.y + 0.5, 0, 1, Math.max(0.15, p.progress), 1);
           continue;
         }
-        tops.set(`${p.x},${p.y}`, { y: g + POLE_TOP, yaw: 0 });
+        tops.set(`${p.x},${p.y}`, { y: g + POLE_TOP * this.poleScale, yaw: 0 });
       }
       for (const p of info.pumps) this.layoutPump(p, tops);
       // Poles turn their arms across the line (the mean direction of their wires).
@@ -354,7 +357,7 @@ export class PowerLayer {
         const d = dir.get(key) ?? [1, 0];
         const yaw = -Math.atan2(d[1], d[0]);
         tops.set(key, { y: tops.get(key)!.y, yaw });
-        this.put(this.pieces.pole, p.x + 0.5, this.ground(p.x, p.y) - 0.02, p.y + 0.5, yaw, 1, 1, 1);
+        this.put(this.pieces.pole, p.x + 0.5, this.ground(p.x, p.y) - 0.02, p.y + 0.5, yaw, this.poleScale, this.poleScale, this.poleScale);
       }
       if (this.anchors) for (const [k, v] of this.anchors) if (!tops.has(k)) tops.set(k, v);
       for (let k = 0; k + 3 < W.length; k += 4) {
