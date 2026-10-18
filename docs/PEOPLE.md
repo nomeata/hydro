@@ -71,6 +71,48 @@ their task choices on it while one is open, 0.35 m per visit, and wait for
 the harvest before cutting through a standing crop. The water sim fills the
 ditch; the land beside it greens like any canal bank.
 
+**Hardy crops and pegged plots** (`HARDY`, `PEGS` in `people/village.ts`;
+the "watch and learn" cue for short of land / land to spare, §7). Daily,
+in `manageFields`, a village first claims good land (as above) up to its
+farmers' 28 fields each; hardy fields never stand in its way, and bare
+hardy fields are given up when good land is claimed beyond the hands.
+- **Shortage → hardy crops.** When no good land is left within reach, the
+  village has more hands than fields and not food enough to grow (food
+  security over the growth horizon below `ECONOMY.growFood`), farmers sow
+  marginal land too, at most 4 cells a day and at most 4 + ½ × its
+  ordinary fields (gentle): **millet** on dry land (grows from moisture
+  0.1, fully from 0.3; 40 % of an ordinary harvest) and small **rice
+  paddies** in shallow, still standing water (2–25 cm, slower than
+  0.1 m/s, not a canal; grows fully in the water, drowns above 0.4 m; 45 %).
+  A paddy is not given up for standing in water at sowing.
+- **Improvement → back to the ordinary crop.** A hardy field whose land
+  now grows the ordinary crop well (cropGrowth ≥ 0.85, above the claiming
+  threshold, so a wet spring alone does not do it: it takes a canal or
+  drainage) is sown with it at the next sowing; a young hardy crop (stage
+  < 80) is ploughed under and resown while sowing is still possible, so
+  the upgrade shows within a season. A paddy that ran dry becomes millet,
+  millet land under shallow still water a paddy.
+- **Surplus → pegged plots.** While the village has at least as many
+  ordinary fields as hands and good land is left over, its best 6
+  unclaimed good cells (the next it would claim) are staked out
+  (`SettlementState.pegs`): not ploughed, gone when the surplus is. When a
+  farmer comes, they are the first new fields.
+- Neither: ordinary crops edge to edge, no pegs.
+- Saved: `PeopleState.hardy` ([cell, kind] pairs) and
+  `SettlementState.pegs`; older saves load with none. Sent as the fourth
+  byte of `Snapshot.fields` (`FieldCrop`: Common, Millet, Paddy, Pegged).
+- Rendered (`render/village/fields.ts`, `crops.ts`, `plots.ts`, water.ts):
+  millet as short, sparse, gappy rows on pale sandy soil, olive green
+  ripening to bronze (wheat turns gold), with small sparse ear models;
+  paddies as basins between grassy earth bunds (one per 2×2 cells) under
+  clear, still water (no shore foam), rice in clumps on a 4×4 grid per
+  cell, as shader dots and tuft models, yellowing when ripe; pegged plots
+  as a paler meadow with a string along the plot's outline and wooden
+  pegs at its corners (one merged mesh, shown below view height 70; the
+  shader draws the string and peg spots at any zoom). Review:
+  `npx tsx tools/shot-crops.ts make` then `shoot` (all four side by side
+  by a real village, four seasons, close/desktop/phone).
+
 Irrigated fields also **draw water**: crop evapotranspiration of about
 4 mm/day is taken from the nearest water or groundwater and booked in the
 ledger. In a dry spell, rivers below heavily irrigated land visibly shrink.
@@ -390,6 +432,10 @@ and behaviour.
   puddles with a sky sheen in the furrows; crop models thin out, shrink and
   turn yellow-brown / dull brown. Healthy fields stay lush. Stubble after
   harvest (autumn) as before. ☐ weedy when fallow.
+- ☑ **Land short or to spare** (§3.1): millet on sandy soil and rice
+  paddies mean the village has used up its good land and is hungry for
+  more; pegs and string on the meadow mean good land waits for hands;
+  ordinary crops edge to edge mean the two match.
 - ☑ **Mood:** each settlement has a visible `mood` from wellbeing with
   hysteresis (`nextMood`, settlement.ts: prosperous above 0.62 until below
   0.55; struggling below 0.28 until above 0.35), saved, sent per village
