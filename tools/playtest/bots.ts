@@ -450,6 +450,53 @@ export class WeirCanalBot implements Bot {
   }
 }
 
+/**
+ * A plain contour canal for village s from flowing water upstream (no weir):
+ * the river's own level, graded along the slope onto the dry land.
+ */
+function planRiverCanal(sim: Simulation, s: Settlement, earth: number): CanalPlan | null {
+  const w = sim.world;
+  const targets = dryLand(sim, s);
+  if (targets.size < 12) return null;
+  const starts: CanalStart[] = [];
+  const seen = new Set<number>();
+  for (const i of cellsAround(sim, s.state.x, s.state.y, 50)) {
+    if (w.water[i]! < 0.1 || speed(w, i) < 0.08) continue;
+    const x = cellX(w, i);
+    const y = cellY(w, i);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      if (!w.inBounds(x + dx, y + dy)) continue;
+      const c = w.idx(x + dx, y + dy);
+      if (seen.has(c) || w.water[c]! > 0.05) continue;
+      seen.add(c);
+      starts.push({ cell: c, level: w.surface(i) - 0.05 });
+    }
+  }
+  const canal = planCanal(sim, starts, targets, { maxEarth: earth }, 20);
+  return canal && canal.covered.length >= 25 ? canal : null;
+}
+
+/** A contour canal from the river (no weir) for each village, where one waters enough dry land. */
+export class CanalBot extends PerVillageBot {
+  readonly name = 'canal';
+  readonly description = 'contour canal from flowing water upstream onto the dry land (no weir)';
+  constructor(private readonly earth: Earth) {
+    super();
+  }
+  protected forVillage(sim: Simulation, s: Settlement, day: number): BotAction | null {
+    const canal = planRiverCanal(sim, s, this.earth.left);
+    if (!canal || !this.earth.take(canal.earth)) return null;
+    return {
+      day,
+      village: s.state.id,
+      note: `contour canal ${canal.path.length} cells waters ${canal.covered.length} dry cells, ${Math.round(canal.earth)} m³`,
+      commands: [canalCommand(canal)],
+      targets: canal.covered,
+      info: { earth: canal.earth, covered: canal.covered.length },
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // (b) Wheel + canal
 
@@ -949,16 +996,20 @@ export class UndoBot extends VandalBot {
  */
 export class GoodBot implements Bot {
   readonly name = 'good';
-  readonly description = 'drain the marsh and dike the floodplain early (a quarter of the budget each), weir + canal once unlocked with the rest';
+  readonly description = 'a contour canal from the river before the weir (35 % of the budget), drain the marsh and dike the floodplain (20 %, 25 %), weir + canal once unlocked with the rest';
   private readonly drain: DrainBot;
   private readonly dike: DikeBot;
   private readonly weir: WeirCanalBot;
   private readonly drainEarth: Earth;
   private readonly dikeEarth: Earth;
+  private readonly canal: CanalBot;
+  private readonly canalEarth: Earth;
   constructor(
     private readonly earth: Earth,
     ignoreUnlocks = false,
   ) {
+    this.canalEarth = new Earth(earth.budget * 0.35);
+    this.canal = new CanalBot(this.canalEarth);
     this.drainEarth = new Earth(earth.budget * 0.2);
     this.dikeEarth = new Earth(earth.budget * 0.25);
     this.drain = new DrainBot(this.drainEarth);
@@ -981,7 +1032,9 @@ export class GoodBot implements Bot {
       out.push(...acts.map((a) => ({ ...a, note: `${b.name}: ${a.note}` })));
     };
     // Keep what the weir + canal needs: the side works only take what it leaves beyond ~60 %.
-    if (this.earth.left > this.earth.budget * 0.5 || unlocked(sim, 'weir')) {
+    // Before the weir: a contour canal from the river where one waters enough dry land.
+    if (!unlocked(sim, 'weir')) sub(this.canal, this.canalEarth);
+    if (this.earth.left > this.earth.budget * 0.3 || unlocked(sim, 'weir')) {
       sub(this.drain, this.drainEarth);
       sub(this.dike, this.dikeEarth);
     }
@@ -989,7 +1042,7 @@ export class GoodBot implements Bot {
   }
 }
 
-export const BOT_NAMES = ['weircanal', 'wheel', 'dike', 'drain', 'vandal', 'undo', 'good', 'irrigate'] as const;
+export const BOT_NAMES = ['weircanal', 'wheel', 'dike', 'drain', 'vandal', 'undo', 'good', 'canal', 'irrigate'] as const;
 export type BotName = (typeof BOT_NAMES)[number];
 
 export function makeBot(name: string, opts: BotOptions = {}): Bot {
@@ -999,6 +1052,8 @@ export function makeBot(name: string, opts: BotOptions = {}): Bot {
       return new IrrigateBot(earth);
     case 'weircanal':
       return new WeirCanalBot(earth, opts.ignoreUnlocks);
+    case 'canal':
+      return new CanalBot(earth);
     case 'wheel':
       return new WheelCanalBot(earth);
     case 'dike':
