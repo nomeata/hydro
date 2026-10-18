@@ -98,6 +98,14 @@ const TIRED_SPEED = 0.6;
 export const FARMING = {
   fieldsPerFarmer: 14,
   yield: 8,
+  /**
+   * Crop growth per growing day at full growth (cropGrowth 1): a field sown
+   * early in spring just ripens by the end of summer when it never lacked
+   * water, so dry spells cost yield (docs/PLAYTEST.md round 2).
+   */
+  growPerDay: 11,
+  /** In autumn the farmers bring in whatever stands (this crop stage at least), at its share of a full yield. */
+  lateHarvest: 40,
   /** Land is claimed only where crops would grow at least this well today (cropGrowth). */
   minGrowth: 0.5,
 };
@@ -779,7 +787,12 @@ export class PeopleSystem {
     const d = this.openDitch(s);
     if (!d) return -1;
     const w = this.world;
-    for (const c of d.cells) if (w.terrain(c) > d.floor + 0.01 && !this.reserved.has(c) && !this.blocked.has(c)) return c;
+    for (const c of d.cells) {
+      if (w.terrain(c) <= d.floor + 0.01) continue;
+      // Not through a standing crop: that waits for the harvest.
+      if (w.landuse[c] === LandUse.Field && w.crop[c]! > 0) return -1;
+      if (!this.reserved.has(c) && !this.blocked.has(c)) return c;
+    }
     return -1;
   }
 
@@ -1315,7 +1328,7 @@ export class PeopleSystem {
       } else if (growing && c > 0 && c < 255) {
         const m = this.fieldMoisture[i]!;
         const f = cropGrowth(m);
-        c = Math.min(255, c + Math.round(16 * f));
+        c = Math.min(255, c + Math.round(FARMING.growPerDay * f));
         // Growing crops draw water from the nearest water body, or the soil.
         const src = this.nearestWater[i]!;
         const well = this.wellGarden[i]!;
@@ -1924,7 +1937,7 @@ export class PeopleSystem {
         break;
       case SiteKind.Harvest: {
         const i = a.site;
-        if (w.landuse[i] === LandUse.Field && w.crop[i]! >= CROP_RIPE) {
+        if (w.landuse[i] === LandUse.Field && w.crop[i]! >= (time.season === 2 ? FARMING.lateHarvest : CROP_RIPE)) {
           a.load = FARMING.yield * Math.max(0.2, w.fertility[i]!) * (w.crop[i]! / 255);
           a.carry = CarryKind.Sack;
           w.crop[i] = 0;
@@ -2283,7 +2296,7 @@ export class PeopleSystem {
       const c = w.crop[i]!;
       let kind: SiteKind;
       let prio: number;
-      if (c >= CROP_RIPE) {
+      if (c >= CROP_RIPE || (time.season === 2 && c >= FARMING.lateHarvest)) {
         kind = SiteKind.Harvest;
         prio = 3;
       } else if (c === 0 && canSow) {
