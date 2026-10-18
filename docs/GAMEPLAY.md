@@ -214,7 +214,9 @@ says "watch and learn". Instead, three small things, in order of value:
    water up a terrace. The trench/dike/level cards are the existing
    "You shape the water" scene. The card is reachable again from a small
    ⓘ at the end of the hint line while that tool is selected. That is the
-   whole help system: ≤ 6 scenes, each ≤ 20 s.
+   whole help system: ≤ 6 scenes, each ≤ 20 s. *(Built for the weir and
+   the gate: `ui/toolCards.ts`, scenes 'weir' and 'gate' in
+   `sim/scenes.ts`; not shown under `?test=1` unless `&cards=1`.)*
 3. **Achievements as ideas.** The Achievements card opens with
    **"Ideas for this valley"**: up to three unearned achievements that
    the sim finds *possible here*, from data it already has:

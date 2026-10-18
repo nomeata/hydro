@@ -98,7 +98,9 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   summer release for dry fields, never while houses below are wet, flood
   relief by itself; a villager walks over and turns the wheel; no tap to
   toggle; achievements Gatekeeper (villagers) and Safety Valve
-- Unlock cards
+- ☑ Tool cards at unlock (weir, gate): a live staged scene and two lines,
+  shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`)
+- "Ideas for this valley" in the Achievements card
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
