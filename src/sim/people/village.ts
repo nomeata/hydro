@@ -4,7 +4,7 @@
  * player's plans, and the agents doing all of it. Land grows crops, agents
  * collect them, the settlement only decides (see §2 of the design).
  */
-import { CarryKind, EntityAnim, FISH_BLOCK, STRESS_WET, type BuildingInfo, type SimTime, type StructureInfo } from '../../shared/protocol';
+import { CarryKind, EntityAnim, FISH_BLOCK, FieldCrop, STRESS_WET, type BuildingInfo, type SimTime, type StructureInfo } from '../../shared/protocol';
 import { Rng } from '../../shared/rng';
 import { CELL_AREA, DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../constants';
 import { REVEALED } from '../fog';
@@ -132,16 +132,86 @@ export function cropGrowth(m: number): number {
 }
 
 /**
+ * Hardy crops (docs/PEOPLE.md §3.1): a village whose good land within reach
+ * is used up and that needs more food sows millet on dry, marginal land
+ * and small rice paddies in shallow standing water. They are less picky
+ * and give less; when the land improves (a canal, drainage) the farmers
+ * sow the ordinary crop there again at the next sowing.
+ */
+export const HARDY = {
+  /** Millet grows from this field moisture, fully from `moist` (the ordinary crop: CROP_MOISTURE). */
+  dry: 0.1,
+  moist: 0.3,
+  /** Share of an ordinary harvest. */
+  milletYield: 0.4,
+  paddyYield: 0.45,
+  /** Paddies stand in slow (< `paddySpeed` m/s) water this deep (m); deeper than `paddyDrown` drowns them. */
+  paddyMin: 0.02,
+  paddyMax: 0.25,
+  paddyDrown: 0.4,
+  paddySpeed: 0.1,
+  /** A village keeps at most `base` + `share` × its ordinary fields of hardy ones (gentle). */
+  base: 4,
+  share: 0.5,
+  /** Hardy fields claimed per day at most. */
+  perDay: 4,
+  /**
+   * Hardy fields go back to the ordinary crop where it would grow this well
+   * (cropGrowth; above the claiming threshold, so a wet spring alone does
+   * not do it: it takes water work). A young hardy crop (below stage
+   * `resow`) is then ploughed under and resown while sowing is possible.
+   */
+  upgradeGrowth: 0.85,
+  resow: 80,
+};
+
+/**
+ * Pegged plots (docs/PEOPLE.md §3.1): a village with more good land than
+ * hands stakes out its best few unclaimed plots with pegs and string; they
+ * are the first claimed when a farmer comes.
+ */
+export const PEGS = { max: 6 };
+
+/** Millet's growth factor 0..1 for a field moisture (like cropGrowth, less picky). */
+export function milletGrowth(m: number): number {
+  const c = HARDY;
+  return m < c.dry ? 0 : m < c.moist ? (m - c.dry) / (c.moist - c.dry) : m < CROP_MOISTURE.soggy ? 1 : CROP_MOISTURE.soggyGrowth;
+}
+
+/** Water (m) over which a crop of this kind drowns. */
+export function drownDepth(kind: FieldCrop): number {
+  return kind === FieldCrop.Paddy ? HARDY.paddyDrown : CROP_MOISTURE.drown;
+}
+
+/** Growth factor 0..1 of a crop of this kind (not drowning) at field moisture m and standing water (m). */
+export function kindGrowth(kind: FieldCrop, m: number, water: number): number {
+  if (kind === FieldCrop.Paddy) return water > 0.01 ? 1 : milletGrowth(m);
+  // Shallow standing water (a canal spilling over, a wet spring) only slows the crop.
+  if (water > 0.05) return CROP_MOISTURE.soggyGrowth;
+  return kind === FieldCrop.Millet ? milletGrowth(m) : cropGrowth(m);
+}
+
+/** Share of a full harvest a crop of this kind gives. */
+export function kindYield(kind: FieldCrop): number {
+  return kind === FieldCrop.Millet ? HARDY.milletYield : kind === FieldCrop.Paddy ? HARDY.paddyYield : 1;
+}
+
+/**
  * Visible stress of a field cell (docs/PEOPLE.md §7), mirroring the growth
  * factor in `growCrops`: 0 healthy (or nothing growing), 1..127 how dry
  * (127 = too dry to grow), 128..255 how waterlogged (255 = under water).
+ * Paddies are at home in shallow water.
  */
-export function cropStress(crop: number, moisture: number, water: number, growing: boolean): number {
+export function cropStress(crop: number, moisture: number, water: number, growing: boolean, kind: FieldCrop = FieldCrop.Common): number {
   if (crop <= 0) return 0;
-  if (water > 0.05) return 255;
+  if (kind === FieldCrop.Paddy) {
+    if (water > HARDY.paddyDrown) return 255;
+    if (water > 0.01) return 0;
+  } else if (water > 0.05) return 255;
   if (!growing || crop >= 255) return 0;
   const c = CROP_MOISTURE;
-  if (moisture < c.moist) return Math.max(1, Math.round(127 * Math.min(1, (c.moist - moisture) / (c.moist - c.dry))));
+  const [dry, moist] = kind === FieldCrop.Common ? [c.dry, c.moist] : [HARDY.dry, HARDY.moist];
+  if (moisture < moist) return Math.max(1, Math.round(127 * Math.min(1, (moist - moisture) / (moist - dry))));
   if (moisture >= c.soggy) return STRESS_WET + Math.round(127 * Math.min(1, 0.5 + (moisture - c.soggy) * 5));
   return 0;
 }
@@ -246,6 +316,8 @@ export interface PeopleState {
   summerSurvey?: number[];
   /** The villages' footbridges (bridges.ts; absent in older saves). */
   bridges?: Footbridge[];
+  /** Field cells sown with a hardy crop, as pairs [cell, FieldCrop] (absent in older saves: none). */
+  hardy?: number[];
 }
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
@@ -302,6 +374,10 @@ export class PeopleSystem {
   buildingsDirty = true;
   /** Field moisture proxy 0..1 (own soil or nearby water), recomputed daily. */
   readonly fieldMoisture: Float32Array;
+  /** What each field cell grows (FieldCrop: Common, Millet or Paddy); meaningful on LandUse.Field only. */
+  readonly fieldCrop: Uint8Array;
+  /** 1 on the villages' pegged plots (SettlementState.pegs), for the renderer. */
+  private readonly pegMask: Uint8Array;
   /** Nearest water cell for each cell (or -1), recomputed daily. */
   private readonly nearestWater: Int32Array;
   private readonly waterDist: Float32Array;
@@ -371,6 +447,8 @@ export class PeopleSystem {
     this.herds = new Herds(world, this.pf, this.rng, () => this.nextId++, this.onBridge);
     this.bridges = new Bridges(world, () => this.nextId++);
     this.fieldMoisture = new Float32Array(world.size);
+    this.fieldCrop = new Uint8Array(world.size);
+    this.pegMask = new Uint8Array(world.size);
     this.nearestWater = new Int32Array(world.size).fill(-1);
     this.waterDist = new Float32Array(world.size);
     this.wellGarden = new Int32Array(world.size).fill(-1);
@@ -394,7 +472,13 @@ export class PeopleSystem {
   stressAt(i: number, season: number): number {
     const w = this.world;
     if (w.landuse[i] !== LandUse.Field) return 0;
-    return cropStress(w.crop[i]!, this.fieldMoisture[i]!, w.water[i]!, season === 0 || season === 1);
+    return cropStress(w.crop[i]!, this.fieldMoisture[i]!, w.water[i]!, season === 0 || season === 1, this.fieldCrop[i] as FieldCrop);
+  }
+
+  /** Field crop byte of cell i for the renderer (FieldCrop; Pegged on pegged plots). */
+  fieldCropAt(i: number): number {
+    if (this.world.landuse[i] === LandUse.Field) return this.fieldCrop[i]!;
+    return this.pegMask[i] ? FieldCrop.Pegged : FieldCrop.Common;
   }
 
   /** Fishers of a settlement (the store shows a fish-drying rack). */
@@ -574,6 +658,7 @@ export class PeopleSystem {
           if (w.landuse[i] !== LandUse.None && w.landuse[i] !== LandUse.Yard) continue;
           w.landuse[i] = LandUse.Field;
           w.crop[i] = f.crop;
+          this.fieldCrop[i] = FieldCrop.Common;
           w.vegetation[i] = Math.min(w.vegetation[i]!, 0.15);
         }
     }
@@ -1366,15 +1451,17 @@ export class PeopleSystem {
     const growing = time.season === 0 || time.season === 1;
     let used = 0;
     for (let i = 0; i < w.size; i++) {
-      if (w.landuse[i] !== LandUse.Field) continue;
+      if (w.landuse[i] !== LandUse.Field) {
+        this.fieldCrop[i] = FieldCrop.Common;
+        continue;
+      }
       let c = w.crop[i]!;
       if (time.season === 3) {
         c = 0; // whatever is left rots in winter
-      } else if (w.water[i]! > CROP_MOISTURE.drown) {
+      } else if (w.water[i]! > drownDepth(this.fieldCrop[i] as FieldCrop)) {
         c = Math.max(0, c - 60); // drowning
       } else if (growing && c > 0 && c < 255) {
-        // Shallow standing water (a canal spilling over, a wet spring) only slows the crop.
-        const f = w.water[i]! > 0.05 ? CROP_MOISTURE.soggyGrowth : cropGrowth(this.fieldMoisture[i]!);
+        const f = kindGrowth(this.fieldCrop[i] as FieldCrop, this.fieldMoisture[i]!, w.water[i]!);
         c = Math.min(255, c + Math.round(FARMING.growPerDay * f));
         // Growing crops draw water from the nearest water body, or the soil.
         const src = this.nearestWater[i]!;
@@ -1722,60 +1809,153 @@ export class PeopleSystem {
       }
   }
 
-  /** Claim new fields near by path; returns good land turned down for being too far to walk to. */
+  /**
+   * Claim new fields near by path; returns good land turned down for being
+   * too far to walk to. Good land (crops grow at least `minGrowth` well)
+   * comes first. A village whose good land is used up and that needs more
+   * food sows hardy crops on marginal land (millet where it is dry, paddies
+   * in shallow standing water); hardy fields on land that has become good
+   * go back to the ordinary crop. A village with more good land than hands
+   * pegs out its best few plots (docs/PEOPLE.md §3.1).
+   */
   private manageFields(s: Settlement, map: WalkMap, time: SimTime): number[] {
     const w = this.world;
-    const farmers = this.agents.filter((a) => a.settlement === s.state.id && a.job === Job.Farmer).length;
+    const st = s.state;
+    const farmers = this.agents.filter((a) => a.settlement === st.id && a.job === Job.Farmer).length;
     const want = farmers * FARMING.fieldsPerFarmer;
+    const growing = time.season === 0 || time.season === 1;
+    const canSow = time.season === 0 || (time.season === 1 && time.dayOfSeason < 6);
     // Fields that stand in water when they should be sown are given up (land lost to a lake
-    // or a marsh); the village claims dry land elsewhere instead.
-    if (time.season === 0 || time.season === 1) {
+    // or a marsh); the village claims dry land elsewhere instead. Paddies want the water.
+    if (growing) {
       for (const i of this.fieldsOf(s)) {
-        if (w.crop[i] === 0 && w.water[i]! > 0.05) w.landuse[i] = LandUse.None;
+        if (w.crop[i] !== 0) continue;
+        const paddy = this.fieldCrop[i] === FieldCrop.Paddy;
+        if (paddy ? w.water[i]! > HARDY.paddyMax : w.water[i]! > 0.05) w.landuse[i] = LandUse.None;
+      }
+    }
+    // Hardy fields whose land has changed: good land gets the ordinary crop (a young hardy
+    // crop is ploughed under and resown while sowing is still possible), a paddy that has
+    // run dry becomes millet, millet land under shallow still water a paddy.
+    for (const i of this.fieldsOf(s)) {
+      const k = this.fieldCrop[i] as FieldCrop;
+      if (k === FieldCrop.Common) continue;
+      const c = w.crop[i]!;
+      if (c !== 0 && !(canSow && c < HARDY.resow)) continue;
+      let next: FieldCrop = k;
+      if (w.water[i]! < 0.01 && cropGrowth(this.fieldMoisture[i]!) >= HARDY.upgradeGrowth) next = FieldCrop.Common;
+      else if (c === 0 && k === FieldCrop.Paddy && w.water[i]! < 0.01) next = FieldCrop.Millet;
+      else if (c === 0 && k === FieldCrop.Millet && this.paddyWater(i)) next = FieldCrop.Paddy;
+      if (next !== k) {
+        this.fieldCrop[i] = next;
+        w.crop[i] = 0;
       }
     }
     const fields = this.fieldsOf(s);
+    let common = 0;
+    for (const i of fields) if (this.fieldCrop[i] === FieldCrop.Common) common++;
+    const hardy = fields.length - common;
     const wishes: number[] = [];
-    if (fields.length >= want) return wishes;
     // A starving village that lost most of its land (to a lake, a drought) farms poorer, drier land too.
-    const desperate = s.state.hungryDays > 0 && fields.length < want / 3;
+    const desperate = st.hungryDays > 0 && fields.length < want / 3;
     const minGrowth = desperate ? FARMING.desperateGrowth : FARMING.minGrowth;
-    // Claim the best unclaimed cells nearby (at most 10 per day).
-    const cands: [number, number][] = [];
-    const cx = Math.round(s.state.x);
-    const cy = Math.round(s.state.y);
+    // Candidates within the field radius: good land, and marginal land for hardy crops.
+    const good: [number, number][] = [];
+    const marginal: [number, number, FieldCrop][] = [];
+    const cx = Math.round(st.x);
+    const cy = Math.round(st.y);
+    const W = w.width;
     for (let y = Math.max(0, cy - FIELD_RADIUS); y <= Math.min(w.height - 1, cy + FIELD_RADIUS); y++)
-      for (let x = Math.max(0, cx - FIELD_RADIUS); x <= Math.min(w.width - 1, cx + FIELD_RADIUS); x++) {
+      for (let x = Math.max(0, cx - FIELD_RADIUS); x <= Math.min(W - 1, cx + FIELD_RADIUS); x++) {
         const r = Math.hypot(x - cx, y - cy);
         if (r > FIELD_RADIUS || r < 3) continue;
         const i = w.idx(x, y);
-        if (!this.buildable(i, true) || !this.spacious(x, y)) continue;
+        const dry = this.buildable(i, true);
+        if (!(dry || this.paddyWater(i)) || !this.spacious(x, y)) continue;
         if (this.settlements.length > 1 && this.ownerOf(x, y) !== s) continue;
         const m = this.fieldMoisture[i]!;
-        const wet = cropGrowth(m);
-        if (wet < minGrowth) continue;
         const forest = Math.max(0, w.vegetation[i]! - 0.45);
         // Grow fields in solid patches next to existing ones.
-        const W = w.width;
         let adj = 0;
         if (x > 0 && w.landuse[i - 1] === LandUse.Field) adj++;
         if (x < W - 1 && w.landuse[i + 1] === LandUse.Field) adj++;
         if (y > 0 && w.landuse[i - W] === LandUse.Field) adj++;
         if (y < w.height - 1 && w.landuse[i + W] === LandUse.Field) adj++;
-        const suit = w.fertility[i]! * wet - r / (FIELD_RADIUS * 4) - forest + (wet > 0 ? 0.12 * adj : 0);
-        if (suit <= (desperate ? -0.1 : 0.12)) continue;
-        // Near as the crow flies is not enough: it must be near by path (else maybe a footbridge).
-        if (!map.claimable(i)) wishes.push(i);
-        else cands.push([suit - Math.max(0, map.at(i) - r) / (FIELD_RADIUS * 4), i]);
+        const score = (g: number) => w.fertility[i]! * g - r / (FIELD_RADIUS * 4) - forest + (g > 0 ? 0.12 * adj : 0);
+        const walk = Math.max(0, map.at(i) - r) / (FIELD_RADIUS * 4);
+        const wet = dry ? cropGrowth(m) : 0;
+        if (wet >= minGrowth) {
+          const suit = score(wet);
+          if (suit > (desperate ? -0.1 : 0.12)) {
+            // Near as the crow flies is not enough: it must be near by path (else maybe a footbridge).
+            if (!map.claimable(i)) wishes.push(i);
+            else good.push([suit - walk, i]);
+            continue;
+          }
+        }
+        if (!map.claimable(i)) continue;
+        const kind = dry ? FieldCrop.Millet : FieldCrop.Paddy;
+        const g = kind === FieldCrop.Paddy ? 1 : milletGrowth(m);
+        if (g < FARMING.minGrowth) continue;
+        const suit = score(g * kindYield(kind));
+        if (suit > 0) marginal.push([suit - walk, i, kind]);
       }
-    cands.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
-    for (let k = 0; k < Math.min(10, want - fields.length, cands.length); k++) {
-      const i = cands[k]![1];
+    good.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+    marginal.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+    const claim = (i: number, kind: FieldCrop) => {
       w.landuse[i] = LandUse.Field;
       w.crop[i] = 0;
+      this.fieldCrop[i] = kind;
       w.vegetation[i] = Math.min(w.vegetation[i]!, 0.15); // cleared
+    };
+    // Good land first (at most 10 cells a day); hardy fields do not stand in its way.
+    const nGood = Math.max(0, Math.min(10, want - common, good.length));
+    for (let k = 0; k < nGood; k++) claim(good[k]![1], FieldCrop.Common);
+    let total = fields.length + nGood;
+    // More fields than hands now: give up bare hardy fields, the poorest first.
+    if (total > want && hardy > 0 && nGood > 0) {
+      const bare = fields.filter((i) => this.fieldCrop[i] !== FieldCrop.Common && w.crop[i] === 0);
+      bare.sort((a, b) => w.fertility[a]! - w.fertility[b]! || a - b);
+      for (const i of bare.slice(0, total - want)) {
+        w.landuse[i] = LandUse.None;
+        this.fieldCrop[i] = FieldCrop.Common;
+        total--;
+      }
     }
-    return wishes;
+    // Shortage: good land used up, more hands than fields and not food enough to grow.
+    const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
+    const needFood = s.foodSecurity(doy, ECONOMY.growHorizon) < ECONOMY.growFood;
+    if (time.season !== 3 && nGood >= good.length && total < want && needFood) {
+      const cap = Math.floor(HARDY.base + HARDY.share * (common + nGood)) - (total - common - nGood);
+      const n = Math.max(0, Math.min(HARDY.perDay, want - total, cap, marginal.length));
+      for (let k = 0; k < n; k++) claim(marginal[k]![1], marginal[k]![2]);
+    }
+    // Surplus: good land left over for want of hands; the best few plots are pegged out.
+    const pegs = common + nGood >= want ? good.slice(nGood, nGood + PEGS.max).map((c) => c[1]) : [];
+    const old = st.pegs ?? [];
+    if (pegs.length !== old.length || pegs.some((c, k) => c !== old[k])) {
+      if (pegs.length) st.pegs = pegs;
+      else delete st.pegs;
+      this.rebuildPegMask();
+    }
+    return fields.length < want ? wishes : [];
+  }
+
+  /** Shallow, still standing water a paddy could be laid out in (otherwise as buildable for a field). */
+  private paddyWater(i: number): boolean {
+    const w = this.world;
+    const d = w.water[i]!;
+    return (
+      d >= HARDY.paddyMin &&
+      d <= HARDY.paddyMax &&
+      Math.hypot(w.velX[i]!, w.velY[i]!) < HARDY.paddySpeed &&
+      (w.flags[i]! & CellFlag.Canal) === 0 &&
+      w.landuse[i] === LandUse.None &&
+      Number.isNaN(w.plan[i]!) &&
+      !this.ditchCells.has(i) &&
+      !takenGround(w, i) &&
+      this.slope(i) < 0.25
+    );
   }
 
   private fieldsOf(s: Settlement): number[] {
@@ -2033,7 +2213,7 @@ export class PeopleSystem {
       case SiteKind.Harvest: {
         const i = a.site;
         if (w.landuse[i] === LandUse.Field && w.crop[i]! >= (time.season === 2 ? FARMING.lateHarvest : CROP_RIPE)) {
-          a.load = FARMING.yield * Math.max(0.2, w.fertility[i]!) * (w.crop[i]! / 255);
+          a.load = FARMING.yield * Math.max(0.2, w.fertility[i]!) * (w.crop[i]! / 255) * kindYield(this.fieldCrop[i] as FieldCrop);
           a.carry = CarryKind.Sack;
           w.crop[i] = 0;
           w.fertility[i] = Math.max(0.1, w.fertility[i]! * 0.985);
@@ -2398,7 +2578,7 @@ export class PeopleSystem {
     let bestScore = -Infinity;
     const canSow = time.season === 0 || (time.season === 1 && time.dayOfSeason < 6);
     for (const i of this.fieldsOf(s)) {
-      if (this.reserved.has(i) || this.blocked.has(i) || w.water[i]! > CROP_MOISTURE.drown) continue;
+      if (this.reserved.has(i) || this.blocked.has(i) || w.water[i]! > drownDepth(this.fieldCrop[i] as FieldCrop)) continue;
       const c = w.crop[i]!;
       let kind: SiteKind;
       let prio: number;
@@ -2480,7 +2660,21 @@ export class PeopleSystem {
       noAnimals: this.noAnimals,
       summerSurvey: this.summerSurvey ? Array.from(this.summerSurvey, (v) => Math.round(v * 1000) / 1000) : undefined,
       bridges: this.bridges.list.length ? this.bridges.list : undefined,
+      hardy: this.hardyList(),
     });
+  }
+
+  /** Hardy field cells as [cell, kind] pairs for saving (undefined when none). */
+  private hardyList(): number[] | undefined {
+    const w = this.world;
+    const out: number[] = [];
+    for (let i = 0; i < w.size; i++) if (this.fieldCrop[i] !== FieldCrop.Common && w.landuse[i] === LandUse.Field) out.push(i, this.fieldCrop[i]!);
+    return out.length ? out : undefined;
+  }
+
+  private rebuildPegMask(): void {
+    this.pegMask.fill(0);
+    for (const s of this.settlements) for (const i of s.state.pegs ?? []) this.pegMask[i] = 1;
   }
 
   setState(st: PeopleState): void {
@@ -2507,6 +2701,10 @@ export class PeopleSystem {
     this.summerSurvey = c.summerSurvey ? Float32Array.from(c.summerSurvey) : null;
     this.bridges.list = c.bridges ?? [];
     this.bridges.dirty = true;
+    this.fieldCrop.fill(FieldCrop.Common);
+    const hardy = c.hardy ?? [];
+    for (let k = 0; k + 1 < hardy.length; k += 2) this.fieldCrop[hardy[k]!] = hardy[k + 1]!;
+    this.rebuildPegMask();
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.
     if (c.fishCap && c.fishCap.length === this.fishCap.length) this.fishCap.set(c.fishCap);

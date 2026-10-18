@@ -30,6 +30,7 @@ export function fieldsToRgba(src: Uint8Array, dst: Uint8Array, n: number): void 
     dst[4 * i] = src[FIELD_BYTES * i]!;
     dst[4 * i + 1] = src[FIELD_BYTES * i + 1]!;
     dst[4 * i + 2] = src[FIELD_BYTES * i + 2]!;
+    dst[4 * i + 3] = src[FIELD_BYTES * i + 3]!;
   }
 }
 
