@@ -30,9 +30,10 @@ export interface MixFrame {
  * the beds sit around −30…−22 dBFS RMS, spots peak a few dB above.
  */
 export const LAYER_LEVEL: Layers = {
-  river: 0.5,
+  // Water beds 6 dB down (October 2026: the rushing water was too loud over the village).
+  river: 0.25,
   lake: 0.45,
-  rapids: 0.32,
+  rapids: 0.16,
   rain: 0.3,
   wind: 0.55,
   birds: 0,
