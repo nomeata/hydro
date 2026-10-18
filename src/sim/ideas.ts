@@ -63,10 +63,18 @@ const PRIORITY: Readonly<Record<IdeaKind, number>> = { flood: 6, dry: 5, mill: 4
 
 const TOOL: Readonly<Record<IdeaKind, string>> = { dry: 'trench', flood: 'dike', marsh: 'trench', mill: 'weir', turbine: 'turbine', poles: 'poles' };
 
+/** Looks in a row without the problem before an idea goes (a mill's stream runs low in late summer: half a year). */
+const KEEP: Readonly<Record<IdeaKind, number>> = { flood: 2, dry: 2, marsh: 3, mill: 12, turbine: 2, poles: 2 };
+
+/** An idea's spot moves only when the problem moved at least this far (cells): fewer updates. */
+const MOVE = 3;
+
 const ACHIEVEMENT: Partial<Record<IdeaKind, string>> = { flood: 'weathered', mill: 'millersHead', turbine: 'brightWindows', poles: 'villageLights' };
 
 interface Entry {
   info: IdeaInfo;
+  /** The village it is about (index), for the text. */
+  village: number;
   /** Looks in a row that found it, and that did not. */
   hits: number;
   misses: number;
@@ -86,7 +94,6 @@ interface Found {
   x: number;
   y: number;
   r: number;
-  text: string;
   /** Extra priority (e.g. how big it is). */
   weight: number;
 }
@@ -140,15 +147,22 @@ export class Ideas {
     // Found: count the hit, show after two.
     for (const [id, f] of found) {
       let e = this.entries.get(id);
-      const info: IdeaInfo = { id, kind: f.kind, tool: TOOL[f.kind], text: f.text, x: f.x, y: f.y, r: f.r };
+      if (e && Math.hypot(e.info.x - f.x, e.info.y - f.y) < MOVE && Math.abs(e.info.r - f.r) < MOVE) {
+        // Much the same spot: keep it.
+        f.x = e.info.x;
+        f.y = e.info.y;
+        f.r = e.info.r;
+      }
+      const info: IdeaInfo = { id, kind: f.kind, tool: TOOL[f.kind], text: ideaText(h, f), x: f.x, y: f.y, r: f.r };
       const ach = ACHIEVEMENT[f.kind];
       if (ach) info.achievement = ach;
       if (!e) {
-        e = { info, hits: 0, misses: 0, shown: false, p: 0 };
+        e = { info, village: f.village, hits: 0, misses: 0, shown: false, p: 0 };
         this.entries.set(id, e);
       }
       if (e.shown && (e.info.text !== info.text || e.info.x !== info.x || e.info.y !== info.y || e.info.r !== info.r)) this.dirty = true;
       e.info = info;
+      e.village = f.village;
       e.p = PRIORITY[f.kind] + f.weight;
       e.hits++;
       e.misses = 0;
@@ -159,10 +173,17 @@ export class Ideas {
     }
     // Not found: two looks without it and it goes (solved, if by the player's works).
     for (const [id, e] of this.entries) {
-      if (found.has(id) || !looked(e.info.kind)) continue;
+      if (found.has(id)) continue;
+      // Kept for now; the village may have a new name meanwhile ("the old village").
+      const text = ideaText(h, { kind: e.info.kind, village: e.village, x: e.info.x, y: e.info.y, r: e.info.r, weight: 0 });
+      if (e.shown && text !== e.info.text) this.dirty = true;
+      e.info.text = text;
+      if (!looked(e.info.kind)) continue;
       e.hits = 0;
       e.misses++;
-      if (e.shown && e.misses < 2) continue;
+      // A mill built: no need to wait for the stream to run strong again.
+      const done = e.info.kind === 'mill' && h.people?.buildings.some((b) => b.kind === 'mill' && b.settlement === h.people!.settlements[e.village]?.state.id);
+      if (e.shown && e.misses < KEEP[e.info.kind] && !done) continue;
       this.entries.delete(id);
       if (!e.shown) continue;
       this.dirty = true;
@@ -183,6 +204,34 @@ export class Ideas {
   }
 }
 
+/** The idea's sentence: where, relative to its village (no names, no compass: the camera turns), and what might help. */
+function ideaText(h: AchievementHost, f: Found): string {
+  const p = h.people!;
+  const w = h.world;
+  const n = p.settlements.length;
+  const label = villageLabel(f.village, n);
+  const s = p.settlements[f.village]?.state;
+  const where = (near: string) => {
+    if (!s || Math.hypot(f.x - s.x, f.y - s.y) < 6) return `${near} ${label}`;
+    const dh = w.terrain(w.idx(f.x, f.y)) - w.terrain(w.idx(Math.round(s.x), Math.round(s.y)));
+    return dh > 1.5 ? `above ${label}` : dh < -1.5 ? `below ${label}` : `beside ${label}`;
+  };
+  switch (f.kind) {
+    case 'dry':
+      return `The fields ${where('around')} dry out in summer — a trench from the water could keep them green.`;
+    case 'flood':
+      return `The land ${where('around')} flooded last spring — a dike could keep it dry.`;
+    case 'marsh':
+      return `The ground ${where('by')} is boggy — a trench down to lower land could drain it for fields.`;
+    case 'mill':
+      return `The stream runs strong ${where('near')} — a weir there could turn a mill.`;
+    case 'turbine':
+      return `Your weir ${where('by')} could light the houses — try a turbine on its crest.`;
+    case 'poles':
+      return `${cap(label)}’s houses are far from power — a line of poles from the turbine could reach them.`;
+  }
+}
+
 /** Every problem the world has now (dry fields only when `judgeDry`). */
 export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
   const p = h.people;
@@ -193,13 +242,6 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
   const W = w.width;
   const { water, velX, velY, landuse, floodMemory } = w;
   const speed2 = (i: number) => velX[i]! ** 2 + velY[i]! ** 2;
-  const where = (k: number, x: number, y: number, near = 'around') => {
-    const s = p.settlements[k]!.state;
-    const label = villageLabel(k, n);
-    if (Math.hypot(x - s.x, y - s.y) < 6) return `${near} ${label}`;
-    const dh = w.terrain(w.idx(Math.round(x), Math.round(y))) - w.terrain(w.idx(Math.round(s.x), Math.round(s.y)));
-    return dh > 1.5 ? `above ${label}` : dh < -1.5 ? `below ${label}` : `beside ${label}`;
-  };
   const r2 = (cx: number, cy: number, R: number, f: (i: number, x: number, y: number) => void) => {
     for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(w.height - 1, Math.ceil(cy + R)); y++)
       for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W - 1, Math.ceil(cx + R)); x++)
@@ -251,7 +293,7 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
       const c = dx[k]!.length;
       if (c < IDEAS.dryCells || c < IDEAS.dryShare * total[k]!) continue;
       const a = area(dx[k]!, dy[k]!);
-      out.push({ kind: 'dry', village: k, ...a, weight: Math.min(0.9, c / 200), text: `The fields ${where(k, a.x, a.y)} dry out in summer — a trench from the water could keep them green.` });
+      out.push({ kind: 'dry', village: k, ...a, weight: Math.min(0.9, c / 200) });
     }
   }
 
@@ -270,7 +312,7 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
     });
     if (fx.length >= IDEAS.floodCells) {
       const a = area(fx, fy);
-      out.push({ kind: 'flood', village: k, ...a, weight: Math.min(0.9, fx.length / 200), text: `The land ${where(k, a.x, a.y)} flooded last spring — a dike could keep it dry.` });
+      out.push({ kind: 'flood', village: k, ...a, weight: Math.min(0.9, fx.length / 200) });
     }
 
     // A marsh: shallow, still water on open land, away from deep water.
@@ -287,7 +329,7 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
     });
     if (mx.length >= IDEAS.marshCells) {
       const a = area(mx, my);
-      out.push({ kind: 'marsh', village: k, ...a, weight: 0, text: `The ground ${where(k, a.x, a.y, 'by')} is boggy — a trench down to lower land could drain it for fields.` });
+      out.push({ kind: 'marsh', village: k, ...a, weight: 0 });
     }
 
     // A strong stream near a village big enough for a mill, which has none.
@@ -308,7 +350,7 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
       if (cells >= IDEAS.millCells && best >= 0) {
         const x = best % W;
         const y = (best / W) | 0;
-        out.push({ kind: 'mill', village: k, x, y, r: 4, weight: 0, text: `The stream runs strong ${where(k, x, y, 'near')} — a weir there could turn a mill.` });
+        out.push({ kind: 'mill', village: k, x, y, r: 4, weight: 0 });
       }
     }
   }
@@ -330,12 +372,12 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
         if (!best || d < best.d) best = { x, y, k: v.k, d };
       }
     }
-    if (best) out.push({ kind: 'turbine', village: best.k, x: best.x, y: best.y, r: 4, weight: 0, text: `Your weir ${where(best.k, best.x, best.y, 'by')} could light the houses — try a turbine on its crest.` });
+    if (best) out.push({ kind: 'turbine', village: best.k, x: best.x, y: best.y, r: 4, weight: 0 });
   }
   if (pw && pw.turbines.length > 0 && pw.lastDay.produced > 0) {
     for (const v of villages) {
       if ((v.s.light ?? 0) >= IDEAS.litShare) continue;
-      out.push({ kind: 'poles', village: v.k, x: Math.round(v.s.x), y: Math.round(v.s.y), r: 6, weight: 0, text: `${cap(villageLabel(v.k, n))}’s houses are far from power — a line of poles from the turbine could reach them.` });
+      out.push({ kind: 'poles', village: v.k, x: Math.round(v.s.x), y: Math.round(v.s.y), r: 6, weight: 0 });
     }
   }
   return out;
