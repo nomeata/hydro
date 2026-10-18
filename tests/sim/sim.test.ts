@@ -48,14 +48,12 @@ describe('Simulation', () => {
     expect(a.stateHash()).toBe(b.stateHash());
   });
 
-  it('builds a planned trench over time', () => {
+  it('shapes a trench at once (no plan, no crew)', () => {
     const w = valley();
     const sim = new Simulation(w, 1);
-    sim.command({ type: 'shapeLine', tool: 'dig', points: [[10, 10], [40, 10]], width: 2, amount: 1.5 });
     const i = w.idx(25, 10);
     const before = w.terrain(i);
-    expect(Number.isNaN(w.plan[i]!)).toBe(false);
-    sim.run(STEPS_PER_DAY * 2);
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[10, 10], [40, 10]], width: 2, amount: 1.5 });
     expect(w.terrain(i)).toBeLessThan(before - 1.3);
     expect(Number.isNaN(w.plan[i]!)).toBe(true);
     expect(sim.crew.pending).toBe(0);

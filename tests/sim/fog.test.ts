@@ -55,7 +55,7 @@ describe('fog of war', () => {
     expect(b.stateHash()).toBe(sim.stateHash());
   }, 60_000);
 
-  it('ignores plans on unrevealed land', () => {
+  it('leaves unrevealed land alone', () => {
     const { sim, gen } = game(3);
     const w = sim.world;
     // A hidden cell and a known one.
@@ -68,19 +68,24 @@ describe('fog of war', () => {
     expect(hidden).toBeGreaterThanOrEqual(0);
     const hx = hidden % w.width;
     const hy = (hidden / w.width) | 0;
+    const before = Float64Array.from({ length: w.size }, (_, i) => w.terrain(i));
     sim.command({ type: 'shapeLine', tool: 'dig', points: [[hx - 2, hy], [hx + 2, hy]], width: 1, amount: 1 });
     sim.command({ type: 'shapeLine', tool: 'even', points: [[hx, hy - 2], [hx, hy + 2]], width: 2 });
-    for (let i = 0; i < w.size; i++) if (w.revealed[i]! < REVEALED) expect(Number.isNaN(w.plan[i]!)).toBe(true);
-    // Known land takes plans.
-    sim.command({ type: 'shapeLine', tool: 'raise', points: [[gen.startX - 3, gen.startY], [gen.startX + 3, gen.startY]], width: 1, amount: 1 });
-    expect(Number.isNaN(w.plan[w.idx(gen.startX, gen.startY)]!)).toBe(false);
+    sim.command({ type: 'sculpt', tool: 'dig', radius: 2.5, stroke: 1, samples: [hx, hy, 0.2] });
+    for (let i = 0; i < w.size; i++) if (w.revealed[i]! < REVEALED) expect(w.terrain(i)).toBe(before[i]);
+    // Known land can be shaped (away from the houses).
+    const x = gen.startX + 12;
+    const z = w.terrain(w.idx(x, gen.startY));
+    sim.command({ type: 'sculpt', tool: 'raise', radius: 2.5, stroke: 2, samples: [x, gen.startY, 0.2] });
+    expect(w.terrain(w.idx(x, gen.startY))).toBeGreaterThan(z);
   });
 
-  it('is off without villages (plans anywhere)', () => {
+  it('is off without villages (shaping anywhere)', () => {
     const gen = generateWorld({ seed: 3, size: 64 });
     const sim = new Simulation(gen.world, 3);
     expect(sim.fog).toBe(false);
+    const z = sim.world.terrain(sim.world.idx(5, 2));
     sim.command({ type: 'shapeLine', tool: 'dig', points: [[2, 2], [8, 2]], width: 1, amount: 1 });
-    expect(Number.isNaN(sim.world.plan[sim.world.idx(5, 2)]!)).toBe(false);
+    expect(sim.world.terrain(sim.world.idx(5, 2))).toBeLessThan(z - 0.5);
   });
 });

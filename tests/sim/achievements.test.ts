@@ -91,31 +91,36 @@ describe('achievement table', () => {
 });
 
 describe('waterworks', () => {
-  it('First Spade and Long Canal when a long trench is finished', async () => {
+  it('First Spade and Long Canal when a long canal is dug', async () => {
     const sim = new Simulation(plain(), 1);
     sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 20], [5 + ACH.canalCells + 2, 20]], width: 2, amount: 1 });
-    expect(ids(sim.achievements)).toEqual([]);
-    await build(sim);
+    // First Spade at once (even while paused); the canal at the next check.
+    expect(ids(sim.achievements)).toEqual(['firstSpade']);
     sim.run(100);
     expect(ids(sim.achievements)).toEqual(['firstSpade', 'longCanal']);
     // Noticed within a fraction of a day, on the day it happened.
-    expect(sim.achievements.earned[0]!.day).toBe(sim.time.day);
+    expect(sim.achievements.earned[1]!.day).toBe(sim.time.day);
     const u = sim.achievements.take();
     expect(u.fresh).toEqual(['firstSpade', 'longCanal']);
     expect(sim.achievements.take().fresh).toEqual([]);
   });
 
-  it('a short trench is only a First Spade; a cancelled one is nothing', async () => {
+  it('a short canal is only a First Spade; one undone is nothing; two short ones joined make a long one', async () => {
     const sim = new Simulation(plain(), 1);
-    sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 20], [40, 20]], width: 2, amount: 1 });
-    sim.command({ type: 'cancelPlan', x: 22, y: 20, radius: 30 });
-    await build(sim);
-    sim.run(100);
-    expect(ids(sim.achievements)).toEqual([]);
     sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 30], [15, 30]], width: 2, amount: 1 });
-    await build(sim);
     sim.run(100);
     expect(ids(sim.achievements)).toEqual(['firstSpade']);
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[16, 30], [5 + ACH.canalCells + 2, 30]], width: 2, amount: 1 });
+    sim.command({ type: 'undoSculpt' });
+    sim.run(100);
+    expect(ids(sim.achievements)).toEqual(['firstSpade']);
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[14, 30], [5 + ACH.canalCells + 2, 30]], width: 2, amount: 1 });
+    sim.run(100);
+    expect(ids(sim.achievements)).toEqual(['firstSpade', 'longCanal']);
+    // A little brushing is not yet a First Spade.
+    const other = new Simulation(plain(), 1);
+    other.command({ type: 'sculpt', tool: 'dig', radius: 1.5, stroke: 1, samples: [10, 10, 0.05] });
+    expect(ids(other.achievements)).toEqual([]);
   });
 
   it('Lake Maker: a pool held back by a ring dike, not dry land raised, a dug basin or a natural pond', async () => {
@@ -331,12 +336,10 @@ describe('saving', () => {
     sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 20], [20, 20]], width: 2, amount: 1 });
     sim.command({ type: 'shapeLine', tool: 'dig', points: [[5, 40], [20, 40]], width: 2, amount: 1 });
     sim.run(20);
-    expect(ids(sim.achievements)).toEqual([]);
+    expect(ids(sim.achievements)).toEqual(['firstSpade']);
     const loaded = (await loadGame(await saveGame(sim))).sim;
     expect(loaded.achievements.getState()).toEqual(sim.achievements.getState());
     expect(loaded.achievements.take().fresh).toEqual([]);
-    await build(sim);
-    await build(loaded);
     sim.run(100);
     loaded.run(100);
     expect(ids(loaded.achievements)).toEqual(['firstSpade']);

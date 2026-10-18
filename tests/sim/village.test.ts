@@ -59,7 +59,7 @@ describe('first village', () => {
     expect(stock).toBeLessThan(cap); // they have caught something
   }, 240_000);
 
-  it('plans near the village get built', async () => {
+  it('earth shaped near the village stays shaped', async () => {
     const sim = village(3);
     sim.run(STEPS_PER_DAY);
     const s = sim.people!.settlements[0]!.state;

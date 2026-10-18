@@ -1,6 +1,6 @@
 /**
- * Weir vs dike, editing and removing structures, and earthworks that take
- * up what stands on the ground (docs/DESIGN.md §4).
+ * Weir vs heaped earth, editing and removing structures, and shaping the
+ * ground around what stands on it (docs/DESIGN.md §4).
  */
 import { describe, expect, it } from 'vitest';
 import { CellFlag, LandUse, SoilType, World } from '../../src/sim/world';
@@ -94,17 +94,34 @@ describe('weir vs dike', () => {
     expect(crestMin(w, 32)).toBeGreaterThan(before - 0.02);
   }, 60_000);
 
-  it('weir faces follow from the height: a taller weir has a broader foot', () => {
+  it('a weir is a stone wall on the ground: same footprint at any height, at most 4 m above its lower side', () => {
     const a = new Simulation(channel(), 1);
     a.command({ type: 'planWeir', points: [[32, 10], [32, 22]], width: 4, height: 1 });
     const b = new Simulation(channel(), 1);
     b.command({ type: 'planWeir', points: [[32, 10], [32, 22]], width: 1, height: 4 });
-    expect(b.structures.weirs[0]!.cells.length).toBeGreaterThan(a.structures.weirs[0]!.cells.length);
-    // The old `width` makes no difference.
+    expect(b.structures.weirs[0]!.cells).toEqual(a.structures.weirs[0]!.cells);
+    // The wall itself is one cell thick here; only its line is raised (no earth faces).
+    const w = b.world;
+    expect(Number.isNaN(w.plan[w.idx(32, 16)]!)).toBe(false);
+    expect(Number.isNaN(w.plan[w.idx(31, 16)]!)).toBe(true);
+    expect(Number.isNaN(w.plan[w.idx(33, 16)]!)).toBe(true);
+    // Too tall: kept to 4 m above the lowest ground at its foot.
     const c = new Simulation(channel(), 1);
-    c.command({ type: 'planWeir', points: [[32, 10], [32, 22]], width: 1, height: 1 });
-    expect(c.structures.weirs[0]!.cells).toEqual(a.structures.weirs[0]!.cells);
+    c.command({ type: 'planWeir', points: [[32, 10], [32, 22]], height: 6 });
+    const foot = Math.min(...[31, 32, 33].map((x) => ground(c.world, x, 16)));
+    expect(c.structures.weirs[0]!.top).toBeCloseTo(foot + 4, 5);
   });
+
+  it('a gate drawn across a channel builds a stone wall with the gate at its lowest point', async () => {
+    const sim = new Simulation(channel(), 1);
+    sim.command({ type: 'placeGate', points: [[30, 10], [30, 22]], width: 1, height: 2 });
+    expect(sim.structures.weirs.length).toBe(1);
+    expect(sim.structures.gates.length).toBe(1);
+    const g = sim.structures.gates[0]!;
+    expect(g.top).toBeCloseTo(sim.structures.weirs[0]!.top, 5);
+    await build(sim, 15);
+    expect(ground(sim.world, 30, 12)).toBeCloseTo(g.top, 1);
+  }, 60_000);
 });
 
 describe('editing a weir', () => {
@@ -187,8 +204,8 @@ describe('editing a weir', () => {
   }, 60_000);
 });
 
-describe('earthworks take up what stands on the ground', () => {
-  it('a trench through a field turns it back to plain land when dug', async () => {
+describe('shaping the ground and what stands on it', () => {
+  it('a canal dug through a field turns it back to plain land at once', () => {
     const sim = new Simulation(channel(), 1);
     const w = sim.world;
     for (let x = 10; x <= 20; x++) {
@@ -196,57 +213,52 @@ describe('earthworks take up what stands on the ground', () => {
       w.crop[w.idx(x, 6)] = 120;
     }
     sim.command({ type: 'shapeLine', tool: 'dig', points: [[15, 3], [15, 9]], width: 2, amount: 1 });
-    // Untouched until the crew gets there.
-    expect(w.landuse[w.idx(15, 6)]).toBe(LandUse.Field);
-    await build(sim, 10);
     expect(w.landuse[w.idx(15, 6)]).toBe(LandUse.None);
     expect(w.crop[w.idx(15, 6)]).toBe(0);
     expect(w.landuse[w.idx(10, 6)]).toBe(LandUse.Field);
-  }, 60_000);
+  });
 
-  it('plans go round houses and footbridges', () => {
+  it('goes round houses and footbridges (and weirs leave out footbridges)', () => {
     const sim = new Simulation(channel(), 1);
     const w = sim.world;
     w.landuse[w.idx(15, 6)] = LandUse.Building;
     w.landuse[w.idx(15, 16)] = LandUse.Bridge;
+    const z = [ground(w, 15, 6), ground(w, 15, 16), ground(w, 15, 13)];
     sim.command({ type: 'shapeLine', tool: 'raise', points: [[15, 2], [15, 24]], width: 2, amount: 1 });
-    expect(Number.isNaN(w.plan[w.idx(15, 6)]!)).toBe(true);
-    expect(Number.isNaN(w.plan[w.idx(15, 16)]!)).toBe(true);
-    expect(Number.isNaN(w.plan[w.idx(15, 14)]!)).toBe(false);
-    sim.command({ type: 'planWeir', points: [[15, 10], [15, 22]], height: 1 });
-    expect(Number.isNaN(w.plan[w.idx(15, 16)]!)).toBe(true);
-    expect(sim.structures.lining.has(w.idx(15, 16))).toBe(false);
+    expect(ground(w, 15, 6)).toBe(z[0]);
+    expect(ground(w, 15, 16)).toBe(z[1]);
+    expect(ground(w, 15, 13)).toBeGreaterThan(z[2]! + 0.5);
+    sim.command({ type: 'planWeir', points: [[25, 10], [25, 22]], height: 1 });
+    w.landuse[w.idx(35, 16)] = LandUse.Bridge;
+    sim.command({ type: 'planWeir', points: [[35, 10], [35, 22]], height: 1 });
+    expect(Number.isNaN(w.plan[w.idx(35, 16)]!)).toBe(true);
+    expect(sim.structures.lining.has(w.idx(35, 16))).toBe(false);
   });
 
-  it('a trench across a weir cuts it in two weirs; through a gate, wheel or pole removes them', async () => {
+  it('leaves weirs, gates and poles standing: shaping never touches structures', async () => {
     const sim = new Simulation(channel(), 1);
     const w = sim.world;
     sim.command({ type: 'planWeir', points: [[32, 4], [32, 28]], height: 1.5 });
-    const id = sim.structures.weirs[0]!.id;
     await build(sim, 20);
+    const crest = ground(w, 32, 16);
     sim.command({ type: 'shapeLine', tool: 'dig', points: [[26, 16], [38, 16]], width: 2, amount: 0.5 });
-    const weirs = sim.structures.weirs;
-    expect(weirs.length).toBe(2);
-    expect(weirs.map((o) => o.id)).toContain(id);
-    expect(lined(w, 32, 16)).toBe(false);
-    expect(lined(w, 32, 6)).toBe(true);
-    for (const o of weirs) expect(Math.abs(o.y - 16) >= 1 && Math.abs(o.y2 - 16) >= 1).toBe(true);
+    sim.command({ type: 'sculpt', tool: 'dig', radius: 4, stroke: 1, samples: [32, 16, 0.25, 32, 16, 0.25] });
+    expect(sim.structures.weirs.length).toBe(1);
+    expect(ground(w, 32, 16)).toBe(crest);
+    expect(lined(w, 32, 16)).toBe(true);
+    // The canal either side of it is dug.
+    expect(ground(w, 27, 16)).toBeLessThan(ground(w, 27, 15) + 0.1);
 
-    // A gate tapped into a dike, and a pole: a trench through both.
     const g = new Simulation(channel(), 1);
     g.command({ type: 'shapeLine', tool: 'raise', points: [[40, 6], [40, 26]], width: 2, amount: 3 });
-    await build(g, 10);
     g.command({ type: 'placeGate', points: [[40, 16]], width: 1, height: 0 });
     expect(g.structures.gates.length).toBe(1);
     g.command({ type: 'placePoles', points: [[44, 6], [44, 7]] });
-    expect(g.power.poles.length).toBeGreaterThan(0);
     const pole = g.power.poles[0]!;
     g.command({ type: 'shapeLine', tool: 'dig', points: [[36, 16], [44, 16]], width: 2, amount: 0.5 });
-    expect(g.structures.gates.length).toBe(0);
-    g.command({ type: 'shapeLine', tool: 'even', points: [[pole.x, pole.y]], width: 1 });
-    // (A level stroke over flat ground changes nothing, so nothing is taken down.)
     g.command({ type: 'shapeLine', tool: 'dig', points: [[pole.x - 2, pole.y], [pole.x + 2, pole.y]], width: 2, amount: 0.5 });
-    expect(g.power.poles.some((p) => p.id === pole.id)).toBe(false);
+    expect(g.structures.gates.length).toBe(1);
+    expect(g.power.poles.some((p) => p.id === pole.id)).toBe(true);
   }, 120_000);
 
   it('removing a gate plugs its opening; removing a pole drops its wires', async () => {
