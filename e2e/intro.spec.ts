@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { openGame } from './helpers';
+import { openGame, recordTexts } from './helpers';
 
 /** Distinct colours (quantised) in a screenshot: a blank canvas has one or two. */
 async function colourCount(page: Page, selector: string): Promise<number> {
@@ -73,5 +73,43 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   await expect(intro).toBeHidden();
   expect(await workers()).toBe(1);
   expect(await page.locator('canvas').count()).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('a first visit waits behind the welcome panels: no play, no toasts until they close', async ({ page }) => {
+  test.setTimeout(240_000);
+  // Not test mode: a fresh browser sees the intro (stats=1 shows the requested speed).
+  await page.goto('./?seed=1&size=64&stats=1');
+  const intro = page.locator('.intro');
+  await expect(intro).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator('#loading')).toHaveClass(/done/, { timeout: 90_000 });
+  const stats = page.locator('div.stats');
+  await expect(stats).toContainText('/ 0×', { timeout: 30_000 });
+  await expect(page.locator('.speed button[data-speed="0"]')).toHaveAttribute('aria-pressed', 'true');
+  await intro.locator('.skip').click();
+  await expect(intro).toBeHidden();
+  await expect(stats).toContainText('/ 1×', { timeout: 30_000 });
+});
+
+test('achievement toasts wait while the welcome panels are open', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await openGame(page, '&size=64');
+  const toasts = await recordTexts(page, '[data-testid=achievement-toast]');
+  await page.evaluate(() => (window as any).__hydro.showIntro());
+  const intro = page.locator('.intro');
+  await expect(intro).toBeVisible();
+  // Earn First Spade behind the panels (runDays works even while paused).
+  await page.evaluate(async () => {
+    const h = (window as any).__hydro;
+    const { startX: x, startY: y } = h.data.info;
+    h.client.command({ type: 'planTrench', points: [[x - 6, y + 8], [x + 6, y + 8]], width: 2, depth: 1.5 });
+    await h.client.runDays(1.2);
+  });
+  await page.waitForFunction(() => (window as any).__hydro.achievements.list.some((e: { id: string }) => e.id === 'firstSpade'), null, { timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  expect(await toasts()).toEqual([]);
+  await intro.locator('.skip').click();
+  await expect(intro).toBeHidden();
+  await expect.poll(toasts, { timeout: 15_000 }).toContainEqual(expect.stringContaining('First Spade'));
   expect(errors).toEqual([]);
 });
