@@ -216,6 +216,8 @@ export interface BuildingInfo {
   spin?: number;
   /** Mills: grain waiting to be ground (sacks shown by the door, 0..3). */
   sacks?: number;
+  /** Ruins: how overgrown, 0 (fresh mud) .. 2 (a year or more). */
+  weeds?: number;
 }
 
 /**
@@ -230,13 +232,16 @@ export interface BuildingInfo {
  * - wheel: a water wheel standing in the river cell (x, y) on its bed
  *   `sill`, lifting into a trough that runs to the head cell (x2, y2),
  *   whose ground is at `top`; `open` while water runs in the trough.
+ * - bridge: a villagers' footbridge from the bank cell (x, y) over `width`
+ *   wet cells to the bank cell (x2, y2), its deck at `top` (`broken`
+ *   after a flood swept the planks away).
  */
 /** Things the player can select and edit or remove (ui/selection.ts). */
 export type SelectableKind = 'weir' | 'gate' | 'wheel' | 'turbine' | 'pole' | 'pump';
 
 export interface StructureInfo {
   id: number;
-  kind: 'gate' | 'weir' | 'jetty' | 'wheel';
+  kind: 'gate' | 'weir' | 'jetty' | 'wheel' | 'bridge';
   x: number;
   y: number;
   /** Direction of the structure's line in cell coordinates: (cos rot, sin rot). */
@@ -256,6 +261,8 @@ export interface StructureInfo {
   /** Wheels: speed of the current turning it (m/s, 0 = standing still; the sign says which way it passes across the axle x→x2) and the water lifted (m³/s). */
   speed?: number;
   flow?: number;
+  /** Footbridges (x, y and x2, y2 are the banks at either end): swept away by a flood, the piles left. */
+  broken?: boolean;
 }
 
 /**

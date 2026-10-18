@@ -62,6 +62,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | Quayside | Villagers have a quay (lined lake front by the houses) |
 | Wellspring | Villagers finish a well within 10 cells of the player's works |
 | Fishing Jetty | A village's jetty is finished |
+| Footbridge | Villagers finish (or rebuild) a footbridge to land across the water |
 | Cattle Country | A village keeps a herd of ≥ 5 cows |
 | Hamlet, Village Life, Bustling Valley, Little Town | 10, 50, 100, 250 villagers (highest population so far) |
 | **Seasons** | |

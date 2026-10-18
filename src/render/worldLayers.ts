@@ -68,6 +68,7 @@ export class WorldLayers {
     const animals = this.fakeCrowd?.frame();
     const entities = animals ? mergeFrames(s.entities, animals) : (s.entities ?? EMPTY);
     this.crowd.setFrame(hideInFog(entities, r), performance.now());
+    if (s.structures || s.terrain) this.crowd.setDecks(r.structures.decks());
     const v = this.vegetation;
     if (s.revealed) v.setRevealed(s.revealed);
     if (s.terrain) v.invalidate(0, s.terrain.y0, W, s.terrain.y1);

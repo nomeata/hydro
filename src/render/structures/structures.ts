@@ -19,6 +19,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { LINING_QUAY, type StructureInfo } from '../../shared/protocol';
 import { heightToY, type HeightSampler } from '../coords';
 import { vertexColorMaterial } from '../objects/loader';
+import { deckHeight, deckOf, type Deck } from './decks';
 
 function srgb(hex: number): THREE.Color {
   return new THREE.Color().setHex(hex, THREE.SRGBColorSpace);
@@ -211,6 +212,8 @@ export class StructuresLayer {
   gameSpeed = 1;
   private readonly spinQ = new THREE.Quaternion();
   private readonly xAxis = new THREE.Vector3(1, 0, 0);
+  private readonly zAxis = new THREE.Vector3(0, 0, 1);
+  private readonly pitchQ = new THREE.Quaternion();
   /** Quay cells (from the lining snapshot) and the grid width. */
   private quays: number[] = [];
   private readonly m = new THREE.Matrix4();
@@ -265,6 +268,17 @@ export class StructuresLayer {
 
   get structures(): readonly StructureInfo[] {
     return this.list;
+  }
+
+  /** Walkable decks (finished footbridges and jetties) for the crowd. */
+  decks(): Deck[] {
+    const out: Deck[] = [];
+    for (const st of this.list) {
+      if (st.progress < 1 || st.broken) continue;
+      const d = deckOf(st, (x, y) => this.heights.terrainAt(x, y));
+      if (d) out.push(d);
+    }
+    return out;
   }
 
   /** Number of InstancedMeshes drawn. */
@@ -376,12 +390,14 @@ export class StructuresLayer {
    * Add an instance: centre (cx, cy) in cell coords, along-line offset `u`
    * (cells), base height y0 (three units), size (sx along, sy up, sz across).
    */
-  private put(piece: Piece, cx: number, cy: number, rot: number, u: number, y0: number, sx: number, sy: number, sz: number): void {
+  private put(piece: Piece, cx: number, cy: number, rot: number, u: number, y0: number, sx: number, sy: number, sz: number, pitch = 0): void {
     this.ensure(piece, piece.n + 1);
     const c = Math.cos(rot);
     const s = Math.sin(rot);
     this.p.set(cx + u * c + 0.5, y0, cy + u * s + 0.5);
     this.q.setFromAxisAngle(this.up, -rot);
+    // Pitch: the along axis tilts up (a sloping plank or rail).
+    if (pitch) this.q.multiply(this.pitchQ.setFromAxisAngle(this.zAxis, pitch));
     this.s.set(sx, Math.max(1e-3, sy), sz);
     this.m.compose(this.p, this.q, this.s);
     piece.mesh.setMatrixAt(piece.n++, this.m);
@@ -393,6 +409,7 @@ export class StructuresLayer {
     for (const st of this.list) {
       if (st.kind === 'gate') this.layoutGate(st);
       else if (st.kind === 'jetty') this.layoutJetty(st);
+      else if (st.kind === 'bridge') this.layoutBridge(st);
       else if (st.kind === 'wheel') this.layoutWheel(st);
       else this.layoutWeir(st);
     }
@@ -609,6 +626,109 @@ export class StructuresLayer {
     for (let u = u0 + 0.09; u < deckTo; u += 0.19) this.put(P.deck, j.x, j.y, j.rot, u, yDeck - 0.04, 0.16, 0.05, 0.78);
     // A bollard at the end for the boats.
     if (done) this.put(P.bollard, j.x + c * (u1 - 0.12) - sn * 0.3, j.y + sn * (u1 - 0.12) + c * 0.3, j.rot, 0, yDeck, 0.8, 0.8, 0.8);
+  }
+
+  /**
+   * A villagers' footbridge: pairs of piles in the water, an arched deck of
+   * cross planks on two stringers from bank to bank, and a handrail on
+   * either side. Built piles first, then the planks out from the village
+   * bank, the rails last (a stack of planks waits on the bank meanwhile).
+   * A flood leaves the piles (the middle ones snapped) and stubs of deck at
+   * both banks, one plank hanging into the water.
+   */
+  private layoutBridge(b: StructureInfo): void {
+    const d = deckOf(b, (x, y) => this.heights.terrainAt(x, y));
+    if (!d) return;
+    const P = this.pieces;
+    const hs = this.heights;
+    const rot = b.rot;
+    const done = b.progress >= 1;
+    const broken = !!b.broken;
+    const prog = Math.min(1, Math.max(0, b.progress));
+    const y = (u: number) => heightToY(deckHeight(d, u));
+    const at = (u: number, v: number): [number, number] => [b.x + d.c * u - d.s * v, b.y + d.s * u + d.c * v];
+    // Piles under every deck cell (and between, for longer spans).
+    const n = Math.max(1, b.width);
+    const step = d.len / (n + 1);
+    const piles = n + 1 > 2 ? n : n + 1;
+    const pileU = Array.from({ length: piles }, (_, k) => (piles === n ? step * (k + 1) : (d.len * (k + 1)) / (piles + 1)));
+    const pilesBuilt = done || broken ? piles : Math.ceil(piles * Math.min(1, prog / 0.4));
+    for (let k = 0; k < pilesBuilt; k++) {
+      const u = pileU[k]!;
+      const snapped = broken && k > 0 && k < piles - 1;
+      for (const side of [-0.3, 0.3]) {
+        const [px, py] = at(u, side);
+        const bed = heightToY(hs.terrainAt(px, py));
+        const surf = heightToY(hs.terrainAt(px, py) + hs.depthAt(px, py));
+        const topY = snapped ? Math.max(bed + 0.05, surf + 0.06 + 0.05 * Math.abs(side)) : y(u) - 0.02;
+        this.put(P.pile, px, py, rot, 0, bed - 0.05, 0.1, Math.max(0.05, topY - bed + 0.05), 0.1);
+      }
+    }
+    // Planks: from the village bank out (when rebuilding, from the stub on).
+    const from = d.u0;
+    let to = d.u0;
+    let back = d.u1;
+    if (done) to = d.u1;
+    else if (broken) {
+      to = d.u0 + (d.u1 - d.u0) * Math.max(0.22, (prog - 0.4) / 0.6);
+      back = d.u0 + (d.u1 - d.u0) * 0.84;
+    } else if (prog >= 0.4) to = d.u0 + (d.u1 - d.u0) * Math.min(1, (prog - 0.4) / 0.5);
+    const plank = (u: number) => {
+      const slope = (y(u + 0.05) - y(u - 0.05)) / 0.1;
+      this.put(P.deck, b.x, b.y, rot, u, y(u) - 0.045, 0.15, 0.045, 0.82, Math.atan(slope));
+    };
+    const stringers = (u0: number, u1: number) => {
+      // Two stringers under the planks, in short sloping segments.
+      const segs = Math.max(1, Math.ceil((u1 - u0) / 0.5));
+      for (let k = 0; k < segs; k++) {
+        const a = u0 + ((u1 - u0) * k) / segs;
+        const e = u0 + ((u1 - u0) * (k + 1)) / segs;
+        const m = (a + e) / 2;
+        const pitch = Math.atan((y(e) - y(a)) / (e - a));
+        const L = Math.hypot(e - a, y(e) - y(a)) + 0.02;
+        for (const side of [-0.3, 0.3]) {
+          const [sx, sy] = at(0, side);
+          this.put(P.deck, sx, sy, rot, m, y(m) - 0.1, L, 0.06, 0.07, pitch);
+        }
+      }
+    };
+    if (to > from + 0.05) {
+      stringers(from, to);
+      for (let u = from + 0.08; u < to; u += 0.17) plank(u);
+    }
+    if (broken && back < d.u1) {
+      stringers(back, d.u1);
+      for (let u = back + 0.08; u < d.u1; u += 0.17) plank(u);
+      // A plank hanging from the break into the water.
+      const [hx, hy] = at(to + 0.12, 0.15);
+      const surf = heightToY(hs.terrainAt(hx, hy) + hs.depthAt(hx, hy));
+      this.put(P.deck, hx, hy, rot + 0.5, 0, Math.max(surf - 0.05, y(to) - 0.35), 0.5, 0.04, 0.15, 0.9);
+    }
+    // Handrails once the deck is across: posts and a rail on either side.
+    if (done) {
+      const posts = Math.max(2, Math.round((d.u1 - d.u0) / 0.55) + 1);
+      for (const side of [-0.38, 0.38]) {
+        let pu = d.u0 + 0.04;
+        for (let k = 0; k < posts; k++) {
+          const u = d.u0 + 0.04 + ((d.u1 - d.u0 - 0.08) * k) / (posts - 1);
+          const [px, py] = at(u, side);
+          this.put(P.beam, px, py, rot, 0, y(u) - 0.05, 0.045, 0.3, 0.045);
+          if (k > 0) {
+            const m = (pu + u) / 2;
+            const [mx, my] = at(0, side);
+            const yr0 = y(pu) + 0.22;
+            const yr1 = y(u) + 0.22;
+            this.put(P.beam, mx, my, rot, m, (yr0 + yr1) / 2 - 0.02, Math.hypot(u - pu, yr1 - yr0) + 0.04, 0.035, 0.035, Math.atan((yr1 - yr0) / (u - pu)));
+          }
+          pu = u;
+        }
+      }
+    } else {
+      // A stack of planks waiting on the village bank.
+      const [sx, sy] = at(-0.15, 0.55);
+      const g = heightToY(hs.terrainAt(sx, sy));
+      for (let k = 0; k < 3; k++) this.put(P.deck, sx, sy, rot + Math.PI / 2 + k * 0.08, 0, g + k * 0.045, 0.7, 0.045, 0.16);
+    }
   }
 
   /**

@@ -256,6 +256,9 @@ export class Achievements {
       case 'rebuilt':
         this.earn('rebuilt', day);
         break;
+      case 'bridge':
+        this.earn('footbridge', day);
+        break;
       case 'well':
         if (this.touchedWithin(cell, ACH.wellNear)) this.earn('wellspring', day);
         break;
