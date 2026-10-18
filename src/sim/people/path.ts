@@ -35,7 +35,7 @@ export function stepCost(world: World, i: number, j: number, dist: number, bridg
   return c;
 }
 
-class MinHeap {
+export class MinHeap {
   private keys: number[] = [];
   private vals: number[] = [];
   private seq: number[] = [];

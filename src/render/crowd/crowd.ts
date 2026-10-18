@@ -19,6 +19,7 @@ import { heightToY, type HeightSampler } from '../coords';
 import { modelLibrary, unifyAnimated } from '../objects/loader';
 import { MODELS, type ModelName } from '../objects/manifest';
 import { bakeBoneAnimation, boneAnchors, boneTexture, sampleBone, type BoneAnimation } from './bake';
+import { deckAt, type Deck } from '../structures/decks';
 import {
   crowdModels,
   gaitRate,
@@ -131,6 +132,7 @@ export class CrowdLayer {
   private propGeometry: THREE.BufferGeometry | null = null;
   private disposed = false;
   private camera: THREE.Camera | null;
+  private decks: readonly Deck[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly projView = new THREE.Matrix4();
   private readonly sphere = new THREE.Sphere();
@@ -164,6 +166,11 @@ export class CrowdLayer {
         this.propGeometry = g;
       }),
     ]).then(() => undefined);
+  }
+
+  /** Walkable decks (footbridges, jetties): people on them walk on the planks. */
+  setDecks(decks: readonly Deck[]): void {
+    this.decks = decks;
   }
 
   setCamera(camera: THREE.Camera | null): void {
@@ -236,7 +243,12 @@ export class CrowdLayer {
       // Height: terrain, or the water surface minus a wading depth.
       const ground = h.terrainAt(t.x, t.y);
       const depth = h.depthAt(t.x, t.y);
-      const target = depth > 0 ? Math.max(ground, ground + depth - (e.look.person ? WADE_PERSON : WADE_ANIMAL)) : ground;
+      let target = depth > 0 ? Math.max(ground, ground + depth - (e.look.person ? WADE_PERSON : WADE_ANIMAL)) : ground;
+      // On a footbridge or jetty: on the planks.
+      for (const d of this.decks) {
+        const yd = deckAt(d, t.x, t.y);
+        if (yd > target) target = yd;
+      }
       e.yM = Number.isNaN(e.yM) ? target : e.yM + (target - e.yM) * kY;
 
       const X = t.x + 0.5;

@@ -23,6 +23,7 @@ import {
   isProc,
   millDesign,
   partsAt,
+  ruinDesign,
   wellDesign,
   storeDesign,
   woodLevel,
@@ -47,6 +48,13 @@ const PROC_COLOURS: Record<ProcKind, number> = {
   ring: 0xa8a196,
   water: 0x3f7896,
   gable: 0x8a4a3a,
+  mud: 0x6b5a3e,
+  timber: 0x5e4630,
+  shard: 0xa4583e,
+  rubble: 0x9a9286,
+  weed: 0x6e9a3c,
+  shrub: 0x5c8a34,
+  bloom: 0xe8c64a,
 };
 
 function procGeometry(kind: ProcKind): THREE.BufferGeometry {
@@ -85,6 +93,43 @@ function procGeometry(kind: ProcKind): THREE.BufferGeometry {
     const tri = new THREE.Shape([new THREE.Vector2(-0.5, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)]);
     g = new THREE.ExtrudeGeometry(tri, { depth: 1, bevelEnabled: false });
     g.translate(0, 0, -0.5);
+  } else if (kind === 'mud') {
+    // A ragged flat stain: a disc with a wobbly rim.
+    g = new THREE.CylinderGeometry(0.5, 0.5, 1, 14, 1);
+    const p = g.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i);
+      const z = p.getZ(i);
+      const a = Math.atan2(z, x);
+      const k = 0.78 + 0.16 * Math.sin(a * 3 + 1) + 0.08 * Math.sin(a * 5 + 2);
+      p.setXYZ(i, x * k, p.getY(i), z * k);
+    }
+    g.translate(0, 0.5, 0);
+  } else if (kind === 'weed' || kind === 'bloom') {
+    // A tuft: a few thin blades fanning out (a bloom: with a flower head on top).
+    const blades: THREE.BufferGeometry[] = [];
+    for (let k = 0; k < 5; k++) {
+      const b = new THREE.ConeGeometry(0.12, 1, 3);
+      b.translate(0, 0.5, 0);
+      b.rotateZ(0.35 * Math.cos(k * 2.4));
+      b.rotateX(0.35 * Math.sin(k * 2.4));
+      b.translate(0.25 * Math.cos(k * 1.3), 0, 0.25 * Math.sin(k * 1.3));
+      blades.push(b.index ? b.toNonIndexed() : b);
+    }
+    if (kind === 'bloom') {
+      const head = new THREE.IcosahedronGeometry(0.28, 0);
+      head.translate(0, 1.05, 0);
+      blades.push(head.index ? head.toNonIndexed() : head);
+    }
+    g = mergeGeometries(blades, false);
+  } else if (kind === 'shrub') {
+    g = new THREE.IcosahedronGeometry(0.5, 0);
+    g.scale(1, 0.8, 1);
+    g.translate(0, 0.4, 0);
+  } else if (kind === 'rubble') {
+    // A lumpy stone.
+    g = new THREE.IcosahedronGeometry(0.5, 0);
+    g.translate(0, 0.35, 0);
   } else if (kind === 'hay') {
     g = new THREE.CylinderGeometry(0.5, 0.5, 1, 8, 1);
     g.translate(0, 0.5, 0);
@@ -103,7 +148,19 @@ function procGeometry(kind: ProcKind): THREE.BufferGeometry {
     const y = ng.getAttribute('position').getY(i);
     let k = kind === 'plinth' ? 0.85 + 0.15 * Math.min(1, Math.max(0, y)) : 1;
     // Rough stones: each vertex a little lighter or darker.
-    if (kind === 'ring') k = 0.82 + 0.3 * (((i * 2654435761) >>> 0) / 4294967296);
+    if (kind === 'ring' || kind === 'rubble' || kind === 'shrub') k = 0.82 + 0.3 * (((i * 2654435761) >>> 0) / 4294967296);
+    if (kind === 'bloom' && y < 0.8) {
+      // Green stalks under the flower.
+      col[i * 3] = 0.16;
+      col[i * 3 + 1] = 0.32;
+      col[i * 3 + 2] = 0.07;
+      continue;
+    }
+    // The stain is darker in the middle, where the water stood longest.
+    if (kind === 'mud') {
+      const r = Math.hypot(ng.getAttribute('position').getX(i), ng.getAttribute('position').getZ(i));
+      k = 0.8 + 0.35 * Math.min(1, r * 2);
+    }
     col[i * 3] = c.r * k;
     col[i * 3 + 1] = c.g * k;
     col[i * 3 + 2] = c.b * k;
@@ -140,6 +197,30 @@ export function repaint(col: Float32Array, roof: THREE.Color | null, plaster: TH
   }
 }
 
+/**
+ * Ruins: weathered (colours drained towards a dull grey) and, below height
+ * h (world units), stained brown by the flood's mud.
+ */
+function weather(g: THREE.BufferGeometry, h: number): void {
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  const col = g.getAttribute('color') as THREE.BufferAttribute | undefined;
+  if (!col) return;
+  const mud = new THREE.Color(0x5a4630);
+  for (let i = 0; i < pos.count; i++) {
+    let r = col.getX(i);
+    let gg = col.getY(i);
+    let b = col.getZ(i);
+    const l = 0.3 * r + 0.55 * gg + 0.15 * b;
+    r = r * 0.55 + l * 0.4;
+    gg = gg * 0.55 + l * 0.4;
+    b = b * 0.55 + l * 0.38;
+    const y = pos.getY(i);
+    const t = y < h ? Math.min(1, (h - y) / 0.08) * 0.55 : 0;
+    col.setXYZ(i, r * (1 - t) + mud.r * t, gg * (1 - t) + mud.g * t, b * (1 - t) + mud.b * t);
+  }
+  col.needsUpdate = true;
+}
+
 /** Merge a design's parts at a stage into one non-indexed geometry (position, normal, color). */
 export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap<ModelName, StaticModel>): THREE.BufferGeometry {
   const geos: THREE.BufferGeometry[] = [];
@@ -152,6 +233,14 @@ export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap
     let g: THREE.BufferGeometry;
     m.makeTranslation(p.x * d.scale, p.y * d.vscale, p.z * d.scale);
     m.multiply(tmp.makeRotationY(((p.rot ?? 0) * Math.PI) / 2));
+    if (p.lean || p.roll) {
+      // Ruins: tip the part about its foot.
+      const px = (p.pivot ?? 0) * d.scale;
+      m.multiply(tmp.makeTranslation(px, 0, 0));
+      if (p.lean) m.multiply(tmp.makeRotationZ(-p.lean));
+      if (p.roll) m.multiply(tmp.makeRotationX(p.roll));
+      m.multiply(tmp.makeTranslation(-px, 0, 0));
+    }
     if (isProc(p.m)) {
       g = procGeometry(p.m);
       const s = p.s ?? [1, 1, 1];
@@ -180,6 +269,7 @@ export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap
         m.multiply(tmp.makeScale(d.scale / TOWN_SCALE, d.vscale / TOWN_SCALE, d.scale / TOWN_SCALE));
     }
     g.applyMatrix4(m);
+    if (d.stain !== undefined && !p.fresh) weather(g, d.stain * d.vscale);
     geos.push(g);
   }
   const merged = geos.length ? mergeGeometries(geos, false) : new THREE.BufferGeometry();
@@ -192,8 +282,8 @@ export function buildDesignGeometry(d: Design, stage: Stage, models: ReadonlyMap
 /** Geometry/mesh key of a building given its village's food level (and whether it fishes). */
 export function buildingKey(b: BuildingInfo, food: number, fish = false, wood = 0): string {
   if (b.kind === 'store') return `store:${food}:${fish ? 1 : 0}:${wood}`;
-  // Ruins: the walls still stand, the roof is gone.
-  if (b.kind === 'ruin') return `house:${houseVariant(b.id)}:${Stage.Walls}`;
+  // Ruins: wrecked walls, the roof caved in, mud and debris; weeds as it ages.
+  if (b.kind === 'ruin') return `ruin:${houseVariant(b.id)}:${b.weeds ?? 2}`;
   if (b.kind === 'well') return `well:${buildStage(b.progress)}:${b.dry ? 1 : 0}`;
   if (b.kind === 'mill') return `mill:${buildStage(b.progress)}:${b.sacks ?? 0}`;
   return `house:${houseVariant(b.id)}:${buildStage(b.progress)}`;
@@ -204,6 +294,7 @@ function designFor(key: string): { design: Design; stage: Stage } {
   if (parts[0] === 'store') return { design: storeDesign(Number(parts[1]), parts[2] === '1', Number(parts[3] ?? 0)), stage: Stage.Done };
   if (parts[0] === 'well') return { design: wellDesign(parts[2] === '1'), stage: Number(parts[1]) as Stage };
   if (parts[0] === 'mill') return { design: millDesign(Number(parts[2] ?? 0)), stage: Number(parts[1]) as Stage };
+  if (parts[0] === 'ruin') return { design: ruinDesign(Number(parts[1]), Number(parts[2] ?? 0)), stage: Stage.Done };
   return { design: HOUSE_DESIGNS[Number(parts[1])]!, stage: Number(parts[2]) as Stage };
 }
 

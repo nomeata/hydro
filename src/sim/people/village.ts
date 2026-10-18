@@ -19,6 +19,8 @@ import { ECONOMY, Settlement, type SettlementState } from './settlement';
 import { MILL, chooseMillSite, headAt, millTurns } from './mills';
 import { WELL, chooseWellSite, drawWell, waterAccess, wellWorks } from './wells';
 import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works';
+import { Bridges, bridgeInfo, type Footbridge } from './bridges';
+import { REACH_RULES, WalkMap } from './reach';
 
 /** Hydro steps between agent updates. */
 export const PEOPLE_TICK = 2;
@@ -179,6 +181,8 @@ export interface Building {
   /** Mills: grain waiting to be ground (person-days), and days in a row without a head. */
   grain?: number;
   idle?: number;
+  /** Ruins: the day the flood took it (absent in older saves: long ago). */
+  ruinedDay?: number;
 }
 
 /** Steps between updates of the mills' wheels. */
@@ -226,10 +230,12 @@ export interface PeopleState {
   noAnimals?: boolean;
   /** Block attractiveness at the end of last summer (absent before the first, and in older saves). */
   summerSurvey?: number[];
+  /** The villages' footbridges (bridges.ts; absent in older saves). */
+  bridges?: Footbridge[];
 }
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
-export type PeopleEvent = 'harvest' | 'catch' | 'rebuilt' | 'well' | 'mill';
+export type PeopleEvent = 'harvest' | 'catch' | 'rebuilt' | 'well' | 'mill' | 'bridge';
 
 export interface PeopleHost {
   /** Called when a cell's terrain changed. */
@@ -288,6 +294,8 @@ export class PeopleSystem {
   jettyDirty = true;
   /** Cows, sheep, pigs and chicks (herds.ts). */
   readonly herds: Herds;
+  /** The villages' footbridges (bridges.ts). */
+  readonly bridges: Bridges;
   /** Staged scenes keep no animals (their ambient animals are drawn by the renderer). */
   noAnimals = false;
   /**
@@ -313,6 +321,7 @@ export class PeopleSystem {
     this.rng = new Rng(seed ^ 0x9e0b1e);
     this.pf = new PathFinder(world);
     this.herds = new Herds(world, this.pf, this.rng, () => this.nextId++, this.onBridge);
+    this.bridges = new Bridges(world, () => this.nextId++);
     this.fieldMoisture = new Float32Array(world.size);
     this.nearestWater = new Int32Array(world.size).fill(-1);
     this.waterDist = new Float32Array(world.size);
@@ -415,7 +424,10 @@ export class PeopleSystem {
       this.lastDay = time.day;
       this.daily(time, host);
     }
-    if (step % 30 === 0) this.floodHouses();
+    if (step % 30 === 0) {
+      this.floodHouses(time.day);
+      this.bridges.flood(time.day);
+    }
     if (step % MILL_EVERY === 0) this.updateMills();
     for (const a of this.agents) this.updateAgent(a, time, host);
     // Remove agents who have left.
@@ -650,13 +662,18 @@ export class PeopleSystem {
       this.planWoods(s);
       this.herds.daily(s, this.herdHome(s), time.season === 3, !this.noAnimals);
       this.assignJobs(s, host);
-      this.manageFields(s);
+      this.manageLand(s, time.day);
     }
     this.peakPopulation = Math.max(this.peakPopulation, this.population);
     // Migrants remember how the land looked at the end of summer.
     if (doy === FOUNDING.summerDay) this.summerSurvey = this.surveyLand();
     if (time.day % FOUNDING.everyDays === 0) this.considerFounding(time);
     this.updateQuays();
+    // Ruins grow over (rendering).
+    for (const b of this.buildings) {
+      const age = time.day - (b.ruinedDay ?? -1);
+      if (b.kind === 'ruin' && (age === DAYS_PER_SEASON || age === DAYS_PER_YEAR)) this.buildingsDirty = true;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -926,12 +943,19 @@ export class PeopleSystem {
     return this.buildings.map((b) => {
       const o: BuildingInfo = { id: b.id, kind: b.kind, x: b.x, y: b.y, rot: b.rot, progress: b.progress };
       if (b.kind === 'well') o.dry = b.dry ?? false;
+      if (b.kind === 'ruin') o.weeds = this.ruinWeeds(b);
       if (b.kind === 'mill') {
         o.spin = b.spin ?? 0;
         o.sacks = Math.min(3, Math.ceil((b.grain ?? 0) / MILL.grind));
       }
       return o;
     });
+  }
+
+  /** How overgrown a ruin is: 0 in its first season, 1 within the year, 2 after. */
+  private ruinWeeds(b: Building): number {
+    const age = this.lastDay - (b.ruinedDay ?? -DAYS_PER_YEAR);
+    return age < DAYS_PER_SEASON ? 0 : age < DAYS_PER_YEAR ? 1 : 2;
   }
 
   /** Lined banks by the houses that face open water read as quays. */
@@ -951,8 +975,12 @@ export class PeopleSystem {
     return j && j.progress >= 1 ? j.cells[j.cells.length - 1]! : -1;
   }
 
-  /** Jetties for the structure list (rendering). */
+  /** Jetties and footbridges for the structure list (rendering). */
   jettyInfo(): StructureInfo[] {
+    return [...this.jettyList(), ...bridgeInfo(this.world, this.bridges.list)];
+  }
+
+  private jettyList(): StructureInfo[] {
     const W = this.world.width;
     const out: StructureInfo[] = [];
     for (const s of this.settlements) {
@@ -1198,7 +1226,7 @@ export class PeopleSystem {
   }
 
   /** Floods are noticed as they happen: houses in deep water are ruined, flooded land remembered. */
-  private floodHouses(): void {
+  private floodHouses(day: number): void {
     const w = this.world;
     for (let i = 0; i < w.size; i++) {
       if (w.water[i]! > 0.3 && w.landuse[i] !== LandUse.None) {
@@ -1215,6 +1243,7 @@ export class PeopleSystem {
         }
         b.kind = 'ruin';
         b.progress = 0;
+        b.ruinedDay = day;
         this.floods.ruined++;
         this.buildingsDirty = true;
       }
@@ -1498,6 +1527,7 @@ export class PeopleSystem {
     if (ruin) {
       ruin.kind = 'house';
       ruin.progress = 0.3; // the walls still stand
+      delete ruin.ruinedDay;
       this.onEvent?.('rebuilt', w0.idx(ruin.x, ruin.y));
       this.buildingsDirty = true;
       return;
@@ -1544,7 +1574,7 @@ export class PeopleSystem {
     want.set(Job.Miller, mill && mill.progress >= 1 && (mill.grain ?? 0) > 0 ? 1 : 0);
     // Stone work and the jetty need a builder or two (a small mason share, more when prosperous).
     const stoneWork = n >= 4 && (st.lineSites?.length ?? 0) > 0 && (st.lineBudget ?? 0) >= 1;
-    const jettyWork = st.jetty !== undefined && st.jetty.progress < 1;
+    const jettyWork = (st.jetty !== undefined && st.jetty.progress < 1) || this.bridges.site(st.id, this.lastDay, (c) => this.blocked.has(c)) !== null;
     const masons = stoneWork || jettyWork ? Math.max(1, Math.round(n * (0.04 + 0.08 * Math.max(0, st.wellbeing)))) : 0;
     want.set(Job.Builder, Math.max(masons, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0));
     // Fishers: as many as the waters sustain (one landing ≈ CATCH a day), up to a quarter.
@@ -1575,12 +1605,35 @@ export class PeopleSystem {
     for (const a of mine) if (a.job === Job.Idle) a.job = Job.Farmer;
   }
 
-  private manageFields(s: Settlement): void {
+  /**
+   * Daily: fields by walking distance (reach.ts) and footbridges to the
+   * land across the water (bridges.ts). Fields that have become too far
+   * to walk to are given up once harvested (at once if cut off), unless a
+   * footbridge is on its way.
+   */
+  private manageLand(s: Settlement, day: number): void {
+    const st = s.state;
+    const w = this.world;
+    const map = new WalkMap(w, Math.round(st.x), Math.round(st.y), REACH_RULES.radius, this.onBridge);
+    const far = this.fieldsOf(s).filter((i) => map.tooFar(i));
+    const wishes = this.manageFields(s, map);
+    this.bridges.plan(st.id, st.population, map, [...far, ...wishes], day);
+    if (this.bridges.pending(st.id)) return;
+    for (const i of far)
+      if (w.crop[i] === 0 || !Number.isFinite(map.at(i))) {
+        w.landuse[i] = LandUse.None;
+        w.crop[i] = 0;
+      }
+  }
+
+  /** Claim new fields near by path; returns good land turned down for being too far to walk to. */
+  private manageFields(s: Settlement, map: WalkMap): number[] {
     const w = this.world;
     const farmers = this.agents.filter((a) => a.settlement === s.state.id && a.job === Job.Farmer).length;
     const want = farmers * FARMING.fieldsPerFarmer;
     const fields = this.fieldsOf(s);
-    if (fields.length >= want) return;
+    const wishes: number[] = [];
+    if (fields.length >= want) return wishes;
     // Claim the best unclaimed cells nearby (at most 10 per day).
     const cands: [number, number][] = [];
     const cx = Math.round(s.state.x);
@@ -1604,7 +1657,10 @@ export class PeopleSystem {
         if (y > 0 && w.landuse[i - W] === LandUse.Field) adj++;
         if (y < w.height - 1 && w.landuse[i + W] === LandUse.Field) adj++;
         const suit = w.fertility[i]! * wet - r / (FIELD_RADIUS * 4) - forest + (wet > 0 ? 0.12 * adj : 0);
-        if (suit > 0.12) cands.push([suit, i]);
+        if (suit <= 0.12) continue;
+        // Near as the crow flies is not enough: it must be near by path (else maybe a footbridge).
+        if (!map.claimable(i)) wishes.push(i);
+        else cands.push([suit - Math.max(0, map.at(i) - r) / (FIELD_RADIUS * 4), i]);
       }
     cands.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
     for (let k = 0; k < Math.min(10, want - fields.length, cands.length); k++) {
@@ -1613,6 +1669,7 @@ export class PeopleSystem {
       w.crop[i] = 0;
       w.vegetation[i] = Math.min(w.vegetation[i]!, 0.15); // cleared
     }
+    return wishes;
   }
 
   private fieldsOf(s: Settlement): number[] {
@@ -1710,6 +1767,15 @@ export class PeopleSystem {
         a.timer = 60;
         a.anim = EntityAnim.Build;
         break;
+      case SiteKind.Bridge: {
+        // Hammer the planks on, facing the water.
+        a.timer = 60;
+        a.anim = EntityAnim.Build;
+        const b = this.bridges.list.find((x) => x.id === a.site);
+        const W = this.world.width;
+        if (b) a.heading = Math.atan2(((b.b / W) | 0) - ((b.a / W) | 0), (b.b % W) - (b.a % W));
+        break;
+      }
       case SiteKind.Chop: {
         a.timer = 90;
         a.anim = EntityAnim.Chop;
@@ -1950,6 +2016,12 @@ export class PeopleSystem {
         a.carry = CarryKind.None;
         break;
       }
+      case SiteKind.Bridge: {
+        const b = this.bridges.list.find((x) => x.id === a.site);
+        if (b && this.bridges.work(b.id)) this.onEvent?.('bridge', b.a);
+        a.carry = CarryKind.None;
+        break;
+      }
       case SiteKind.Jetty: {
         const j = s?.state.jetty;
         if (j && j.progress < 1) {
@@ -2003,6 +2075,11 @@ export class PeopleSystem {
       if (house && this.goTo(a, w.idx(house.x, house.y), SiteKind.House, time, house.id)) return;
       const jt = s.state.jetty;
       if (jt && jt.progress < 1 && !this.blocked.has(jt.shore) && this.goTo(a, jt.shore, SiteKind.Jetty, time)) {
+        a.carry = CarryKind.Log;
+        return;
+      }
+      const br = this.bridges.site(s.state.id, time.day, (c) => this.blocked.has(c));
+      if (br && this.goTo(a, br.a, SiteKind.Bridge, time, br.id)) {
         a.carry = CarryKind.Log;
         return;
       }
@@ -2268,6 +2345,7 @@ export class PeopleSystem {
       animals: this.herds.animals,
       noAnimals: this.noAnimals,
       summerSurvey: this.summerSurvey ? Array.from(this.summerSurvey, (v) => Math.round(v * 1000) / 1000) : undefined,
+      bridges: this.bridges.list.length ? this.bridges.list : undefined,
     });
   }
 
@@ -2293,6 +2371,8 @@ export class PeopleSystem {
     this.herds.animals = c.animals ?? [];
     this.noAnimals = c.noAnimals ?? false;
     this.summerSurvey = c.summerSurvey ? Float32Array.from(c.summerSurvey) : null;
+    this.bridges.list = c.bridges ?? [];
+    this.bridges.dirty = true;
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.
     if (c.fishCap && c.fishCap.length === this.fishCap.length) this.fishCap.set(c.fishCap);
