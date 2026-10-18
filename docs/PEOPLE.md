@@ -300,8 +300,8 @@ they look after the water by their homes on their own:
   (`lineSites`, best 24): banks (dry or shallow cells next to water) within
   3 cells of its houses and yards (not by fields: a meander may take a
   field, and that is for the player to answer), and the beds and banks
-  of the player's canals (cells flagged `CellFlag.Canal` when a trench plan
-  lowered them) within 22 cells of the centre that carry water. Faster
+  of the player's canals (cells flagged `CellFlag.Canal` when the player dug
+  them 0.3 m below their original ground) within 22 cells of the centre that carry water. Faster
   water, flood memory, canals and banks right by a house rank higher. A
   stone budget grows by 1.5 cells/day at full wellbeing (a fifth of that
   when poor, capped at 4). Builders, or a small mason share of the
