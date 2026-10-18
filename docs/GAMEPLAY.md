@@ -184,6 +184,24 @@ Every step teaches the next one's physics without a word of UI:
    gated turbine when they make less. The gate rule (§2) gets a third
    mode for turbine gates: release to keep supply ≥ demand.
 
+*As built (M6, `sim/power/`).* The **turbine** is a tap on a weir, dike
+or dam crest (also beside a gate); its penstock runs across the wall to
+the lowest ground within 4 cells either side and moves
+`Q = min(5, 0.6·√(2gH))` m³/s from the higher to the lower side,
+`P = 0.8·ρgQH` (mass conserved; it takes water off the spillway and the
+gate). A turbine whose pool stands at its spill level (the lower of the
+crest and the pool's high-water mark, which sinks 1 cm/day) runs free
+(run of the river: with a small river it settles at what the river
+brings); a pool drawn below that is storage and runs only to cover the
+houses' demand. No mill conversion and no turbine gate mode (yet).
+Houses within 8 cells of a turbine (or a pole) are on its network;
+demand ~2 kW a house (`houseDemand`: low at night, evening peak, +25%
+in winter). Supply short of demand dims and flickers the lights. A
+village's daily lit share gives up to +0.05 wellbeing (no capacity
+change). Energy is booked per network (J): produced = houses + pumps +
+unused. The tools share one palette button, **Power**, with its modes
+on the options line.
+
 ---
 
 ## 2. The sluice gate: villager-operated
