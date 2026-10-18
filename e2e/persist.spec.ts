@@ -8,7 +8,7 @@ test('the world survives a reload', async ({ page }) => {
   await openGame(page, '', './?test=1&persist=1&size=128');
   await page.evaluate(async () => {
     const h = (window as any).__hydro;
-    h.client.command({ type: 'planTrench', points: [[50, 50], [70, 60]], width: 2, depth: 1 });
+    h.client.command({ type: 'shapeLine', tool: 'dig', points: [[50, 50], [70, 60]], width: 2, amount: 1 });
     await h.client.runDays(0.5);
     await h.autosave();
   });

@@ -3,8 +3,9 @@
  * world, independent of worldgen tuning, simulated by the real engine.
  *
  *  - 'water':   the river runs, a rain front drifts over.
- *  - 'shape':   the same land; the intro draws a trench from the river to a
- *               dry hollow (a real planTrench command) and the water follows.
+ *  - 'shape':   the same land; the intro digs a channel from the river to a
+ *               dry hollow with the Dig brush (real sculpt commands) and the
+ *               water follows.
  *  - 'village': a ready-made village by the pond (PeopleSystem.stage).
  *  - 'weir':    the tool card for the weir: low summer water; a weir across
  *               the river (built at once) holds a pool behind it.

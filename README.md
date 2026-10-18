@@ -3,9 +3,10 @@
 A slow, cozy water-management sandbox in the browser.
 
 Rain falls, rivers wander, groundwater rises and sinks. You shape the land
-with trenches, dikes, reservoirs and (eventually) pumps and turbines, but you
-only ever *plan*. Little people walk over and build it, and then decide for
-themselves where to farm, fish, graze and settle.
+with your own hand — raise, dig and even the ground with a brush — and plan
+weirs, gates, wheels and (eventually) pumps and turbines that a little crew
+builds. The people then decide for themselves where to farm, fish, graze and
+settle.
 
 **Play:** https://hydro.nomeata.de/ (desktop and phone)
 

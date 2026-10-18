@@ -18,7 +18,8 @@ const NS = 'http://www.w3.org/2000/svg';
 /** Crest step of the − / + buttons (m). */
 export const CREST_STEP = 0.25;
 const MIN_HEIGHT = 0.5;
-const MAX_HEIGHT = 6;
+/** (The sim also keeps the crest within 4 m of the ground on the wall's lower side.) */
+const MAX_HEIGHT = 4;
 /** How long an edit is shown as sent before the snapshot catches up (ms). */
 const PENDING_MS = 2500;
 
@@ -193,7 +194,7 @@ export class Selection {
     const weir = sel.kind === 'weir';
     this.crestBox.hidden = !weir;
     this.note.textContent = weir
-      ? 'Drag its ends to move them; − / + lower or raise the crest. The crew rebuilds it.'
+      ? 'Drag its ends to move them; − / + lower or raise the wall’s crest. The crew rebuilds it.'
       : sel.kind === 'gate'
         ? 'Removing it fills the opening back up to the dam’s crest.'
         : '';

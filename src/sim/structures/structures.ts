@@ -3,9 +3,11 @@
  *
  * - **Lining** is planned per cell and built after any earthworks there;
  *   built cells get CellFlag.Lined (no erosion, no slumping).
- * - A **weir** is a dike plan along a straight line plus lining on it: a
- *   fixed overflow crest made of terrain, so the flow model spills water
- *   over it naturally. The record is kept for rendering.
+ * - A **weir** is a stone wall along a straight line on the ground as it is
+ *   (plans.ts weirShape: the wall cells raised straight up to the crest, a
+ *   stone apron either side, all lined; at most 4 m above its lower side):
+ *   a fixed overflow crest made of terrain, so the flow model spills water
+ *   over it naturally. The crew builds it. The record is kept for rendering.
  * - A **sluice gate** is the one structure that is not just terrain: the
  *   builders dig a passage through the dike down to the gate's sill and line
  *   it; the gate itself is a thin wall on the passage's middle row of cells
@@ -23,7 +25,7 @@
 import type { Pt, StructureInfo } from '../../shared/protocol';
 import { LINING_DONE, LINING_QUAY } from '../../shared/protocol';
 import type { Walls } from '../hydro/inertial';
-import { clearGround, keepsPlan, planDike, rasterisePath, weirShape } from '../plans/plans';
+import { WEIR_CREST, WEIR_MAX_WALL, clearGround, keepsPlan, rasterisePath, weirCrest, weirShape } from '../plans/plans';
 import { CELL_AREA, DT } from '../constants';
 import { CellFlag, type World } from '../world';
 import { WHEEL_MIN_SPEED, wheelLift, wheelSite } from './wheel';
@@ -90,9 +92,9 @@ export interface Weir {
   base?: number[];
 }
 
-/** Lowest and highest crest a weir may have above the ground under it (m). */
+/** Lowest crest a weir may have above the ground under it, and the highest above the ground on its lower side (m). */
 export const WEIR_MIN_HEIGHT = 0.5;
-export const WEIR_MAX_HEIGHT = 6;
+export const WEIR_MAX_HEIGHT = WEIR_MAX_WALL;
 /** Height assumed for weirs from saves without their ground (m). */
 const OLD_WEIR_HEIGHT = 1;
 
@@ -220,7 +222,7 @@ export class Structures {
     const a = points[0]!;
     const b = points[points.length - 1]!;
     let lowest = Infinity;
-    for (const i of rasterisePath(w, [a, b], 1).keys()) lowest = Math.min(lowest, w.terrain(i));
+    for (const i of rasterisePath(w, [a, b], WEIR_CREST).keys()) lowest = Math.min(lowest, w.terrain(i));
     if (!Number.isFinite(lowest)) return [];
     const h = Math.max(WEIR_MIN_HEIGHT, Math.min(WEIR_MAX_HEIGHT, height));
     return this.layWeir(null, a, b, lowest + h) ?? [];
@@ -252,7 +254,7 @@ export class Structures {
     const g = this.weirGround(wr);
     if (!g.size) return wr.top - OLD_WEIR_HEIGHT;
     let lowest = Infinity;
-    for (const i of rasterisePath(this.world, [[wr.x, wr.y], [wr.x2, wr.y2]], 1).keys()) {
+    for (const i of rasterisePath(this.world, [[wr.x, wr.y], [wr.x2, wr.y2]], WEIR_CREST).keys()) {
       const v = g.get(i);
       if (v !== undefined) lowest = Math.min(lowest, v);
     }
@@ -285,7 +287,7 @@ export class Structures {
     const ground = (i: number): number => known.get(i) ?? w.terrain(i);
     const probe = weirShape(w, a, b, top, ground);
     if (!Number.isFinite(probe.lowest)) return null;
-    const crest = Math.max(probe.lowest + WEIR_MIN_HEIGHT, Math.min(probe.lowest + WEIR_MAX_HEIGHT, top));
+    const crest = weirCrest(probe.lowest, probe.foot, top);
     const shape = crest === top ? probe : weirShape(w, a, b, crest, ground);
     if (this.allow && !shape.lined.every((i) => this.allow!(i))) return null;
     const gates = this.gateCells();
@@ -406,8 +408,8 @@ export class Structures {
   }
 
   /**
-   * Earthworks planned through structures take them down (a trench, dike or
-   * level over them): gates and wheels on those cells go; a weir loses the
+   * Take down what stands on these cells (a removed weir takes the gates and
+   * turbines in it along; scripts and old tests): gates and wheels there go; a weir loses the
    * part the plan crosses (its stone there comes off) and what is left on
    * either side stays a weir of its own if it is long enough.
    */
@@ -555,14 +557,14 @@ export class Structures {
         }
       }
       if (!Number.isFinite(low)) return null;
-      // The sill is the lowest (planned) ground on the line, e.g. the floor of
-      // a canal still being dug; the dam's crest is `height` above it.
-      const line: Pt[] = [a, b];
-      let lowest = Infinity;
-      for (const i of rasterisePath(w, line, 1).keys()) lowest = Math.min(lowest, w.terrain(i));
+      // The sill is the lowest ground on the line, e.g. a canal's floor; a
+      // stone wall (a weir) goes across with its crest `height` above it,
+      // and the gate sits in the wall there.
       sill = low;
-      top = low + height;
-      for (const i of planDike(w, line, 2, top - lowest)) changed.push(i);
+      const wall = this.layWeir(null, a, b, low + height);
+      if (!wall) return null;
+      changed.push(...wall);
+      top = this.weirs[this.weirs.length - 1]!.top;
     }
     if (!(top - sill >= MIN_GATE_HEAD)) return null;
 

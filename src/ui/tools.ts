@@ -1,13 +1,19 @@
 /**
- * Tool palette and drawing interaction. Tools only create *plans*; the
- * builders realise them over time. While a drawing tool is active, one
- * finger / the left mouse button draws, and two fingers still pan and zoom.
+ * Tool palette and drawing interaction. The three sculpting brushes (Raise,
+ * Dig, Even) change the ground at once while the pointer is held (the sim
+ * applies it, the client predicts it: client/sculptor.ts); they stay
+ * selected. The structure tools place *plans* the crew builds, one per use.
+ * While a tool is active, one finger / the left mouse button draws or
+ * brushes, and two fingers still pan and zoom.
  * Each tool's hint says which problem of the land it solves (GAMEPLAY.md
  * §3). Sluice gates are worked by the villagers (sim/structures/gatekeeper.ts),
  * not by the player.
  */
 import type { Command, Pt } from '../shared/protocol';
-import { planDike, planLevel, planTrench, planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
+import { planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
+import { BRUSH_DEFAULT_SIZE, BRUSH_SIZES } from '../sim/plans/sculpt';
+import type { Sculptor } from '../client/sculptor';
+import type { BrushTool } from '../shared/protocol';
 import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
@@ -15,7 +21,15 @@ import { wheelSite, wheelSites, type WheelGrid, type WheelSite } from '../sim/st
 import { polePositions, pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
 import { toolName } from '../shared/progress';
 
-export type ToolId = 'look' | 'trench' | 'dike' | 'level' | 'weir' | 'gate' | 'wheel' | 'power' | 'erase';
+export type ToolId = 'look' | BrushTool | 'weir' | 'gate' | 'wheel' | 'power' | 'erase';
+
+const BRUSHES: readonly ToolId[] = ['raise', 'dig', 'even'];
+export function isBrush(id: ToolId): id is BrushTool {
+  return BRUSHES.includes(id);
+}
+
+/** Touch: wait this long before the brush bites, so a second finger (pan, zoom) can still come (ms). */
+const TOUCH_DELAY = 90;
 
 /**
  * The power tools share one palette button (so the palette stays one row
@@ -79,6 +93,12 @@ export interface ToolHost {
   /** A tool was picked: close the selection. */
   deselect?(): void;
   command(cmd: Command): void;
+  /** The brushes' prediction and sending (client/sculptor.ts). */
+  sculptor?: Sculptor;
+  /** The brush's ring under the pointer, or none. */
+  setBrushCursor?(c: { x: number; y: number; r: number; tool: BrushTool; active: boolean } | null): void;
+  /** The brush worked around (x, y) this frame (the cosmetic crew comes to look). */
+  brushed?(x: number, y: number, r: number): void;
 }
 
 interface ToolDef {
@@ -91,30 +111,35 @@ interface ToolDef {
 const TOOLS: ToolDef[] = [
   { id: 'look', label: 'Look', icon: ICONS.hand, hint: '' },
   {
-    id: 'trench',
-    label: 'Trench',
-    icon: ICONS.trench,
-    hint: 'Dig from the river down to dry land: water follows the trench, fields follow the water. Its floor slopes evenly from start to end.',
+    id: 'raise',
+    label: 'Raise',
+    icon: ICONS.raise,
+    hint: 'Hold to heap up earth: a bank to keep a flood off the fields, or to hold a pond. Make it high enough: water pouring over loose earth cuts through it. Across a river, build a weir.',
   },
   {
-    id: 'dike',
-    label: 'Dike',
-    icon: ICONS.dike,
-    hint: 'Raise a level earth bank to keep a flood off the fields, or to hold a pond. Make it high enough: water pouring over a dike cuts through it. Across a river, build a weir.',
+    id: 'dig',
+    label: 'Dig',
+    icon: ICONS.dig,
+    hint: 'Hold to dig: brush a channel from the river down to dry land and the water follows; fields follow the water. A rough channel smooths itself once water runs in it.',
   },
-  { id: 'level', label: 'Level', icon: ICONS.level, hint: 'Flatten a slope into a terrace or a basin, at the height where you start.' },
+  {
+    id: 'even',
+    label: 'Even',
+    icon: ICONS.even,
+    hint: 'Brush to smooth the ground towards its mean: level a terrace or a basin, round off a bank, fill a ditch. Brush again to make it flatter.',
+  },
   // No lining tool: villagers line the banks near their homes (planLining stays a command for scenes and tests).
   {
     id: 'weir',
     label: toolName('weir'),
     icon: ICONS.weir,
-    hint: 'Draw across a river: a stone crest that the water may flow over. It holds the pool at the crest’s height all summer and spills the rest safely, where a mill can use the fall. Tap a weir to change it.',
+    hint: 'Draw across a river: a stone wall (up to 4 m) that the water may flow over. It holds the pool at its crest all summer and spills the rest safely, where a mill can use the fall. Tap a weir to change it.',
   },
   {
     id: 'gate',
     label: toolName('gate'),
     icon: ICONS.gate,
-    hint: 'Tap a dike or weir to put a sluice gate in it. Villagers open it to water their fields in summer; it opens by itself before the water spills over.',
+    hint: 'Tap a weir or a bank to put a sluice gate in it, or draw across a channel for a wall with a gate. Villagers open it to water their fields in summer; it opens by itself before the water spills over.',
   },
   {
     id: 'wheel',
@@ -127,7 +152,7 @@ const TOOLS: ToolDef[] = [
     id: 'erase',
     label: 'Remove',
     icon: ICONS.erase,
-    hint: 'Brush over plans or anything built to take it away: the crew takes down weirs, gates and wheels. Or tap a single thing in Look mode and press Remove.',
+    hint: 'Brush over anything built to take it away: the crew takes down weirs, gates and wheels. Or tap a single thing in Look mode and press Remove.',
   },
 ];
 
@@ -138,13 +163,11 @@ interface ToolSettings {
   amount?: number;
   maxWidth: number;
   amountLabel?: 'Depth' | 'Height';
+  maxAmount?: number;
 }
 
 const SETTINGS: Partial<Record<ToolId, ToolSettings>> = {
-  trench: { width: 2, amount: 1.5, maxWidth: 8, amountLabel: 'Depth' },
-  dike: { width: 2, amount: 2, maxWidth: 8, amountLabel: 'Height' },
-  level: { width: 2, maxWidth: 8 },
-  weir: { width: 2, amount: 1.5, maxWidth: 2, amountLabel: 'Height', noWidth: true },
+  weir: { width: 2, amount: 1.5, maxWidth: 2, amountLabel: 'Height', noWidth: true, maxAmount: 4 },
   gate: { width: 1, amount: 2, maxWidth: 3, amountLabel: 'Height' },
 };
 
@@ -168,6 +191,17 @@ export class ToolPalette {
   private readonly amountOut: HTMLOutputElement;
   private readonly amountLabel: HTMLElement;
   private readonly amountInput: HTMLInputElement;
+  /** The brushes' options line: sizes and Undo. */
+  private readonly brushRow: HTMLElement;
+  private readonly sizeButtons: HTMLButtonElement[] = [];
+  private readonly undoButton: HTMLButtonElement;
+  /** Index into BRUSH_SIZES. */
+  brushSize = BRUSH_DEFAULT_SIZE;
+  /** The stroke being brushed: pointer, where it is on screen, the last ground point and time. */
+  private brush: { id: number; cx: number; cy: number; at: { x: number; y: number } | null; t: number; start: number; touch: boolean } | null = null;
+  private brushRaf = 0;
+  /** Where the mouse hovers with a brush (the ring), in client pixels. */
+  private hover: { x: number; y: number } | null = null;
 
   private pointers = new Set<number>();
   /** A possible tap in Look mode: where and when the pointer went down. */
@@ -220,6 +254,26 @@ export class ToolPalette {
       this.modes.append(b);
     }
     this.options.prepend(this.modes);
+    this.brushRow = document.createElement('div');
+    this.brushRow.className = 'brushes';
+    BRUSH_SIZES.forEach((r, k) => {
+      const b = document.createElement('button');
+      b.dataset.size = String(k);
+      const d = 6 + k * 5;
+      b.innerHTML = `<i class="dot" style="width:${d}px;height:${d}px"></i><span>${['Small', 'Medium', 'Large'][k] ?? r}</span>`;
+      b.title = `Brush ${Math.round(r * 2 * 5)} m across`;
+      b.addEventListener('click', () => this.setBrushSize(k));
+      this.sizeButtons.push(b);
+      this.brushRow.append(b);
+    });
+    this.undoButton = document.createElement('button');
+    this.undoButton.className = 'undo';
+    this.undoButton.dataset.testid = 'undo';
+    this.undoButton.innerHTML = `${ICONS.undo}<span>Undo</span>`;
+    this.undoButton.title = 'Undo the last stroke (Ctrl+Z)';
+    this.undoButton.addEventListener('click', () => this.undo());
+    this.brushRow.append(this.undoButton);
+    this.options.prepend(this.brushRow);
     this.sizeOut = this.options.querySelector('output[data-k=size]')!;
     this.amountOut = this.options.querySelector('output[data-k=amount]')!;
     this.amountLabel = this.options.querySelector('[data-k=amountLabel]')!;
@@ -257,8 +311,38 @@ export class ToolPalette {
     c.addEventListener('pointerup', (e) => this.onUp(e));
     c.addEventListener('pointercancel', (e) => this.onCancel(e));
     window.addEventListener('keydown', (e) => this.onKey(e));
+    c.addEventListener('pointerleave', () => {
+      this.hover = null;
+      if (!this.brush) this.host.setBrushCursor?.(null);
+    });
     this.select('look');
     this.setPopulation(0);
+    this.setBrushSize(this.brushSize);
+  }
+
+  /** Pick a brush size (index into BRUSH_SIZES). */
+  setBrushSize(k: number): void {
+    this.brushSize = Math.max(0, Math.min(BRUSH_SIZES.length - 1, k));
+    this.sizeButtons.forEach((b, j) => b.setAttribute('aria-pressed', String(j === this.brushSize)));
+  }
+
+  /** The brush radius (cells). */
+  get brushRadius(): number {
+    return BRUSH_SIZES[this.brushSize]!;
+  }
+
+  /** Undo the last sculpt stroke. */
+  undo(): void {
+    const sc = this.host.sculptor;
+    if (!sc) return;
+    if (this.brush) this.endBrush();
+    sc.undo();
+    this.refreshUndo();
+  }
+
+  /** Enable Undo when there is a stroke to undo (after each snapshot). */
+  refreshUndo(): void {
+    this.undoButton.disabled = (this.host.sculptor?.undoable ?? 0) <= 0;
   }
 
   /** Put a panel (the selection's) into the tools' column, above the palette. */
@@ -289,14 +373,19 @@ export class ToolPalette {
     }
   }
 
-  /** Keyboard: digits 1…9, 0 pick the tools in palette order; Escape returns to Look. */
+  /** Keyboard: digits 1…9, 0 pick the tools in palette order; Escape returns to Look; Ctrl/Cmd+Z undoes the last stroke. */
   private onKey(e: KeyboardEvent): void {
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     // Not while a dialog (welcome panels, history, menu) covers the game.
     if (document.querySelector('dialog[open]')) return;
     for (const d of document.querySelectorAll('[role=dialog]')) if (!d.closest('[hidden]')) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      this.undo();
+      return;
+    }
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === 'Escape') {
       this.select('look');
       return;
@@ -371,8 +460,13 @@ export class ToolPalette {
     const st = this.settings[id];
     // The power tool's options line holds its modes (when there is more than one to pick).
     const modes = id === 'power' && POWER_MODES.length > 1;
-    this.options.hidden = !st && !modes;
+    const brush = isBrush(id);
+    if (this.brush) this.endBrush(true);
+    this.options.hidden = !st && !modes && !brush;
     this.modes.hidden = !modes;
+    this.brushRow.hidden = !brush;
+    if (!brush) this.host.setBrushCursor?.(null);
+    this.refreshUndo();
     this.sizeInput.closest('label')!.hidden = !st || !!st.noWidth;
     this.amountInput.closest('label')!.hidden = st?.amount === undefined;
     if (id === 'power') {
@@ -388,7 +482,10 @@ export class ToolPalette {
     if (st) {
       this.sizeInput.max = String(st.maxWidth);
       this.sizeInput.value = String(st.width);
-      if (st.amount !== undefined) this.amountInput.value = String(st.amount);
+      if (st.amount !== undefined) {
+        this.amountInput.max = String(st.maxAmount ?? 6);
+        this.amountInput.value = String(st.amount);
+      }
     }
     this.refreshOptions();
   }
@@ -431,10 +528,15 @@ export class ToolPalette {
     if (this.pointers.size > 1) {
       // Second finger: this is a pan/zoom gesture, abandon the stroke.
       this.drawing = null;
+      if (this.brush) this.endBrush(true);
       if (!this.awaitingPlan) this.clearPreview();
       return;
     }
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (isBrush(this.tool)) {
+      this.startBrush(e);
+      return;
+    }
     const p = this.host.pick(e.clientX, e.clientY);
     if (!p) return;
     this.drawing = { id: e.pointerId, points: [[p.x, p.y]] };
@@ -445,6 +547,13 @@ export class ToolPalette {
 
   private onMove(e: PointerEvent): void {
     if (this.tap?.id === e.pointerId && Math.hypot(e.clientX - this.tap.x, e.clientY - this.tap.y) > 8) this.tap = null;
+    const b = this.brush;
+    if (b && b.id === e.pointerId) {
+      b.cx = e.clientX;
+      b.cy = e.clientY;
+      return;
+    }
+    if (!b && isBrush(this.tool) && e.pointerType === 'mouse' && this.pointers.size === 0) this.hoverBrush(e.clientX, e.clientY);
     const d = this.drawing;
     if (!d && this.tool === 'wheel' && e.pointerType === 'mouse' && this.pointers.size === 0) this.hoverWheel(e.clientX, e.clientY);
     if (!d || d.id !== e.pointerId) return;
@@ -464,6 +573,12 @@ export class ToolPalette {
       this.tap = null;
       // (No time limit: a slow, still press is a tap too.)
       if (t?.id === e.pointerId && Math.hypot(e.clientX - t.x, e.clientY - t.y) <= 8) this.host.tap?.(e.clientX, e.clientY);
+      return;
+    }
+    if (this.brush?.id === e.pointerId) {
+      // The brushes stay selected.
+      this.endBrush();
+      if (e.pointerType === 'mouse') this.hoverBrush(e.clientX, e.clientY);
       return;
     }
     const d = this.drawing;
@@ -490,15 +605,6 @@ export class ToolPalette {
     let cmd: Command | null = null;
     let reason: string | null = null;
     switch (this.tool) {
-      case 'trench':
-        cmd = { type: 'planTrench', points, width, depth: amount };
-        break;
-      case 'dike':
-        cmd = { type: 'planDike', points, width, height: amount };
-        break;
-      case 'level':
-        cmd = { type: 'planLevel', points, width };
-        break;
       case 'weir':
         if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) cmd = { type: 'planWeir', points: ends, height: amount };
         break;
@@ -533,15 +639,15 @@ export class ToolPalette {
     if (cmd) {
       this.host.command(cmd);
       this.awaitingPlan = true;
-      if (this.housesSkipped && !reason) reason = 'The plan goes round the houses: earthworks never dig or bury them.';
+      if (this.housesSkipped && !reason) reason = 'The plan goes round the houses: the crew never builds over them.';
     }
     // A wheel let go on a bad site places nothing: the tool stays, its red ghost said why.
     if (this.tool === 'wheel' && !cmd) {
       if (e.pointerType === 'mouse') this.hoverWheel(e.clientX, e.clientY);
       return;
     }
-    // One stroke per tool use: go back to looking around, so a stray touch
-    // never places a second plan.
+    // One structure per tool use: go back to looking around, so a stray
+    // touch never places a second one (the brushes stay selected).
     this.select('look');
     if (reason) this.flashHint(reason);
   }
@@ -629,10 +735,101 @@ export class ToolPalette {
 
   private onCancel(e: PointerEvent): void {
     this.pointers.delete(e.pointerId);
+    if (this.brush?.id === e.pointerId) this.endBrush(true);
     if (this.drawing?.id === e.pointerId) {
       this.drawing = null;
       if (!this.awaitingPlan) this.clearPreview();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Brushes
+
+  private startBrush(e: PointerEvent): void {
+    const now = performance.now();
+    this.brush = { id: e.pointerId, cx: e.clientX, cy: e.clientY, at: null, t: now, start: now, touch: e.pointerType !== 'mouse' };
+    this.lastPick = null;
+    this.host.sculptor?.begin(this.tool as BrushTool, this.brushRadius);
+    cancelAnimationFrame(this.brushRaf);
+    this.brushRaf = requestAnimationFrame(this.brushFrame);
+  }
+
+  /** The ground point under the brush: the same as last frame while the pointer stands still (the ground moves, the brush does not). */
+  private lastPick: { cx: number; cy: number; p: { x: number; y: number } } | null = null;
+  private pickBrush(cx: number, cy: number): { x: number; y: number } | null {
+    const l = this.lastPick;
+    if (l && Math.abs(l.cx - cx) < 0.5 && Math.abs(l.cy - cy) < 0.5) return l.p;
+    const p = this.host.pick(cx, cy);
+    this.lastPick = p ? { cx, cy, p } : null;
+    return p;
+  }
+
+  /** Every frame while the brush is held: brush from where it was to where it is now, for the time since. */
+  private readonly brushFrame = (): void => {
+    if (!this.brush) return;
+    this.brushRaf = requestAnimationFrame(this.brushFrame);
+    this.brushStep();
+  };
+
+  /** Brush for the time since the last step (each frame, and once more when let go: slow frames lose nothing). */
+  private brushStep(): void {
+    const b = this.brush;
+    if (!b) return;
+    const now = performance.now();
+    // Real hold time (a slow frame still counts in full, up to a limit: the sim caps each sample too).
+    const dt = Math.min(0.25, (now - b.t) / 1000);
+    b.t = now;
+    const p = this.pickBrush(b.cx, b.cy);
+    const tool = this.tool as BrushTool;
+    const r = this.brushRadius;
+    if (!p) {
+      this.host.setBrushCursor?.(null);
+      b.at = null;
+      return;
+    }
+    const waiting = b.touch && now - b.start < TOUCH_DELAY;
+    this.host.setBrushCursor?.({ x: p.x, y: p.y, r, tool, active: !waiting });
+    if (waiting) return;
+    const sc = this.host.sculptor;
+    if (!sc) return;
+    const from = b.at ?? p;
+    const n = Math.max(1, Math.ceil(Math.hypot(p.x - from.x, p.y - from.y) / (r * 0.4)));
+    for (let k = 1; k <= n; k++) {
+      const u = k / n;
+      sc.sample(from.x + (p.x - from.x) * u, from.y + (p.y - from.y) * u, dt / n);
+    }
+    b.at = p;
+    sc.flush();
+    this.host.brushed?.(p.x, p.y, r);
+  }
+
+  /** Let go of the brush (cancelled: a second finger came, nothing more is brushed). */
+  private endBrush(cancelled = false): void {
+    if (!cancelled) this.brushStep();
+    const b = this.brush;
+    this.brush = null;
+    cancelAnimationFrame(this.brushRaf);
+    const sc = this.host.sculptor;
+    sc?.flush();
+    if (!b) return;
+    if (b.touch || cancelled) this.host.setBrushCursor?.(null);
+    if (sc?.touchedFixed && !cancelled) this.flashHint('The brushes go round houses, bridges and structures: those stay as they are.');
+    this.refreshUndo();
+  }
+
+  private hoverRaf = 0;
+  /** The mouse over the map with a brush: its ring. */
+  private hoverBrush(clientX: number, clientY: number): void {
+    const first = !this.hover;
+    this.hover = { x: clientX, y: clientY };
+    if (!first && this.hoverRaf) return;
+    this.hoverRaf = requestAnimationFrame(() => {
+      this.hoverRaf = 0;
+      const h = this.hover;
+      if (!h || this.brush || !isBrush(this.tool)) return;
+      const p = this.host.pick(h.x, h.y);
+      this.host.setBrushCursor?.(p ? { x: p.x, y: p.y, r: this.brushRadius, tool: this.tool as BrushTool, active: false } : null);
+    });
   }
 
   private erase(x: number, y: number): void {
@@ -649,20 +846,17 @@ export class ToolPalette {
       const grid: PlanGrid = this.host.mirror.previewGrid();
       const pts = simplify(d.points);
       const ends: Pt[] = [pts[0]!, pts[pts.length - 1]!];
-      const width = this.width;
       const amount = this.amount;
       let lining: number[] | null = null;
-      if (this.tool === 'trench') planTrench(grid, pts, width, amount);
-      else if (this.tool === 'dike') planDike(grid, pts, width, amount);
-      else if (this.tool === 'level') planLevel(grid, pts, width);
-      else if (this.tool === 'weir') {
+      if (this.tool === 'weir') {
         if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
           const low = weirLowest(grid, ends[0]!, ends[1]!);
           if (Number.isFinite(low)) lining = planWeirPreview(grid, ends[0]!, ends[1]!, low + amount);
         }
       } else if (this.tool === 'gate' && Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
-        // Drawn across a channel: a dam with the gate at its lowest point (a tap previews nothing).
-        planDike(grid, ends, 2, amount);
+        // Drawn across a channel: a stone wall with the gate at its lowest point (a tap previews nothing).
+        const low = weirLowest(grid, ends[0]!, ends[1]!);
+        if (Number.isFinite(low)) lining = planWeirPreview(grid, ends[0]!, ends[1]!, low + amount);
       } else if (this.tool === 'wheel') {
         // The ghost wheel and its trough, pointing where the water goes: as built when the site is good, red when not.
         this.showWheelGhost(this.wheelPreview(ends));

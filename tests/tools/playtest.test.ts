@@ -12,7 +12,7 @@ const SEED = 3;
 const SIZE = 64;
 
 describe('playtest harness', () => {
-  it('bots place plans on a small world', () => {
+  it('bots shape the land (and place plans) on a small world', () => {
     const { sim } = newGame(SEED, SIZE);
     sim.run(600 * 6);
     const acted: string[] = [];
@@ -22,10 +22,12 @@ describe('playtest harness', () => {
       const acts = bot.check(sim, 6);
       for (const a of acts) {
         expect(a.commands.length).toBeGreaterThan(0);
+        // Earthworks are done at once (earth moved counted), structures planned.
+        const moved = sim.brush.moved.script;
         const before = sim.world.plan.filter((p) => !Number.isNaN(p)).length;
         for (const c of a.commands) sim.command(c);
         const after = sim.world.plan.filter((p) => !Number.isNaN(p)).length;
-        expect(after).toBeGreaterThan(before);
+        expect(after > before || sim.brush.moved.script > moved).toBe(true);
       }
       if (acts.length) acted.push(name);
     }

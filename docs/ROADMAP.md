@@ -186,6 +186,20 @@ Proposal and staged plan: docs/ENDLESS.md.
 - Active-region growth with macro catchment model for boundary inflows
 - Performance: tile sleeping, possibly WASM/GPU kernels
 
+## Sculpting ☑
+The interaction rework decided with the owner (DESIGN §4).
+- ☑ Raise / Dig / Even brushes replace Trench / Dike / Level: immediate,
+  rate × hold time, soft falloff, three sizes, sticky, work while paused;
+  client prediction with the sim as the final word
+- ☑ Water conserved under the brush; sculpted earth loose (Fill, Canal);
+  houses, bridges and structures masked smoothly; fields cleared
+- ☑ Undo of the last strokes (button, Ctrl/Cmd+Z)
+- ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks); a
+  gate drawn across a channel builds a wall with the gate
+- ☑ Cosmetic crew tamping fresh earth; old saves' earthwork plans finished
+  on load; bots, scenes and tests shape lines with `shapeLine` (earth moved
+  counted for a later budget)
+
 ## Sound ☑
 See docs/SOUND.md.
 - ☑ Ambience mixed from the view (river, lake, rapids/weir spill, rain,

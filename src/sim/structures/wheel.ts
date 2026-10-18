@@ -37,7 +37,7 @@ const DRY_HEAD = 0.1;
 export const WHEEL_MIN_SPEED = 0.3;
 /** A site is marked as good when a wheel there would lift at least this much (m³ per game day). */
 export const WHEEL_GOOD_LIFT = 10;
-/** Lowest lift worth a wheel (m): below it a trench brings the water by itself. */
+/** Lowest lift worth a wheel (m): below it a dug channel brings the water by itself. */
 const MIN_LIFT = 0.2;
 /** The trough may pass over ground at most this much above the head cell (m). */
 const RIDGE = 0.5;
@@ -139,7 +139,7 @@ export function wheelSite(g: WheelGrid, points: readonly (readonly [number, numb
   const lift = g.terrain(hi) - surface;
   if (g.allowed && (!g.allowed(wi) || !g.allowed(hi))) return fail('Only on known land.', lift);
   if (lift > WHEEL_MAX_LIFT) return fail(`Too high: ${lift.toFixed(1)} m above the river (${WHEEL_MAX_LIFT} m at most).`, lift);
-  if (lift < MIN_LIFT) return fail('That bank is below the river: a trench brings the water by itself.', lift);
+  if (lift < MIN_LIFT) return fail('That bank is below the river: a dug channel brings the water by itself.', lift);
   if (ridge(g, x, y, hx, hy) > g.terrain(hi) + RIDGE) return fail('A rise is in the way of the trough.', lift);
   const v = g.speed(wi);
   if (v < WHEEL_MIN_SPEED) return fail('The current is too slow here to turn a wheel.', lift);

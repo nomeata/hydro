@@ -307,6 +307,14 @@ says "watch and learn". Instead, three small things, in order of value:
 1. **Hints that say why, not just what** (the hint line under the
    palette, `src/ui/tools.ts`). One sentence each, naming the landscape
    problem:
+   - *(Since the brush rework, DESIGN §4, the earth tools are the Raise,
+     Dig and Even brushes; their hints say the same things: Dig "brush a
+     channel from the river down to dry land and the water follows;
+     fields follow the water. A rough channel smooths itself once water
+     runs in it." Raise "heap up earth: a bank to keep a flood off the
+     fields, or to hold a pond. Make it high enough: water pouring over
+     loose earth cuts through it." Even "smooth the ground towards its
+     mean: level a terrace or a basin…". The originals follow.)*
    - Trench: "Dig from the river down to dry land: water follows the
      trench, fields follow the water. Its floor slopes evenly from start
      to end."
@@ -332,8 +340,8 @@ says "watch and learn". Instead, three small things, in order of value:
    machinery, one panel — showing the tool working in a staged scene
    (`sim/scenes.ts`): the weir filling a pool and a mill appearing; the
    gate opened by a villager and fields greening below; the wheel lifting
-   water up a terrace. The trench/dike/level cards are the existing
-   "You shape the water" scene. The card is reachable again from a small
+   water up a terrace. The brushes' card is the existing "You shape the
+   water" scene (the hand digs a channel with the Dig brush). The card is reachable again from a small
    ⓘ at the end of the hint line while that tool is selected. That is the
    whole help system: ≤ 6 scenes, each ≤ 20 s. *(Built for the weir and
    the gate: `ui/toolCards.ts`, scenes 'weir' and 'gate' in
@@ -535,9 +543,9 @@ stays for weirs, gates and wheels). Digit keys shift accordingly.
 
 | Unlock | Tool | What it newly lets the player solve |
 |---|---|---|
-| start | Trench | Intake canals onto the terrace (P2), drainage of a bog (P4), cut-offs for an eating meander (P5) |
-| start | Dike | Freshet off the floodplain (P3), ponds and small reservoirs |
-| start | Level | Terraces on slopes, deep basins (less evaporation), a flat site for a village |
+| start | Dig (was Trench) | Intake canals onto the terrace (P2), drainage of a bog (P4), cut-offs for an eating meander (P5) |
+| start | Raise (was Dike) | Freshet off the floodplain (P3), ponds and small reservoirs |
+| start | Even (was Level) | Terraces on slopes, deep basins (less evaporation), a flat site for a village |
 | start | Remove | — |
 | 15 | **Weir** | Keep the river's pool through low water (P1); raise the river so a short intake works; calm water for fish; a head for a mill (§1.2) |
 | 30 | **Sluice gate** | Seasonal reservoirs: villagers release in summer (§2); flood relief that opens itself |

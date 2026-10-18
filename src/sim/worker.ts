@@ -83,6 +83,7 @@ function startScene(id: SceneId, run: number): void {
   sim = s;
   fishDay = -1;
   accumulator = 0;
+  fixedMaybe = true;
   // The renderer gets the whole new state with the next snapshot.
   s.markTerrainDirty(0);
   s.markTerrainDirty(s.world.size - 1);
@@ -107,6 +108,9 @@ function start(s: Simulation, m: Record<string, unknown>): void {
   s.computeLook(look);
   const plan = w.plan.slice();
   const revealed = s.fog ? w.revealed.slice() : undefined;
+  const fixed = new Uint8Array(w.size);
+  s.packFixed(fixed);
+  lastFixed = fixed.slice();
   s.revealDirty = false;
   s.takeDirtyRows();
   s.lookDirty = false;
@@ -126,8 +130,9 @@ function start(s: Simulation, m: Record<string, unknown>): void {
       look,
       plan,
       revealed,
+      fixed,
     },
-    revealed ? [terrain.buffer, look.buffer, plan.buffer, revealed.buffer] : [terrain.buffer, look.buffer, plan.buffer],
+    revealed ? [terrain.buffer, look.buffer, plan.buffer, revealed.buffer, fixed.buffer] : [terrain.buffer, look.buffer, plan.buffer, fixed.buffer],
   );
   lastTick = performance.now();
   schedule(0);
@@ -173,6 +178,11 @@ function tick(): void {
   const rest = duty < 1 ? worked * (1 / duty - 1) : 0;
   schedule(accumulator >= 1 ? rest : Math.max(5, rest));
 }
+
+/** The brushes' fixed cells as last sent (Snapshot.fixed). */
+let lastFixed: Uint8Array | null = null;
+/** Something that may change the fixed cells happened since the last snapshot. */
+let fixedMaybe = true;
 
 function sendSnapshot(): boolean {
   if (!sim) return false;
@@ -292,6 +302,18 @@ function sendSnapshot(): boolean {
     sim.revealDirty = false;
     transfer.push(snap.revealed.buffer);
   }
+  snap.sculptSeq = sim.brush.seq;
+  snap.undoable = sim.brush.undoable;
+  if (fixedMaybe || sim.planDirty || snap.buildings || snap.fields || snap.structures) {
+    fixedMaybe = false;
+    const fixed = new Uint8Array(w.size);
+    sim.packFixed(fixed);
+    if (!lastFixed || !sameBytes(fixed, lastFixed)) {
+      lastFixed = fixed.slice();
+      snap.fixed = fixed;
+      transfer.push(fixed.buffer);
+    }
+  }
   if (sim.planDirty) {
     snap.plan = w.plan.slice();
     sim.planDirty = false;
@@ -324,6 +346,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         break;
       case 'command':
         sim?.command(msg.command);
+        if (msg.command.type !== 'sculpt') fixedMaybe = true;
         break;
       case 'ack':
         pool.push({ id: msg.poolId, depth: msg.depth, vel: msg.vel });
@@ -355,3 +378,9 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     log('error', String(e instanceof Error ? (e.stack ?? e.message) : e));
   }
 };
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}

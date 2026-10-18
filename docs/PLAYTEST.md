@@ -82,7 +82,10 @@ harness wraps that method to count them (observer only).
 player: villages, their fields and field moisture, water and flow
 direction, flood memory, known land. They respect the tool unlocks
 (population peak), act from `--act-day` and look again each season, once
-per village (new villages get theirs later):
+per village (new villages get theirs later). Since the brush rework
+(DESIGN §4) their earthworks are `shapeLine` commands: the old trench /
+dike profiles shaped at once, with the brushes' rules, the earth moved
+counted in `Simulation.brush.moved.script` (for a later budget):
 - `irrigate`: a trench (2 wide, 1–3 m deep, as deep as gravity feed
   needs) from the nearest shore whose water can reach them to the middle
   of the driest quarter of a village's fields, with a dogleg around the

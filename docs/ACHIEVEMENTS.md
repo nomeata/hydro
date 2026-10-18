@@ -18,7 +18,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
   marked; "near the works" means in or next to an 8×8 block with a marked
   cell. Land and water achievements only count near the works, so natural
   floods and wet springs don't earn them. When the player plans works on a
-  cell (trench, dike, level, weir, gate) the sim remembers its **original
+  cell (brush strokes, weir, gate) the sim remembers its **original
   ground** (saved with the world; villagers building the player's plans
   count as the player's works too).
 - Events are reported as they happen (a harvest, a catch, a rebuilt ruin, a
@@ -41,8 +41,8 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | Achievement | Condition |
 |---|---|
 | **Waterworks** | |
-| First Spade | An earthwork plan (trench, dike, level) is fully built |
-| Long Canal | A trench stroke at least 40 cells (200 m) long is built (at most 30% cancelled) |
+| First Spade | The brushes (raise, dig, even) have moved 20 m³ of earth |
+| Long Canal | A run of ground dug at least 0.3 m below its original height is 40 cells (200 m) long, end to end (8-connected; any number of strokes) |
 | Lake Maker | A reservoir the player made, on three days in a row: one connected body of standing water (≥ 0.1 m, slower than 0.3 m/s) that touches a cell the player raised, with its surface ≥ 0.2 m above that cell's original ground (without the work the water would spill there), and holding, on cells that were dry at the start, ≥ 40 cells and ≥ 2000 m³ of water above their original ground (≥ 0.5 m deep on average). Raising dry land, a dug basin, rain puddles or a natural lake spreading near the works do not count |
 | Waterfall | The water surface drops ≥ 3 m within two cells at a cell the player's works changed, with the water flowing (≥ 0.2 m/s) |
 | Weir Builder | All cells of a weir are lined |

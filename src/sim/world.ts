@@ -101,7 +101,7 @@ export const enum CellFlag {
   Outlet = 2,
   /** A structure occupies the cell. */
   Structure = 4,
-  /** Dug by a player's trench plan (villagers line such canals near home). */
+  /** Dug by the player 0.3 m or more below its original ground (villagers line such canals near home). */
   Canal = 8,
   /**
    * Earth heaped by a plan (dike, level, weir body): an earthen bank. Water
