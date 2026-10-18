@@ -96,8 +96,8 @@ const TIRED_SPEED = 0.6;
  * (person-days, × fertility). Exported so tools can tune them.
  */
 export const FARMING = {
-  fieldsPerFarmer: 14,
-  yield: 8,
+  fieldsPerFarmer: 28,
+  yield: 6,
   /**
    * Crop growth per growing day at full growth (cropGrowth 1): a field sown
    * early in spring just ripens by the end of summer when it never lacked
@@ -116,9 +116,10 @@ export const FARMING = {
  * the player's canals and the villagers' ditches wets the land within
  * `canalReach` (it runs at ground level, where a river is cut into it).
  */
-export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 2.5 };
+export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 4 };
 
-export const CROP_MOISTURE = { dry: 0.2, moist: 0.4, soggy: 0.9, soggyGrowth: 0.4 };
+/** Crops drown under water deeper than `drown` (m); shallower standing water grows them at `soggyGrowth`. */
+export const CROP_MOISTURE = { dry: 0.2, moist: 0.4, soggy: 0.9, soggyGrowth: 0.4, drown: 0.15 };
 
 /** Crop growth factor 0..1 for a field moisture. */
 export function cropGrowth(m: number): number {
@@ -1323,11 +1324,11 @@ export class PeopleSystem {
       let c = w.crop[i]!;
       if (time.season === 3) {
         c = 0; // whatever is left rots in winter
-      } else if (w.water[i]! > 0.05) {
+      } else if (w.water[i]! > CROP_MOISTURE.drown) {
         c = Math.max(0, c - 60); // drowning
       } else if (growing && c > 0 && c < 255) {
-        const m = this.fieldMoisture[i]!;
-        const f = cropGrowth(m);
+        // Shallow standing water (a canal spilling over, a wet spring) only slows the crop.
+        const f = w.water[i]! > 0.05 ? CROP_MOISTURE.soggyGrowth : cropGrowth(this.fieldMoisture[i]!);
         c = Math.min(255, c + Math.round(FARMING.growPerDay * f));
         // Growing crops draw water from the nearest water body, or the soil.
         const src = this.nearestWater[i]!;
@@ -2292,7 +2293,7 @@ export class PeopleSystem {
     let bestScore = -Infinity;
     const canSow = time.season === 0 || (time.season === 1 && time.dayOfSeason < 6);
     for (const i of this.fieldsOf(s)) {
-      if (this.reserved.has(i) || this.blocked.has(i) || w.water[i]! > 0.05) continue;
+      if (this.reserved.has(i) || this.blocked.has(i) || w.water[i]! > CROP_MOISTURE.drown) continue;
       const c = w.crop[i]!;
       let kind: SiteKind;
       let prio: number;
