@@ -398,6 +398,8 @@ export class PeopleSystem {
   private blocked = new Map<number, number>();
   /** Good land each village could still claim (by id; manageFields, daily): the land limit of growth. */
   private goodLeft = new Map<number, number>();
+  /** Villages (ids) where newcomers camp regardless (debugVillage). */
+  private readonly debugCamp = new Set<number>();
   /** Cells currently targeted by someone. */
   private reserved = new Set<number>();
   private lastDay = -1;
@@ -492,12 +494,20 @@ export class PeopleSystem {
 
   /**
    * Debugging and screenshots (Command 'debugVillage'): force a village's
-   * wellbeing (and with it its mood) or food, or dry out the soil around it.
+   * wellbeing (and with it its mood) or food, or dry out the soil around it;
+   * `camp` makes newcomers camp at its edge as if there were no room (until
+   * `camp: false`; not saved).
    */
-  debugVillage(index: number, opts: { wellbeing?: number; food?: number; dry?: boolean }): void {
+  debugVillage(index: number, opts: { wellbeing?: number; food?: number; dry?: boolean; camp?: boolean }): void {
     const s = this.settlements[index];
     if (!s) return;
     const st = s.state;
+    if (opts.camp !== undefined) {
+      if (opts.camp) this.debugCamp.add(st.id);
+      else this.debugCamp.delete(st.id);
+      delete st.campAgain;
+      this.tendCamp(s, this.lastDay);
+    }
     if (opts.wellbeing !== undefined) {
       st.wellbeing = opts.wellbeing;
       st.mood = opts.wellbeing > 0.62 ? 1 : opts.wellbeing < 0.28 ? -1 : 0;
@@ -1775,12 +1785,15 @@ export class PeopleSystem {
    */
   private tendCamp(s: Settlement, day: number): void {
     const st = s.state;
+    const forced = this.debugCamp.has(st.id);
+    const limit = forced ? 'room' : st.limit;
+    const wellbeing = forced ? 1 : st.wellbeing;
     const arriveAbove = st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
     const camp = st.camp;
     const w = this.world;
     if (camp) {
       const campers = this.agents.filter((a) => a.camper && a.settlement === st.id && a.task !== Task.Leave);
-      if (st.limit === 'open' && campers.length) {
+      if (limit === 'open' && campers.length) {
         // A free house: the family moves in (an arrival, as in Settlement.day).
         st.population += campers.length;
         const centre = w.idx(Math.round(st.x), Math.round(st.y));
@@ -1800,7 +1813,7 @@ export class PeopleSystem {
         this.endCamp(st, day, 0);
         return;
       }
-      const waiting = campsFor(st.limit, st.wellbeing, arriveAbove) || st.limit === 'building';
+      const waiting = campsFor(limit, wellbeing, arriveAbove) || limit === 'building';
       if (waiting && campers.length && day - camp.since < CAMP.stay && w.water[camp.cell]! < 0.05) return;
       // Nothing changes (or the village no longer draws them): they move on.
       for (const a of campers) {
@@ -1814,7 +1827,7 @@ export class PeopleSystem {
       this.endCamp(st, day, CAMP.again);
       return;
     }
-    if (!campsFor(st.limit, st.wellbeing, arriveAbove) || day < (st.campAgain ?? 0)) return;
+    if (!campsFor(limit, wellbeing, arriveAbove) || day < (st.campAgain ?? 0)) return;
     const cell = this.campSite(s);
     if (cell < 0) return;
     const n = this.rng.int(ECONOMY.familySize[0], Math.min(4, ECONOMY.familySize[1]) + 1);

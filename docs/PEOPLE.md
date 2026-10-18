@@ -222,6 +222,11 @@ garden crop in summer and autumn) flatten the yearly sawtooth.
     the harvest day, families poured in and starved through the spring.
     So a village grows on a surplus and levels off fed, and shrinks by
     departures when hunger comes (a dry year, a flood).
+- **What holds growth back** is named daily per village (`limit`:
+  land, food, wellbeing, room, building, open; GAMEPLAY §4.6). When
+  families would come but there is no room for a house or no good land,
+  a family camps at the edge (tent, cart, fire) for up to 24 days and
+  moves in when a house is free.
 - **Recovery floor:** a village under 12 people (`ECONOMY.smallVillage`)
   takes migrants above w 0.45 (`arriveSmall`) and builds a house for them
   above 0.4 (`houseSmall`), so a village refills after a setback once its

@@ -454,7 +454,7 @@ export type Command =
   /** Debug: pour water. */
   | { type: 'debugWater'; x: number; y: number; radius: number; depth: number }
   /** Debug/screenshots: force village `index`'s wellbeing (and mood) or food, or dry out its fields' soil. */
-  | { type: 'debugVillage'; index: number; wellbeing?: number; food?: number; dry?: boolean };
+  | { type: 'debugVillage'; index: number; wellbeing?: number; food?: number; dry?: boolean; camp?: boolean };
 
 // ---------------------------------------------------------------------------
 // Messages.

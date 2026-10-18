@@ -444,13 +444,13 @@ export function storeDesign(level: number, fish = false, wood = 0): Design {
  */
 export function campDesign(): Design {
   const parts: Part[] = [
-    { m: 'mud', x: 0, y: -0.03, z: 0, s: [1.5, 0.05, 1.3], stages: ALL },
-    { m: 'tent_smallClosed', x: -0.45, y: 0, z: -0.25, rot: 1, s: [0.55, 0.55, 0.55], stages: ALL },
-    { m: 'town_cart', x: 0.35, y: 0, z: 0.5, rot: 0, s: [0.5, 0.5, 0.5], stages: ALL },
-    { m: 'sack', x: 0.3, y: 0.32, z: 0.45, rot: 1, s: [0.2, 0.22, 0.18], stages: ALL },
-    { m: 'sack', x: 0.45, y: 0.32, z: 0.58, rot: 2, s: [0.18, 0.2, 0.17], stages: ALL },
-    { m: 'survival_campfire', x: 0.25, y: 0, z: -0.3, s: [1.1, 1.1, 1.1], stages: ALL },
-    { m: 'survival_box', x: -0.1, y: 0, z: 0.25, rot: 1, s: [0.9, 0.9, 0.9], stages: ALL },
+    { m: 'mud', x: 0, y: -0.03, z: 0, s: [1.7, 0.05, 1.5], stages: ALL },
+    { m: 'tent_smallClosed', x: -0.4, y: 0, z: -0.3, rot: 1, s: [1.5, 1.5, 1.5], stages: ALL },
+    { m: 'town_cart', x: 0.45, y: 0, z: 0.55, rot: 0, s: [0.85, 0.85, 0.85], stages: ALL },
+    { m: 'sack', x: 0.38, y: 0.42, z: 0.5, rot: 1, s: [0.26, 0.28, 0.24], stages: ALL },
+    { m: 'sack', x: 0.58, y: 0.42, z: 0.66, rot: 2, s: [0.24, 0.26, 0.22], stages: ALL },
+    { m: 'survival_campfire', x: 0.4, y: 0, z: -0.35, s: [1.6, 1.6, 1.6], stages: ALL },
+    { m: 'survival_box', x: -0.2, y: 0, z: 0.45, rot: 1, s: [1.3, 1.3, 1.3], stages: ALL },
   ];
   return { name: 'camp', scale: 1.3, vscale: 1.0, plaster: GABLE_WOOD, parts };
 }
