@@ -220,6 +220,7 @@ export class GameRenderer {
     this.scene.add(this.weather.group);
     this.buildings = new BuildingsLayer(this.scene, this.heights);
     this.buildings.setShadows(this.shadows);
+    this.buildings.setLook(this.tex.look.image.data as Uint8Array, W);
     this.crops = new CropLayer(this.scene, this.heights);
     this.plots = new PlotLayer(this.scene, this.heights);
     this.cues = new VillageCuesLayer(this.scene, this.heights);
@@ -299,6 +300,8 @@ export class GameRenderer {
     this.power.gameSpeed = this.flow.gameSpeed;
     this.clock.gameSpeed = this.flow.gameSpeed;
     this.weather.setFronts(s.climate.fronts);
+    // Hoar frost on the grass below freezing (the day's temperature).
+    this.terrain.uniforms.uFrost.value = Math.min(1, Math.max(0, -s.climate.temperature / 4));
     const wu = this.water.uniforms;
     wu.uDepthA.value = this.prevDepthTex();
     wu.uDepthB.value = this.curDepthTex();
@@ -327,6 +330,7 @@ export class GameRenderer {
     if (s.look) {
       (this.tex.look.image.data as Uint8Array).set(s.look.subarray(0, n * 4));
       this.tex.look.needsUpdate = true;
+      this.buildings.setLook(this.tex.look.image.data as Uint8Array, this.info.width);
     }
     if (s.plan) {
       const any = packPlan(s.plan, this.tex.plan.image.data as Float32Array);

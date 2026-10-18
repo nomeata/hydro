@@ -13,6 +13,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { BuildingInfo, VillageStats } from '../../shared/protocol';
 import { heightToY, type HeightSampler } from '../coords';
 import { modelLibrary, vertexColorMaterial, type StaticModel } from '../objects/loader';
+import { SNOW_ATTRIBUTE, snowCapMaterial } from '../objects/snowCap';
+import { LOOK_CHANNELS } from '../../shared/protocol';
 import { MODELS, TOWN_SCALE, type ModelName } from '../objects/manifest';
 import type { StaticModelSource } from '../objects/vegetation';
 import {
@@ -325,6 +327,10 @@ export class BuildingsLayer {
   private readonly tmpP = new THREE.Vector3();
   private readonly one = new THREE.Vector3(1, 1, 1);
   private readonly up = new THREE.Vector3(0, 1, 0);
+  /** The ground look (snow cover in A) and its width, for snow on the roofs. */
+  private look: Uint8Array | null = null;
+  private lookWidth = 0;
+  private snowSig = '';
 
   constructor(
     scene: THREE.Object3D,
@@ -403,6 +409,22 @@ export class BuildingsLayer {
     this.group.removeFromParent();
   }
 
+  /** New ground look: roofs take the snow cover of their cell (in a few steps). */
+  setLook(look: Uint8Array, width: number): void {
+    this.look = look;
+    this.lookWidth = width;
+    let sig = '';
+    for (const b of this.list) sig += this.roofSnow(b.x, b.y).toFixed(2);
+    if (sig !== this.snowSig) this.layout(true);
+  }
+
+  private roofSnow(x: number, y: number): number {
+    const l = this.look;
+    if (!l) return 0;
+    const i = (Math.round(y) * this.lookWidth + Math.round(x)) * LOOK_CHANNELS + 3;
+    return Math.round(((l[i] ?? 0) / 255) * 4) / 4;
+  }
+
   private geometry(key: string): THREE.BufferGeometry {
     let g = this.geometries.get(key);
     if (!g) {
@@ -426,6 +448,8 @@ export class BuildingsLayer {
     }
     if (!force && sig === this.layoutSig) return;
     this.layoutSig = sig;
+    this.snowSig = '';
+    for (const b of this.list) this.snowSig += this.roofSnow(b.x, b.y).toFixed(2);
     for (const [k, batch] of this.batches)
       if (!byKey.has(k)) {
         batch.mesh.count = 0;
@@ -439,7 +463,9 @@ export class BuildingsLayer {
           batch.mesh.dispose();
         }
         const capacity = Math.max(4, bs.length * 2);
-        const mesh = new THREE.InstancedMesh(this.geometry(k), vertexColorMaterial(), capacity);
+        const geometry = this.geometry(k);
+        geometry.setAttribute(SNOW_ATTRIBUTE, new THREE.InstancedBufferAttribute(new Float32Array(capacity * 2), 2));
+        const mesh = new THREE.InstancedMesh(geometry, snowCapMaterial(vertexColorMaterial()), capacity);
         mesh.name = `building-${k}`;
         mesh.castShadow = this.shadows;
         mesh.receiveShadow = true;
@@ -448,13 +474,16 @@ export class BuildingsLayer {
         this.batches.set(k, batch);
       }
       const mesh = batch.mesh;
+      const snow = mesh.geometry.getAttribute(SNOW_ATTRIBUTE) as THREE.InstancedBufferAttribute;
       bs.forEach((b, i) => {
         const y = heightToY(this.footHeight(b.x, b.y));
         this.tmpP.set(b.x + 0.5, y, b.y + 0.5);
         this.tmpQ.setFromAxisAngle(this.up, b.rot);
         this.tmpM.compose(this.tmpP, this.tmpQ, this.one);
         mesh.setMatrixAt(i, this.tmpM);
+        snow.setX(i, this.roofSnow(b.x, b.y) * 0.9);
       });
+      snow.needsUpdate = true;
       mesh.count = bs.length;
       mesh.visible = true;
       mesh.instanceMatrix.needsUpdate = true;

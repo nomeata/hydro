@@ -10,7 +10,7 @@ import { Climate, tileRainMap, type ClimateRunState } from './climate/climate';
 import { CELL_AREA, DT, STEPS_PER_DAY, TILE } from './constants';
 import { GroundwaterScratch, groundwaterStep } from './hydro/groundwater';
 import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
-import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
+import { newLedger, snowCoverByte, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { ErosionScratch, defaultGeoParams, erosionStep, overtopStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
 import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
@@ -711,7 +711,7 @@ export class Simulation {
       out[o] = st;
       out[o + 1] = cap > 0 ? Math.min(255, (ground[i]! / cap) * 255) : 0;
       out[o + 2] = Math.min(255, vegetation[i]! * 255);
-      out[o + 3] = Math.min(255, snow[i]! * 2550); // full white at 10 cm SWE
+      out[o + 3] = snowCoverByte(snow[i]!);
     }
   }
 
