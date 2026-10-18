@@ -162,12 +162,24 @@ describe('history chart', () => {
     expect(drySpells(samples)).toEqual([[1, 11]]);
   });
 
-  it('draws stars for reached and upcoming milestones', () => {
+  it('draws axis stars for reached and upcoming milestones within the log axis', () => {
     const h = runHistory(20);
-    const { svg, layout } = buildChart(h.data(), 600);
+    const data = h.data();
+    const { svg, layout } = buildChart(data, 600);
     const ms = unlockMilestones();
-    expect(svg.match(/class="star reached"/g)?.length ?? 0).toBe(ms.filter((m) => m.population < 20).length);
-    expect(svg.match(/class="star ahead"/g)?.length ?? 0).toBe(ms.filter((m) => m.population >= 20).length);
+    const peak = Math.max(...data.samples.map((s) => s.p));
+    // The axis tops out at the power of ten above the data and the next milestone.
+    const next = ms.find((m) => m.population > peak)!.population;
+    const topP = 10 ** Math.ceil(Math.log10(Math.max(10, peak * 1.02, next)) - 1e-9);
+    expect(svg.match(/class="star reached"/g)?.length ?? 0).toBe(ms.filter((m) => m.population <= peak).length);
+    expect(svg.match(/class="star ahead"/g)?.length ?? 0).toBe(ms.filter((m) => m.population > peak && m.population <= topP).length);
+    // Each star sits on the right of the plot, at its population level.
+    for (const m of ms.filter((m) => m.population <= topP)) {
+      const g = svg.match(new RegExp(`data-population="${m.population}"[^>]*><title>[^<]*</title><circle cx="([\\d.]+)" cy="([\\d.]+)"`));
+      expect(g).not.toBeNull();
+      expect(Number(g![1])).toBeGreaterThan(layout.x1);
+      expect(Number(g![2])).toBeCloseTo(layout.popY(m.population), 0);
+    }
     expect(layout.dayToX(0)).toBe(layout.x0);
     expect(layout.xToDay(layout.dayToX(10))).toBeCloseTo(10);
     expect(buildChart({ samples: [], milestones: [] }, 320).svg).toContain('Waiting for the first settlers');
