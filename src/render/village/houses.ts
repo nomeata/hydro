@@ -32,7 +32,26 @@ export function buildStage(progress: number): Stage {
 }
 
 /** Procedural pieces (boxes and blobs with a flat colour). */
-export type ProcKind = 'plinth' | 'stake' | 'pole' | 'beam' | 'board' | 'sack' | 'hay' | 'soil' | 'fish' | 'ring' | 'water' | 'gable';
+export type ProcKind =
+  | 'plinth'
+  | 'stake'
+  | 'pole'
+  | 'beam'
+  | 'board'
+  | 'sack'
+  | 'hay'
+  | 'soil'
+  | 'fish'
+  | 'ring'
+  | 'water'
+  | 'gable'
+  | 'mud'
+  | 'timber'
+  | 'shard'
+  | 'rubble'
+  | 'weed'
+  | 'shrub'
+  | 'bloom';
 
 export interface Part {
   /** A static model, or a procedural piece. */
@@ -48,6 +67,16 @@ export interface Part {
   readonly stages: number;
   /** Repaint blue-grey as stone instead of the design's plaster colour. */
   readonly stone?: boolean;
+  /**
+   * Ruins: lean (radians, the top towards the part's +x, outward for a wall
+   * piece) and roll (about its +x axis), pivoting about the point `pivot`
+   * tiles out along +x at the part's base (a wall's foot: 0.5).
+   */
+  readonly lean?: number;
+  readonly roll?: number;
+  readonly pivot?: number;
+  /** Ruins: not weathered or mud-stained (the weeds growing over it). */
+  readonly fresh?: boolean;
 }
 
 export interface Design {
@@ -59,6 +88,8 @@ export interface Design {
   /** Repaint colours (sRGB) for the kit's teal roof tiles and blue-grey plaster/stone. */
   readonly roof?: number;
   readonly plaster?: number;
+  /** Ruins: everything below this height (tiles) is stained by the flood's mud. */
+  readonly stain?: number;
   readonly parts: readonly Part[];
 }
 
@@ -481,6 +512,106 @@ export function millDesign(sacks: number): Design {
   return { name: `mill-${n}`, scale: MILL_SCALE, vscale: 0.95, roof: ROOF_SHINGLE, plaster: GABLE_WOOD, parts };
 }
 
+/** Ruins are dirty: plaster, wood and roof darkened by the mud. */
+function muddy(hex: number, k = 0.72): number {
+  const r = (hex >> 16) & 255;
+  const g = (hex >> 8) & 255;
+  const b = hex & 255;
+  // Towards a grey-brown, and darker.
+  const mix = (c: number, t: number) => Math.round((c * 0.65 + t * 0.35) * k);
+  return (mix(r, 120) << 16) | (mix(g, 104) << 8) | mix(b, 80);
+}
+
+/** Small deterministic hash 0..1 for ruin variety. */
+function h01(a: number, b: number): number {
+  let h = Math.imul(a * 73856093 + b * 19349663 + 1, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+/**
+ * A house ruined by a flood (the house design's walls, wrecked): a mud stain
+ * spread around the plinth, walls leaning out, broken off or fallen flat,
+ * the roof caved in and lying askew inside, broken beams poking up, boards,
+ * roof shards and stones strewn about, the barrel tipped over; no
+ * scaffolding, no stakes, nothing stacked. With `weeds` (0..2, the ruin's
+ * age) grass, then bushes and flowers grow over it.
+ */
+export function ruinDesign(variant: number, weeds = 0): Design {
+  const v = variant % HOUSE_DESIGNS.length;
+  const d = HOUSE_DESIGNS[v]!;
+  const sh = HOUSE_SHELLS[v]!;
+  const hx = sh.nx / 2;
+  const hz = sh.nz / 2;
+  const ALLS = F | W | R | D;
+  const parts: Part[] = [
+    // Mud left by the flood, wider downstream-ish, and the cracked plinth.
+    { m: 'mud', x: 0.12, y: -0.03, z: -0.05, s: [sh.nx + 1.0, 0.07, sh.nz + 0.8], stages: ALLS },
+    { m: 'plinth', x: 0, y: -0.36, z: 0, s: [sh.nx + 0.16, 0.4, sh.nz + 0.16], stages: ALLS },
+  ];
+  // Walls: each slot leans, breaks off or has fallen (a fixed pattern per variant).
+  const slots = wallSlots(sh.nx, sh.nz);
+  slots.forEach(([idx, dir, tx, tz], k) => {
+    let m = sh.wall;
+    if (sh.doorAt[0] === idx && sh.doorAt[1] === dir) m = sh.door;
+    else if (sh.windows.some(([i, dd]) => i === idx && dd === dir)) m = sh.window;
+    const kind = (k + v) % 4;
+    const j = h01(v, k);
+    if (kind === 0) parts.push({ m, x: tx, y: 0.05, z: tz, rot: dir, s: [1, 0.85, 1], lean: 0.3 + 0.12 * j, pivot: 0.5, stages: ALLS });
+    else if (kind === 1) {
+      // Fallen out flat, broken in two.
+      parts.push({ m, x: tx, y: 0.03, z: tz, rot: dir, s: [1, 0.5, 0.95], lean: 1.3, roll: 0.2 * (j - 0.5), pivot: 0.5, stages: ALLS });
+      parts.push({ m: 'board', x: tx + OUT[dir]![0] * 1.0, y: 0.0, z: tz + OUT[dir]![1] * 1.0, rot: dir + 1, s: [0.7, 0.05, 0.16], roll: 0.2, stages: ALLS });
+    } else if (kind === 2) parts.push({ m, x: tx, y: 0.05, z: tz, rot: dir, s: [1, 0.4 + 0.15 * j, 1], lean: -0.1, pivot: 0.5, stages: ALLS });
+    else parts.push({ m, x: tx, y: 0.05, z: tz, rot: dir, s: [1, 0.72, 1], lean: 0.16, roll: 0.2 + 0.1 * j, pivot: 0.5, stages: ALLS });
+  });
+  // The roof caved in: one piece lying askew inside, sagging to one side.
+  const gable = d.parts.some((p) => p.m === 'town_roof_gable');
+  parts.push({ m: gable ? 'town_roof_gable' : 'town_roof_point', x: 0.1, y: -0.06, z: 0.04, rot: sh.nz > sh.nx ? 1 : 0, s: [0.95, 0.9, 0.95], roll: 0.42, lean: 0.24, stages: ALLS });
+  // Broken rafters poking up.
+  parts.push({ m: 'timber', x: 0.1, y: 0.12, z: -0.18, rot: 1, s: [hz * 1.9, 0.06, 0.07], lean: 0.55, stages: ALLS });
+  parts.push({ m: 'timber', x: -0.2, y: 0.08, z: 0.2, rot: 0, s: [hx * 1.5, 0.06, 0.07], lean: -0.35, roll: 0.2, stages: ALLS });
+  // Debris strewn around: boards, roof shards, stones, the barrel on its side.
+  for (let k = 0; k < 7; k++) {
+    const a = h01(v + 11, k) * Math.PI * 2;
+    const r = 0.25 + 0.55 * h01(v + 17, k);
+    const x = Math.cos(a) * (hx + r * 0.6);
+    const z = Math.sin(a) * (hz + r * 0.6);
+    if (k % 3 === 0) parts.push({ m: 'board', x, y: 0.0, z, rot: k % 4, s: [0.55 + 0.25 * h01(v, k + 5), 0.045, 0.12], roll: 0.2 * (h01(v, k + 9) - 0.5), lean: 0.12, stages: ALLS });
+    else if (k % 3 === 1) parts.push({ m: 'shard', x, y: 0.0, z, rot: k % 4, s: [0.2, 0.05, 0.15], lean: 0.3, stages: ALLS });
+    else parts.push({ m: 'rubble', x, y: -0.03, z, rot: k % 4, s: [0.22, 0.13, 0.18], stages: ALLS });
+  }
+  parts.push({ m: 'rubble', x: hx * 0.3, y: 0.05, z: -hz * 0.4, s: [0.3, 0.12, 0.26], stages: ALLS });
+  parts.push({ m: 'survival_barrel', x: hx + 0.42, y: 0.12, z: hz * 0.6, rot: 1, s: [1.05, 1.05, 1.05], lean: 1.5, stages: ALLS });
+  // Weeds over time.
+  if (weeds >= 1)
+    for (let k = 0; k < 5; k++) {
+      const a = h01(v + 31, k) * Math.PI * 2;
+      const x = Math.cos(a) * (hx + 0.1) * (0.5 + 0.6 * h01(v, k + 40));
+      const z = Math.sin(a) * (hz + 0.1) * (0.5 + 0.6 * h01(v, k + 50));
+      parts.push({ m: 'weed', x, y: 0, z, rot: k % 4, s: [0.34, 0.3 + 0.12 * h01(v, k + 60), 0.34], stages: ALLS, fresh: true });
+    }
+  if (weeds >= 2) {
+    parts.push({ m: 'shrub', x: hx + 0.2, y: 0, z: -hz + 0.1, s: [0.34, 0.28, 0.34], stages: ALLS, fresh: true });
+    parts.push({ m: 'shrub', x: -0.1, y: 0.05, z: 0.15, s: [0.3, 0.26, 0.3], stages: ALLS, fresh: true });
+    parts.push({ m: 'weed', x: -hx - 0.05, y: 0, z: hz * 0.5, s: [0.26, 0.3, 0.26], stages: ALLS, fresh: true });
+    parts.push({ m: 'weed', x: 0.2, y: 0.05, z: -0.2, s: [0.22, 0.26, 0.22], stages: ALLS, fresh: true });
+    parts.push({ m: 'bloom', x: hx * 0.5, y: 0, z: hz + 0.25, s: [0.12, 0.16, 0.12], stages: ALLS, fresh: true });
+    parts.push({ m: 'bloom', x: -hx * 0.4, y: 0, z: -hz - 0.2, s: [0.12, 0.14, 0.12], stages: ALLS, fresh: true });
+  }
+  return {
+    name: `ruin-${d.name}-${weeds}`,
+    scale: d.scale,
+    vscale: d.vscale,
+    roof: d.roof !== undefined ? muddy(d.roof, 0.85) : undefined,
+    plaster: d.plaster !== undefined ? muddy(d.plaster, 0.92) : undefined,
+    stain: 0.42,
+    parts,
+  };
+}
+
 /** Parts of a design present at a stage. */
 export function partsAt(d: Design, stage: Stage): Part[] {
   return d.parts.filter((p) => (p.stages & (1 << stage)) !== 0);
@@ -496,10 +627,31 @@ export function villageModels(): ModelName[] {
   add(storeDesign(MAX_FOOD_PROPS, true, 3));
   add(wellDesign(false));
   add(millDesign(3));
+  for (let v = 0; v < HOUSE_DESIGNS.length; v++) add(ruinDesign(v, 2));
   return [...s];
 }
 
-const PROC: ReadonlySet<string> = new Set<ProcKind>(['plinth', 'stake', 'pole', 'beam', 'board', 'sack', 'hay', 'soil', 'fish', 'ring', 'water', 'gable']);
+const PROC: ReadonlySet<string> = new Set<ProcKind>([
+  'plinth',
+  'stake',
+  'pole',
+  'beam',
+  'board',
+  'sack',
+  'hay',
+  'soil',
+  'fish',
+  'ring',
+  'water',
+  'gable',
+  'mud',
+  'timber',
+  'shard',
+  'rubble',
+  'weed',
+  'shrub',
+  'bloom',
+]);
 export function isProc(m: string): m is ProcKind {
   return PROC.has(m);
 }
