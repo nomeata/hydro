@@ -90,6 +90,7 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'cattleCountry', title: 'Cattle Country', description: `A village keeps a herd of ${ACH.herdCows} cows.`, icon: 'cow', category: 'people' },
   { id: 'wellspring', title: 'Wellspring', description: 'Villagers dig a well by your works.', icon: 'well', category: 'people' },
   { id: 'jetty', title: 'Fishing Jetty', description: 'Villagers build a jetty out over the water.', icon: 'jetty', category: 'people' },
+  { id: 'footbridge', title: 'Footbridge', description: 'Villagers build a little bridge to the fields across the water.', icon: 'bridge', category: 'people' },
   { id: 'pop10', title: 'Hamlet', description: '10 villagers live in the valley.', icon: 'pop', category: 'people' },
   { id: 'pop50', title: 'Village Life', description: '50 villagers live in the valley.', icon: 'pop', category: 'people' },
   { id: 'pop100', title: 'Bustling Valley', description: '100 villagers live in the valley.', icon: 'pop', category: 'people' },
