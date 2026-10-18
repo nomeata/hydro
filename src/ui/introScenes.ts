@@ -249,6 +249,7 @@ export class IntroScenes {
   private fadeIn(): void {
     if (this.disposed || this.shownRun !== this.wantRun) return;
     this.container.classList.add('live-on');
+    this.runStart = performance.now();
     if (!this.live) {
       this.live = true;
       this.onLive?.();
@@ -258,7 +259,9 @@ export class IntroScenes {
   private readonly frame = (now: number): void => {
     if (this.disposed || !this.renderer) return;
     this.raf = requestAnimationFrame(this.frame);
-    if (this.shownRun === this.wantRun) {
+    // The script's clock starts once the scene is on screen (fadeIn), so a
+    // slow start never eats into it.
+    if (this.shownRun === this.wantRun && this.fadeInAfter === 0) {
       const t = (now - this.runStart) / 1000;
       const sc = SCRIPTS[this.scene];
       if (this.scene === 'shape') this.shapeScript(t);
