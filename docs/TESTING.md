@@ -181,6 +181,19 @@ the mixing logic: `tests/audio/mix.test.ts`; e2e: `e2e/sound.spec.ts`.
   `EXT_color_buffer_float`, vertex texture units), visible with `?stats=1`.
 
 ## 7. CI pipeline
-`push` → `npm ci` → typecheck + lint → unit + scenario tests → build →
-Playwright e2e (smoke, interaction, visual) → deploy to GitHub Pages (main
-only). The deploy is blocked if any step fails.
+`.github/workflows/ci.yml`, parallel jobs on every push and PR:
+- **check** (2 runners): typecheck, and vitest split with `--shard=k/2`;
+- **build**: `vite build` (plus `dist/version.json` with the commit), shared
+  with the next jobs as the `dist` artifact;
+- **e2e** (8 runners): Playwright on the built site, `--shard=k/8`
+  (`fullyParallel`, so single tests are spread; the `list` reporter prints
+  each test's duration, to find slow ones);
+- **screenshots**: the `@readme` spec (README screenshots and `og.png`);
+- **deploy** (main only): needs check, build and e2e to pass; takes the
+  fresh screenshots, or keeps the published ones if that job failed.
+
+A push to a branch or PR cancels its older run; runs on `main` are never
+cancelled, so a busy stretch of pushes still deploys. Their deploys queue
+one at a time (`pages` group), and a run whose commit is no longer newer
+than the deployed one (`/version.json`) skips its deploy. A push deploys in
+about 10 minutes.
