@@ -5,6 +5,7 @@
  */
 import type { Rng } from '../../shared/rng';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR } from '../constants';
+import type { Ditch } from './ditches';
 import { MILL } from './mills';
 import type { Jetty } from './works';
 
@@ -112,6 +113,8 @@ export interface SettlementState {
   herd?: HerdState;
   /** The village's mill turned today (GAMEPLAY §1.2: a little wellbeing; absent in old saves). */
   milling?: boolean;
+  /** Field ditches dug (or being dug) off the player's canals (people/ditches.ts; absent: none). */
+  ditches?: Ditch[];
 }
 
 export type Mood = -1 | 0 | 1;

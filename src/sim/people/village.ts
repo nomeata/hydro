@@ -13,6 +13,7 @@ import { applyEarthwork } from '../plans/plans';
 import { CellFlag, LandUse, SOIL_PROPS, type World } from '../world';
 import { Job, SiteKind, Task, packEntities, walk, type Agent, type Animal } from './agents';
 import { updateDesirePaths } from './desire';
+import { DITCH, chooseDitch } from './ditches';
 import { Herds, type HerdHome } from './herds';
 import { MAX_WADE, PathFinder } from './path';
 import { ECONOMY, Settlement, type SettlementState } from './settlement';
@@ -103,9 +104,11 @@ export const FARMING = {
 
 /**
  * Field moisture: the cell's own soil saturation × `own`, or capillary
- * wetting from nearby water, max · exp(-d / reach) with d in cells.
+ * wetting from nearby water, max · exp(-d / reach) with d in cells. Water in
+ * the player's canals and the villagers' ditches wets the land within
+ * `canalReach` (it runs at ground level, where a river is cut into it).
  */
-export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5 };
+export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 2.5 };
 
 export const CROP_MOISTURE = { dry: 0.2, moist: 0.4, soggy: 0.9, soggyGrowth: 0.4 };
 
@@ -244,6 +247,36 @@ export interface PeopleHost {
   lined(i: number): void;
 }
 
+/** Two-pass chamfer distance transform in place, with nearest-source propagation when `near` is given. */
+function chamfer(d: Float32Array, near: Int32Array | null, W: number, H: number): void {
+  const relax = (i: number, j: number, c: number) => {
+    if (d[j]! + c < d[i]!) {
+      d[i] = d[j]! + c;
+      if (near) near[i] = near[j]!;
+    }
+  };
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (x > 0) relax(i, i - 1, 1);
+      if (y > 0) {
+        relax(i, i - W, 1);
+        if (x > 0) relax(i, i - W - 1, 1.414);
+        if (x < W - 1) relax(i, i - W + 1, 1.414);
+      }
+    }
+  for (let y = H - 1; y >= 0; y--)
+    for (let x = W - 1; x >= 0; x--) {
+      const i = y * W + x;
+      if (x < W - 1) relax(i, i + 1, 1);
+      if (y < H - 1) {
+        relax(i, i + W, 1);
+        if (x < W - 1) relax(i, i + W + 1, 1.414);
+        if (x > 0) relax(i, i + W - 1, 1.414);
+      }
+    }
+}
+
 export class PeopleSystem {
   agents: Agent[] = [];
   settlements: Settlement[] = [];
@@ -257,6 +290,10 @@ export class PeopleSystem {
   private readonly waterDist: Float32Array;
   /** For field cells watered from a working well: that well's cell (else -1), recomputed with the moisture. */
   private readonly wellGarden: Int32Array;
+  /** Distance (cells) to the nearest canal or ditch water, daily. */
+  private readonly canalDist: Float32Array;
+  /** Cells of the villages' field ditches (rebuilt daily and on load). */
+  private ditchCells = new Set<number>();
   private readonly pf: PathFinder;
   /** Fish stock per block (person-days of food), and the block's capacity. */
   readonly fish: Float32Array;
@@ -317,6 +354,7 @@ export class PeopleSystem {
     this.nearestWater = new Int32Array(world.size).fill(-1);
     this.waterDist = new Float32Array(world.size);
     this.wellGarden = new Int32Array(world.size).fill(-1);
+    this.canalDist = new Float32Array(world.size);
     this.quay = new Uint8Array(world.size);
     this.fbw = Math.ceil(world.width / FISH_BLOCK);
     const blocks = this.fbw * Math.ceil(world.height / FISH_BLOCK);
@@ -598,6 +636,7 @@ export class PeopleSystem {
       w.landuse[i] === LandUse.None &&
       w.floodMemory[i]! < 60 &&
       Number.isNaN(w.plan[i]!) &&
+      !this.ditchCells.has(i) &&
       this.slope(i) < 0.25
     );
   }
@@ -628,6 +667,7 @@ export class PeopleSystem {
   // Daily decisions
 
   private daily(time: SimTime, host: PeopleHost): void {
+    this.rebuildDitchCells();
     this.updateMoisture();
     this.updateFloodMemory(time);
     for (const [site, until] of this.blocked) if (until <= time.day) this.blocked.delete(site);
@@ -647,6 +687,7 @@ export class PeopleSystem {
       this.planWell(s);
       if (time.day % MILL.everyDays === 0) this.planMill(s);
       this.planWorks(s);
+      this.planDitch(s, time);
       this.planWoods(s);
       this.herds.daily(s, this.herdHome(s), time.season === 3, !this.noAnimals);
       this.assignJobs(s, host);
@@ -697,6 +738,49 @@ export class PeopleSystem {
         this.jettyDirty = true;
       }
     }
+  }
+
+  private rebuildDitchCells(): void {
+    this.ditchCells.clear();
+    for (const s of this.settlements) for (const d of s.state.ditches ?? []) for (const c of d.cells) this.ditchCells.add(c);
+  }
+
+  /** The village's unfinished ditch, if any. */
+  private openDitch(s: Settlement): { cells: number[]; floor: number; dug: number } | null {
+    const ds = s.state.ditches;
+    const d = ds?.[ds.length - 1];
+    return d && d.dug < d.cells.length ? d : null;
+  }
+
+  /** Now and then: a new field ditch off the player's canal near the fields (ditches.ts). */
+  private planDitch(s: Settlement, time: SimTime): void {
+    const st = s.state;
+    if (time.season === 3 || (time.day + st.id) % DITCH.everyDays !== 0 || this.openDitch(s)) return;
+    const n = st.ditches?.length ?? 0;
+    if (n >= Math.min(DITCH.max, 1 + Math.floor(st.population / DITCH.perPeople))) return;
+    const w = this.world;
+    const W = w.width;
+    const taken = (i: number): boolean => {
+      const x = i % W;
+      const y = (i / W) | 0;
+      for (let dy = -2; dy <= 2; dy++)
+        for (let dx = -2; dx <= 2; dx++) if (this.ditchCells.has((y + dy) * W + x + dx)) return true;
+      return false;
+    };
+    const mine = (i: number): boolean => this.settlements.length < 2 || this.ownerOf(i % W, (i / W) | 0) === s;
+    const d = chooseDitch(w, st.x, st.y, this.fieldMoisture, mine, taken, CROP_MOISTURE.moist);
+    if (!d) return;
+    (st.ditches ??= []).push(d);
+    for (const c of d.cells) this.ditchCells.add(c);
+  }
+
+  /** The next cell of the village's open ditch for a farmer to dig, or -1. */
+  private ditchCell(s: Settlement): number {
+    const d = this.openDitch(s);
+    if (!d) return -1;
+    const w = this.world;
+    for (const c of d.cells) if (w.terrain(c) > d.floor + 0.01 && !this.reserved.has(c) && !this.blocked.has(c)) return c;
+    return -1;
   }
 
   /**
@@ -1118,38 +1202,31 @@ export class PeopleSystem {
         near[i] = -1;
       }
     }
-    // Two-pass chamfer distance transform with nearest-source propagation.
-    const relax = (i: number, j: number, c: number) => {
-      if (d[j]! + c < d[i]!) {
-        d[i] = d[j]! + c;
-        near[i] = near[j]!;
-      }
-    };
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        const i = y * W + x;
-        if (x > 0) relax(i, i - 1, 1);
-        if (y > 0) {
-          relax(i, i - W, 1);
-          if (x > 0) relax(i, i - W - 1, 1.414);
-          if (x < W - 1) relax(i, i - W + 1, 1.414);
-        }
-      }
-    for (let y = H - 1; y >= 0; y--)
-      for (let x = W - 1; x >= 0; x--) {
-        const i = y * W + x;
-        if (x < W - 1) relax(i, i + 1, 1);
-        if (y < H - 1) {
-          relax(i, i + W, 1);
-          if (x < W - 1) relax(i, i + W + 1, 1.414);
-          if (x > 0) relax(i, i + W - 1, 1.414);
-        }
-      }
+    chamfer(d, near, W, H);
     const { soil, ground, soilType } = w;
     for (let i = 0; i < w.size; i++) {
       const cap = soil[i]! * SOIL_PROPS[soilType[i]!]!.porosity;
       const own = cap > 0 ? ground[i]! / cap : 0;
       this.fieldMoisture[i] = Math.max(own * CAPILLARY.own, CAPILLARY.max * Math.exp(-d[i]! / CAPILLARY.reach));
+    }
+    // Canal and ditch water wets the land a little further.
+    if (CAPILLARY.canalReach > CAPILLARY.reach) {
+      const dc = this.canalDist;
+      const flags = w.flags;
+      let any = false;
+      for (let i = 0; i < w.size; i++) {
+        const wet = w.water[i]! > 0.05 && ((flags[i]! & CellFlag.Canal) !== 0 || this.ditchCells.has(i));
+        dc[i] = wet ? 0 : 1e9;
+        any ||= wet;
+      }
+      if (any) {
+        chamfer(dc, null, W, H);
+        for (let i = 0; i < w.size; i++) {
+          if (dc[i]! > 4 * CAPILLARY.canalReach) continue;
+          const m = CAPILLARY.max * Math.exp(-dc[i]! / CAPILLARY.canalReach);
+          if (m > this.fieldMoisture[i]!) this.fieldMoisture[i] = m;
+        }
+      }
     }
     // A few fields by a working well are watered from it (bucket by bucket).
     this.wellGarden.fill(-1);
@@ -1666,6 +1743,7 @@ export class PeopleSystem {
         a.anim = EntityAnim.Build;
         break;
       case SiteKind.Earthwork:
+      case SiteKind.Ditch:
         a.timer = 50;
         a.anim = EntityAnim.Work;
         break;
@@ -1817,6 +1895,24 @@ export class PeopleSystem {
           host.planChanged();
         }
         a.carry = CarryKind.None;
+        break;
+      }
+      case SiteKind.Ditch: {
+        const d = s ? this.openDitch(s) : null;
+        const i = a.site;
+        if (d && d.cells.includes(i)) {
+          const cut = Math.min(DITCH.perVisit, w.terrain(i) - d.floor);
+          if (cut > 0) {
+            applyEarthwork(w, i, -cut);
+            if (w.landuse[i] === LandUse.Field || w.landuse[i] === LandUse.Pasture) {
+              w.landuse[i] = LandUse.None;
+              w.crop[i] = 0;
+            }
+            w.vegetation[i] = Math.min(w.vegetation[i]!, 0.2);
+            host.terrainChanged(i);
+          }
+          d.dug = d.cells.filter((c) => w.terrain(c) <= d.floor + 0.01).length;
+        }
         break;
       }
       case SiteKind.Sow:
@@ -2035,6 +2131,13 @@ export class PeopleSystem {
       }
     }
     if (a.job === Job.Farmer && time.season !== 3) {
+      // A field ditch to dig off the player's canal (a share of the farmers' time).
+      const dc = this.rng.next() < 0.3 ? this.ditchCell(s) : -1;
+      if (dc >= 0 && this.goTo(a, dc, SiteKind.Ditch, time)) {
+        this.reserved.add(dc);
+        a.carry = CarryKind.None;
+        return;
+      }
       const job = this.fieldTask(a, s, time);
       if (job && this.goTo(a, job[0], job[1], time)) {
         this.reserved.add(job[0]);
@@ -2221,6 +2324,7 @@ export class PeopleSystem {
       const k = a.siteKind;
       const claims =
         k === SiteKind.Earthwork ||
+        k === SiteKind.Ditch ||
         k === SiteKind.Sow ||
         k === SiteKind.Tend ||
         k === SiteKind.Harvest ||
@@ -2285,6 +2389,7 @@ export class PeopleSystem {
     // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.
     if (c.fishCap && c.fishCap.length === this.fishCap.length) this.fishCap.set(c.fishCap);
     this.buildingsDirty = true;
+    this.rebuildDitchCells();
     this.updateMoisture();
     this.updateQuays();
     this.quayDirty = true;

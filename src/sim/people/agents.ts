@@ -63,6 +63,8 @@ export const enum SiteKind {
   Mill = 17,
   /** Grind grain at the mill (site = the mill's building id). */
   Grind = 18,
+  /** Dig a field ditch off the player's canal (site = the ditch cell; people/ditches.ts). */
+  Ditch = 19,
 }
 
 export interface Agent {
