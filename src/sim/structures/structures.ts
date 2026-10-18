@@ -126,6 +126,8 @@ export interface StructuresState {
   weirs: Weir[];
   /** Water wheels (absent in older saves). */
   wheels?: Wheel[];
+  /** Cells planned to take a structure down (absent in older saves; see Structures.restoring). */
+  restoring?: number[];
 }
 
 /** How far across the gate line the passage may cut through a dike (cells). */
@@ -153,6 +155,13 @@ export class Structures {
   weirs: Weir[] = [];
   wheels: Wheel[] = [];
   private nextId = 1;
+  /**
+   * Cells the crew is taking back down after a removal (a weir lowered to
+   * its ground, a gate's opening plugged): the Remove brush, still moving
+   * over the spot, does not cancel these plans. Entries whose plan is done
+   * drop out.
+   */
+  readonly restoring = new Set<number>();
   /** Gate walls for the flow kernel. */
   readonly walls: Walls = { count: 0, cell: new Int32Array(16), top: new Float32Array(16) };
   /** Set when the structure list changed (for snapshots). */
@@ -348,6 +357,7 @@ export class Structures {
       if (g !== undefined && w.terrain(c) > g + 0.01) {
         w.plan[c] = g;
         changed.push(c);
+        this.restoring.add(c);
       } else if (!Number.isNaN(w.plan[c]!) && w.plan[c]! > w.terrain(c)) w.plan[c] = NaN;
     }
     this.weirs = this.weirs.filter((o) => o !== wr);
@@ -374,6 +384,7 @@ export class Structures {
         this.unline(c);
         w.plan[c] = g.top;
         changed.push(c);
+        this.restoring.add(c);
       }
     }
     this.gates = this.gates.filter((o) => o !== g);
@@ -733,7 +744,33 @@ export class Structures {
     if (moved) this.updateWalls();
   }
 
-  /** Remove planned lining and unfinished gates within a radius (the Remove tool). */
+  /**
+   * Weirs, gates and wheels (built or not) within `radius` of (x, y): what
+   * the Remove brush takes down (through the simulation's removeStructure,
+   * like the selection's Remove).
+   */
+  near(x: number, y: number, radius: number): { kind: 'weir' | 'gate' | 'wheel'; id: number }[] {
+    const W = this.world.width;
+    const out: { kind: 'weir' | 'gate' | 'wheel'; id: number }[] = [];
+    const r2 = radius * radius;
+    for (const g of this.gates) {
+      if ((g.x - x) ** 2 + (g.y - y) ** 2 <= (radius + 0.5) ** 2) out.push({ kind: 'gate', id: g.id });
+    }
+    for (const wh of this.wheels) {
+      const hit = [wh.cell, wh.head].some((c) => ((c % W) - x) ** 2 + (((c / W) | 0) - y) ** 2 <= r2);
+      if (hit) out.push({ kind: 'wheel', id: wh.id });
+    }
+    for (const wr of this.weirs) {
+      const dx = wr.x2 - wr.x;
+      const dy = wr.y2 - wr.y;
+      const l2 = dx * dx + dy * dy;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - wr.x) * dx + (y - wr.y) * dy) / l2)) : 0;
+      if (Math.hypot(x - wr.x - t * dx, y - wr.y - t * dy) <= radius) out.push({ kind: 'weir', id: wr.id });
+    }
+    return out;
+  }
+
+  /** Remove planned lining within a radius (the Remove tool; structures go through `near`). */
   cancel(x: number, y: number, radius: number): boolean {
     const w = this.world;
     const W = w.width;
@@ -747,19 +784,7 @@ export class Structures {
         any = true;
       }
     }
-    const gates = this.gates.filter((g) => g.progress >= 1 || (g.x - x) ** 2 + (g.y - y) ** 2 > r2);
-    if (gates.length !== this.gates.length) {
-      for (const g of this.gates) if (!gates.includes(g)) for (const c of g.passage) this.lining.delete(c);
-      this.gates = gates;
-      this.updateWalls();
-      any = true;
-    }
-    const wheels = this.wheels.filter((wh) => wh.progress >= 1 || (wh.x - x) ** 2 + (wh.y - y) ** 2 > r2);
-    if (wheels.length !== this.wheels.length) {
-      for (const wh of this.wheels) if (!wheels.includes(wh)) this.lining.delete(wh.head);
-      this.wheels = wheels;
-      any = true;
-    }
+    // A weir whose stone was all still planned and is now all brushed away is gone.
     const weirs = this.weirs.filter((wr) => wr.cells.some((c) => (w.flags[c]! & CellFlag.Lined) !== 0 || this.lining.has(c)));
     if (weirs.length !== this.weirs.length) this.weirs = weirs;
     if (any) {
@@ -936,10 +961,17 @@ export class Structures {
     return out;
   }
 
+  /** Drop finished entries from `restoring`; returns it. */
+  restoringNow(): Set<number> {
+    for (const c of this.restoring) if (Number.isNaN(this.world.plan[c]!)) this.restoring.delete(c);
+    return this.restoring;
+  }
+
   getState(): StructuresState {
     const lining: number[] = [];
     for (const [i, p] of this.lining) lining.push(i, p);
-    return structuredClone({ nextId: this.nextId, lining, gates: this.gates, weirs: this.weirs, wheels: this.wheels });
+    const restoring = [...this.restoringNow()];
+    return structuredClone({ nextId: this.nextId, lining, gates: this.gates, weirs: this.weirs, wheels: this.wheels, ...(restoring.length ? { restoring } : {}) });
   }
 
   setState(st: StructuresState): void {
@@ -952,6 +984,8 @@ export class Structures {
     for (const g of this.gates) g.lift ??= g.open ? 1 : 0;
     this.weirs = s.weirs;
     this.wheels = s.wheels ?? [];
+    this.restoring.clear();
+    for (const c of s.restoring ?? []) this.restoring.add(c);
     this.updateWalls();
     this.structuresDirty = true;
     this.liningDirty = true;

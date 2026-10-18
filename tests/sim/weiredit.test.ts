@@ -286,3 +286,72 @@ describe('earthworks take up what stands on the ground', () => {
     expect(await run()).toBe(await run());
   }, 60_000);
 });
+
+describe('the Remove brush', () => {
+  /** Put one of each kind in (wheels, turbines and pumps directly, so the test does not hang on their siting rules). */
+  function stocked(progress: number): Simulation {
+    const sim = new Simulation(channel(), 1);
+    const w = sim.world;
+    sim.command({ type: 'planWeir', points: [[10, 10], [10, 22]], height: 1.5 });
+    sim.command({ type: 'planDike', points: [[20, 6], [20, 26]], width: 2, height: 3 });
+    const st = sim.structures;
+    st.wheels.push({ id: 900, cell: w.idx(30, 15), head: w.idx(30, 20), x: 30, y: 15, hx: 30, hy: 20, progress, speed: 0, flow: 0, lifted: 0 });
+    const pw = sim.power;
+    pw.turbines.push({ id: 901, x: 40, y: 16, rot: 0, a: w.idx(39, 16), b: w.idx(41, 16), crest: 21, progress, flow: 0, head: 0, power: 0, produced: 0, water: 0 });
+    pw.poles.push({ id: 902, x: 50, y: 6, progress });
+    pw.pumps.push({ id: 903, x: 56, y: 16, hx: 56, hy: 21, ox: 56, oy: 24, progress, flow: 0, power: 0, pumped: 0 });
+    return sim;
+  }
+  const brush = (sim: Simulation, x: number, y: number) => sim.command({ type: 'cancelPlan', x, y, radius: 2 });
+
+  for (const built of [false, true]) {
+    it(`takes away every kind of structure, ${built ? 'built' : 'unfinished'}`, async () => {
+      const sim = stocked(built ? 1 : 0);
+      const w = sim.world;
+      if (built) await build(sim, 20);
+      sim.command({ type: 'placeGate', points: [[20, 16]], width: 1, height: 0 });
+      expect(sim.structures.gates.length).toBe(1);
+      if (built) {
+        await build(sim, 10);
+        expect(sim.structures.gates[0]!.progress).toBe(1);
+        expect(sim.structures.weirs[0]!.cells.every((c) => (w.flags[c]! & CellFlag.Lined) !== 0)).toBe(true);
+      }
+      const weirTop = sim.structures.weirs[0]!.top;
+      const gateTop = sim.structures.gates[0]!.top;
+      // A stroke over each (the brush sends several points along it).
+      for (let y = 14; y <= 18; y++) brush(sim, 10, y);
+      for (let y = 14; y <= 18; y++) brush(sim, 20, y);
+      brush(sim, 30, 15);
+      brush(sim, 40, 16);
+      brush(sim, 50, 6);
+      brush(sim, 56, 21);
+      expect(sim.structures.weirs.length).toBe(0);
+      expect(sim.structures.gates.length).toBe(0);
+      expect(sim.structures.wheels.length).toBe(0);
+      expect(sim.power.turbines.length).toBe(0);
+      expect(sim.power.poles.length).toBe(0);
+      expect(sim.power.pumps.length).toBe(0);
+      // The crew takes the built ones down: the weir back to its ground, the gate's opening plugged.
+      await build(sim, 20);
+      if (built) {
+        expect(ground(w, 10, 16)).toBeLessThan(weirTop - 1);
+        expect(lined(w, 10, 16)).toBe(false);
+        expect(ground(w, 20, 16)).toBeCloseTo(gateTop, 1);
+      }
+      expect(sim.structures.lining.size).toBe(0);
+    }, 120_000);
+  }
+
+  it('survives save/load while the crew is still taking a weir down', async () => {
+    const sim = new Simulation(channel(), 1);
+    sim.command({ type: 'planWeir', points: [[10, 10], [10, 22]], height: 1.5 });
+    await build(sim, 15);
+    brush(sim, 10, 16);
+    expect(sim.structures.restoring.size).toBeGreaterThan(0);
+    const { sim: b } = await loadGame(await saveGame(sim));
+    expect(b.stateHash()).toBe(sim.stateHash());
+    sim.run(500);
+    b.run(500);
+    expect(b.stateHash()).toBe(sim.stateHash());
+  }, 60_000);
+});

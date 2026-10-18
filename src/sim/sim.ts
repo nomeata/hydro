@@ -560,10 +560,18 @@ export class Simulation {
         this.structures.toggleGate(cmd.id, cmd.open);
         break;
       case 'cancelPlan': {
-        const gone = cancelPlans(w, cmd.x, cmd.y, cmd.radius);
+        // The Remove brush: plans go; weirs, gates and wheels in reach, built or not, are taken
+        // down as the selection's Remove does (the crew lowers a weir, plugs a gate's opening);
+        // turbines, poles and pumps too.
+        const hit = this.structures.near(cmd.x, cmd.y, cmd.radius);
+        // The crew's plans to take something down stay (the brush may still be moving over it).
+        const keep = [...this.structures.restoringNow()].map((c) => [c, w.plan[c]!] as const);
+        const gone = cancelPlans(w, cmd.x, cmd.y, cmd.radius).filter((c) => !this.structures.restoring.has(c));
+        for (const [c, v] of keep) w.plan[c] = v;
         this.achievements.cancelled(gone);
         if (gone.length) this.planDirty = true;
-        this.structures.cancel(cmd.x, cmd.y, cmd.radius);
+        for (const h of hit) this.removeStructure(h.kind, h.id);
+        if (this.structures.cancel(cmd.x, cmd.y, cmd.radius)) this.lookDirty = true;
         this.power.cancel(cmd.x, cmd.y, cmd.radius);
         break;
       }

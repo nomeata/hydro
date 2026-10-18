@@ -122,7 +122,7 @@ const TOOLS: ToolDef[] = [
     id: 'erase',
     label: 'Remove',
     icon: ICONS.erase,
-    hint: 'Brush over plans, poles or pumps to remove them. To take down a finished weir, gate or wheel, tap it in Look mode and press Remove.',
+    hint: 'Brush over plans or anything built to take it away: the crew takes down weirs, gates and wheels. Or tap a single thing in Look mode and press Remove.',
   },
 ];
 
