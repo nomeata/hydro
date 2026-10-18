@@ -22,10 +22,28 @@ export const ECONOMY = {
   /** Expected arriving families per day at w = 1 with one free house. */
   arrivalRate: 0.6,
   /** Expected leaving families per day per household at w = 0. */
-  departureRate: 0.02,
+  departureRate: 0.05,
   /** Arrivals need w above this; departures happen below the second. */
   arriveAbove: 0.6,
   leaveBelow: 0.4,
+  /**
+   * A village smaller than this takes migrants at a lower wellbeing
+   * (`arriveSmall`) and builds a house for them at `houseSmall`: a trickle
+   * that refills a village after a setback (PEOPLE.md §4, recovery floor).
+   */
+  smallVillage: 12,
+  arriveSmall: 0.45,
+  houseSmall: 0.4,
+  /**
+   * Wellbeing multiplies food in (docs/PLAYTEST.md round 2): target =
+   * (foodFloor + (1 − foodFloor)·min(1, food security)) · (comfortBase + (1 −
+   * comfortBase)·comfort), comfort = housing, water access and safety
+   * weighted by `comfort`. So a hungry village falls below `leaveBelow`
+   * and families leave until the land feeds the rest.
+   */
+  foodFloor: 0.1,
+  comfortBase: 0.6,
+  comfort: [0.4, 0.35, 0.25] as readonly number[],
   /**
    * Families stop arriving and births pause while food security is below
    * this, so a village levels off fed rather than hungry (GAMEPLAY §4.1).
@@ -187,9 +205,12 @@ export class Settlement {
     const winter = Math.floor(dayOfYear / DAYS_PER_SEASON) === 3;
     const warm = winter && (s.wood ?? 0) >= 1 ? ECONOMY.warmWinter : 0;
     if (s.wood !== undefined) s.wood = Math.max(0, s.wood - (winter ? ECONOMY.woodBurnWinter : ECONOMY.woodBurn));
+    const E = ECONOMY;
+    const fed01 = Math.min(1, this.foodSecurity(dayOfYear));
+    const comfort = E.comfort[0]! * housing + E.comfort[1]! * s.waterAccess + E.comfort[2]! * s.safety;
     const target = Math.min(
       1,
-      0.55 * Math.min(1, this.foodSecurity(dayOfYear)) + 0.2 * housing + 0.15 * s.waterAccess + 0.1 * s.safety + warm + (s.milling ? MILL.wellbeing : 0),
+      (E.foodFloor + (1 - E.foodFloor) * fed01) * (E.comfortBase + (1 - E.comfortBase) * comfort) + warm + (s.milling ? MILL.wellbeing : 0),
     );
     s.wellbeing += (target - s.wellbeing) / ECONOMY.wellbeingTau;
     s.mood = nextMood(s.mood ?? 0, s.wellbeing);
@@ -210,7 +231,8 @@ export class Settlement {
 
     // Migration: the main lever, rate-limited by housing.
     const free = Math.max(0, this.freeHouses);
-    const pArrive = fed ? ECONOMY.arrivalRate * Math.max(0, s.wellbeing - ECONOMY.arriveAbove) * free : 0;
+    const arriveAbove = s.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
+    const pArrive = fed ? ECONOMY.arrivalRate * Math.max(0, s.wellbeing - arriveAbove) * free : 0;
     if (free > 0 && rng.next() < pArrive) {
       const n = rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1);
       s.population += n;
@@ -228,6 +250,7 @@ export class Settlement {
 
   /** Whether the settlement wants another house built. */
   wantsHouse(): boolean {
-    return this.freeHouses < 1 && this.state.wellbeing > 0.5;
+    const small = this.state.population < ECONOMY.smallVillage;
+    return this.freeHouses < 1 && this.state.wellbeing > (small ? ECONOMY.houseSmall : 0.5);
   }
 }

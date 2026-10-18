@@ -14,7 +14,7 @@ import { CellFlag, LandUse, SOIL_PROPS, type World } from '../world';
 import { Job, SiteKind, Task, packEntities, walk, type Agent, type Animal } from './agents';
 import { updateDesirePaths } from './desire';
 import { Herds, type HerdHome } from './herds';
-import { PathFinder } from './path';
+import { MAX_WADE, PathFinder } from './path';
 import { ECONOMY, Settlement, type SettlementState } from './settlement';
 import { MILL, chooseMillSite, headAt, millTurns } from './mills';
 import { WELL, chooseWellSite, drawWell, waterAccess, wellWorks } from './wells';
@@ -1623,8 +1623,9 @@ export class PeopleSystem {
   }
 
   private updateAgent(a: Agent, time: SimTime, host: PeopleHost): void {
-    // Check for rising water every 10 ticks per person (staggered by id).
-    if (!a.flee && a.task !== Task.Leave && (time.step / PEOPLE_TICK + a.id) % 10 === 0 && this.world.water[this.cellOf(a)]! > 0.3) {
+    // Check for rising water every 10 ticks per person (staggered by id): people wade
+    // through fords up to MAX_WADE, and run only from water deeper than that.
+    if (!a.flee && a.task !== Task.Leave && (time.step / PEOPLE_TICK + a.id) % 10 === 0 && this.world.water[this.cellOf(a)]! > MAX_WADE) {
       this.flee(a, time);
     }
     switch (a.task) {
