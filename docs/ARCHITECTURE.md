@@ -118,12 +118,14 @@ q    ← (q − g·h_f·dt·(η_j − η_i)/dx) / (1 + g·dt·n²·|q| / h_f^(7/
    rendering foam, NPCs).
 5. Outlets drain at critical flow `q = h·√(g·h)`, with their bed height pinned.
 
-**Tile sleeping.** Only enabled once the bench shows it is needed. A tile
-sleeps when max depth < 2 mm, its fluxes are ~0 and its neighbours sleep.
-Rain on sleeping tiles goes into a soil bucket and wakes the tile when
-ponding exceeds the threshold. Thin films below ε are removed into
-ground/evaporation with exact accounting. The worst case (rain over the
-whole window) must still fit the budget.
+**Active tiles and tile sleeping** (`sim/active.ts`, ENDLESS.md §12).
+With the fog, every kernel runs only on the active 16² tiles: the revealed
+land plus a 32-cell margin. The land outside is frozen and acts as a
+fixed-level boundary; water and sediment crossing the active edge are
+booked as in-/outflow. Inside, the flow kernel skips tiles with no water
+at all whose face-neighbouring cells are dry too; that is exact
+(bit-identical), so it is always on, also without fog. The worst case
+(rain over the whole active land) must still fit the budget.
 
 ### 3.3 Erosion, deposition, talus (M1b)
 Code: `sim/hydro/erosion.ts`, `sim/hydro/talus.ts`; tunables in

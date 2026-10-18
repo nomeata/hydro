@@ -127,10 +127,11 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   electric pumps, demand curve by day/season, pumped storage
 - Power-dependent professions and higher population caps
 
-## M7 — Endless world ☐
+## M7 — Endless world ◐
 Proposal and staged plan: docs/ENDLESS.md.
-- ☐ Step 1: simulate only revealed land + margin (frozen halo, dry-tile
-  sleeping) inside the fixed map; 512² desktop default
+- ◐ Step 1: ☑ simulate only revealed land + margin (frozen halo, dry-tile
+  sleeping) inside the fixed map (ENDLESS.md §12); ☐ 512² desktop default
+  (proposed, needs the device tier logic and a cheaper spin-up)
 - ☐ Step 1b: catchment inflow model for rivers entering from the fog
 - ☐ Step 2: tiled world growing up to a fixed extent, consistent block
   worldgen, chunk streaming, per-page saves, soft cap by active-cell budget

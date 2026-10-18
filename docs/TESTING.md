@@ -26,6 +26,13 @@ Fast, exact, run on every change.
   tools/longrun.ts --seed 3 --years 20 --snap-every 5` (writes
   `out/longrun/`); look at the images when tuning.
 - **Fuzzing:** random command sequences never produce NaN or negatives.
+- **Active land** (`tests/sim/active.test.ts`, ENDLESS.md §12): dry-tile
+  sleeping is bit-identical to running every tile; frozen land stays
+  fixed and the exchange across the active edge is booked; on a game
+  whose known land is a small disc on the main river the ledger balances,
+  the river keeps flowing in from the fog, save/load/continue and two runs
+  give the same hash, and newly revealed land activates at the next day
+  boundary from its frozen state.
 - **Welcome scenes** (`tests/sim/scenes.test.ts`): the scene world is
   deterministic and fully known, clones run exactly like the original, the
   river runs from inflow to outlet, the scripted trench fills the hollow,
@@ -108,7 +115,11 @@ and CI never has to commit to the repository.
 
 ## 6. Performance
 - `npm run bench`: hydro steps/sec for 256² and 512² worlds in Node; tracked
-  over time (bench results are printed in CI logs).
+  over time (bench results are printed in CI logs). Besides the all-wet
+  kernel and full step it times the flow kernel on 25 % of the tiles (per
+  active cell) and on a half-dry world (tile sleeping).
+- `npx tsx tools/benchgame.ts [size] [seed]`: a real game step (generated
+  world, village, after the worker's spin-up), with the active share.
 - In-browser: `?stats=1` shows FPS, sim steps/sec, snapshot latency. A
   Playwright perf test asserts the frame time stays within budget on the
   default scene (desktop software GL is slow, so this guards relative

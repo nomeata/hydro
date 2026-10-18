@@ -1,6 +1,7 @@
 # Hydro — Endless world (M7) proposal
 
-*Status: proposal, October 2026. Nothing here is implemented yet.
+*Status: proposal, October 2026. Step 1 (sparse simulation inside the
+fixed map) is built; §12 says how and what it measured.
 Numbers marked "(container)" were measured in the dev container, which is
 about 5× slower than a desktop (CLAUDE.md). The measuring scripts were
 throw-away prototypes; §11 says how to reproduce them.*
@@ -588,3 +589,91 @@ I ran these as throw-away `tsx` scripts importing `src/sim/*` directly
 Once step 1 starts, the masked-kernel case belongs in `src/sim/bench.ts`
 (a "flow kernel, 25 % active" line). That keeps the per-active-cell cost
 visible on the phone bench page too.
+
+## 12. Step 1 as built
+
+**What runs where.** `sim/active.ts` holds the `ActiveSet`: a tile mask,
+its runs per tile row (`spans`), the same dilated by one tile (`haloSpans`,
+active + halo) and row segments of active cells (`rows`, row-major).
+- With the fog, `Simulation.active` is the tiles with any `revealed > 0`,
+  dilated by 2 tiles (32 cells, a square). Without fog (scenes, tests
+  without villages) every tile is active.
+- It is **derived state**: recomputed from `revealed` and `fog` at every day
+  boundary (right after `updateReveal`, the only place `revealed` grows),
+  on construction and on load. A load mid-day therefore gets the same
+  mask, and nothing is saved.
+- Every per-cell kernel takes the set: `flowStep`, `groundwaterStep`,
+  `erosionStep` (+ bed slope, bank erosion, point bars), `talusStep`,
+  `weatherStep` (+ loose-soil settling), `soilWaterStep` (per tile) and
+  `Vegetation.daily`. Called without a set they run on every tile, exactly
+  as before. People, structures and the weather fronts are unchanged.
+- The worker's spin-up runs **unmasked** (`Simulation.spinUp`), so the
+  frozen land holds flowing rivers and settled water.
+
+**Frozen halo (§4.1).** Cells outside the set keep their state. In
+`flowStep` the faces between an active and a frozen cell are computed with
+the normal formula; the frozen side has no outflow limit (it is a
+reservoir) and its sediment concentration is taken once when the set
+changes. The flux changes only the active cell. The volume and sediment
+are returned as `edgeIn/edgeOut/edgeSedIn/edgeSedOut` and booked in the
+ledgers' `inflow`/`outflow` (`outflowToday` includes the edge outflow).
+Groundwater does the same with a fixed water table (`edgeIn/edgeOut` on the
+scratch). Erosion, bank erosion, bars, bed slope and talus never write a
+frozen cell. Rain on frozen land is not simulated (not booked either), and
+the history's precipitation area is the active area.
+
+**Dry-tile sleeping (§3.1), exact.** At the start of each `flowStep` call
+the kernel scans which active and halo tiles hold any water (`> 0`) and in
+which edge rows/columns. An active tile is awake if it holds water or a
+face-neighbouring cell in an adjacent tile does. A sleeping tile's faces
+are dry on both sides, so the full kernel would set them to 0 and change
+nothing else. Its faces and velocities are cleared once when it falls
+asleep. The result is therefore **bit-identical** to running every tile
+(tested), so it is always on, also without fog, and needs no wake-up
+rules for rain, inflows or works: any water wakes the tile on the next
+call. I chose "any water" over the proposed `DRY` threshold because the
+threshold changes the physics (films would have to be removed with
+booking): exact zero sleeps 38 % of tiles in a 256² game against 49 % for
+`DRY`, so the exact rule gives up little.
+
+**Not done in step 1:**
+- Per-tile sub-stepping (§3.2): not simple with the θ-weighted faces and
+  the halo; the gain is smaller now that most time is in the awake wet
+  tiles. Left for later.
+- Founding pre-activation and adaptive halo activation (§2): the active
+  set grows at the day boundary when a new village's disc is revealed. A
+  dam backing up past the margin just spills into the frozen land (booked
+  as outflow).
+- Newly activated land starts from its frozen state, which is the
+  spun-up state of the game's start (or of when it was last active). That
+  is plausible: rivers flow, ponds are settled, groundwater is moist. It
+  lacks the seasons since (snow, dry summer soil), which the 32-cell
+  margin hides while it catches up within a few game days. So there is no
+  local spin-up.
+
+**Measurements** (container, loaded by other agents, interleaved runs;
+`tools/benchgame.ts`: seed 7, worker spin-up, then 600 game steps):
+
+| | before | after | active tiles | awake (of all) |
+|---|---|---|---|---|
+| 256², start of a game | 12.2–12.6 ms | 2.6–2.7 ms | 32 % | — |
+| 512², start of a game | 47.5–49.1 ms | 4.8–4.9 ms | 16 % | — |
+| 512², known land r = 154 cells (≈ 4 villages) | 48.0 ms | 13.8 ms | 51 % | 25 % |
+| 256², no fog (sleeping only) | 12.6 ms | 11.3 ms | 100 % | 72 % |
+
+`npm run bench` (synthetic all-wet world, all tiles awake) is unchanged
+within noise; its new lines time the kernel on 25 % of the tiles and on a
+half-dry world.
+
+**512² proposal.** A 512² game now costs about 5 ms/step at the start and
+≈ 14 ms with four villages' worth of known land (container), ≈ 1–3 ms on a
+desktop. That is well within budget for 1–3× speed. Rain over all the known
+land wakes every active tile, which at 51 % active is still ≈ 25 ms
+(container). So I propose 512² as the desktop default. Before switching:
+- The worker's spin-up runs on the whole map: 600 steps × 48 ms ≈ 29 s in
+  the container (≈ 6 s desktop) at 512². Spin up only the active set plus a
+  wider ring (say 128 cells), and spin up further land in the background
+  or accept its worldgen state.
+- Measure the main thread (4× the texture uploads and chunk meshes) and the
+  snapshot size; ENDLESS §7 expects that to limit first.
+- Add the device tier logic (phones stay at 256²).
