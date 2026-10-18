@@ -16,7 +16,7 @@ import { updateDesirePaths } from './desire';
 import { DITCH, chooseDitch } from './ditches';
 import { Herds, type HerdHome } from './herds';
 import { MAX_WADE, PathFinder } from './path';
-import { ECONOMY, Settlement, type SettlementState } from './settlement';
+import { classifyGrowth, ECONOMY, Settlement, type SettlementState } from './settlement';
 import { MILL, chooseMillSite, headAt, millTurns } from './mills';
 import { WELL, chooseWellSite, drawWell, waterAccess, wellWorks } from './wells';
 import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works';
@@ -396,6 +396,8 @@ export class PeopleSystem {
   private nextId = 1;
   private founded = false;
   private blocked = new Map<number, number>();
+  /** Good land each village could still claim (by id; manageFields, daily): the land limit of growth. */
+  private goodLeft = new Map<number, number>();
   /** Cells currently targeted by someone. */
   private reserved = new Set<number>();
   private lastDay = -1;
@@ -802,6 +804,7 @@ export class PeopleSystem {
       this.herds.daily(s, this.herdHome(s), time.season === 3, !this.noAnimals);
       this.assignJobs(s, host);
       this.manageLand(s, time);
+      this.judgeGrowth(s, doy);
     }
     this.peakPopulation = Math.max(this.peakPopulation, this.population);
     // Migrants remember how the land looked at the end of summer.
@@ -1930,6 +1933,7 @@ export class PeopleSystem {
       const n = Math.max(0, Math.min(HARDY.perDay, want - total, cap, marginal.length));
       for (let k = 0; k < n; k++) claim(marginal[k]![1], marginal[k]![2]);
     }
+    this.goodLeft.set(st.id, good.length - nGood);
     // Surplus: good land left over for want of hands; the best few plots are pegged out.
     const pegs = common + nGood >= want ? good.slice(nGood, nGood + PEGS.max).map((c) => c[1]) : [];
     const old = st.pegs ?? [];
@@ -1939,6 +1943,19 @@ export class PeopleSystem {
       this.rebuildPegMask();
     }
     return fields.length < want ? wishes : [];
+  }
+
+  /** Daily, after the planning: what holds the village's growth back (settlement.ts classifyGrowth). */
+  private judgeGrowth(s: Settlement, doy: number): void {
+    const st = s.state;
+    st.limit = classifyGrowth({
+      wellbeing: st.wellbeing,
+      arriveAbove: st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove,
+      fed: s.foodSecurity(doy, ECONOMY.growHorizon),
+      freeHouses: s.freeHouses,
+      building: this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress < 1),
+      goodLeft: this.goodLeft.get(st.id) ?? 0,
+    });
   }
 
   /** Shallow, still standing water a paddy could be laid out in (otherwise as buildable for a field). */
