@@ -722,6 +722,32 @@ html, body {
 .select-panel .sel-remove.armed { background: #c0392b; color: #fff; }
 .select-panel .sel-note { font-size: 11.5px; opacity: 0.8; margin-top: 4px; }
 .select-panel .sel-note[hidden] { display: none; }
+/* In place: the bubble over the selected thing (name, ×, readout), placed by ui/selection.ts each frame. */
+.select-panel.sel-bubble {
+  position: fixed; left: 0; top: 0; z-index: 6; min-width: 0; max-width: min(300px, calc(100vw - 12px));
+  padding: 4px 6px 5px 10px; pointer-events: auto;
+}
+.sel-bubble .sel-head { gap: 6px; }
+.sel-bubble .sel-title { font-size: 12.5px; white-space: nowrap; }
+.sel-bubble .sel-note { font-size: 11.5px; opacity: 0.85; flex: 1; }
+.sel-bubble .sel-note:empty { display: none; }
+.select-panel.sel-bubble .sel-remove {
+  min-width: 34px; min-height: 34px; padding: 0 8px; margin-left: auto; font-size: 18px; line-height: 1; border-radius: 17px;
+}
+.select-panel.sel-bubble .sel-remove.armed { font-size: 13px; }
+@media (pointer: coarse) { .select-panel.sel-bubble .sel-remove { min-width: 44px; min-height: 44px; border-radius: 22px; } }
+/* The weir's crest handle: drag up or down; it shows the crest's height. */
+.sel-height {
+  position: fixed; left: -26px; top: -18px; width: 52px; height: 36px; padding: 0; border: 3px solid var(--wood-dark); border-radius: 18px;
+  background: #fff7d6; color: var(--ink); font: 700 12px/1 system-ui, sans-serif; cursor: ns-resize; touch-action: none; z-index: 5;
+  box-shadow: 0 1px 3px rgba(40, 30, 10, 0.5);
+}
+.sel-height[hidden] { display: none; }
+.sel-height::before, .sel-height::after { content: ''; position: absolute; left: 50%; margin-left: -5px; border: 5px solid transparent; }
+.sel-height::before { top: -13px; border-bottom-color: var(--wood-dark); }
+.sel-height::after { bottom: -13px; border-top-color: var(--wood-dark); }
+.sel-handle.sel-route::after { background: #d8f0ff; border-color: #2f6f99; }
+.sel-handle.sel-route.bad::after { background: #ffb3a8; border-color: #c0392b; }
 /* Live state of a turbine, pole or pump (ui/powerReadout.ts). */
 .select-panel .sel-power { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
 .select-panel .sel-power[hidden] { display: none; }

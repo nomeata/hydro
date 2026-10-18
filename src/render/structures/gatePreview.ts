@@ -1,7 +1,9 @@
 /**
- * The gate tool's hover ghost (ui/tools.ts): a pale sluice gate standing in
- * the wall where a tap would put one (sim/structures/structures.ts
- * gateTapSite), so the player sees where it goes before clicking.
+ * Ghost structures (ui/tools.ts, ui/selection.ts): pale, see-through
+ * copies drawn by the structures layer. The gate tool's hover ghost (a
+ * sluice gate standing in the wall where a tap would put one:
+ * sim/structures/structures.ts gateTapSite); a weir being drawn or edited
+ * as it will stand; weirs the crew is still building, shown whole.
  */
 import * as THREE from 'three';
 import type { StructureInfo } from '../../shared/protocol';
@@ -22,7 +24,8 @@ export class GatePreview {
   private readonly layer: StructuresLayer;
   private shown: GateGhost | null = null;
 
-  constructor(scene: THREE.Object3D, heights: HeightSampler) {
+  constructor(scene: THREE.Object3D, heights: HeightSampler, opacity = 0.6) {
+    this.mat.opacity = opacity;
     this.layer = new StructuresLayer(scene, heights, this.mat);
     this.layer.group.name = 'gate-ghost';
     this.layer.group.renderOrder = 12;
@@ -46,7 +49,20 @@ export class GatePreview {
     this.layer.setStructures([info]);
   }
 
+  /** Show these structures (whole, as ghosts), or none. */
+  private list: readonly StructureInfo[] = [];
+  get structures(): readonly StructureInfo[] {
+    return this.list;
+  }
+
+  setStructures(list: readonly StructureInfo[]): void {
+    if (list.length === 0 && this.list.length === 0) return;
+    this.list = list;
+    this.layer.setStructures(list);
+  }
+
   refreshHeights(): void {
+    if (this.list.length) this.layer.refreshHeights();
     if (this.shown) this.layer.refreshHeights();
   }
 }

@@ -17,6 +17,7 @@ import {
   makeFloatTexture,
   makeNoiseTexture,
   packPlan,
+  PLAN_NONE,
   packVel,
   uploadFloatRows,
 } from './textures';
@@ -37,7 +38,7 @@ import { GatePreview } from './structures/gatePreview';
 import { PowerLayer } from './power/power';
 import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
-import type { BuildingInfo } from '../shared/protocol';
+import type { BuildingInfo, StructureInfo } from '../shared/protocol';
 
 /** Fixed time of day used for lighting: a pleasant early afternoon. */
 const DAY_TIME = 0.56;
@@ -100,8 +101,17 @@ export class GameRenderer {
   readonly power: PowerLayer;
   /** The power tools' ghost: a line of poles with its wires, or a pump, while drawing. */
   readonly powerGhost: PowerLayer;
+  private readonly ghostMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, color: 0xd8f0ff, emissive: 0x203040 });
   /** The gate tool's hover ghost. */
   readonly gatePreview: GatePreview;
+  /** A weir being drawn or edited, as it will stand (the weir tool, the selection's handles). */
+  readonly weirGhost: GatePreview;
+  /** Weirs the crew is still building, shown whole as a ghost (their plan cells are not highlighted). */
+  readonly buildGhost: GatePreview;
+  /** The last plan from the sim (NaN = none), kept to mask building weirs' cells. */
+  private planRaw: Float32Array;
+  /** Cells near the line of a weir under construction. */
+  private weirMask = new Set<number>();
   /** Tinted cells for the brushes: fields under the brush, the stroke's raised and dug ground, an undo's flash. */
   readonly cellTint: CellTint;
   /** Lining per cell as last received, and cells previewed by a lining tool. */
@@ -236,10 +246,12 @@ export class GameRenderer {
     this.wheelPreview = new WheelPreview(this.scene, this.heights);
     this.brushCursor = new BrushCursor(this.scene, this.heights);
     this.power = new PowerLayer(this.scene, this.heights);
-    const ghostMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, color: 0xd8f0ff, emissive: 0x203040 });
-    this.powerGhost = new PowerLayer(this.scene, this.heights, ghostMat);
+    this.powerGhost = new PowerLayer(this.scene, this.heights, this.ghostMat);
     this.powerGhost.group.renderOrder = 12;
     this.gatePreview = new GatePreview(this.scene, this.heights);
+    this.weirGhost = new GatePreview(this.scene, this.heights);
+    this.buildGhost = new GatePreview(this.scene, this.heights, 0.35);
+    this.planRaw = data.plan.slice();
     this.cellTint = new CellTint(this.scene, this.heights);
     this.updateBounds();
 
@@ -331,6 +343,8 @@ export class GameRenderer {
       this.wheelPreview.refreshHeights();
       this.power.refreshHeights();
       this.gatePreview.refreshHeights();
+      this.weirGhost.refreshHeights();
+      this.buildGhost.refreshHeights();
       this.cellTint.refreshHeights();
       this.crops.invalidate();
       this.plots.invalidate();
@@ -339,12 +353,12 @@ export class GameRenderer {
       (this.tex.look.image.data as Uint8Array).set(s.look.subarray(0, n * 4));
       this.tex.look.needsUpdate = true;
     }
-    if (s.plan) {
-      const any = packPlan(s.plan, this.tex.plan.image.data as Float32Array);
-      this.terrain.uniforms.uPlanOn.value = any ? 1 : 0;
-      this.tex.plan.needsUpdate = true;
+    if (s.structures) {
+      this.structures.setStructures(s.structures);
+      this.buildingWeirs(s.structures);
     }
-    if (s.structures) this.structures.setStructures(s.structures);
+    if (s.plan) this.planRaw.set(s.plan.subarray(0, n));
+    if (s.plan || s.structures) this.uploadPlan();
     if (s.power) this.power.setInfo(s.power);
     if (s.lining) {
       this.liningBase.set(s.lining.subarray(0, n));
@@ -406,7 +420,9 @@ export class GameRenderer {
    * The power tools' ghost (ui/tools.ts): new poles and the wires of a line
    * being drawn (wires may end at the grid's own nodes), or a pump; null hides it.
    */
-  setPowerGhost(g: { poles: readonly (readonly [number, number])[]; wires: readonly number[]; pump?: PowerInfo['pumps'][number] } | null): void {
+  setPowerGhost(g: { poles: readonly (readonly [number, number])[]; wires: readonly number[]; pump?: PowerInfo['pumps'][number] } | null, ok = true): void {
+    this.ghostMat.color.set(ok ? 0xd8f0ff : 0xff4a3a);
+    this.ghostMat.emissive.set(ok ? 0x203040 : 0x400800);
     this.powerGhost.anchors = this.power.nodeTops;
     this.powerGhost.setInfo({
       turbines: [],
@@ -423,9 +439,54 @@ export class GameRenderer {
     this.uploadLining();
   }
 
+  /** Weirs under construction: a whole ghost of each, and the cells round their lines (masked from the plan overlays). */
+  private buildingWeirs(list: readonly StructureInfo[]): void {
+    const building = list.filter((o) => o.kind === 'weir' && o.progress < 0.999 && o.x2 !== undefined && o.y2 !== undefined);
+    this.buildGhost.setStructures(building.map((o) => ({ ...o, progress: 1 })));
+    const mask = new Set<number>();
+    const W = this.heights.width;
+    const H = this.heights.height;
+    for (const o of building) {
+      const ax = o.x;
+      const ay = o.y;
+      const bx = o.x2!;
+      const by = o.y2!;
+      const R = 3;
+      for (let y = Math.max(0, Math.floor(Math.min(ay, by) - R)); y <= Math.min(H - 1, Math.ceil(Math.max(ay, by) + R)); y++)
+        for (let x = Math.max(0, Math.floor(Math.min(ax, bx) - R)); x <= Math.min(W - 1, Math.ceil(Math.max(ax, bx) + R)); x++) {
+          const dx = bx - ax;
+          const dy = by - ay;
+          const l2 = dx * dx + dy * dy;
+          const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+          if (Math.hypot(x - ax - t * dx, y - ay - t * dy) <= R) mask.add(y * W + x);
+        }
+    }
+    const changed = mask.size !== this.weirMask.size || [...mask].some((i) => !this.weirMask.has(i));
+    this.weirMask = mask;
+    if (changed) this.uploadLining();
+  }
+
+  private uploadPlan(): void {
+    const dst = this.tex.plan.image.data as Float32Array;
+    let any = packPlan(this.planRaw, dst);
+    if (any && this.weirMask.size) {
+      for (const i of this.weirMask) dst[i] = PLAN_NONE;
+      any = false;
+      for (let i = 0; i < dst.length; i++)
+        if (dst[i] !== PLAN_NONE) {
+          any = true;
+          break;
+        }
+    }
+    this.terrain.uniforms.uPlanOn.value = any ? 1 : 0;
+    this.tex.plan.needsUpdate = true;
+  }
+
   private uploadLining(): void {
     const data = this.tex.lining.image.data as Uint8Array;
     data.set(this.liningBase);
+    // (A weir being built shows as its ghost, not as planned cells.)
+    for (const i of this.weirMask) if (data[i]! > 0 && data[i]! < 254) data[i] = 0;
     if (this.liningPreview) for (const i of this.liningPreview) if (data[i] === 0) data[i] = 1;
     let any = false;
     for (let i = 0; i < data.length; i++)

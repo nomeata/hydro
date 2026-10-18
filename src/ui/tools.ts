@@ -10,7 +10,7 @@
  * §3). Sluice gates are worked by the villagers (sim/structures/gatekeeper.ts),
  * not by the player.
  */
-import type { Command, Pt } from '../shared/protocol';
+import type { Command, Pt, StructureInfo } from '../shared/protocol';
 import { planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
 import { BRUSH_DEFAULT_SIZE, BRUSH_SIZES } from '../sim/plans/sculpt';
 import type { Sculptor } from '../client/sculptor';
@@ -90,6 +90,8 @@ export interface ToolHost {
   setPowerGhost?(g: { poles: readonly Pt[]; wires: readonly number[]; pump?: PumpGhost } | null): void;
   /** The grid's turbines and poles (finished or not), as [x, y]: a drawn line snaps to them. */
   powerNodes?(): readonly Pt[];
+  /** The weir tool's ghost wall as it will stand, or none. */
+  setWeirGhost?(list: readonly StructureInfo[]): void;
   /** The gate tool's ghost gate, or none. */
   setGateGhost?(g: { x: number; y: number; rot: number; width: number; top: number; sill: number } | null): void;
   /** Tinted cells (fields under a brush, a stroke's raised and dug ground, an undo's flash), per channel; null clears. */
@@ -548,6 +550,7 @@ export class ToolPalette {
     this.host.setWheelGhost?.(null, false);
     this.host.setGateGhost?.(null);
     this.host.setPowerGhost?.(null);
+    this.host.setWeirGhost?.([]);
   }
 
   /** Called when a snapshot with a new plan (or lining) arrives. */
@@ -1041,11 +1044,18 @@ export class ToolPalette {
       const ends: Pt[] = [pts[0]!, pts[pts.length - 1]!];
       const amount = this.amount;
       let lining: number[] | null = null;
+      let weir: StructureInfo | null = null;
       if (this.tool === 'weir') {
-        if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
-          const low = weirLowest(grid, ends[0]!, ends[1]!);
-          if (Number.isFinite(low)) lining = planWeirPreview(grid, ends[0]!, ends[1]!, low + amount);
+        // The wall as it will stand (a ghost), not its cells.
+        const [a, b] = [ends[0]!, ends[1]!];
+        if (Math.hypot(b[0] - a[0], b[1] - a[1]) >= 1.5) {
+          const low = weirLowest(grid, a, b);
+          if (Number.isFinite(low)) {
+            planWeirPreview(grid, a, b, low + amount);
+            weir = { id: -1, kind: 'weir', x: a[0], y: a[1], x2: b[0], y2: b[1], rot: Math.atan2(b[1] - a[1], b[0] - a[0]), width: Math.hypot(b[0] - a[0], b[1] - a[1]), top: low + amount, sill: low, open: false, progress: 1 };
+          }
         }
+        this.host.setWeirGhost?.(weir ? [weir] : []);
       } else if (this.tool === 'gate') {
         if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
           // Drawn across a channel: a stone wall with the gate at its lowest point.
@@ -1086,6 +1096,11 @@ export class ToolPalette {
       const m = this.host.mirror;
       this.housesSkipped = m.maskUnrevealed(grid.plan);
       if (lining) lining = lining.filter((i) => m.isRevealed(i % m.width, (i / m.width) | 0) && (this.tool === 'power' || this.tool === 'wheel' || m.plannable(i)));
+      if (this.tool === 'weir' && this.host.setWeirGhost) {
+        this.host.setPreviewPlan(null);
+        this.host.setPreviewLining?.(null);
+        return;
+      }
       this.host.setPreviewPlan(grid.plan);
       this.host.setPreviewLining?.(lining);
     });
