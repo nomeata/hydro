@@ -57,7 +57,7 @@ function init(seed: number, size: number): void {
   const t0 = performance.now();
   const gen = generateWorld({ seed, size });
   const t1 = performance.now();
-  const fresh = new Simulation(gen.world, seed, { people: { startX: gen.startX, startY: gen.startY } });
+  const fresh = new Simulation(gen.world, seed, { people: { startX: gen.startX, startY: gen.startY }, rain: gen.rain });
   fresh.run(SPINUP_STEPS);
   fresh.step = 0;
   fresh.resetHistory();

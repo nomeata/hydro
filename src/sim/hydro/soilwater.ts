@@ -37,12 +37,15 @@ export interface SoilWaterInput {
   seaLevelTemp: number;
   /** Number of hydro steps this update stands for. */
   steps: number;
+  /** Multiplier on every prescribed inflow (river seasons and wet/dry years; default 1). */
+  inflowScale?: number;
 }
 
 export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger): void {
   const { width: W, height: H, water, ground, soil, soilType, snow, inflow, vegetation, landuse } = world;
   const vegInf = PARAMS.vegetationInfiltration;
   const { tileRain, tileElevation, tilesWide, seaLevelTemp, steps } = inp;
+  const qScale = inp.inflowScale ?? 1;
   const dayFrac = steps / STEPS_PER_DAY;
   const hydroSeconds = steps * DT;
   const meltK = PARAMS.meltPerDegreeDay * dayFrac;
@@ -77,7 +80,7 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
           let h = water[i]!;
 
           // Inflow (m³/s → depth).
-          const q = inflow[i]!;
+          const q = inflow[i]! * qScale;
           if (q > 0) {
             const add = (q * hydroSeconds) / CELL_AREA;
             h += add;

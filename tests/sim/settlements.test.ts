@@ -22,6 +22,8 @@ async function runDays(sim: Simulation, days: number, until?: () => boolean): Pr
 const saved = { ...FOUNDING };
 FOUNDING.minPopulation = 4;
 FOUNDING.interval = 4;
+// Migrants judge the land at the end of summer as well: survey it on day 1.
+FOUNDING.summerDay = 1;
 afterAll(() => Object.assign(FOUNDING, saved));
 
 describe('more settlements', () => {

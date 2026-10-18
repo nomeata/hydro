@@ -6,7 +6,8 @@ import type { Command, SimTime } from '../shared/protocol';
 import { Rng } from '../shared/rng';
 import { timeAt, seaLevelTemperature } from './climate/calendar';
 import { Weather, type WeatherState } from './climate/weather';
-import { CELL_AREA, DT, STEPS_PER_DAY } from './constants';
+import { Climate, tileRainMap, type ClimateRunState } from './climate/climate';
+import { CELL_AREA, DT, STEPS_PER_DAY, TILE } from './constants';
 import { GroundwaterScratch, groundwaterStep } from './hydro/groundwater';
 import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
 import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
@@ -26,6 +27,8 @@ import { Vegetation } from './vegetation';
 export interface SimOptions {
   /** Enable villages; founding happens near the start point. */
   people?: { startX: number; startY: number };
+  /** The generation climate's rain factor per cell (GenResult.rain): the live weather follows it. */
+  rain?: Float32Array;
 }
 
 export interface SimState {
@@ -47,6 +50,8 @@ export interface SimState {
   history?: HistoryState;
   /** Achievements (absent in older saves). */
   achievements?: AchievementsState;
+  /** River seasons and wet/dry years (absent in older saves). */
+  climate?: ClimateRunState;
 }
 
 /** Erosion state that must survive save/load: the ledger and sparse per-cell accumulators. */
@@ -97,6 +102,8 @@ export class Simulation {
   readonly world: World;
   readonly rng: Rng;
   readonly weather: Weather;
+  /** River seasons and wet/dry years (climate/climate.ts). */
+  readonly climate: Climate;
   readonly ledger: Ledger = newLedger();
   readonly crew = new SpiritCrew();
   /** Lining, weirs and sluice gates. */
@@ -154,6 +161,8 @@ export class Simulation {
     this.erosionScratch = new ErosionScratch(world.size);
     this.talusScratch = new TalusScratch(world.size);
     this.weather = new Weather(world, this.rng);
+    this.climate = new Climate(seed);
+    if (opts.rain) this.setRainMap(tileRainMap(opts.rain, world.width, world.height, TILE));
     this.vegetation = new Vegetation(world);
     this.structures = new Structures(world);
     this.structures.allow = (i) => !this.fog || isRevealed(this.world, i);
@@ -169,6 +178,13 @@ export class Simulation {
     this.structures.onLined = (i) => this.achievements.touch(i);
     this.gatekeeper.onEvent = (e) => this.achievements.gateEvent(e, this.time.day);
     this.achievements.baseline(this);
+  }
+
+  /** Use a per-tile rain factor for the live weather (saved with the climate). */
+  setRainMap(map: readonly number[]): void {
+    if (map.length !== this.weather.rainMap.length) return;
+    this.weather.rainMap.set(map);
+    this.climate.state.rainMap = map.slice();
   }
 
   /** Let the achievements hear of the villagers' harvests, catches and rebuilt houses. */
@@ -255,6 +271,8 @@ export class Simulation {
     const w = this.world;
     if (this.step % SOILWATER_EVERY === 0) {
       const t = this.time;
+      this.climate.update(t, this.ledger.rain + this.ledger.snowfall);
+      this.weather.frontFactor = this.climate.frontFactor(t);
       this.weather.advance(SOILWATER_EVERY, t, this.rng);
       soilWaterStep(
         w,
@@ -264,6 +282,7 @@ export class Simulation {
           tilesWide: this.weather.tw,
           seaLevelTemp: seaLevelTemperature(t),
           steps: SOILWATER_EVERY,
+          inflowScale: this.climate.inflowFactor(t),
         },
         this.ledger,
       );
@@ -495,6 +514,7 @@ export class Simulation {
       },
       history: this.history.getState(),
       achievements: this.achievements.getState(),
+      climate: this.climate.getState(),
     };
   }
 
@@ -529,6 +549,14 @@ export class Simulation {
       unsparse(this.erosionScratch.inflowConc, st.geo.inflowConc);
       unsparse(this.erosionScratch.loose, st.geo.loose);
       if (st.geo.transport) unsparse(this.erosionScratch.transport, st.geo.transport);
+    }
+    if (st.climate) {
+      this.climate.setState(st.climate);
+      if (st.climate.rainMap && st.climate.rainMap.length === this.weather.rainMap.length) this.weather.rainMap.set(st.climate.rainMap);
+      else this.weather.rainMap.fill(1);
+    } else {
+      // Older saves: an ordinary year from now on, uniform rain.
+      this.climate.state.year = this.time.year;
     }
     if (st.history) this.history.setState(st.history);
     else this.resetHistory();
@@ -581,6 +609,10 @@ export class Simulation {
       for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
     }
     mix(w.revealed);
+    {
+      const json = JSON.stringify(this.climate.state);
+      for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
+    }
     if (this.people) {
       const json = JSON.stringify(this.people.getState());
       for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
