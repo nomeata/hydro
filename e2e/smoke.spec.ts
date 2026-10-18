@@ -49,8 +49,8 @@ test('digit keys pick tools, Escape returns to Look', async ({ page }) => {
   await expect(page.locator('button[data-tool=trench]')).toHaveAttribute('title', 'Trench (2)');
   await page.keyboard.press('Escape');
   await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
-  // A locked tool (Gate, 7) only shows when it unlocks.
-  await page.keyboard.press('7');
+  // A locked tool (Gate, 6) only shows when it unlocks.
+  await page.keyboard.press('6');
   await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.tools .hint')).toContainText('Unlocks at');
 });

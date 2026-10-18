@@ -56,6 +56,8 @@ The game exposes a **test hook** when loaded with `?test=1`:
 `window.__hydro` gives access to the sim client (`runDays(n)`, `stateHash()`,
 `getCell(x,y)`, `setCamera(...)`, `pause()`), a deterministic seed, a fixed
 time of day, and disabled random visual effects (no particle jitter).
+`?cheat=1` makes every tool available from the start (no population
+unlocks), for trying late tools by hand or in a test.
 - **Smoke:** page loads, WebGL context exists, worker reports ready, no
   console errors, frames are rendered (canvas not blank).
 - **Interaction tests:** drive real input events:

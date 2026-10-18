@@ -299,7 +299,7 @@ they look after the water by their homes on their own:
   known land plus a margin.
 - Tools unlock at population milestones (highest total population so far,
   so unlocks are never lost): one table in `src/shared/unlocks.ts`
-  (line 15, weir 30, gate 50; others from the start). Locked tools are
+  (weir 30, gate 50; others from the start; `?cheat=1` unlocks all). Locked tools are
   greyed with a lock and say "Unlocks at N villagers".
 
 ## 7. Making the hidden economy visible ("watch and learn")

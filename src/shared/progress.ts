@@ -10,7 +10,6 @@ import { TOOL_UNLOCKS } from './unlocks';
  * tool palette labels its buttons with these too (one source of truth).
  */
 const TOOL_NAMES: Readonly<Record<string, string>> = {
-  line: 'Lining',
   weir: 'Weir',
   gate: 'Gate',
   well: 'Well',

@@ -99,7 +99,9 @@ See docs/GAMEPLAY.md §7 (prioritised list).
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill
   above), sluice gates (hold a reservoir closed, drain to the sill open;
   tap to toggle), built by the spirit crew; plans only on known land;
-  tools unlock at 15/30/50 villagers; digit-key hotkeys
+  tools unlock at 30/50 villagers; digit-key hotkeys
+- ☑ Player lining tool removed again: lining is left to the villagers near
+  their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
 - ☑ Villagers line banks by their homes and the player's canals near the
   village on their own; quays by the houses; a fishing jetty per village
 - Wells, pumps (manual/animal), water wheels and mills
@@ -117,6 +119,13 @@ See docs/GAMEPLAY.md §7 (prioritised list).
 - Power-dependent professions and higher population caps
 
 ## M7 — Endless world ☐
+Proposal and staged plan: docs/ENDLESS.md.
+- ☐ Step 1: simulate only revealed land + margin (frozen halo, dry-tile
+  sleeping) inside the fixed map; 512² desktop default
+- ☐ Step 1b: catchment inflow model for rivers entering from the fog
+- ☐ Step 2: tiled world growing up to a fixed extent, consistent block
+  worldgen, chunk streaming, per-page saves, soft cap by active-cell budget
+- ☐ Step 3 (if needed): unbounded (hierarchical macro, far-land LOD sleeping)
 - Active-region growth with macro catchment model for boundary inflows
 - Performance: tile sleeping, possibly WASM/GPU kernels
 

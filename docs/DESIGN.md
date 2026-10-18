@@ -120,7 +120,6 @@ cancelled.
 | Trench / canal | Lowers ground along a path to a floor that grades evenly from start to end | start |
 | Dike / wall | Raises ground along a path to a level crest | start |
 | Level | Flattens an area to a target height (basins, terraces) | start |
-| Lining | Stone lining: canal/dike does not erode or slump. Villagers also line banks by their homes and the player's canals near the village on their own; lined banks by the houses facing open water become quays (lake fronts) | 15 villagers |
 | Weir | Fixed, lined overflow crest drawn across a river: holds water to the crest, spills evenly above it | 30 villagers |
 | Sluice gate | Tap a dike or weir (or draw across a channel for a dam with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Tap it in Look mode to toggle | 50 villagers |
 | Well / pump | Lifts groundwater/river water into a canal | mid |
@@ -130,9 +129,16 @@ cancelled.
 | Pumped storage | Pump uphill when surplus, generate when deficit | late |
 
 Unlocks are driven by population/prosperity milestones, not by purchase
-(`src/shared/unlocks.ts`). Stone work (lining, weirs, gates) is done by
-the quick spirit crew; villagers never carry out the player's plans, but do
-their own works (PEOPLE.md §5.4): lining near home, quays, a fishing jetty.
+(`src/shared/unlocks.ts`; `?cheat=1` unlocks everything for testing).
+Stone work (weirs, gates) is done by the quick spirit crew; villagers never
+carry out the player's plans, but do their own works (PEOPLE.md §5.4).
+
+There is no player lining tool (decision): stone lining (no erosion or
+slumping) is the villagers' job. They line the banks by their homes and the
+player's canals near the village on their own; lined banks by the houses
+facing open water become quays (lake fronts). Elsewhere the player's works
+live with natural erosion. (The sim keeps a `planLining` command for scenes
+and tests.)
 On a keyboard, the digit keys 1…9, 0 pick the tools in palette order.
 
 ## 4a. Progress you can feel

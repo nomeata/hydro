@@ -151,12 +151,12 @@ describe('waterworks', () => {
     expect(ids(sim.achievements)).toContain('waterfall');
   });
 
-  it('Stone by Stone, Weir Builder and Gatekeeper', async () => {
+  it('Weir Builder and Gatekeeper (crew stone work is not Stone by Stone)', async () => {
     const w = plain();
     const sim = new Simulation(w, 1);
     sim.command({ type: 'planLining', points: [[10, 10], [20, 10]], width: 2 });
     await build(sim);
-    expect(ids(sim.achievements)).toEqual(['stoneByStone']);
+    expect(ids(sim.achievements)).toEqual([]);
     sim.command({ type: 'planWeir', points: [[30, 5], [30, 20]], width: 2, height: 1 });
     await build(sim);
     await runDays(sim, 1);
@@ -343,7 +343,7 @@ describe('saving', () => {
     c.people!.onEvent = null;
     c.structures.onLined = null;
     const ach = c.achievements as unknown as Record<string, unknown>;
-    for (const k of ['daily', 'update', 'touch', 'stroke', 'cancelled']) ach[k] = () => {};
+    for (const k of ['daily', 'update', 'touch', 'stroke', 'cancelled', 'lined']) ach[k] = () => {};
     c.command({ type: 'planTrench', points: [[gen.startX - 8, gen.startY], [gen.startX + 8, gen.startY]], width: 2, depth: 1 });
     await runDays(c, 4);
     expect(c.stateHash()).toBe(a.stateHash());

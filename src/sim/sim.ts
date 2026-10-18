@@ -170,8 +170,8 @@ export class Simulation {
     }
     this.resetHistory();
     this.achievements = new Achievements(world.width, world.height);
-    this.structures.onLined = (i) => this.achievements.lined(i, this.time.day);
     this.watchPeople();
+    this.structures.onLined = (i) => this.achievements.touch(i);
     this.achievements.baseline(this);
   }
 
@@ -246,6 +246,7 @@ export class Simulation {
     planCells: () => this.crew.cells,
     lined: (i) => {
       // Villagers' own stone work; a planned lining there is done too.
+      this.achievements.lined(this.time.day);
       this.structures.lining.delete(i);
       this.structures.liningDirty = true;
     },
