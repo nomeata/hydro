@@ -9,7 +9,7 @@
  */
 import type { AchievementEarned, AchievementsUpdate } from '../shared/protocol';
 import { ACH, POPULATION_ACHIEVEMENTS } from '../shared/achievements';
-import { DAYS_PER_SEASON, DAYS_PER_YEAR } from './constants';
+import { CELL_AREA, DAYS_PER_SEASON, DAYS_PER_YEAR } from './constants';
 import { CellFlag, LandUse, SOIL_PROPS, type World } from './world';
 import type { PeopleEvent, PeopleSystem } from './people/village';
 import { longestPath } from './people/desire';
@@ -44,6 +44,12 @@ export const QUICK_EVERY = 60;
 const FALL_EVERY = 150;
 /** Minimum flow (m/s) for falling water. */
 const FALL_SPEED = 0.2;
+/** Water at least this deep belongs to a water body (m). */
+const BODY_DEPTH = 0.1;
+/** A lake is held back by a work cell if its surface stands this far above that cell's original ground (m). */
+const HELD = 0.2;
+/** A cell dug at least this deep below its original ground counts as dug (m). */
+const DUG = 0.3;
 
 /** An earthwork stroke by the player, followed until it is built. */
 interface Stroke {
@@ -78,6 +84,8 @@ export interface AchievementsState {
   /** Forest at the start (absent in older saves: the forest when loaded). */
   forest0?: number[];
   touched: number[];
+  /** Original ground under the player's plans: [cell, terrain, …] (absent in older saves). */
+  ground0?: number[];
   strokes: Stroke[];
   counters: Counters;
 }
@@ -119,6 +127,8 @@ export class Achievements {
   /** Cells the player's works have changed, and per block whether any did. */
   readonly touched: Uint8Array;
   private readonly blocks: Uint8Array;
+  /** Terrain of each cell before the player's first plan on it. */
+  private ground0 = new Map<number, number>();
   private readonly bw: number;
   private readonly bh: number;
   private strokes: Stroke[] = [];
@@ -147,6 +157,7 @@ export class Achievements {
     this.c = freshCounters();
     this.touched.fill(0);
     this.blocks.fill(0);
+    this.ground0.clear();
     for (let i = 0; i < w.size; i++) {
       this.wet0[i] = w.water[i]! >= WET0 ? 1 : 0;
       this.dry0[i] = !this.wet0[i] && moisture(h, i) < DRY0 ? 1 : 0;
@@ -211,6 +222,16 @@ export class Achievements {
     return false;
   }
 
+  /** The player planned works on these cells: remember the ground under them as it was. */
+  planned(w: World, cells: readonly number[]): void {
+    for (const c of cells) if (!this.ground0.has(c)) this.ground0.set(c, w.terrain(c));
+  }
+
+  /** Whether the player ever planned works on cell i. */
+  isPlanned(i: number): boolean {
+    return this.ground0.has(i);
+  }
+
   /** An earthwork stroke was planned (its changed cells, path length in cells). */
   stroke(kind: Stroke['k'], cells: readonly number[], len: number): void {
     if (cells.length) this.strokes.push({ k: kind, len, c: [...cells], b: 0, x: 0 });
@@ -237,8 +258,8 @@ export class Achievements {
     this.earn(e === 'irrigated' ? 'gatekeeper' : 'safetyValve', day);
   }
 
-  /** Something happened in a village. */
-  peopleEvent(e: PeopleEvent, cell: number, day: number): void {
+  /** Something happened in a village (`h`: the world, to judge a catch's water). */
+  peopleEvent(e: PeopleEvent, cell: number, day: number, h?: AchievementHost): void {
     switch (e) {
       case 'harvest': {
         this.earn('firstHarvest', day);
@@ -251,7 +272,7 @@ export class Achievements {
         break;
       }
       case 'catch':
-        if (!this.has.has('goneFishing') && this.newWater(cell)) this.earn('goneFishing', day);
+        if (!this.has.has('goneFishing') && h && this.newWater(h, cell)) this.earn('goneFishing', day);
         break;
       case 'rebuilt':
         this.earn('rebuilt', day);
@@ -276,14 +297,91 @@ export class Achievements {
     return false;
   }
 
-  /** Water at cell i that the player made: not near the world's own water, and near their works. */
-  private newWater(i: number): boolean {
+  /**
+   * Water by cell i that the player made: not near the world's own water,
+   * and either in a cell they dug or in a lake their works hold back.
+   */
+  private newWater(h: AchievementHost, i: number): boolean {
     const W = this.width;
     const x0 = i % W;
     const y0 = (i / W) | 0;
+    const made: number[] = [];
     for (let y = Math.max(0, y0 - 2); y <= Math.min(this.height - 1, y0 + 2); y++)
-      for (let x = Math.max(0, x0 - 2); x <= Math.min(W - 1, x0 + 2); x++) if (this.wet0[y * W + x]) return false;
-    return this.near(i);
+      for (let x = Math.max(0, x0 - 2); x <= Math.min(W - 1, x0 + 2); x++) {
+        const j = y * W + x;
+        if (this.wet0[j]) return false;
+        if (h.world.water[j]! >= BODY_DEPTH) made.push(j);
+      }
+    const w = h.world;
+    for (const j of made) {
+      const g0 = this.ground0.get(j);
+      if (g0 !== undefined && w.terrain(j) < g0 - DUG) return true;
+    }
+    const seen = new Uint8Array(w.size);
+    for (const j of made) if (!seen[j] && this.waterBody(h, j, seen).held) return true;
+    return false;
+  }
+
+  /**
+   * The connected body of standing water (≥ BODY_DEPTH, 4-neighbours) at
+   * cell s, marking its cells in `seen`: its new water (cells that were dry
+   * at the start, counted by how deep the water stands above their original
+   * ground), and whether the player's works hold it back (it touches a cell
+   * they raised, with its surface above that cell's original ground: without
+   * the work the water would spill there).
+   */
+  waterBody(h: AchievementHost, s: number, seen: Uint8Array): { cells: number; volume: number; held: boolean } {
+    const w = h.world;
+    const W = w.width;
+    const { water, velX, velY } = w;
+    const wet = (i: number) => water[i]! >= BODY_DEPTH && velX[i]! ** 2 + velY[i]! ** 2 < STANDING * STANDING;
+    let cells = 0;
+    let volume = 0;
+    let held = false;
+    if (seen[s] || !wet(s)) return { cells, volume, held };
+    const stack = [s];
+    seen[s] = 1;
+    while (stack.length) {
+      const i = stack.pop()!;
+      const surf = w.surface(i);
+      if (!this.wet0[i]) {
+        const g0 = this.ground0.get(i);
+        const d = surf - Math.max(w.terrain(i), g0 ?? -Infinity);
+        if (d > 0.05) {
+          cells++;
+          volume += d * CELL_AREA;
+        }
+      }
+      const x = i % W;
+      for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) {
+        if (j < 0 || j >= w.size) continue;
+        if (!held) {
+          const g0 = this.ground0.get(j);
+          if (g0 !== undefined && w.terrain(j) > g0 + 0.05 && surf > g0 + HELD) held = true;
+        }
+        if (!seen[j] && wet(j)) {
+          seen[j] = 1;
+          stack.push(j);
+        }
+      }
+    }
+    return { cells, volume, held };
+  }
+
+  /** Whether some water body is a lake the player made (Lake Maker, today). */
+  private lakeToday(h: AchievementHost): boolean {
+    const w = h.world;
+    const seen = new Uint8Array(w.size);
+    for (const c of this.ground0.keys()) {
+      // Every held-back lake touches a work cell: start from their neighbours.
+      const x = c % w.width;
+      for (const j of [x > 0 ? c - 1 : -1, x < w.width - 1 ? c + 1 : -1, c - w.width, c + w.width, c]) {
+        if (j < 0 || j >= w.size || seen[j]) continue;
+        const b = this.waterBody(h, j, seen);
+        if (b.held && b.cells >= ACH.lakeCells && b.volume >= ACH.lakeM3 && b.volume / CELL_AREA / b.cells >= ACH.lakeDepth) return true;
+      }
+    }
+    return false;
   }
 
   // ---------------------------------------------------------------------------
@@ -344,27 +442,26 @@ export class Achievements {
     if (day + 1 >= 10 * DAYS_PER_YEAR) this.earn('decade', day);
 
     // One pass over the grid for the cell-based checks.
-    const needLake = !this.has.has('lakeMaker');
     const needGreen = !this.has.has('greenDesert') && p !== null;
     const needField = !this.has.has('newGround') && p !== null;
     const needForest = !this.has.has('forestKeeper');
-    let lake = 0;
     let green = 0;
     let forest = 0;
     let flooded = 0;
-    const { water, velX, velY, landuse } = w;
+    const { water, landuse } = w;
     const fm = p ? w.floodMemory : null;
     for (let i = 0; i < w.size; i++) {
       const d = water[i]!;
       if (fm && fm[i]! >= 254 && landuse[i] !== LandUse.None) flooded++;
       if (needForest && w.vegetation[i]! >= VEG.forestLevel && !this.forest0[i] && this.near(i)) forest++;
-      if (needLake && d >= ACH.lakeDepth && !this.wet0[i] && velX[i]! ** 2 + velY[i]! ** 2 < STANDING * STANDING && this.near(i)) lake++;
       if (!this.dry0[i]) continue;
       if (needField && landuse[i] === LandUse.Field && this.near(i)) this.earn('newGround', day);
       if (needGreen && d < 0.05 && moisture(h, i) >= MOIST && this.near(i)) green++;
     }
-    this.c.lakeStreak = lake >= ACH.lakeCells ? this.c.lakeStreak + 1 : 0;
-    if (this.c.lakeStreak >= STREAK) this.earn('lakeMaker', day);
+    if (!this.has.has('lakeMaker')) {
+      this.c.lakeStreak = this.lakeToday(h) ? this.c.lakeStreak + 1 : 0;
+      if (this.c.lakeStreak >= ACH.lakeDays) this.earn('lakeMaker', day);
+    }
     this.c.greenStreak = green >= ACH.greenCells ? this.c.greenStreak + 1 : 0;
     if (this.c.greenStreak >= STREAK) this.earn('greenDesert', day);
     this.c.forestStreak = forest >= ACH.forestCells ? (this.c.forestStreak ?? 0) + 1 : 0;
@@ -428,6 +525,7 @@ export class Achievements {
       dry0: rle(this.dry0),
       forest0: rle(this.forest0),
       touched: rle(this.touched),
+      ground0: [...this.ground0].flat(),
       strokes: this.strokes.map((s) => ({ ...s, c: [...s.c] })),
       counters: { ...this.c },
     };
@@ -442,6 +540,9 @@ export class Achievements {
     if (st.forest0) unrle(this.forest0, st.forest0);
     else if (w) this.forestBaseline(w);
     unrle(this.touched, st.touched);
+    this.ground0.clear();
+    const g = st.ground0 ?? [];
+    for (let k = 0; k + 1 < g.length; k += 2) this.ground0.set(g[k]!, g[k + 1]!);
     this.blocks.fill(0);
     for (let i = 0; i < this.touched.length; i++) {
       if (!this.touched[i]) continue;
