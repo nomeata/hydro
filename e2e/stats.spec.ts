@@ -5,6 +5,8 @@ test('stats bar is visible and opens the history chart, which closes again', asy
   const errors = await openGame(page);
   const bar = page.locator('[data-testid=statsbar]');
   await expect(bar).toBeVisible();
+  // The population bar ends in the next tool to unlock (the Weir at 15).
+  await expect(bar.locator('.pop .goal')).toHaveAttribute('data-tool', 'weir');
   await runDays(page, 3);
   await bar.click();
   const panel = page.locator('[data-testid=history]');

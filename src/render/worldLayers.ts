@@ -50,13 +50,14 @@ export class WorldLayers {
       (x, y) => !renderer.fog.enabled || renderer.fog.known(x, y),
       (x, y) => renderer.heights.depthAt(x, y) < 0.05,
     );
-    this.unlisten = renderer.addFrameListener((dt, now) => {
-      this.fakeCrowd?.advance(dt);
-      for (const [x, y] of this.sites) this.sculptCrew.site(x, y);
-      this.sculptCrew.advance(dt);
-      this.crowd.update(dt, now);
+    // All of it is game activity, on the game clock (frozen while paused; render/gameClock.ts).
+    this.unlisten = renderer.addFrameListener((_dt, clock) => {
+      this.fakeCrowd?.advance(clock.playDt);
+      if (clock.playDt > 0) for (const [x, y] of this.sites) this.sculptCrew.site(x, y);
+      this.sculptCrew.advance(clock.playDt);
+      this.crowd.update(clock.playDt, clock.playMs, clock.animDt);
       const cam = renderer.camera.getCurrentState();
-      this.fishJumps.update(dt, cam.x, cam.y, cam.viewHeight);
+      this.fishJumps.update(clock.animDt, cam.x, cam.y, cam.viewHeight);
     });
   }
 
@@ -79,7 +80,7 @@ export class WorldLayers {
     const animals = this.fakeCrowd?.frame();
     let entities = animals ? mergeFrames(s.entities, animals) : (s.entities ?? EMPTY);
     if (this.sculptCrew.count) entities = mergeFrames(entities, this.sculptCrew.frame());
-    this.crowd.setFrame(hideInFog(entities, r), performance.now());
+    this.crowd.setFrame(hideInFog(entities, r), r.clock.playMs);
     if (s.structures || s.terrain) this.crowd.setDecks(r.structures.decks());
     if (s.structures || s.terrain || this.sites.length) this.sites = weirSites(r);
     const v = this.vegetation;

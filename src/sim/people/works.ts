@@ -130,11 +130,14 @@ export function surveyLining(
 }
 
 /**
- * Where to stand to lay stones on cell i: the cell itself if shallow,
- * else the dry neighbour nearest to (ax, ay); -1 if none.
+ * Where to stand to lay stones on (or fill a bucket at) cell i: the cell
+ * itself if shallow, else the dry neighbour nearest to (ax, ay); -1 if none.
+ * Never on a footbridge or jetty deck: a carrier who walked out onto the
+ * first planks for a bucket and back looked like someone turning back
+ * half-way over the bridge.
  */
 export function standCell(w: World, i: number, ax: number, ay: number): number {
-  if (w.water[i]! < 0.3) return i;
+  if (w.water[i]! < 0.3 && w.landuse[i] !== LandUse.Bridge) return i;
   const W = w.width;
   let best = -1;
   let bestD = Infinity;
@@ -145,7 +148,7 @@ export function standCell(w: World, i: number, ax: number, ay: number): number {
       const y = ((i / W) | 0) + dy;
       if (!w.inBounds(x, y)) continue;
       const j = w.idx(x, y);
-      if (w.water[j]! >= 0.3 || w.landuse[j] === LandUse.Building) continue;
+      if (w.water[j]! >= 0.3 || w.landuse[j] === LandUse.Building || w.landuse[j] === LandUse.Bridge) continue;
       const d = Math.hypot(x - ax, y - ay);
       if (d < bestD) {
         bestD = d;

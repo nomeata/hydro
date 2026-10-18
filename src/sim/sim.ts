@@ -292,22 +292,36 @@ export class Simulation {
     }
   }
 
+  /** After the brushes moved ground (`before`: the bridges' footings): footbridges whose piles or banks it disturbed break. */
+  private groundMoved(before: number[][] | undefined): void {
+    const p = this.people;
+    if (p && before && p.bridges.disturbed(before, this.time.day)) this.fieldsDirty = true;
+  }
+
   /**
    * Whether the brushes must leave cell i alone: houses (and mills, wells,
-   * stores, ruins), footbridges, structures and their works in progress
-   * (the crew's plans), and land not yet revealed.
+   * stores, ruins), jetties, structures and their works in progress (the
+   * crew's plans), and land not yet revealed. Footbridges do not stop the
+   * brush: ground moved under one breaks it (Bridges.disturbed), and the
+   * villagers rebuild it if they still need it.
    */
   isFixed(i: number): boolean {
     const w = this.world;
-    if (!keepsPlan(w.landuse[i]!) || (w.flags[i]! & CellFlag.Structure) !== 0 || !Number.isNaN(w.plan[i]!)) return true;
+    if (this.fixedGround(i, w.landuse[i]!) || (w.flags[i]! & CellFlag.Structure) !== 0 || !Number.isNaN(w.plan[i]!)) return true;
     return this.fog && !isRevealed(w, i);
+  }
+
+  /** Land use the brushes go round: buildings, and decks that are not footbridges (jetties). */
+  private fixedGround(i: number, lu: number): boolean {
+    if (keepsPlan(lu)) return false;
+    return lu !== LandUse.Bridge || !(this.people?.bridges.onDeck(i) ?? false);
   }
 
   /** The brushes' fixed cells for the client (Snapshot.fixed; fog is the client's own). */
   packFixed(out: Uint8Array): void {
     const w = this.world;
     const { landuse, flags, plan } = w;
-    for (let i = 0; i < out.length; i++) out[i] = !keepsPlan(landuse[i]!) || (flags[i]! & CellFlag.Structure) !== 0 || !Number.isNaN(plan[i]!) ? 1 : 0;
+    for (let i = 0; i < out.length; i++) out[i] = this.fixedGround(i, landuse[i]!) || (flags[i]! & CellFlag.Structure) !== 0 || !Number.isNaN(plan[i]!) ? 1 : 0;
   }
 
   /**
@@ -559,6 +573,8 @@ export class Simulation {
 
   private applyCommand(cmd: Command): void {
     const w = this.world;
+    // Footbridges the brushes may disturb (their footings' heights before the stroke).
+    const footings = cmd.type === 'sculpt' || cmd.type === 'undoSculpt' || cmd.type === 'shapeLine' ? this.people?.bridges.footings() : undefined;
     switch (cmd.type) {
       case 'sculpt': {
         const r = this.brush.sculpt(cmd.tool, cmd.radius, cmd.stroke, cmd.samples);
@@ -569,16 +585,21 @@ export class Simulation {
           if (r.y1 > this.dirtyY1) this.dirtyY1 = r.y1;
           this.lookDirty = true;
           this.achievements.sculpted(w, this.time.day);
+          this.groundMoved(footings);
         }
         break;
       }
       case 'undoSculpt':
-        if (this.brush.undo()) this.lookDirty = true;
+        if (this.brush.undo()) {
+          this.lookDirty = true;
+          this.groundMoved(footings);
+        }
         break;
       case 'shapeLine':
         if (this.brush.shapeLine(cmd.tool, cmd.points, cmd.width, cmd.amount ?? 1, --this.scriptStroke).length) {
           this.lookDirty = true;
           this.achievements.sculpted(w, this.time.day);
+          this.groundMoved(footings);
         }
         break;
       case 'planLining':

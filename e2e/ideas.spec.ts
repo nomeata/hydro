@@ -45,5 +45,11 @@ test('ideas for this valley: a flood by the village suggests a dike, with a dot 
   const goal = await page.evaluate(() => (window as any).__hydro.renderer.camera.getState());
   expect(Math.hypot(goal.x - spot.x, goal.y - spot.y)).toBeLessThan(25);
   await expect(page.locator('[data-testid=area-highlight]')).toBeHidden({ timeout: 20_000 });
+  // The history chart (where a falling prosperity bar leads) shows the first idea too.
+  await page.locator('[data-testid=statsbar]').click();
+  await expect(page.locator('[data-testid=history-idea] .idea')).toBeVisible();
+  await page.locator('[data-testid=history-idea] [data-testid=idea-show]').click();
+  await expect(page.locator('[data-testid=history]')).toBeHidden();
+  await expect(page.locator('[data-testid=area-highlight]')).toBeVisible();
   expect(errors).toEqual([]);
 });
