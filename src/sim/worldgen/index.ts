@@ -242,7 +242,7 @@ export function chooseStart(world: World, slope: Float32Array, carve: CarveResul
   }
   const pick = terracePass(world, slope, carve, z, dist, surf, moist, TERRACE) ?? terracePass(world, slope, carve, z, dist, surf, moist, TERRACE_RELAXED);
   if (pick) return pick;
-  const m = meadowStart(world, slope, carve, moist);
+  const m = meadowStart(world, slope, carve, moist, z, dist, surf);
   const i = m.y * W + m.x;
   return { ...m, terrace: false, height: z[i]! - surf[i]!, dist: dist[i]!, plain: 0 };
 }
@@ -328,8 +328,23 @@ function terracePass(
   return pick;
 }
 
+/**
+ * Meadow start weights: slope penalty, the extra penalty on slopes above
+ * 0.05, and penalties for water farther than `near` cells or more than
+ * `height` m below (or above) the site.
+ */
+export const MEADOW = { slope: 6, steep: 20, near: 14, farPerCell: 0.06, height: 5, highPerMetre: 0.08 };
+
 /** The old start: the best fertile meadow near the biggest river. */
-function meadowStart(world: World, slope: Float32Array, carve: CarveResult, moist: Float32Array): { x: number; y: number } {
+function meadowStart(
+  world: World,
+  slope: Float32Array,
+  carve: CarveResult,
+  moist: Float32Array,
+  z: Float32Array,
+  wdist: Float32Array,
+  surf: Float32Array,
+): { x: number; y: number } {
   const W = world.width;
   const H = world.height;
   const margin = Math.max(16, Math.floor(W / 8));
@@ -360,11 +375,18 @@ function meadowStart(world: World, slope: Float32Array, carve: CarveResult, mois
       s /= k;
       f /= k;
       const d = carve.riverDist[i]!;
-      const nearRiver = d < 255 ? Math.max(0, 1 - Math.abs(d - 14) / 22) : 0;
+      const nearRiver = d < 255 ? Math.max(0, 1 - Math.abs(d - 12) / 18) : 0;
       const big = Math.min(1, carve.chanQ[i]! / 20);
       const centre = Math.hypot(x - cx, y - cy) / (0.5 * W);
+      // Steep land far from a real river makes a village that never grows (docs/PLAYTEST.md):
+      // flatness and a river with some water in it count for more than fertility.
+      const steep = Math.max(0, s - 0.05);
+      // ...and so does open water within reach, not far below (or above) the village.
+      const far = Math.max(0, wdist[i]! - MEADOW.near) * MEADOW.farPerCell;
+      const high = Math.max(0, Math.abs(z[i]! - surf[i]!) - MEADOW.height) * MEADOW.highPerMetre;
       // Not in a bog: the houses want dry feet.
-      const score = 1.2 * f + 1.0 * nearRiver * (0.6 + 0.4 * big) - 6 * s - 0.15 * wet - 0.5 * centre * centre - (3 * bog) / k;
+      const score =
+        1.2 * f + 1.4 * nearRiver * (0.4 + 0.6 * big) - MEADOW.slope * s - MEADOW.steep * steep - far - high - 0.15 * wet - 0.5 * centre * centre - (3 * bog) / k;
       if (score > best) {
         best = score;
         bx = x;
