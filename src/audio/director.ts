@@ -18,6 +18,7 @@ import {
   summariseView,
   SpotScheduler,
   turbineHum,
+  weirSpill,
   type SpotEvent,
   type SpotSource,
   type View,
@@ -42,6 +43,7 @@ export class SoundDirector {
   private climate: ClimateState | null = null;
   private time: SimTime | null = null;
   private speed = 1;
+  private spill = 0;
   private crew: SpotSource[] = [];
   private crewUntil = -Infinity;
   private readonly sched: SpotScheduler;
@@ -79,6 +81,7 @@ export class SoundDirector {
     const width = this.width;
     if (now - this.summaryAt >= SUMMARY_EVERY) {
       this.summaryAt = now;
+      this.spill = weirSpill(view, this.structures, s.depth, width);
       this.summary = summariseView(view, { width, height: s.depth.length / width, depth: s.depth, vel: s.vel, look: this.look, revealed: this.revealed });
     }
     // The crew at work: terrain changed while plans are in view.
@@ -104,7 +107,7 @@ export class SoundDirector {
       return frame;
     }
     const hum = turbineHum(view, this.power);
-    const layers = ambience({ view, summary: this.summary, climate: this.climate, time: this.time, speed: this.speed, hum });
+    const layers = ambience({ view, summary: this.summary, climate: this.climate, time: this.time, speed: this.speed, hum, spill: this.spill });
     const sources = entitySources(this.entities);
     structureSources(this.structures, this.buildings, sources);
     if (now < this.crewUntil) sources.push(...this.crew);
@@ -132,7 +135,7 @@ export function planSpots(view: View, plan: Float32Array, width: number, n = 12)
       const x = Math.round(fx);
       const y = Math.round(fy);
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      if (!Number.isNaN(plan[y * width + x]!)) out.push({ kind: 'dig', x, y });
+      if (!Number.isNaN(plan[y * width + x]!)) out.push({ kind: 'dig', x, y, weight: 0.4 });
     }
   }
   return out;

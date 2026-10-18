@@ -258,6 +258,8 @@ export interface AmbienceInput {
   speed: number;
   /** Turbine hum level 0..1 from spot analysis (nearby running turbines). */
   hum: number;
+  /** Water spilling over weirs and through open gates in view, 0..1 (weirSpill). */
+  spill?: number;
 }
 
 /**
@@ -279,7 +281,7 @@ export function ambience(a: AmbienceInput): Layers {
   const out = silentLayers();
   out.river = sat(s.flowing * 9) * near * calm;
   out.lake = sat(s.still * 4) * (0.7 + 0.3 * clamp(climate.windSpeed - 0.6)) * near * calm;
-  out.rapids = sat(s.rapids * 14) * (1 - 0.35 * zoom) * calm;
+  out.rapids = Math.max(sat(s.rapids * 14), a.spill ?? 0) * (1 - 0.35 * zoom) * calm;
   out.rain = rain * (0.55 + 0.45 * near) * calm;
   out.wind = clamp(0.12 + 0.45 * zoom + 0.2 * winter + 0.25 * snow + 0.15 * rain + 0.1 * clamp(climate.windSpeed - 0.8, 0, 1)) * calm;
   const outdoors = (1 - wet * 0.85) * near;
@@ -346,7 +348,7 @@ export const SPOT_RULES: Record<SpotKind, SpotRule> = {
   peep: { rate: 1 / 10, cap: 0.4, gap: 1 },
   creak: { rate: 1 / 5, cap: 0.4, gap: 1.5 },
   splash: { rate: 1, cap: 1, gap: 0.4 },
-  bird: { rate: 0.3, cap: 0.3, gap: 1.2, ambient: true },
+  bird: { rate: 0.5, cap: 0.5, gap: 1.2, ambient: true },
   frog: { rate: 0.7, cap: 0.7, gap: 0.5, ambient: true },
 };
 
@@ -397,6 +399,51 @@ export function turbineHum(v: View, power: PowerInfo | null): number {
     hum = Math.max(hum, level * p.gain);
   }
   return hum;
+}
+
+/**
+ * Water spilling over the weirs (the depth on the crest) and through open
+ * gates in view, by distance: 0..1. The spill sheet is often slower than
+ * "rapids" in the velocity field, but it is what a weir sounds like.
+ */
+export function weirSpill(v: View, structures: readonly StructureInfo[] | null, depth: Float32Array, width: number): number {
+  let spill = 0;
+  const at = (x: number, y: number) => {
+    const xi = Math.round(x);
+    const yi = Math.round(y);
+    if (xi < 0 || yi < 0 || xi >= width || yi * width >= depth.length) return 0;
+    return depth[yi * width + xi]!;
+  };
+  for (const s of structures ?? []) {
+    if (s.progress < 1) continue;
+    let d = 0;
+    let cx = s.x;
+    let cy = s.y;
+    if (s.kind === 'weir') {
+      const x2 = s.x2 ?? s.x;
+      const y2 = s.y2 ?? s.y;
+      const n = Math.max(1, Math.ceil(Math.hypot(x2 - s.x, y2 - s.y)));
+      let sum = 0;
+      let wet = 0;
+      for (let k = 0; k <= n; k++) {
+        const dk = at(s.x + ((x2 - s.x) * k) / n, s.y + ((y2 - s.y) * k) / n);
+        if (dk > 0.01) {
+          sum += dk;
+          wet++;
+        }
+      }
+      // A sheet over part of the crest, weighted by how much of it spills.
+      d = wet ? (sum / wet) * Math.min(1, wet / 3) : 0;
+      cx = (s.x + x2) / 2;
+      cy = (s.y + y2) / 2;
+    } else if (s.kind === 'gate' && (s.lift ?? (s.open ? 1 : 0)) > 0.3) {
+      d = at(s.x, s.y) * (s.lift ?? 1);
+    } else continue;
+    const p = spotPlacement(v, cx, cy);
+    if (!p) continue;
+    spill = Math.max(spill, smooth(0.015, 0.25, d) * Math.min(1, p.gain * 1.4));
+  }
+  return spill;
 }
 
 /** How activity sounds follow the game speed: none when paused, a little busier when fast. */

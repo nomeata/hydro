@@ -191,7 +191,14 @@ The player asked for "more direct endorphin hits". Decisions:
 - Flat-shaded low-poly terrain matching the Kenney style; water as a
   translucent animated surface with foam on fast flow.
 - Fog of war: unexplored land is hidden behind soft clouds/darkness.
-- Sound: deferred.
+- Sound (decision reversed: no longer deferred): a gentle, living
+  soundscape that reflects what is on screen — water murmur, lapping and
+  rapids by what flows in view, rain and wind from the weather and zoom,
+  birds by season, crickets and frogs, and rate-limited spot sounds of the
+  work nearby (hammering, axes, spades, animals, creaking wheels, fish
+  splashes), plus soft UI clicks and a chime for achievements. Quiet by
+  default, on after the first tap, mute and volume in the menu. Mostly
+  synthesised; a few CC0 samples. docs/SOUND.md.
 
 ## 7. Non-goals (for now)
 - Combat, money, trade UI, direct NPC control, scripted scenarios, quests.

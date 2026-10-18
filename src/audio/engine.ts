@@ -34,7 +34,7 @@ export const LAYER_LEVEL: Layers = {
   lake: 0.45,
   rapids: 0.32,
   rain: 0.3,
-  wind: 0.4,
+  wind: 0.55,
   birds: 0,
   crickets: 0.022,
   frogs: 0,
@@ -43,15 +43,15 @@ export const LAYER_LEVEL: Layers = {
 
 /** Spot sound levels (before distance gain). */
 export const SPOT_LEVEL: Record<SpotEvent['kind'], number> = {
-  hammer: 0.3,
-  chop: 0.28,
-  dig: 0.22,
-  moo: 0.16,
-  baa: 0.22,
+  hammer: 0.5,
+  chop: 0.45,
+  dig: 0.4,
+  moo: 0.25,
+  baa: 0.3,
   peep: 0.05,
-  creak: 0.3,
+  creak: 0.45,
   splash: 0.22,
-  bird: 0.5,
+  bird: 0.9,
   frog: 0.1,
 };
 
@@ -292,8 +292,8 @@ export class AudioEngine {
 
     // River: a low body of brown noise and a babbling, gurgling band of pink noise.
     const river = layer('river', true);
-    const body = filter('lowpass', 650, 0.5);
-    brownSrc.connect(body).connect(gain(0.9)).connect(into(river));
+    const body = filter('lowpass', 800, 0.5);
+    brownSrc.connect(filter('highpass', 160, 0.6)).connect(body).connect(gain(0.9)).connect(into(river));
     const babble = filter('bandpass', 1300, 1.3);
     lfo(babble.frequency, 380, 2.2, 3);
     const babbleGain = gain(0.5);
@@ -306,7 +306,7 @@ export class AudioEngine {
     const lapGain = gain(0.05);
     const lap = buf(lapEnvelope(LR * 23, LR, 5), LR);
     loop(lap, 1, 0).connect(lapGain.gain);
-    brownSrc.connect(lapLp).connect(lapGain).connect(into(lake));
+    brownSrc.connect(filter('highpass', 90, 0.6)).connect(lapLp).connect(lapGain).connect(into(lake));
     const lapHi = filter('bandpass', 900, 0.8);
     const lapHiGain = gain(0);
     loop(lap, 1, 0).connect(gain(0.35)).connect(lapHiGain.gain);

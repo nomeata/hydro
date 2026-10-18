@@ -17,6 +17,7 @@ import {
   summariseView,
   toScreen,
   turbineHum,
+  weirSpill,
   zoomOf,
   type SpotSource,
   type View,
@@ -222,6 +223,22 @@ describe('spot sources', () => {
     const power = { turbines: [t], poles: [], wires: [], pumps: [], lit: [] };
     expect(turbineHum(view({ viewHeight: 14 }), power)).toBeGreaterThan(0.5);
     expect(turbineHum(view({ x: 200 }), power)).toBe(0);
+  });
+});
+
+describe('weir spill', () => {
+  it('a weir with water over its crest rushes; a dry one and one off screen do not', () => {
+    const W = 128;
+    const weir = { id: 1, kind: 'weir' as const, x: 60, y: 64, x2: 68, y2: 64, rot: 0, width: 8, top: 0, sill: 0, open: false, progress: 1 };
+    const wet = new Float32Array(W * W);
+    for (let x = 60; x <= 68; x++) wet[64 * W + x] = 0.2;
+    expect(weirSpill(view({ viewHeight: 16 }), [weir], wet, W)).toBeGreaterThan(0.6);
+    expect(weirSpill(view({ viewHeight: 16 }), [weir], new Float32Array(W * W), W)).toBe(0);
+    expect(weirSpill(view({ x: 200, viewHeight: 16 }), [weir], wet, W)).toBe(0);
+    const s = { ...emptySummary(), land: 0.5 };
+    const quiet = ambience({ view: view(), summary: s, climate: climate(), time: time(), speed: 1, hum: 0 });
+    const loud = ambience({ view: view(), summary: s, climate: climate(), time: time(), speed: 1, hum: 0, spill: 0.8 });
+    expect(loud.rapids).toBeGreaterThan(quiet.rapids + 0.5);
   });
 });
 
