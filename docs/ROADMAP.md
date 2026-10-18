@@ -121,6 +121,12 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   above), sluice gates (hold a reservoir closed, drain to the sill open;
   tap to toggle — since M3¾ worked by the villagers), built by the spirit crew; plans only on known land;
   tools unlock at 30/50 villagers (since M3¾: 15/30); digit-key hotkeys
+- ☑ Weir vs dike made plain (playtest feedback): overtopped earthen banks
+  scour and breach (`CellFlag.Fill`, `hydro/erosion.ts` overtopStep), weirs
+  are lined stone crests drawn as a line, shape from the crest height;
+  select and edit what you built (`ui/selection.ts`: tap, drag a weir's
+  ends, −/+ crest, Remove); earthworks take up fields and structures in
+  their way and go round houses
 - ☑ Player lining tool removed again: lining is left to the villagers near
   their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
 - ☑ Villagers line banks by their homes and the player's canals near the

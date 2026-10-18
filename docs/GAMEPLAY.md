@@ -311,11 +311,18 @@ says "watch and learn". Instead, three small things, in order of value:
      trench, fields follow the water. Its floor slopes evenly from start
      to end."
    - Dike: "Raise a level bank to keep a flood off the fields, or to hold
-     a pond."
+     a pond." *(As built: "…Make it high enough: water pouring over a dike
+     cuts through it. Across a river, build a weir.")*
    - Level: "Flatten a slope into a terrace or a basin, at the height
      where you start."
    - Weir: "Draw across a river: it holds a pool through the dry summer
      and spills over its crest. Villagers like a mill by the spill."
+     *(As built, after a playtester asked whether a weir was "just a dike
+     without erosion": "a stone crest that the water may flow over. It
+     holds the pool at the crest's height all summer and spills the rest
+     safely, where a mill can use the fall. Tap a weir to change it." The
+     weir card says the same, and the sim backs it: overtopped dikes
+     breach, weirs don't — DESIGN §4.)*
    - Gate: as §2.4.
    - Wheel: "Place on a fast river, against the bank: it lifts water into
      a trench on higher ground."

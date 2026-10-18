@@ -7,7 +7,7 @@
  * not by the player.
  */
 import type { Command, Pt } from '../shared/protocol';
-import { planDike, planLevel, planTrench, rasterisePath, type PlanGrid } from '../sim/plans/plans';
+import { planDike, planLevel, planTrench, planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
 import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
@@ -71,6 +71,13 @@ export interface ToolHost {
   setWheelSites?(sites: readonly { x: number; y: number; hx: number; hy: number }[] | null): void;
   /** Whether single-pointer drags pan the camera. */
   setCameraPrimaryPointer(enabled: boolean): void;
+  /**
+   * A tap on the canvas (Look mode, or the weir tool tapping a weir): select
+   * what is there (ui/selection.ts). Returns whether something was selected.
+   */
+  tap?(clientX: number, clientY: number, only?: 'weir'): boolean;
+  /** A tool was picked: close the selection. */
+  deselect?(): void;
   command(cmd: Command): void;
 }
 
@@ -89,14 +96,19 @@ const TOOLS: ToolDef[] = [
     icon: ICONS.trench,
     hint: 'Dig from the river down to dry land: water follows the trench, fields follow the water. Its floor slopes evenly from start to end.',
   },
-  { id: 'dike', label: 'Dike', icon: ICONS.dike, hint: 'Raise a level bank to keep a flood off the fields, or to hold a pond.' },
+  {
+    id: 'dike',
+    label: 'Dike',
+    icon: ICONS.dike,
+    hint: 'Raise a level earth bank to keep a flood off the fields, or to hold a pond. Make it high enough: water pouring over a dike cuts through it. Across a river, build a weir.',
+  },
   { id: 'level', label: 'Level', icon: ICONS.level, hint: 'Flatten a slope into a terrace or a basin, at the height where you start.' },
   // No lining tool: villagers line the banks near their homes (planLining stays a command for scenes and tests).
   {
     id: 'weir',
     label: toolName('weir'),
     icon: ICONS.weir,
-    hint: 'Draw across a river: it holds a pool through the dry summer and spills over its crest.',
+    hint: 'Draw across a river: a stone crest that the water may flow over. It holds the pool at the crest’s height all summer and spills the rest safely, where a mill can use the fall. Tap a weir to change it.',
   },
   {
     id: 'gate',
@@ -111,12 +123,18 @@ const TOOLS: ToolDef[] = [
     hint: 'A noria lifts the river up to fields on the terrace: draw from quick water (the gold rings: main channel, narrows, below a weir) onto the bank. Higher bank, bigger wheel, less water.',
   },
   { id: 'power', label: toolName('power'), icon: ICONS.turbine, hint: '' },
-  { id: 'erase', label: 'Remove', icon: ICONS.erase, hint: 'Brush over plans, poles or pumps to remove them.' },
+  {
+    id: 'erase',
+    label: 'Remove',
+    icon: ICONS.erase,
+    hint: 'Brush over plans or anything built to take it away: the crew takes down weirs, gates and wheels. Or tap a single thing in Look mode and press Remove.',
+  },
 ];
 
-/** Slider settings per tool: width (cells) and depth/height (m). */
+/** Slider settings per tool: width (cells; none for the weir, whose shape follows from its height) and depth/height (m). */
 interface ToolSettings {
   width: number;
+  noWidth?: boolean;
   amount?: number;
   maxWidth: number;
   amountLabel?: 'Depth' | 'Height';
@@ -126,7 +144,7 @@ const SETTINGS: Partial<Record<ToolId, ToolSettings>> = {
   trench: { width: 2, amount: 1.5, maxWidth: 8, amountLabel: 'Depth' },
   dike: { width: 2, amount: 2, maxWidth: 8, amountLabel: 'Height' },
   level: { width: 2, maxWidth: 8 },
-  weir: { width: 2, amount: 1, maxWidth: 4, amountLabel: 'Height' },
+  weir: { width: 2, amount: 1.5, maxWidth: 2, amountLabel: 'Height', noWidth: true },
   gate: { width: 1, amount: 2, maxWidth: 3, amountLabel: 'Height' },
 };
 
@@ -152,8 +170,14 @@ export class ToolPalette {
   private readonly amountInput: HTMLInputElement;
 
   private pointers = new Set<number>();
+  /** A possible tap in Look mode: where and when the pointer went down. */
+  private tap: { id: number; x: number; y: number } | null = null;
+  /** The tools' column (the selection panel goes in above the palette). */
+  private readonly wrap: HTMLElement;
   private drawing: { id: number; points: Pt[] } | null = null;
   private previewPending = false;
+  /** The last preview left out a house or a footbridge. */
+  private housesSkipped = false;
   /** Keep the preview until the sim confirms the plan. */
   private awaitingPlan = false;
   /** Highest village population seen (drives tool unlocks). */
@@ -166,6 +190,7 @@ export class ToolPalette {
   ) {
     const wrap = document.createElement('div');
     wrap.className = 'tools';
+    this.wrap = wrap;
 
     this.hint = document.createElement('div');
     this.hint.className = 'hint';
@@ -234,6 +259,11 @@ export class ToolPalette {
     window.addEventListener('keydown', (e) => this.onKey(e));
     this.select('look');
     this.setPopulation(0);
+  }
+
+  /** Put a panel (the selection's) into the tools' column, above the palette. */
+  insertPanel(el: HTMLElement): void {
+    this.wrap.insertBefore(el, this.wrap.lastElementChild);
   }
 
   /** Villagers in all villages (from snapshot stats): unlocks tools at milestones. */
@@ -343,7 +373,7 @@ export class ToolPalette {
     const modes = id === 'power' && POWER_MODES.length > 1;
     this.options.hidden = !st && !modes;
     this.modes.hidden = !modes;
-    this.sizeInput.closest('label')!.hidden = !st;
+    this.sizeInput.closest('label')!.hidden = !st || !!st.noWidth;
     this.amountInput.closest('label')!.hidden = st?.amount === undefined;
     if (id === 'power') {
       // Stay with the last mode, unless it is still locked.
@@ -353,6 +383,7 @@ export class ToolPalette {
     this.showHint(id);
     this.markWheelSites(id === 'wheel');
     this.host.setCameraPrimaryPointer(id === 'look');
+    if (id !== 'look') this.host.deselect?.();
     if (!this.awaitingPlan) this.clearPreview();
     if (st) {
       this.sizeInput.max = String(st.maxWidth);
@@ -393,7 +424,10 @@ export class ToolPalette {
 
   private onDown(e: PointerEvent): void {
     this.pointers.add(e.pointerId);
-    if (this.tool === 'look') return;
+    if (this.tool === 'look') {
+      this.tap = this.pointers.size === 1 && (e.pointerType !== 'mouse' || e.button === 0) ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
+      return;
+    }
     if (this.pointers.size > 1) {
       // Second finger: this is a pan/zoom gesture, abandon the stroke.
       this.drawing = null;
@@ -404,11 +438,13 @@ export class ToolPalette {
     const p = this.host.pick(e.clientX, e.clientY);
     if (!p) return;
     this.drawing = { id: e.pointerId, points: [[p.x, p.y]] };
+    this.housesSkipped = false;
     if (this.tool === 'erase') this.erase(p.x, p.y);
     else this.schedulePreview();
   }
 
   private onMove(e: PointerEvent): void {
+    if (this.tap?.id === e.pointerId && Math.hypot(e.clientX - this.tap.x, e.clientY - this.tap.y) > 8) this.tap = null;
     const d = this.drawing;
     if (!d && this.tool === 'wheel' && e.pointerType === 'mouse' && this.pointers.size === 0) this.hoverWheel(e.clientX, e.clientY);
     if (!d || d.id !== e.pointerId) return;
@@ -423,10 +459,25 @@ export class ToolPalette {
 
   private onUp(e: PointerEvent): void {
     this.pointers.delete(e.pointerId);
-    if (this.tool === 'look') return;
+    if (this.tool === 'look') {
+      const t = this.tap;
+      this.tap = null;
+      // (No time limit: a slow, still press is a tap too.)
+      if (t?.id === e.pointerId && Math.hypot(e.clientX - t.x, e.clientY - t.y) <= 8) this.host.tap?.(e.clientX, e.clientY);
+      return;
+    }
     const d = this.drawing;
     if (!d || d.id !== e.pointerId) return;
     this.drawing = null;
+    if (this.tool === 'weir') {
+      // A tap on an existing weir selects it (to move its ends, change its crest or take it down).
+      const a = d.points[0]!;
+      const b = d.points[d.points.length - 1]!;
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1.5 && this.host.tap?.(e.clientX, e.clientY, 'weir')) {
+        this.select('look');
+        return;
+      }
+    }
     if (this.tool === 'wheel' || this.tool === 'power') {
       // The wheel's stroke is short: count where it was let go, however close to the last point.
       const p = this.host.pick(e.clientX, e.clientY);
@@ -449,7 +500,7 @@ export class ToolPalette {
         cmd = { type: 'planLevel', points, width };
         break;
       case 'weir':
-        cmd = { type: 'planWeir', points: ends, width, height: amount };
+        if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) cmd = { type: 'planWeir', points: ends, height: amount };
         break;
       case 'gate':
         cmd = { type: 'placeGate', points: ends, width, height: amount };
@@ -482,6 +533,7 @@ export class ToolPalette {
     if (cmd) {
       this.host.command(cmd);
       this.awaitingPlan = true;
+      if (this.housesSkipped && !reason) reason = 'The plan goes round the houses: earthworks never dig or bury them.';
     }
     // A wheel let go on a bad site places nothing: the tool stays, its red ghost said why.
     if (this.tool === 'wheel' && !cmd) {
@@ -604,8 +656,10 @@ export class ToolPalette {
       else if (this.tool === 'dike') planDike(grid, pts, width, amount);
       else if (this.tool === 'level') planLevel(grid, pts, width);
       else if (this.tool === 'weir') {
-        planDike(grid, ends, width, amount);
-        lining = [...rasterisePath(grid, ends, width / 2 + 1).keys()];
+        if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
+          const low = weirLowest(grid, ends[0]!, ends[1]!);
+          if (Number.isFinite(low)) lining = planWeirPreview(grid, ends[0]!, ends[1]!, low + amount);
+        }
       } else if (this.tool === 'gate' && Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
         // Drawn across a channel: a dam with the gate at its lowest point (a tap previews nothing).
         planDike(grid, ends, 2, amount);
@@ -634,8 +688,8 @@ export class ToolPalette {
       }
       // Plans only go on known land (the sim drops the rest too).
       const m = this.host.mirror;
-      m.maskUnrevealed(grid.plan);
-      if (lining) lining = lining.filter((i) => m.isRevealed(i % m.width, (i / m.width) | 0));
+      this.housesSkipped = m.maskUnrevealed(grid.plan);
+      if (lining) lining = lining.filter((i) => m.isRevealed(i % m.width, (i / m.width) | 0) && (this.tool === 'power' || this.tool === 'wheel' || m.plannable(i)));
       this.host.setPreviewPlan(grid.plan);
       this.host.setPreviewLining?.(lining);
     });
