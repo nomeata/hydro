@@ -467,7 +467,7 @@ function stageWheel(sim: Simulation): void {
   const L = SCENE_LAYOUT.wheel;
   const v = L.village;
   const { x, hx } = wheelCells(sim.world);
-  sim.command({ type: 'placeWheel', points: [[x, L.y], [hx + 1, L.y]] });
+  sim.command({ type: 'placeWheel', points: [[x, L.y], [hx, L.y]] });
   buildNow(sim);
   const R = Math.PI / 2;
   sim.people!.stage({
