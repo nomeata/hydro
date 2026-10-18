@@ -391,11 +391,24 @@ those were cut short by container restarts and a heavily loaded machine
 - Gate (30): reached hands-off on 6/8 seeds after year 2 (days 86–316);
   the irrigate runs reached it on the same seeds, not earlier.
 - Vandal: before, −78 % population after 4 years (every seed 4–34 people
-  against 14–87). Vandal/undo on the final code: see below if the short
-  check finished; otherwise not measured (runs lost to restarts).
-  The mechanisms for recovery are in: departures shrink a ruined village,
-  small villages take migrants from 0.45 and build from 0.4, fields in
-  standing water are given up and dry land claimed instead.
+  against 14–87). On the final code (with footbridges, `--years 4`, seeds
+  1, 3, 4; population at the ends of years 1–4):
+
+  | seed | hands-off | vandal | undo (works cut through on day 64) |
+  |---|---|---|---|
+  | 1 | 13, 21, 25, 25 | 11, 4, 4, 4 | 11, 8, 4, 4 |
+  | 3 | 19, 27, 35, 46 | 12, 18, 17, 22 | 12, 21, 25, 30 |
+  | 4 | 16, 31, 47, 62 | 10, 8, 4, 3 | 10, 8, 7, 3 |
+
+  **Undoing does not yet bring recovery** on seeds 1 and 4: the village
+  sits at the four stayers with prosperity 10–19 % for three years. The
+  recovery rules are in (departures stop at four, small villages take
+  migrants from 0.45 and build from 0.4, fields standing in water are
+  given up and dry land claimed), so the remaining block is the land: the
+  dead-end diversion canal leaves a pond over the village centre after the
+  intake is closed (nothing drains it), and the store and the near fields
+  stay wet. Next: let the undo bot also drain or fill the canal, and check
+  whether a village whose store stands in water should move its store.
 
 ### Open
 Re-run on main with footbridges and walking-distance fields; a weir +
