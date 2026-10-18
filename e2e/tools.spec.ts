@@ -65,8 +65,10 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
 
   // Drawing a power line: ghost poles and wires at once, before letting go; the mode stays after.
   await pick(page, phone, '.modes button[data-mode=poles]');
-  const a = await toScreen(page, startX - 7, startY + 4);
-  const b = await toScreen(page, startX + 7, startY + 4);
+  // Across the middle of the screen (a phone shows little of the map).
+  const vp = page.viewportSize()!;
+  const a: [number, number] = [vp.width * 0.15, vp.height * 0.45];
+  const b: [number, number] = [vp.width * 0.85, vp.height * 0.45];
   const release = await stroke(page, phone, line(a, b), true);
   await expect.poll(() => R('h.renderer.powerGhost.state?.poles.length ?? 0'), { timeout: 60_000 }).toBeGreaterThan(1);
   expect(await R('h.renderer.powerGhost.state.wires.length')).toBeGreaterThan(0);
