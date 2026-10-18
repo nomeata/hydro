@@ -79,7 +79,8 @@ Player feedback: more direct progress hits; keep it all positive
 - ☑ Daily history recorded in the sim and saved (thinned: daily for two
   years, half-seasons before, years after 20 years); `history` message
 - ☑ History chart panel: villagers (log) and prosperity, season bands,
-  rain, dry spells, floods, milestone stars
+  rain, dry spells, floods, milestone stars on the
+  villagers axis
 - ☑ Achievements per world (docs/ACHIEVEMENTS.md): checked by the sim
   against a start-of-world baseline, saved; toasts, Achievements card in
   the menu, medals on the history chart

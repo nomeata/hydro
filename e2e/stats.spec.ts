@@ -14,7 +14,10 @@ test('stats bar is visible and opens the history chart, which closes again', asy
   // Milestone stars sit on the villagers' right-hand axis; tapping one names its tools.
   const star = panel.locator('.star').first();
   await expect(star).toBeVisible();
-  await star.click();
+  // (The chart is redrawn every few seconds, so click where the star is.)
+  await page.waitForTimeout(500);
+  const box = (await star.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect(panel.locator('.history-readout')).toContainText('villagers');
   await expect(panel.locator('.history-readout')).toContainText('unlock');
   const days = await page.evaluate(async () => (await (window as any).__hydro.client.history()).samples.length);
