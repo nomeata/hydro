@@ -10,6 +10,7 @@ import { STEPS_PER_DAY } from '../../src/sim/constants';
 import { newGame } from '../../src/sim/newgame';
 import { loadGame, saveGame } from '../../src/sim/persist';
 import { CellFlag } from '../../src/sim/world';
+import { CAPILLARY } from '../../src/sim/people/village';
 import { makeBot, weirWhy } from './bots';
 import { villages } from './geo';
 
@@ -28,6 +29,12 @@ const after = Number(opt('after', '12'));
 const bots = opt('bots', 'weircanal').split(',');
 const ignoreUnlocks = args.includes('--ignore-unlocks');
 const budget = args.includes('--budget') ? Number(opt('budget', '0')) : undefined;
+for (const kv of opt('set', '').split(',').filter(Boolean)) {
+  const [k, v] = kv.split('=') as [string, string];
+  const [t, f] = k.split('.') as [string, string];
+  const tables: Record<string, Record<string, unknown>> = { CAPILLARY };
+  tables[t]![f] = Number(v);
+}
 
 async function at(seed: number): Promise<ArrayBuffer> {
   mkdirSync('out/playtest-cache', { recursive: true });

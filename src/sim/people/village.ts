@@ -150,9 +150,15 @@ export const HARDY = {
   paddyMax: 0.25,
   paddyDrown: 0.4,
   paddySpeed: 0.1,
-  /** A village keeps at most `base` + `share` × its ordinary fields of hardy ones (gentle). */
+  /**
+   * A village keeps at most `base` + `share` × its ordinary fields of hardy
+   * ones (gentle); a hungry one (food security below `hungryBelow`, as on a
+   * steep valley's thin soils) up to `hungryShare` × (docs/PLAYTEST.md round 3).
+   */
   base: 2,
   share: 0.25,
+  hungryShare: 1,
+  hungryBelow: 0.5,
   /** Hardy fields claimed per day at most. */
   perDay: 2,
   /**
@@ -242,6 +248,9 @@ export const FOUNDING = {
   summerDay: 22,
   /** Food (person-days) the founders bring. */
   food: 300,
+  /** The first village: its founders, and the food they bring (enough to last until the first harvest). */
+  startPeople: 4,
+  startFood: 400,
 };
 export const ATTRACT_BLOCK = 8;
 /** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
@@ -627,7 +636,7 @@ export class PeopleSystem {
     const site = this.bestSite(this.startX, this.startY, 4);
     if (site < 0) return;
     // The founders bring enough food to last until the first harvest.
-    this.foundAt(site, 400, 4, false);
+    this.foundAt(site, FOUNDING.startFood, FOUNDING.startPeople, false);
   }
 
   /**
@@ -1926,7 +1935,8 @@ export class PeopleSystem {
     const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
     const needFood = s.foodSecurity(doy, ECONOMY.growHorizon) < ECONOMY.growFood;
     if (time.season !== 3 && nGood >= good.length && total < want && needFood) {
-      const cap = Math.floor(HARDY.base + HARDY.share * (common + nGood)) - (total - common - nGood);
+      const share = s.foodSecurity(doy) < HARDY.hungryBelow ? HARDY.hungryShare : HARDY.share;
+      const cap = Math.floor(HARDY.base + share * (common + nGood)) - (total - common - nGood);
       const n = Math.max(0, Math.min(HARDY.perDay, want - total, cap, marginal.length));
       for (let k = 0; k < n; k++) claim(marginal[k]![1], marginal[k]![2]);
     }

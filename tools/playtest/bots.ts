@@ -505,7 +505,9 @@ export class WheelCanalBot implements Bot {
               const c = w.idx(ws.hx + dx, ws.hy + dy);
               if (w.water[c]! < 0.05) starts.push({ cell: c, level: w.terrain(head) });
             }
-          const canal = planCanal(sim, starts, targets, { maxEarth: this.earth.left, blocked: (i) => i === head || i === w.idx(ws.x, ws.y) }, 10);
+          // A wheel's water keeps only a short canal wet (it soaks into the bed and evaporates).
+          const maxLen = Math.max(8, Math.min(30, ws.perDay / 2.5));
+          const canal = planCanal(sim, starts, targets, { maxEarth: this.earth.left, maxLen, blocked: (i) => i === head || i === w.idx(ws.x, ws.y) }, 10);
           if (!canal) continue;
           // The wheel's water spreads over a short canal only: favour what it can keep wet.
           const score = Math.min(canal.covered.length, ws.perDay * 1.5) - canal.earth / 200 - canal.path.length * 0.2;

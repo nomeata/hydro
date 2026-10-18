@@ -253,13 +253,13 @@ const meanOf = (xs: readonly (number | null)[]): number => {
   return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 1000) / 1000 : 0;
 };
 
-export async function runJob(spec: JobSpec, log: (msg: string) => void = () => {}): Promise<JobResult> {
+export async function runJob(spec: JobSpec, log: (msg: string) => void = () => {}, botFor: typeof makeBot = makeBot): Promise<JobResult> {
   const t0 = performance.now();
   const { sim, gen } = newGame(spec.seed, spec.size);
   const descriptors = describe(sim, gen.startX, gen.startY);
   const forestStart = forestCover(sim.world);
   const obs = new Observer(sim);
-  const bot = spec.bot === 'baseline' ? null : makeBot(spec.bot, { ignoreUnlocks: spec.ignoreUnlocks, budget: spec.budget });
+  const bot = spec.bot === 'baseline' ? null : botFor(spec.bot, { ignoreUnlocks: spec.ignoreUnlocks, budget: spec.budget });
   const actions: ActionRecord[] = [];
   const pending: { rec: ActionRecord; cells: number[] }[] = [];
   let control: Simulation | null = null;

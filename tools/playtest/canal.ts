@@ -10,7 +10,7 @@
 import type { Command, Pt } from '../../src/shared/protocol';
 import { CELL_AREA } from '../../src/sim/constants';
 import { isRevealed } from '../../src/sim/fog';
-import { CAPILLARY } from '../../src/sim/people/village';
+import { CAPILLARY, CROP_MOISTURE } from '../../src/sim/people/village';
 import { planDike, planLevel, planTrench, type PlanGrid } from '../../src/sim/plans/plans';
 import type { Simulation } from '../../src/sim/sim';
 import { LandUse } from '../../src/sim/world';
@@ -22,7 +22,7 @@ export const CANAL_SLOPE = 0.006;
 /** The ground beside the canal stands at least this far above its water (m). */
 const FREEBOARD = 0.08;
 /** Cells within this distance of the canal's water get full crop growth (CROP_MOISTURE.moist at canalReach). */
-export const WET_REACH = CAPILLARY.canalReach * Math.log(CAPILLARY.max / 0.46);
+export const wetReach = (): number => CAPILLARY.canalReach * Math.log(CAPILLARY.max / CROP_MOISTURE.moist);
 
 export interface CanalStart {
   /** Land cell where the canal begins (next to the water, or the wheel's head). */
@@ -37,7 +37,7 @@ export interface CanalPlan {
   floor: [number, number];
   /** Cells along the path. */
   path: number[];
-  /** Target cells the canal waters (within WET_REACH of its water). */
+  /** Target cells the canal waters (within wetReach() of its water). */
   covered: number[];
   /** Earth it moves (m³). */
   earth: number;
@@ -126,6 +126,21 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
   };
   const ok = (i: number): boolean =>
     !margin[i] && w.water[i]! < 0.05 && !(opts.blocked?.(i) ?? false) && (!sim.fog || isRevealed(w, i));
+  // Lowest water surface within 2 cells of each cell: past its first cells the canal keeps
+  // away from water lower than its own (it would spill into it, or become the river's bypass).
+  const lowWater = new Float32Array(w.size).fill(Infinity);
+  for (let i = 0; i < w.size; i++) {
+    if (w.water[i]! < 0.05) continue;
+    const sf = w.surface(i);
+    const x = i % W;
+    const y = (i / W) | 0;
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        if (!w.inBounds(x + dx, y + dy)) continue;
+        const j = w.idx(x + dx, y + dy);
+        if (sf < lowWater[j]!) lowWater[j] = sf;
+      }
+  }
   for (const s of starts) {
     if (!ok(s.cell)) continue;
     const g = w.terrain(s.cell);
@@ -167,10 +182,11 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
       const surface = lvl[i]! - slope * s;
       const g = w.terrain(j);
       if (g < surface + FREEBOARD) continue; // the water would spill here
+      if (s > 3 && lowWater[j]! < surface - 0.05) continue; // ...or run off into lower water
       const cut = g - (surface - CANAL_DEPTH);
       if (cut > maxCut) continue;
       // Digging through fields costs the land; a cut costs earth.
-      const field = w.landuse[j] === LandUse.Field ? 0.3 : 0;
+      const field = w.landuse[j] === LandUse.Field ? 1.5 : 0;
       const nc = c + l * (1 + cut * 1.2 + field);
       if (nc < cost[j]!) {
         cost[j] = nc;
@@ -183,27 +199,14 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
   }
   if (!reached.length) return null;
   // The end that waters most target cells for its cost.
-  const R = Math.ceil(WET_REACH);
   let best: { end: number; covered: number[]; score: number } | null = null;
   const step = Math.max(1, Math.floor(reached.length / 400));
   for (let k = 0; k < reached.length; k += step) {
     const end = reached[k]!;
     const path: number[] = [];
     for (let i = end; i >= 0; i = prev[i]!) path.push(i);
-    const cov = new Set<number>();
-    const onPath = new Set(path);
-    for (const i of path) {
-      const x = i % W;
-      const y = (i / W) | 0;
-      for (let dy = -R; dy <= R; dy++)
-        for (let dx = -R; dx <= R; dx++) {
-          if (dx * dx + dy * dy > WET_REACH * WET_REACH || !w.inBounds(x + dx, y + dy)) continue;
-          const j = w.idx(x + dx, y + dy);
-          // The canal's own cells and banks are lost to it (width 2 + banks).
-          if (targets.has(j) && !onPath.has(j) && Math.abs(dx) + Math.abs(dy) > 1) cov.add(j);
-        }
-    }
-    const score = cov.size - 0.35 * cost[end]!;
+    const { covered: cov, lost } = coverage(w, path, targets);
+    const score = cov.size - lost - 0.35 * cost[end]!;
     if (cov.size >= minCovered && (!best || score > best.score)) best = { end, covered: [...cov], score };
   }
   if (!best) return null;
@@ -227,8 +230,7 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
       const cand: CanalPlan = { ...plan, points: p2, path: sub, floor: [level - CANAL_DEPTH, level - CANAL_DEPTH - slope * L2] };
       cand.earth = earthOf(sim, [canalCommand(cand, opts.width ?? 2)]);
       if (cand.earth <= opts.maxEarth) {
-        const subSet = new Set(sub);
-        cand.covered = plan.covered.filter((j) => sub.some((i) => Math.hypot((i % W) - (j % W), ((i / W) | 0) - ((j / W) | 0)) <= WET_REACH) && !subSet.has(j));
+        cand.covered = [...coverage(w, sub, targets).covered];
         return cand.covered.length >= minCovered ? cand : null;
       }
     }
@@ -236,6 +238,41 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
   }
   return plan;
 }
+
+/**
+ * Target cells a canal along `path` waters (within wetReach() of its water,
+ * which spreads a cell either side of the path), outside its footprint (the
+ * floor and banks it clears, FOOTPRINT cells either side), and the fields
+ * that footprint takes.
+ */
+export function coverage(w: Simulation['world'], path: readonly number[], targets: Set<number>): { covered: Set<number>; lost: number } {
+  const W = w.width;
+  const reach = wetReach() + 1;
+  const R = Math.ceil(reach);
+  const near = new Map<number, number>();
+  for (const i of path) {
+    const x = i % W;
+    const y = (i / W) | 0;
+    for (let dy = -R; dy <= R; dy++)
+      for (let dx = -R; dx <= R; dx++) {
+        if (!w.inBounds(x + dx, y + dy)) continue;
+        const j = w.idx(x + dx, y + dy);
+        const d = Math.hypot(dx, dy);
+        if (d < (near.get(j) ?? Infinity)) near.set(j, d);
+      }
+  }
+  const covered = new Set<number>();
+  let lost = 0;
+  for (const [j, d] of near) {
+    if (d <= FOOTPRINT) {
+      if (w.landuse[j] === LandUse.Field) lost++;
+    } else if (d <= reach && targets.has(j)) covered.add(j);
+  }
+  return { covered, lost };
+}
+
+/** Cells either side of a canal's path that its floor and banks clear (width 2: 1 + bank 1.5). */
+const FOOTPRINT = 2;
 
 export function canalCommand(plan: CanalPlan, width = 2): Command {
   return { type: 'shapeLine', tool: 'dig', points: plan.points, width, floor: plan.floor };
