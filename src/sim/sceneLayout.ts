@@ -51,6 +51,18 @@ export const SCENE_LAYOUT = {
     canalEnd: 64,
     village: { x: 74, y: 80 },
   },
+  /**
+   * The water wheel card, east of the river's lower straight reach: a
+   * terrace `lift` m above the river's surface from the bank on, a wheel in
+   * the river on row `y`, a shallow trench from its head cell east along
+   * that row to x = trenchEnd, dry fields either side, a small village.
+   */
+  wheel: {
+    y: 84,
+    lift: 3,
+    trenchEnd: 85,
+    village: { x: 85, y: 75 },
+  },
   /** The rain front of the 'water' scene: start, velocity (cells per step), size, lifetime (steps). */
   front: { x: 14, y: 116, vx: 0.11, vy: -0.11, rx: 20, ry: 22, life: 760 },
 };

@@ -14,7 +14,7 @@ export function newGame(seed: number, size: number, onGenerated?: () => void): {
   const gen = generateWorld({ seed, size });
   onGenerated?.();
   const sim = new Simulation(gen.world, seed, { people: { startX: gen.startX, startY: gen.startY }, rain: gen.rain });
-  sim.run(SPINUP_STEPS);
+  sim.spinUp(SPINUP_STEPS);
   sim.step = 0;
   sim.resetHistory();
   // The world as the player first sees it is the baseline for the achievements.

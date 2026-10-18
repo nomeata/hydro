@@ -113,7 +113,9 @@ seed (which share everything up to the first action).
 `npm run playtest -- --seeds 1..8 --years 10 --bot-years 4 --jobs 4` on
 main after the agency1 merge (50b3684: river seasons, wet/dry years,
 terrace start, economy retuned). It took 2.2 hours with 4 jobs on a
-shared container.
+shared container. Main has since gained wells and mills (no bot uses
+them) and simulates only the revealed land plus a margin; re-run to
+confirm the numbers on a later main.
 
 Caveats: **128² maps**, not the game's 256² (256² is 4–10× slower), so
 the start disc already shows most of the map and there is little room

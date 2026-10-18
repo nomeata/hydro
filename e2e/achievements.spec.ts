@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { openGame } from './helpers';
+import { openGame, recordTexts } from './helpers';
 
 test('finishing a trench earns First Spade: a toast, and the Achievements card lists it', async ({ page }) => {
   // A small world keeps the simulated day quick on slow CI machines.
   const errors = await openGame(page, '&size=128');
+  // The toast stays only a few seconds: record it rather than race it.
+  const toasts = await recordTexts(page, '[data-testid=achievement-toast][data-id=firstSpade]');
   // Dig a little trench by the start and let a day pass.
   await page.evaluate(async () => {
     const h = (window as any).__hydro;
@@ -12,8 +14,7 @@ test('finishing a trench earns First Spade: a toast, and the Achievements card l
     await h.client.runDays(1.2);
   });
   const toast = page.locator('[data-testid=achievement-toast][data-id=firstSpade]');
-  await expect(toast).toBeVisible({ timeout: 15_000 });
-  await expect(toast).toContainText('First Spade');
+  await expect.poll(toasts, { timeout: 15_000 }).toContainEqual(expect.stringContaining('First Spade'));
   // The toasts go away on their own.
   await expect(toast).toBeHidden({ timeout: 15_000 });
 

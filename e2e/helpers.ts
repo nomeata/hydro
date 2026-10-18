@@ -34,3 +34,29 @@ export async function settleFrames(page: Page, frames = 10): Promise<void> {
     frames,
   );
 }
+
+/**
+ * Record every text that elements matching `selector` show while visible, from
+ * now on. Passing messages (hints, toasts) go away on a timer, and a slow CI
+ * machine can miss that window between the action and the check; asserting on
+ * the recording instead keeps the check exact without racing the timer.
+ */
+export async function recordTexts(page: Page, selector: string): Promise<() => Promise<string[]>> {
+  const key = `__seen_${Math.random().toString(36).slice(2)}`;
+  await page.evaluate(
+    ([sel, k]) => {
+      const seen: string[] = [];
+      (window as any)[k] = seen;
+      const look = () => {
+        for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+          const t = el.textContent ?? '';
+          if (el.checkVisibility() && seen[seen.length - 1] !== t) seen.push(t);
+        }
+      };
+      look();
+      new MutationObserver(look).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    },
+    [selector, key] as const,
+  );
+  return () => page.evaluate((k) => [...(window as any)[k]] as string[], key);
+}

@@ -46,6 +46,12 @@ export const ACH = {
   pathCells: 30,
   /** Forest Keeper: new forest cells near the works. */
   forestCells: 40,
+  /** Wellspring: a new well within this many cells of the player's works. */
+  wellNear: 10,
+  /** Miller's Head: a mill's head within this many cells of the player's works. */
+  millNear: 3,
+  /** Uphill: water lifted by one water wheel (m³). */
+  liftedM3: 100,
 } as const;
 
 export const ACHIEVEMENTS: readonly AchievementInfo[] = [
@@ -56,6 +62,8 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'waterfall', title: 'Waterfall', description: `Let water tumble ${ACH.fallDrop} m down over your works.`, icon: 'waterfall', category: 'water' },
   { id: 'weirBuilder', title: 'Weir Builder', description: 'Finish a weir across the water.', icon: 'weir', category: 'water' },
   { id: 'gatekeeper', title: 'Gatekeeper', description: 'Villagers open a sluice gate to water their fields.', icon: 'gate', category: 'water' },
+  { id: 'millersHead', title: 'Miller’s Head', description: 'Villagers build a mill where your works make the water fall.', icon: 'mill', category: 'water' },
+  { id: 'uphill', title: 'Uphill', description: `A water wheel lifts its first ${ACH.liftedM3} m³ of river water onto the bank.`, icon: 'wheel', category: 'water' },
   { id: 'safetyValve', title: 'Safety Valve', description: 'A sluice gate opens before the flood spills over its dike.', icon: 'valve', category: 'water' },
   // The land
   { id: 'newGround', title: 'New Ground', description: 'Villagers farm land that was too dry for fields at first.', icon: 'sprout', category: 'land' },
@@ -72,6 +80,7 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'stoneByStone', title: 'Stone by Stone', description: 'The villagers line a bank with stone.', icon: 'stone', category: 'people' },
   { id: 'quayside', title: 'Quayside', description: 'Villagers line a quay by their houses.', icon: 'quay', category: 'people' },
   { id: 'cattleCountry', title: 'Cattle Country', description: `A village keeps a herd of ${ACH.herdCows} cows.`, icon: 'cow', category: 'people' },
+  { id: 'wellspring', title: 'Wellspring', description: 'Villagers dig a well by your works.', icon: 'well', category: 'people' },
   { id: 'jetty', title: 'Fishing Jetty', description: 'Villagers build a jetty out over the water.', icon: 'jetty', category: 'people' },
   { id: 'pop10', title: 'Hamlet', description: '10 villagers live in the valley.', icon: 'pop', category: 'people' },
   { id: 'pop50', title: 'Village Life', description: '50 villagers live in the valley.', icon: 'pop', category: 'people' },

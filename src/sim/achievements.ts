@@ -253,7 +253,24 @@ export class Achievements {
       case 'rebuilt':
         this.earn('rebuilt', day);
         break;
+      case 'well':
+        if (this.touchedWithin(cell, ACH.wellNear)) this.earn('wellspring', day);
+        break;
+      case 'mill':
+        if (this.touchedWithin(cell, ACH.millNear)) this.earn('millersHead', day);
+        break;
     }
+  }
+
+  /** Whether the player's works changed a cell within r cells of cell i. */
+  private touchedWithin(i: number, r: number): boolean {
+    const W = this.width;
+    const x0 = i % W;
+    const y0 = (i / W) | 0;
+    for (let y = Math.max(0, y0 - r); y <= Math.min(this.height - 1, y0 + r); y++)
+      for (let x = Math.max(0, x0 - r); x <= Math.min(W - 1, x0 + r); x++)
+        if (this.touched[y * W + x] && Math.hypot(x - x0, y - y0) <= r + 0.5) return true;
+    return false;
   }
 
   /** Water at cell i that the player made: not near the world's own water, and near their works. */
@@ -295,6 +312,7 @@ export class Achievements {
       }
       this.strokes = left;
     }
+    if (!this.has.has('uphill') && h.structures.wheels?.some((wh) => wh.lifted >= ACH.liftedM3)) this.earn('uphill', day);
     const p = h.people;
     if (p) {
       const n = p.settlements.length;

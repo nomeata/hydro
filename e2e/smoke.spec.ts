@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openGame, settleFrames } from './helpers';
+import { openGame, recordTexts, settleFrames } from './helpers';
 
 test('loads, renders and has no console errors', async ({ page }) => {
   const errors = await openGame(page);
@@ -49,10 +49,13 @@ test('digit keys pick tools, Escape returns to Look', async ({ page }) => {
   await expect(page.locator('button[data-tool=trench]')).toHaveAttribute('title', 'Trench (2)');
   await page.keyboard.press('Escape');
   await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
-  // A locked tool (Gate, 6) only shows when it unlocks.
+  // A locked tool (Gate, 6) only says when it unlocks, for a moment.
+  const lookHint = await page.locator('.tools .hint').textContent();
+  const hints = await recordTexts(page, '.tools .hint');
   await page.keyboard.press('6');
   await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.tools .hint')).toContainText('Unlocks at');
+  await expect.poll(hints).toContainEqual(expect.stringContaining('Unlocks at'));
+  await expect(page.locator('.tools .hint')).toHaveText(lookHint!, { timeout: 10_000 });
 });
 
 test('mouse wheel zooms and drag pans the camera', async ({ page }) => {

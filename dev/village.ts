@@ -11,6 +11,7 @@ import type { HeightSampler } from '../src/render/coords';
 import { modelLibrary } from '../src/render/objects/loader';
 import { MODELS, type ModelName } from '../src/render/objects/manifest';
 import { BuildingsLayer } from '../src/render/village/buildings';
+import { MillWheelsLayer } from '../src/render/village/millwheels';
 import type { BuildingInfo } from '../src/shared/protocol';
 
 const params = new URLSearchParams(location.search);
@@ -68,10 +69,25 @@ async function main(): Promise<void> {
     list.forEach((b, k) => (b.id = Math.floor(k / progresses.length) + 1000 * (k % progresses.length)));
     list.push({ id: 9000, kind: 'store', x: 10, y: 21, rot: 0, progress: 1 });
     list.push({ id: 9001, kind: 'store', x: 13, y: 21, rot: Math.PI / 2, progress: 1 });
+    // Wells (four stages, then a dry one) and mills (four stages, then with 1–3 sacks), wheels facing +x.
+    for (let s = 0; s < progresses.length; s++) list.push({ id: 9100 + s, kind: 'well', x: 10 + s * 2.5, y: 24, rot: 0, progress: progresses[s]! });
+    list.push({ id: 9110, kind: 'well', x: 20, y: 24, rot: 0, progress: 1, dry: true });
+    for (let s = 0; s < progresses.length; s++) list.push({ id: 9200 + s, kind: 'mill', x: 10 + s * 3, y: 27, rot: 0, progress: progresses[s]!, spin: 1 });
+    list.push({ id: 9210, kind: 'mill', x: 22, y: 27, rot: Math.PI / 2, progress: 1, spin: 0.5, sacks: 3 });
     layer.setBuildings(list);
-    layer.setFood(Number(params.get('food') ?? 60), 4);
-    cx = 14.5;
-    cz = 16;
+    layer.setVillages([{ x: 10, y: 21, population: 4, houses: 4, food: Number(params.get('food') ?? 60) * 4, wellbeing: 1 }]);
+    const wheels = new MillWheelsLayer(scene, flat);
+    wheels.setBuildings(list);
+    let last = performance.now();
+    const spin = () => {
+      const now = performance.now();
+      wheels.update((now - last) / 1000, 1);
+      last = now;
+      requestAnimationFrame(spin);
+    };
+    spin();
+    cx = Number(params.get('cx') ?? 15.5);
+    cz = Number(params.get('cz') ?? 19);
     (window as unknown as { __layer: unknown }).__layer = layer;
   }
 

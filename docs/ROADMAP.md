@@ -103,7 +103,8 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   relief by itself; a villager walks over and turns the wheel; no tap to
   toggle; achievements Gatekeeper (villagers) and Safety Valve
 - ☑ Tool cards at unlock (weir, gate): a live staged scene and two lines,
-  shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`)
+  shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`);
+  the water wheel's card too
 - "Ideas for this valley" in the Achievements card
 
 ## M4 — Structures ◐
@@ -115,7 +116,14 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   their homes (elsewhere natural erosion); `?cheat=1` unlocks all tools
 - ☑ Villagers line banks by their homes and the player's canals near the
   village on their own; quays by the houses; a fishing jetty per village
-- Wells, pumps (manual/animal), water wheels and mills
+- ☑ Water wheel (noria) tool at 50 villagers (GAMEPLAY §1.3,
+  `sim/structures/wheel.ts`): lift from the current, trough to the bank,
+  Uphill achievement, tool card scene
+- ☑ Villager wells (water table within 4 m; water carriers until then;
+  dry wells) and mills at head sites (the wheel turns with the flow, a
+  miller, flour) — GAMEPLAY §1.1–1.2, `sim/people/wells.ts`, `mills.ts`;
+  achievements Wellspring and Miller's Head
+- Pumps (manual/animal): cosmetic only, not planned
 - NPCs build their own small works (irrigation ditches, little dams, paths)
 
 ## M5 — Human impact ☐
@@ -129,10 +137,11 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   electric pumps, demand curve by day/season, pumped storage
 - Power-dependent professions and higher population caps
 
-## M7 — Endless world ☐
+## M7 — Endless world ◐
 Proposal and staged plan: docs/ENDLESS.md.
-- ☐ Step 1: simulate only revealed land + margin (frozen halo, dry-tile
-  sleeping) inside the fixed map; 512² desktop default
+- ◐ Step 1: ☑ simulate only revealed land + margin (frozen halo, dry-tile
+  sleeping) inside the fixed map (ENDLESS.md §12); ☐ 512² desktop default
+  (proposed, needs the device tier logic and a cheaper spin-up)
 - ☐ Step 1b: catchment inflow model for rivers entering from the fog
 - ☐ Step 2: tiled world growing up to a fixed extent, consistent block
   worldgen, chunk streaming, per-page saves, soft cap by active-cell budget

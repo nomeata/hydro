@@ -15,6 +15,8 @@ export const enum Job {
   Woodcutter = 4,
   /** Leads the village herd to pasture and back, and brings the milk home (M3-δ). */
   Herder = 5,
+  /** Grinds the grain brought to the village mill and carries the flour to the store (GAMEPLAY §1.2). */
+  Miller = 6,
 }
 
 export const enum Task {
@@ -53,6 +55,14 @@ export const enum SiteKind {
   Herd = 13,
   /** Work a sluice gate's wheel (site = gate id; structures/gatekeeper.ts). */
   Gate = 14,
+  /** Fill a bucket at the village well or the water's edge (site = the well's building id, or the water cell). */
+  Fetch = 15,
+  /** Carry the bucket home to a house (site = the house's cell). */
+  Pour = 16,
+  /** Bring a sack of grain to the mill (site = the mill's building id). */
+  Mill = 17,
+  /** Grind grain at the mill (site = the mill's building id). */
+  Grind = 18,
 }
 
 export interface Agent {

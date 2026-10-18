@@ -32,7 +32,7 @@ export function buildStage(progress: number): Stage {
 }
 
 /** Procedural pieces (boxes and blobs with a flat colour). */
-export type ProcKind = 'plinth' | 'stake' | 'pole' | 'beam' | 'board' | 'sack' | 'hay' | 'soil' | 'fish';
+export type ProcKind = 'plinth' | 'stake' | 'pole' | 'beam' | 'board' | 'sack' | 'hay' | 'soil' | 'fish' | 'ring' | 'water' | 'gable';
 
 export interface Part {
   /** A static model, or a procedural piece. */
@@ -397,6 +397,81 @@ export function storeDesign(level: number, fish = false, wood = 0): Design {
   return { name: `store-${n}${fish ? '-fish' : ''}${wood > 0 ? `-wood${wood}` : ''}`, scale: 1.3, vscale: 1.0, roof: ROOF_THATCH, plaster: GABLE_WOOD, parts };
 }
 
+/**
+ * The village well (GAMEPLAY §1.1): a round stone ring with water in it, two
+ * posts with a winding beam, a little shingle roof and a bucket on the rim.
+ * Built in stages like a house: a pit with stakes and stones, the ring
+ * rising, the posts, the roof. A dry well shows bare earth in the ring.
+ */
+export function wellDesign(dry: boolean): Design {
+  const parts: Part[] = [
+    // The dug pit and the stones waiting by it.
+    { m: 'soil', x: 0, y: -0.02, z: 0, s: [0.7, 0.06, 0.7], stages: F },
+    { m: 'survival_resource_stone', x: 0.55, y: 0, z: 0.35, rot: 1, s: [2.2, 2.2, 2.2], stages: F | W },
+    { m: 'survival_resource_stone', x: 0.62, y: 0, z: -0.15, rot: 2, s: [1.8, 1.8, 1.8], stages: F },
+    ...[
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ].map(([sx, sz]) => ({ m: 'stake' as const, x: sx! * 0.36, y: 0, z: sz! * 0.36, s: [0.05, 0.35, 0.05] as const, stages: F })),
+    // The stone ring: half height while building, then full, with the water (or dry earth) inside.
+    { m: 'ring', x: 0, y: -0.1, z: 0, s: [0.64, 0.3, 0.64], stages: W },
+    { m: 'ring', x: 0, y: -0.1, z: 0, s: [0.64, 0.5, 0.64], stages: TOPPED },
+    { m: dry ? 'soil' : 'water', x: 0, y: 0.36, z: 0, s: [0.46, 0.05, 0.46], stages: TOPPED },
+    // Posts, winding beam with its crank, rope and bucket.
+    { m: 'pole', x: 0, y: 0.3, z: 0.35, s: [0.06, 0.78, 0.06], stages: TOPPED },
+    { m: 'pole', x: 0, y: 0.3, z: -0.35, s: [0.06, 0.78, 0.06], stages: TOPPED },
+    { m: 'beam', x: 0, y: 0.76, z: 0, s: [0.05, 0.05, 0.84], stages: TOPPED },
+    { m: 'beam', x: 0.04, y: 0.74, z: 0.44, s: [0.12, 0.03, 0.03], stages: D },
+    { m: 'pole', x: 0, y: dry ? 0.44 : 0.54, z: 0, s: [0.012, dry ? 0.32 : 0.22, 0.012], stages: D },
+    { m: 'survival_bucket', x: 0, y: dry ? 0.3 : 0.4, z: 0, s: [1.5, 1.5, 1.5], stages: D },
+    { m: 'survival_bucket', x: 0.3, y: 0, z: 0.4, rot: 1, s: [1.4, 1.4, 1.4], stages: D },
+    // A little shingle roof over it.
+    { m: 'gable', x: 0, y: 0.98, z: 0, s: [0.62, 0.24, 0.96], stages: D },
+  ];
+  return { name: dry ? 'well-dry' : 'well', scale: 1.25, vscale: 1.2, parts };
+}
+
+/** The mill house: timber walls, door on the landward side (−x), the wheel turns on the water side (+x). */
+const MILL_SHELL: Shell = {
+  nx: 1,
+  nz: 1,
+  wall: 'town_wall_wood',
+  door: 'town_wall_wood_door',
+  window: 'town_wall_wood_window',
+  windows: [
+    [0, 1],
+    [0, 3],
+  ],
+  doorAt: [0, 2],
+};
+
+/** Scale of the mill design (world units per tile), and where its wheel turns (world units, building-local). */
+export const MILL_SCALE = 1.05;
+export const MILL_WHEEL = { x: 0.5 * MILL_SCALE + 0.22, y: 0.38, radius: 0.56, width: 0.26 };
+
+/**
+ * The water mill (GAMEPLAY §1.2): a timber house with a shingle gable roof
+ * and the axle coming out of its water-side wall (the wheel itself is drawn
+ * by `MillWheelsLayer`, turning with the flow). Grain waiting to be ground
+ * shows as 0–3 sacks by the door.
+ */
+export function millDesign(sacks: number): Design {
+  const parts: Part[] = [
+    ...shellParts(MILL_SHELL),
+    ...gableRoof(MILL_SHELL),
+    // The axle and its bearing block on the water side.
+    { m: 'beam', x: 0.5, y: 0.34, z: 0, s: [0.32, 0.07, 0.07], stages: D },
+    { m: 'plinth', x: 0.56, y: 0.12, z: 0, s: [0.12, 0.26, 0.2], stages: D },
+    // A millstone leaning by the door.
+    { m: 'ring', x: -0.66, y: 0.0, z: -0.32, s: [0.26, 0.08, 0.26], stages: D, stone: true },
+  ];
+  const n = Math.max(0, Math.min(3, sacks | 0));
+  for (let k = 0; k < n; k++) parts.push({ m: 'sack', x: -0.7, y: 0, z: 0.05 + k * 0.2, rot: k, s: [0.2, 0.22, 0.18], stages: D });
+  return { name: `mill-${n}`, scale: MILL_SCALE, vscale: 0.95, roof: ROOF_SHINGLE, plaster: GABLE_WOOD, parts };
+}
+
 /** Parts of a design present at a stage. */
 export function partsAt(d: Design, stage: Stage): Part[] {
   return d.parts.filter((p) => (p.stages & (1 << stage)) !== 0);
@@ -410,10 +485,12 @@ export function villageModels(): ModelName[] {
   };
   HOUSE_DESIGNS.forEach(add);
   add(storeDesign(MAX_FOOD_PROPS, true, 3));
+  add(wellDesign(false));
+  add(millDesign(3));
   return [...s];
 }
 
-const PROC: ReadonlySet<string> = new Set<ProcKind>(['plinth', 'stake', 'pole', 'beam', 'board', 'sack', 'hay', 'soil', 'fish']);
+const PROC: ReadonlySet<string> = new Set<ProcKind>(['plinth', 'stake', 'pole', 'beam', 'board', 'sack', 'hay', 'soil', 'fish', 'ring', 'water', 'gable']);
 export function isProc(m: string): m is ProcKind {
   return PROC.has(m);
 }

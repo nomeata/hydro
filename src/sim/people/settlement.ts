@@ -5,6 +5,7 @@
  */
 import type { Rng } from '../../shared/rng';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR } from '../constants';
+import { MILL } from './mills';
 import type { Jetty } from './works';
 
 export const ECONOMY = {
@@ -91,6 +92,8 @@ export interface SettlementState {
   chopSites?: number[];
   /** The herd's day, once the village keeps animals. */
   herd?: HerdState;
+  /** The village's mill turned today (GAMEPLAY §1.2: a little wellbeing; absent in old saves). */
+  milling?: boolean;
 }
 
 export type Mood = -1 | 0 | 1;
@@ -186,7 +189,7 @@ export class Settlement {
     if (s.wood !== undefined) s.wood = Math.max(0, s.wood - (winter ? ECONOMY.woodBurnWinter : ECONOMY.woodBurn));
     const target = Math.min(
       1,
-      0.55 * Math.min(1, this.foodSecurity(dayOfYear)) + 0.2 * housing + 0.15 * s.waterAccess + 0.1 * s.safety + warm,
+      0.55 * Math.min(1, this.foodSecurity(dayOfYear)) + 0.2 * housing + 0.15 * s.waterAccess + 0.1 * s.safety + warm + (s.milling ? MILL.wellbeing : 0),
     );
     s.wellbeing += (target - s.wellbeing) / ECONOMY.wellbeingTau;
     s.mood = nextMood(s.mood ?? 0, s.wellbeing);

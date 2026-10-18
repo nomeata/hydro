@@ -165,8 +165,12 @@ export interface EntityFrame {
 /** A building (rarely changes; sent when the set changes). */
 export interface BuildingInfo {
   id: number;
-  /** A ruin is a house destroyed by a flood (or abandoned); it may be rebuilt. */
-  kind: 'house' | 'store' | 'ruin';
+  /**
+   * A ruin is a house destroyed by a flood (or abandoned); it may be rebuilt.
+   * A well is the village's (GAMEPLAY §1.1); a mill stands on the bank by
+   * a head of water, its wheel on the side facing `rot` (§1.2).
+   */
+  kind: 'house' | 'store' | 'ruin' | 'well' | 'mill';
   /** Cell coordinates of the footprint centre. */
   x: number;
   y: number;
@@ -174,6 +178,12 @@ export interface BuildingInfo {
   rot: number;
   /** Construction progress 0..1. */
   progress: number;
+  /** Wells: no water comes up (the table fell too deep). */
+  dry?: boolean;
+  /** Mills: speed of the water at the wheel (m/s; 0 = standing still). */
+  spin?: number;
+  /** Mills: grain waiting to be ground (sacks shown by the door, 0..3). */
+  sacks?: number;
 }
 
 /**
@@ -184,10 +194,13 @@ export interface BuildingInfo {
  * - weir: a lined overflow wall from (x, y) to (x2, y2) with its crest at `top`.
  * - jetty: a villagers' wooden jetty from the shore cell (x, y) out over
  *   the water to (x2, y2), its deck at `top`.
+ * - wheel: a water wheel standing in the river cell (x, y) on its bed
+ *   `sill`, lifting into a trough that runs to the head cell (x2, y2),
+ *   whose ground is at `top`; `open` while water runs in the trough.
  */
 export interface StructureInfo {
   id: number;
-  kind: 'gate' | 'weir' | 'jetty';
+  kind: 'gate' | 'weir' | 'jetty' | 'wheel';
   x: number;
   y: number;
   /** Direction of the structure's line in cell coordinates: (cos rot, sin rot). */
@@ -201,9 +214,12 @@ export interface StructureInfo {
   progress: number;
   /** Gates: how far the leaf is up now, 0..1 (it follows `open` over a few game hours). */
   lift?: number;
-  /** Weirs: the far end of the line. */
+  /** Weirs: the far end of the line (wheels: the head cell). */
   x2?: number;
   y2?: number;
+  /** Wheels: speed of the current turning it (m/s, 0 = standing still; the sign says which way it passes across the axle x→x2) and the water lifted (m³/s). */
+  speed?: number;
+  flow?: number;
 }
 
 /**
@@ -302,6 +318,13 @@ export type Command =
    */
   | { type: 'placeGate'; points: Pt[]; width: number; height: number }
   /**
+   * Water wheel: a stroke from the river onto the bank. The wheel stands in
+   * the water where it starts; its trough runs to the first dry cell along
+   * the stroke (at most 3 cells, up to 5 m above the river). A tap picks
+   * the lowest dry cell beside the water (sim/structures/wheel.ts).
+   */
+  | { type: 'placeWheel'; points: Pt[] }
+  /**
    * Open or close a gate by hand (open = !open when omitted) and hold it
    * there: tests, scenes and debugging. In the game, villagers work the
    * gates (sim/structures/gatekeeper.ts).
@@ -318,8 +341,8 @@ export type Command =
 // Messages.
 
 /** Staged scenes of the welcome panels (sim/scenes.ts). */
-/** Staged scenes: the welcome panels, and the tool cards shown when a tool unlocks (weir, gate). */
-export type SceneId = 'water' | 'shape' | 'village' | 'weir' | 'gate';
+/** Staged scenes: the welcome panels, and the tool cards shown when a tool unlocks (weir, gate, wheel). */
+export type SceneId = 'water' | 'shape' | 'village' | 'weir' | 'gate' | 'wheel';
 
 export type ToWorker =
   | { type: 'init'; seed: number; size: number; speed?: number; duty?: number }

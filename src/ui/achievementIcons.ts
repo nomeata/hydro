@@ -30,6 +30,7 @@ export const ACHIEVEMENT_ICONS: Readonly<Record<string, string>> = {
   stone: ICONS.line,
   weir: ICONS.weir,
   gate: ICONS.gate,
+  wheel: ICONS.wheel,
   valve: svg(
     `<path d="M2 10h9v14H2z" fill="${WATER}"/><path d="M5 13q2-1.5 4 0" stroke="#d8f1fc" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M8 27l5-15h8l5 15z" fill="#c49a62" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M14.5 27V12M19.5 27V12" stroke="#8d6438" stroke-width="2.2"/><rect x="14.5" y="8" width="5" height="9" fill="#b98a52" stroke="${INK}" stroke-width="1.4"/><path d="M12 7h10" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><path d="M11 24h19" stroke="${WATER}" stroke-width="3.4" stroke-linecap="round"/><path d="M26 21l4 3-4 3" fill="none" stroke="#2f86c4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
   ),
@@ -58,6 +59,12 @@ export const ACHIEVEMENT_ICONS: Readonly<Record<string, string>> = {
   ),
   jetty: svg(
     `<path d="M2 21h28v9H2z" fill="${WATER}"/><path d="M4 25q3-2 6 0t6 0 6 0 6 0" stroke="#d8f1fc" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M2 16h6l-2 5H2z" fill="#7fbf5a" stroke="${INK}" stroke-width="1.4"/><rect x="6" y="14" width="22" height="3" rx="1" fill="#c4935c" stroke="${INK}" stroke-width="1.4"/><path d="M11 17v9M18 17v9M25 17v9" stroke="#8d6438" stroke-width="2.2" stroke-linecap="round"/><path d="M24 14l4-9" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/><path d="M28 5c1 5 0 9 0 12" stroke="#7b8d9c" stroke-width=".9" fill="none"/>`,
+  ),
+  well: svg(
+    `<path d="M3 28h26" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/><path d="M9 28V8M23 28V8" stroke="#8d6438" stroke-width="2.2" stroke-linecap="round"/><path d="M5 10l11-6 11 6z" fill="#b5523a" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 13h14" stroke="#8d6438" stroke-width="1.8"/><path d="M16 13v5" stroke="${INK}" stroke-width="1"/><path d="M14 18h4l-.6 3h-2.8z" fill="#c49a62" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M7 21h18v7H7z" fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 21.5h18" stroke="${WATER}" stroke-width="2"/><path d="M12 24v4M17 24v4M21 21v3" stroke="#5f5a52" stroke-width="1"/>`,
+  ),
+  mill: svg(
+    `<path d="M2 25h28v6H2z" fill="${WATER}"/><path d="M4 28q3-2 6 0t6 0" stroke="#d8f1fc" stroke-width="1.4" fill="none" stroke-linecap="round"/><path d="M3 24V13l6-6 6 6v11z" fill="#c07a4a" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/><path d="M1.5 14L9 6l7.5 8" fill="none" stroke="#8a4a3a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="7" y="17" width="4" height="7" fill="#8a6236"/><circle cx="22" cy="20" r="7.5" fill="none" stroke="#8d6438" stroke-width="2.2"/><g stroke="#8d6438" stroke-width="1.6"><path d="M22 12.5v15M14.5 20h15M16.7 14.7l10.6 10.6M27.3 14.7L16.7 25.3"/></g><circle cx="22" cy="20" r="1.8" fill="#5e4024"/>`,
   ),
   pop: ICONS.faces,
   cow: svg(

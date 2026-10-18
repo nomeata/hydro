@@ -10,13 +10,12 @@
  * The progression, ascending. Each step names the tool it unlocks, or none
  * for a milestone whose tool is not built yet: the bar and the chart show
  * those milestones already, and a new tool slots in by adding its id.
- * Planned (GAMEPLAY.md §4.5): water wheel 50, turbine 100, power pole 150,
- * electric pump 250.
+ * Planned (GAMEPLAY.md §4.5): turbine 100, power pole 150, electric pump 250.
  */
 export const PROGRESSION: readonly { population: number; tool?: string }[] = [
   { population: 15, tool: 'weir' },
   { population: 30, tool: 'gate' },
-  { population: 50 }, // water wheel
+  { population: 50, tool: 'wheel' },
   { population: 100 }, // turbine (M6)
   { population: 150 }, // power pole (M6)
   { population: 250 }, // electric pump (M6)
