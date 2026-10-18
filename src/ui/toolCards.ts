@@ -25,6 +25,10 @@ export const TOOL_CARDS: Readonly<Record<string, CardDef>> = {
     scene: 'gate',
     text: 'When the fields below run dry, a villager opens the gate; in autumn it closes so the reservoir refills. Before a flood spills over, it opens by itself.',
   },
+  wheel: {
+    scene: 'wheel',
+    text: 'Fields on a terrace too high for a canal? The river’s own current turns a wheel that lifts water up to 5 m into your trench. In still water it stands still.',
+  },
 };
 
 const SEEN_KEY = 'hydro.toolCardsSeen';

@@ -376,17 +376,17 @@ function carveWheel(w: World): void {
       const r = nearestRiver(river, x, y);
       if (r.d < RIVER_HW + 0.7 || x < r.x) continue;
       // The terrace rises out of the river bank and falls gently away from it (and into the meadow at its north end).
-      const t = terrace - 0.015 * (x - hx) - Math.max(0, 70 - y) * 1.2;
+      const t = terrace - 0.006 * (x - hx) - Math.max(0, 70 - y) * 1.2;
       set(i, Math.max(w.terrain(i), t));
       w.water[i] = 0;
       w.soilType[i] = SoilType.Loam;
-      w.ground[i] = w.soil[i]! * SOIL_PROPS[SoilType.Loam]!.porosity * 0.12;
+      w.ground[i] = w.soil[i]! * SOIL_PROPS[SoilType.Loam]!.porosity * (y === L.y ? 0.7 : 0.12);
       w.vegetation[i] = Math.min(w.vegetation[i]!, 0.3);
     }
   // The trench: half a metre deep, falling evenly to its end.
   for (let x = hx + 1; x <= L.trenchEnd; x++) {
     const i = w.idx(x, L.y);
-    set(i, w.terrain(i) - 0.55 - 0.01 * (x - hx));
+    set(i, w.terrain(i) - 0.55 - 0.004 * (x - hx));
     w.vegetation[i] = 0.1;
     w.flags[i] = w.flags[i]! | CellFlag.Canal;
   }

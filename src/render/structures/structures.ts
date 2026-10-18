@@ -127,11 +127,11 @@ function noriaGeometry(): THREE.BufferGeometry {
   const seg = ((2 * Math.PI * r) / n) * 1.08;
   for (let k = 0; k < n; k++) {
     const a = (k / n) * Math.PI * 2;
-    const rim = new THREE.BoxGeometry(0.16, 0.05, seg).translate(0, r, 0).rotateX(a);
+    const rim = new THREE.BoxGeometry(0.18, 0.06, seg).translate(0, r, 0).rotateX(a);
     parts.push(paint(rim, k % 2 ? 0x9a6c40 : 0xa8794a));
     if (k % 2 === 0) {
       // A bucket hanging off the rim, on the trough side.
-      const b = new THREE.BoxGeometry(0.14, 0.08, 0.09).translate(0.1, r + 0.03, 0).rotateX(a + Math.PI / n);
+      const b = new THREE.BoxGeometry(0.16, 0.1, 0.11).translate(0.1, r + 0.04, 0).rotateX(a + Math.PI / n);
       parts.push(paint(b, 0x6b4a2b));
     }
   }
@@ -375,7 +375,7 @@ export class StructuresLayer {
     // The buckets dip below the surface and tip out just above the trough.
     const bottom = Math.max(bed + 0.04, surface - 0.18);
     const top = yTrough + 0.14;
-    const d = Math.max(0.45, top - bottom);
+    const d = Math.max(0.8, top - bottom);
     return { yc: top - d / 2, d, yTrough };
   }
 
