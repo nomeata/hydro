@@ -149,6 +149,8 @@ async function main(): Promise<void> {
     project: groundToClient,
     structures: () => renderer.structures.structures,
     power: () => renderer.power.state,
+    buildings: () => renderer.buildingInfos,
+    surface: (x, y) => renderer.heights.terrainAt(x, y) + renderer.heights.depthAt(x, y),
     mirror,
     setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
     setPreviewLining: (cells) => renderer.setPreviewLining(cells),

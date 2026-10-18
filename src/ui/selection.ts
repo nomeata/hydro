@@ -2,7 +2,9 @@
  * Selecting and editing what the player built (DESIGN.md §4): in Look mode
  * (or with the weir tool) a tap on a weir, gate, water wheel, turbine,
  * pole or pump selects it. A small panel names it and offers Remove (tap
- * twice: "Remove?" first, so a stray touch takes nothing down); a weir also
+ * twice: "Remove?" first, so a stray touch takes nothing down); a turbine,
+ * pole or pump shows what it is doing now (ui/powerReadout.ts: a gauge, the
+ * houses it lights, its head and power, or why it idles); a weir also
  * gets − / + for its crest and a handle at each end that can be dragged out
  * or in, with a live preview. Edits become plans: the crew rebuilds
  * (sim/structures/structures.ts editWeir / removeWeir, the sim's
@@ -13,6 +15,7 @@ import type { Command, PowerInfo, Pt, SelectableKind, StructureInfo } from '../s
 import type { WorldMirror } from '../client/mirror';
 import { planWeirPreview } from '../sim/plans/plans';
 import { toolName } from '../shared/progress';
+import { powerReadout, type PowerHouse, type Readout } from './powerReadout';
 
 const NS = 'http://www.w3.org/2000/svg';
 /** Crest step of the − / + buttons (m). */
@@ -33,6 +36,9 @@ export interface SelectionHost {
   setPreviewPlan(cells: Float32Array | null): void;
   setPreviewLining(cells: readonly number[] | null): void;
   command(cmd: Command): void;
+  /** The village buildings (a power line's houses) and the water surface at a cell (m; a turbine's head). */
+  buildings?(): readonly PowerHouse[];
+  surface?(x: number, y: number): number;
   /** Called every frame (returns nothing to undo; the selection lives as long as the page). */
   onFrame(fn: () => void): void;
 }
@@ -66,6 +72,12 @@ export class Selection {
   private readonly crestOut: HTMLElement;
   private readonly crestBox: HTMLElement;
   private readonly note: HTMLElement;
+  private readonly powerBox: HTMLElement;
+  /** The readout shown (its signature, to redraw only on change) and when it was last worked out. */
+  private powerSig = '';
+  private powerAt = 0;
+  /** The live state of a selected turbine, pole or pump (tests). */
+  readout: Readout | null = null;
   private readonly removeBtn: HTMLButtonElement;
   private readonly svg: SVGSVGElement;
   private readonly line: SVGLineElement;
@@ -93,11 +105,13 @@ export class Selection {
         <span class="sel-crest"><button class="sel-lower" aria-label="Lower the crest">−</button><span>Crest <output></output></span><button class="sel-raise" aria-label="Raise the crest">+</button></span>
         <button class="sel-remove">Remove</button>
       </div>
-      <div class="sel-note"></div>`;
+      <div class="sel-note"></div>
+      <div class="sel-power" data-testid="power-readout" hidden></div>`;
     this.title = this.panel.querySelector('.sel-title')!;
     this.crestBox = this.panel.querySelector('.sel-crest')!;
     this.crestOut = this.panel.querySelector('.sel-crest output')!;
     this.note = this.panel.querySelector('.sel-note')!;
+    this.powerBox = this.panel.querySelector('.sel-power')!;
     this.removeBtn = this.panel.querySelector('.sel-remove')!;
     this.panel.querySelector('.sel-close')!.addEventListener('click', () => this.clear());
     this.panel.querySelector('.sel-lower')!.addEventListener('click', () => this.crest(-CREST_STEP));
@@ -199,6 +213,10 @@ export class Selection {
         ? 'Removing it fills the opening back up to the dam’s crest.'
         : '';
     this.note.hidden = !this.note.textContent;
+    this.powerSig = '';
+    this.powerAt = 0;
+    this.readout = null;
+    this.powerBox.hidden = true;
     this.panel.hidden = false;
     this.refresh();
     this.onChange?.(this.selected);
@@ -355,6 +373,24 @@ export class Selection {
     this.host.setPreviewLining(lined.filter((i) => m.isRevealed(i % m.width, (i / m.width) | 0) && m.plannable(i)));
   }
 
+  /** Work out and show what the selected turbine, pole or pump does now (a few times a second). */
+  private showPower(kind: 'turbine' | 'pole' | 'pump', id: number): void {
+    const now = performance.now();
+    if (now - this.powerAt < 250) return;
+    this.powerAt = now;
+    const info = this.host.power();
+    const r = info ? powerReadout(info, this.host.buildings?.() ?? [], this.host.surface ?? (() => 0), kind, id) : null;
+    this.readout = r;
+    const html = r ? readoutHtml(r, kind) : '';
+    const sig = `${r?.running}|${html}`;
+    if (sig === this.powerSig) return;
+    this.powerSig = sig;
+    this.powerBox.hidden = !r;
+    this.powerBox.classList.toggle('running', !!r?.running);
+    this.powerBox.classList.toggle('idle', !!r && !r.running && r.building === undefined);
+    this.powerBox.innerHTML = html;
+  }
+
   // ---------------------------------------------------------------------------
   // Drawing
 
@@ -363,6 +399,7 @@ export class Selection {
     if (!s) return;
     const t = this.targets().find((o) => o.kind === s.kind && o.id === s.id);
     if (!t) return;
+    if (s.kind === 'turbine' || s.kind === 'pole' || s.kind === 'pump') this.showPower(s.kind, s.id);
     const pr = this.host.project;
     this.svg.style.display = '';
     if (s.kind === 'weir') {
@@ -396,6 +433,33 @@ export class Selection {
       }
     }
   }
+}
+
+const HOUSE_ICON = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1 6 6 1.5 11 6V11H1Z"/><rect class="win" x="4.6" y="6.2" width="2.8" height="2.6"/></svg>';
+const RUNNER_ICON =
+  '<svg class="pw-runner" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke-width="2"/><path d="M10 2.5V17.5M3.5 6.2 16.5 13.8M3.5 13.8 16.5 6.2" stroke-width="1.6"/></svg>';
+
+/** The readout's HTML: a gauge with the runner (turning or still), the houses lit, and a line of text. */
+function readoutHtml(r: Readout, kind: string): string {
+  if (r.building !== undefined) return `<div class="pw-text">${r.text}</div>`;
+  const parts: string[] = [];
+  if (r.gauge !== undefined) {
+    const pct = Math.round(Math.max(0, Math.min(1, r.gauge)) * 100);
+    parts.push(
+      `<div class="pw-top">${kind === 'turbine' ? RUNNER_ICON : ''}<div class="pw-gauge" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span class="pw-fill" style="width:${pct}%"></span><span class="pw-label">${r.gaugeLabel ?? ''}</span></div>${
+        r.head !== undefined ? `<span class="pw-head" title="Head: the fall of the water through the wall">↧ ${r.head.toFixed(1)} m</span>` : ''
+      }</div>`,
+    );
+  }
+  if (r.houses > 0) {
+    const shown = Math.min(r.houses, 12);
+    let icons = '';
+    for (let k = 0; k < shown; k++) icons += `<i class="pw-house${k < Math.round((r.lit * shown) / r.houses) ? ' lit' : ''}">${HOUSE_ICON}</i>`;
+    if (r.houses > shown) icons += `<span class="pw-more">+${r.houses - shown}</span>`;
+    parts.push(`<div class="pw-houses" title="${r.lit} of ${r.houses} houses lit">${icons}</div>`);
+  }
+  parts.push(`<div class="pw-text">${r.text}</div>`);
+  return parts.join('');
 }
 
 function segDist(x: number, y: number, ax: number, ay: number, bx: number, by: number): number {

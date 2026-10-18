@@ -113,6 +113,10 @@ export class GameRenderer {
   readonly fog: FogField;
   /** Latest building list (unfiltered; buildings in the fog are not drawn). */
   private buildingList: readonly BuildingInfo[] = [];
+  /** The village buildings of the latest snapshot. */
+  get buildingInfos(): readonly BuildingInfo[] {
+    return this.buildingList;
+  }
   private season = 1;
   private readonly tex: {
     terrain: THREE.DataTexture;

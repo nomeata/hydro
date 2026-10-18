@@ -22,6 +22,7 @@ import { wheelSite, wheelSites, type WheelGrid, type WheelSite } from '../sim/st
 import { LINK_SPAN, POLE_SNAP, POLE_SPACING, polePositions, pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
 import { gateTapSite, type GateSite } from '../sim/structures/structures';
 import { toolName } from '../shared/progress';
+import { kw } from './powerReadout';
 
 export type ToolId = 'look' | BrushTool | 'weir' | 'gate' | 'wheel' | 'power' | 'erase';
 
@@ -1113,10 +1114,6 @@ function headText(site: TurbineSite): string {
     : 'No head here yet: it turns once the water stands higher on one side.';
 }
 
-/** Power in friendly units. */
-function kw(watts: number): string {
-  return watts >= 9500 ? `${Math.round(watts / 1000)} kW` : `${(watts / 1000).toFixed(1)} kW`;
-}
 
 /** Drop points closer than one cell to the previous kept point. */
 function simplify(points: Pt[]): Pt[] {
