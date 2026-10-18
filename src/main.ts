@@ -76,7 +76,6 @@ async function main(): Promise<void> {
     pick: (x, y) => renderer.pick(x, y),
     setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
     setPreviewLining: (cells) => renderer.setPreviewLining(cells),
-    gateAt: (x, y) => renderer.structures.gateNear(x, y)?.id ?? null,
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),
     command: (cmd) => client.command(cmd),
   });

@@ -92,8 +92,9 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   generation climate
 - Agency harness (unaided vs scripted plan), terrace start, flood memory
   that forgets behind a dike, founding judged at the end of summer
-- Unlocks without the Lining tool (weir 15, gate 30, wheel 50);
-  villager-operated gates; hints that say why, unlock cards
+- ☑ Unlocks without the Lining tool (weir 15, gate 30; milestones 50, 100,
+  150, 250 reserved for wheel, turbine, poles, pump); hints that say why
+- Villager-operated gates; unlock cards
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill

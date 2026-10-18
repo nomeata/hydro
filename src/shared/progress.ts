@@ -3,7 +3,7 @@
  * between tool-unlock milestones, and prosperity. Pure functions, shared by
  * the sim (history recording) and the UI.
  */
-import { TOOL_UNLOCKS } from './unlocks';
+import { PROGRESSION } from './unlocks';
 
 /**
  * Display names of tools that unlock (fallback: the id, capitalised). The
@@ -22,23 +22,27 @@ export function toolName(id: string): string {
 
 export interface Milestone {
   population: number;
-  /** Tools unlocked at this population (empty for the doubling milestones beyond the last unlock). */
+  /** Tools unlocked at this population (empty for milestones without a tool yet, and the doublings beyond the last one). */
   tools: string[];
 }
 
-/** Tool-unlock milestones, ascending; tools sharing a threshold are grouped. */
+/**
+ * Population milestones, ascending (the progression table: tool unlocks and
+ * the steps reserved for tools still to come); tools sharing a threshold are
+ * grouped.
+ */
 export function unlockMilestones(): Milestone[] {
   const by = new Map<number, string[]>();
-  for (const [tool, pop] of Object.entries(TOOL_UNLOCKS)) {
-    if (pop <= 0) continue;
-    by.set(pop, [...(by.get(pop) ?? []), tool]);
+  for (const m of PROGRESSION) {
+    if (m.population <= 0) continue;
+    by.set(m.population, [...(by.get(m.population) ?? []), ...(m.tool ? [m.tool] : [])]);
   }
   return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([population, tools]) => ({ population, tools }));
 }
 
 /**
- * The milestone below and above `population`: the unlock thresholds, then
- * doublings of the last one (100, 200, … for a last unlock at 50).
+ * The milestone below and above `population`: the progression's
+ * milestones, then doublings of the last one (500, 1000, … after 250).
  */
 export function milestoneSpan(population: number): { prev: number; next: number; nextTools: string[] } {
   let prev = 1;
