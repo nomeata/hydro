@@ -201,12 +201,14 @@ list (`stats.villages`).
 
 | Job | Site | Activity | Effect |
 |---|---|---|---|
-| builder | houses, jetty, own lining | hammer, carry stones | buildings, `CellFlag.Lined` |
+| builder | houses, the well and the mill, jetty, own lining | hammer, carry stones | buildings, `CellFlag.Lined` |
 | farmer | field/garden | plough, sow, tend, harvest | crop → food |
 | fisher | shore near fish | sit and cast | fish → food |
 | herder | pasture | leads the herd out, watches it graze, brings the milk | grass → dairy food |
 | woodcutter | forest edge | chop (axe), carry a log | vegetation ↓, woodpile |
 | idle | village | sit, chat; children play when w > 0.6 | — |
+| miller (while grain waits at the mill) | the village mill | grinds (Build) at the mill, carries the flour to the store | milled grain books ×1.1 while the wheel turns (GAMEPLAY §1.2, `people/mills.ts`) |
+| water carrier (any idle adult, now and then) | the village well, or the water's edge if home is ≥ 8 cells from it | winds up / dips a bucket, carries it to a house | cosmetic (GAMEPLAY §4.3 P7) |
 | gatekeeper (a builder or idle adult, when called) | a sluice gate near the village | walks to the gate, turns its wheel while the leaf moves | gate opened or closed (GAMEPLAY.md §2, `structures/gatekeeper.ts`) |
 
 Fields are claimed and ploughed in any season but winter. Grain follows the
@@ -352,7 +354,13 @@ and behaviour.
 - **Building:** the crowd at a plan grows with wellbeing.
 - ☑ **Wood:** a woodpile behind the store grows with the logs (three
   sizes); cows, sheep, pigs and chicks show a village's herd.
-- ☐ **Water:** carriers walking to the river mean there is no well nearby.
+- ☑ **Water:** carriers walking to the river with buckets mean there is no
+  well nearby (home ≥ 8 cells from water); once the village has a well they
+  wind up their buckets there. A dry well shows bare earth in its ring and
+  its bucket comes up empty (GAMEPLAY §1.1).
+- ☑ **Mill:** the wheel turns with the water at the mill (stands still when
+  the canal runs dry, races in a flood); sacks of grain wait by its door
+  until the miller has ground them (GAMEPLAY §1.2).
 - ☑ **Fish:** jumps follow fish density.
 - Cost: the cues add at most 2 draw calls (one InstancedMesh of smoke
   puffs, one merged mesh for all laundry and flowers, rebuilt only when

@@ -214,6 +214,23 @@ describe('a village digs a well and builds a mill', () => {
     expect(p.buildingInfo().find((b) => b.kind === 'mill')!.spin).toBe(0);
   }, 180_000);
 
+  it('earns Wellspring and Miller’s Head when the well and the mill are by the player’s works', () => {
+    const sim = village(1.5);
+    const w = sim.world;
+    // As if the player had built the step (a weir) and dug by the village.
+    for (let y = 17; y <= 23; y++) sim.achievements.touch(w.idx(STEP_X, y));
+    sim.achievements.touch(w.idx(31, 26));
+    for (let d = 0; d < 12 && !sim.achievements.hasEarned('millersHead'); d++) days(sim, 1);
+    expect(sim.achievements.hasEarned('wellspring')).toBe(true);
+    expect(sim.achievements.hasEarned('millersHead')).toBe(true);
+    // Without any works nearby, nothing is earned.
+    const other = village(1.5);
+    days(other, 10);
+    expect(other.people!.millOf(0)?.progress).toBe(1);
+    expect(other.achievements.hasEarned('wellspring')).toBe(false);
+    expect(other.achievements.hasEarned('millersHead')).toBe(false);
+  }, 180_000);
+
   it('saves and resumes exactly with a well and a mill', async () => {
     const sim = village(1.5);
     days(sim, 8);
