@@ -152,6 +152,11 @@ export class WheelPreview {
     }
   }
 
+  /** Water velocity at a cell, so the ghost turns the way the real wheel would. */
+  setFlow(f: (x: number, y: number, out: [number, number]) => [number, number]): void {
+    this.ghost.flowAt = f;
+  }
+
   /** The ghost turns; the marks glow softly. */
   update(dt: number): void {
     this.t += dt;

@@ -222,6 +222,11 @@ garden crop in summer and autumn) flatten the yearly sawtooth.
     the harvest day, families poured in and starved through the spring.
     So a village grows on a surplus and levels off fed, and shrinks by
     departures when hunger comes (a dry year, a flood).
+- **What holds growth back** is named daily per village (`limit`:
+  land, food, wellbeing, room, building, open; GAMEPLAY §4.6). When
+  families would come but there is no room for a house or no good land,
+  a family camps at the edge (tent, cart, fire) for up to 24 days and
+  moves in when a house is free.
 - **Recovery floor:** a village under 12 people (`ECONOMY.smallVillage`)
   takes migrants above w 0.45 (`arriveSmall`) and builds a house for them
   above 0.4 (`houseSmall`), so a village refills after a setback once its
@@ -249,7 +254,8 @@ point: on most worlds a dry terrace 2–6 m above the river with a fertile,
 flood-prone floodplain below it (worldgen `chooseStart`, GAMEPLAY §4.3 P2;
 the old river meadow is the fallback). Further
 villages (code: `FOUNDING` in `village.ts`): once all villages together
-have ≥ 40 people, or one village has ≥ 30 people and no free house, and at
+have ≥ 40 people, or one village has ≥ 30 people and no free house (or
+is held back by its land or by room for houses: `limit`), and at
 most once per game year, the best block scoring ≥ 0.6 (0..~1.15:
 fertility × wetness × flatness, averaged, plus 0.15 near water) both now
 and at the end of last summer (a survey kept from day 22: migrants judge
@@ -332,7 +338,12 @@ year; gardens give green within about one season.
   flood that rises over the deck sweeps the planks away (the piles stay,
   `broken`); after 4 days, with the water below the deck again, the
   villagers rebuild it, higher (above the flood, at most 1.2 m above the
-  banks). A crossing that can't be worked for 60 days is given up. Saved
+  banks). The player's brushes do not go round a footbridge: ground
+  moved more than 0.1 m (strokes summed, undo counts back) at either bank
+  or under the deck breaks it the same way (`Bridges.disturbed`), to be
+  rebuilt on the new ground. Nobody flees the deep water under a deck or
+  fills a bucket from it (else walkers turned back a cell or two onto the
+  bridge). A crossing that can't be worked for 60 days is given up. Saved
   in `PeopleState.bridges` (absent in older saves). Rendered by the
   structures layer as an arched plank deck on piles with handrails (piles
   first, then the planks out from the village bank, rails last); the

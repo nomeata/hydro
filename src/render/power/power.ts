@@ -262,8 +262,9 @@ export class PowerLayer {
     this.layout();
   }
 
+  /** `dt`: game-clock animation seconds (0 while paused; gameClock.ts). */
   update(dt: number): void {
-    this.time += Math.min(0.1, Math.max(0, dt)) * (this.gameSpeed > 0 ? 1 : 0.15);
+    this.time += Math.min(0.1, Math.max(0, dt));
     this.animateFoam();
     this.animateGlows();
     this.animateRunners(dt);

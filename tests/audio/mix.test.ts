@@ -131,7 +131,7 @@ describe('ambience', () => {
 
   it('a river in view in spring: murmur and birds, no rain', () => {
     const l = ambience(base);
-    expect(l.river).toBeGreaterThan(0.5);
+    expect(l.river).toBeGreaterThan(0.35);
     expect(l.birds).toBeGreaterThan(0.3);
     expect(l.rain).toBe(0);
     expect(l.wind).toBeLessThan(0.4);
@@ -164,7 +164,7 @@ describe('ambience', () => {
   it('zoomed out: water detail fades, wind rises', () => {
     const near = ambience(base);
     const far = ambience({ ...base, view: view({ viewHeight: 250 }) });
-    expect(far.river).toBeLessThan(near.river * 0.6);
+    expect(far.river).toBeLessThan(near.river * 0.7);
     expect(far.wind).toBeGreaterThan(near.wind + 0.25);
   });
 

@@ -300,9 +300,11 @@ export function ambience(a: AmbienceInput): Layers {
   const winter = time.season === 3 ? 1 : 0;
   const warm = smooth(8, 20, climate.temperature);
   const out = silentLayers();
-  out.river = sat(s.flowing * 9) * near * calm;
+  // Water grows gently with how much of the view it fills and with zooming in.
+  const waterNear = 1 - 0.4 * zoom;
+  out.river = sat(s.flowing * 5) * waterNear * calm;
   out.lake = sat(s.still * 4) * (0.7 + 0.3 * clamp(climate.windSpeed - 0.6)) * near * calm;
-  out.rapids = Math.max(sat(s.rapids * 14), a.spill ?? 0) * (1 - 0.35 * zoom) * calm;
+  out.rapids = Math.max(sat(s.rapids * 8), 0.8 * (a.spill ?? 0)) * (1 - 0.25 * zoom) * calm;
   out.rain = rain * (0.55 + 0.45 * near) * calm;
   out.wind = clamp(0.12 + 0.45 * zoom + 0.2 * winter + 0.25 * snow + 0.15 * rain + 0.1 * clamp(climate.windSpeed - 0.8, 0, 1)) * calm;
   const outdoors = (1 - wet * 0.85) * near;

@@ -284,6 +284,12 @@ itself with its own clock.
   leaves, advected on the CPU through a decoded copy of the snapshot
   velocity (visual speed ≈ 2.2·v^0.7 cells/s at 1×, frozen when paused),
   spawned in flowing cells inside the view; one instanced draw.
+- **Game clock** (`gameClock.ts`): every animation of game activity
+  (people, animals, crew, smoke, foam, wheels, fish, rain, ripples, crop
+  sheen, plan stripes) runs on the renderer's clock, not wall time: frozen
+  while paused; `play` time follows the game (walk cycles match movement),
+  ambient `anim` time speeds up gently (×speed^0.4, at most ×2). Camera,
+  cursor and tool previews keep wall time.
 - **Weather** (`weather.ts`): rain fronts become flat-bottomed low-poly
   puff clusters (one InstancedMesh, depth pre-pass + colour pass) that
   dissolve when zoomed in, soft ground/water shadows via front uniforms,

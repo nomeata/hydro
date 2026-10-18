@@ -10,7 +10,7 @@
  * (soil, loose earth, flags) and keeps the last strokes for undo.
  *
  * Cells the brush must leave alone (houses, mills, wells, stores, ruins,
- * footbridges, structures and their works in progress) are `fixed`; the
+ * jetties, structures and their works in progress) are `fixed`; the
  * brush fades out over two cells around them, so it never cuts a cliff at
  * a house's wall. Water depth is never touched: raising ground under water
  * lifts the water with it (it then runs off), digging lowers it (water

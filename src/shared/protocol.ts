@@ -112,7 +112,7 @@ export interface WorldInfo {
  *  R = soil type (SoilType enum)
  *  G = moisture 0..255
  *  B = vegetation 0..255
- *  A = snow cover 0..255
+ *  A = snow cover 0..255 (saturating in the snow's water depth, sim/hydro/soilwater.ts snowCoverByte)
  */
 export const LOOK_CHANNELS = 4;
 
@@ -209,14 +209,19 @@ export interface EntityFrame {
 }
 
 /** A building (rarely changes; sent when the set changes). */
+/** BuildingInfo ids of camps: CAMP_ID + the settlement's id. */
+export const CAMP_ID = 1_000_000_000;
+
 export interface BuildingInfo {
   id: number;
   /**
    * A ruin is a house destroyed by a flood (or abandoned); it may be rebuilt.
    * A well is the village's (GAMEPLAY §1.1); a mill stands on the bank by
-   * a head of water, its wheel on the side facing `rot` (§1.2).
+   * a head of water, its wheel on the side facing `rot` (§1.2). A camp is
+   * a newcomer family's cart and tent at the village edge, waiting for room
+   * or land (GAMEPLAY §4.6; not a real building, id ≥ CAMP_ID).
    */
-  kind: 'house' | 'store' | 'ruin' | 'well' | 'mill';
+  kind: 'house' | 'store' | 'ruin' | 'well' | 'mill' | 'camp';
   /** Cell coordinates of the footprint centre. */
   x: number;
   y: number;
@@ -305,6 +310,8 @@ export interface VillageStats {
   fishers?: number;
   /** Logs on the woodpile by the store (per village, 0..10). */
   wood?: number;
+  /** What holds the village's growth back (per village; GAMEPLAY §4.6; shown with ?stats=1). */
+  limit?: string;
   /** Number of villages (aggregate only). */
   count?: number;
   /** Highest total population so far (aggregate only; tool unlocks). */
@@ -447,7 +454,7 @@ export type Command =
   /** Debug: pour water. */
   | { type: 'debugWater'; x: number; y: number; radius: number; depth: number }
   /** Debug/screenshots: force village `index`'s wellbeing (and mood) or food, or dry out its fields' soil. */
-  | { type: 'debugVillage'; index: number; wellbeing?: number; food?: number; dry?: boolean };
+  | { type: 'debugVillage'; index: number; wellbeing?: number; food?: number; dry?: boolean; camp?: boolean };
 
 // ---------------------------------------------------------------------------
 // Messages.
@@ -555,7 +562,7 @@ export interface AchievementsUpdate {
 // ---------------------------------------------------------------------------
 // Ideas for this valley (docs/GAMEPLAY.md §3.3; sim/ideas.ts).
 
-export type IdeaKind = 'dry' | 'flood' | 'marsh' | 'mill' | 'turbine' | 'poles';
+export type IdeaKind = 'dry' | 'flood' | 'marsh' | 'mill' | 'turbine' | 'poles' | 'land' | 'room';
 
 /** A gentle suggestion from the world's current problems, shown in the Achievements card. */
 export interface IdeaInfo {

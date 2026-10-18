@@ -177,7 +177,7 @@ export class CrowdLayer {
     this.camera = camera;
   }
 
-  /** New entity snapshot; `snapshotTimeMs` is its arrival time on the performance.now() clock. */
+  /** New entity snapshot; `snapshotTimeMs` is its arrival time on the clock `update` gets (the game's play clock). */
   setFrame(f: EntityFrame, snapshotTimeMs: number): void {
     this.tracks.setFrame(f, snapshotTimeMs);
   }
@@ -191,12 +191,20 @@ export class CrowdLayer {
     return this.stats.drawCalls;
   }
 
-  update(dtSec: number, nowMs: number): void {
+  /**
+   * Advance. `dtSec`/`nowMs`: the play clock (stopped while paused), which
+   * moves people between snapshots and drives walk cycles so feet match the
+   * ground; `animDtSec` (default `dtSec`): the ambient clock for idle and
+   * work poses, capped at fast game speeds (render/gameClock.ts).
+   */
+  update(dtSec: number, nowMs: number, animDtSec = dtSec): void {
     if (this.disposed) return;
     const t0 = performance.now();
     const dt = Math.min(0.25, Math.max(0, dtSec));
     this.tracks.advance(dt, nowMs);
-    const adt = dt * this.timeScale;
+    const adt = Math.min(0.5, Math.max(0, animDtSec)) * this.timeScale;
+    // Gaits advance with the play clock (a rate per animation second, scaled to match).
+    const gaitK = adt > 0 ? (dt * this.timeScale) / adt : 1;
     // GPU clock: seconds since the last rebase. Phases are written relative to it.
     this.clock += adt;
     if (this.clock > 60) this.clock = 0;
@@ -231,8 +239,8 @@ export class CrowdLayer {
         e.phase = choice.gait ? e.phase : 0;
       }
       let rate = choice.rate * e.jitter;
-      if (choice.gait === 1) rate *= gaitRate(t.speed, e.look.walkRef * e.look.scale);
-      else if (choice.gait === 2) rate *= gaitRate(t.speed, e.look.runRef * e.look.scale);
+      if (choice.gait === 1) rate *= gaitRate(t.speed, e.look.walkRef * e.look.scale) * gaitK;
+      else if (choice.gait === 2) rate *= gaitRate(t.speed, e.look.runRef * e.look.scale) * gaitK;
       e.rate = rate;
       e.phase = wrap(e.phase + adt * rate, rig.anim.clips[e.clip]?.duration ?? 1);
       if (e.fade < 1) {
