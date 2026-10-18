@@ -670,3 +670,30 @@ near the start) as a 25 % variant: two regimes, one of them flashier.
     hardest), then alpine and monsoon.
 11. **M6**: turbine in gate/weir passages, poles, lit houses, electric
     pump, pumped storage, turbine gate mode (§1.5).
+12. ☑ **Playtest round 2** (docs/PLAYTEST.md, "Round 2"): the harness's
+    findings addressed. *As built (October 2026):*
+    - **Hunger has consequences.** Wellbeing multiplies food in
+      (`(0.1 + 0.9·min(1, S)) · (0.6 + 0.4·comfort)`), so a hungry village
+      drops below 0.4 and families leave (0.05 per household and day per
+      unit below 0.4; the last four stay). Growth needs food for
+      `max(daysToHarvest, 40) + 6` days. Villages under 12 take migrants
+      from wellbeing 0.45 and build for them from 0.4 (recovery).
+    - **Water decides the land.** Crops need moisture 0.22/0.46 (was
+      0.2/0.4) and grow 11 a day (was 16), so dry spells cost yield; in
+      autumn whatever stands is brought in at its share. 28 fields per
+      farmer at yield 10 (was 14 at 8): villages are bounded by watered
+      land, not hands. Shallow standing water only slows crops (drowning
+      above 0.15 m); fields standing in water at sowing time are given up;
+      a starving village that lost its land farms poorer land.
+    - **Field ditches** (`people/ditches.ts`, PEOPLE §3.1): farmers dig
+      shallow ditches off the player's canals into the dry land beside
+      them; canal and ditch water wets 4 cells (rivers 2.5).
+    - **Big freshets** (`climate.ts`): from the third year, about one year
+      in four (likelier when wet) the freshet is 3–4.5× the usual and lasts
+      12 days: the floodplain fields go under for a week and floodplain
+      houses can be ruined; dikes have a job.
+    - **The second year is dry** (anomaly ≤ −0.35, rivers and fronts ×0.7–0.75):
+      the first summer shortage comes while the weir is new.
+    - **Start**: the meadow fallback avoids steep land and water farther
+      than 14 cells, more than 5 m below, or that is only a lake.
+    - **Fleeing** only from water deeper than wading depth (0.4 m).

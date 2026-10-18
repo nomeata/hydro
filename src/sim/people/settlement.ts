@@ -5,6 +5,7 @@
  */
 import type { Rng } from '../../shared/rng';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR } from '../constants';
+import type { Ditch } from './ditches';
 import { MILL } from './mills';
 import { POWER } from '../power/power';
 import type { Jetty } from './works';
@@ -23,15 +24,42 @@ export const ECONOMY = {
   /** Expected arriving families per day at w = 1 with one free house. */
   arrivalRate: 0.6,
   /** Expected leaving families per day per household at w = 0. */
-  departureRate: 0.02,
+  departureRate: 0.05,
   /** Arrivals need w above this; departures happen below the second. */
   arriveAbove: 0.6,
   leaveBelow: 0.4,
+  /**
+   * A village smaller than this takes migrants at a lower wellbeing
+   * (`arriveSmall`) and builds a house for them at `houseSmall`: a trickle
+   * that refills a village after a setback (PEOPLE.md §4, recovery floor).
+   */
+  smallVillage: 12,
+  arriveSmall: 0.45,
+  houseSmall: 0.4,
+  /**
+   * Wellbeing multiplies food in (docs/PLAYTEST.md round 2): target =
+   * (foodFloor + (1 − foodFloor)·min(1, food security)) · (comfortBase + (1 −
+   * comfortBase)·comfort), comfort = housing, water access and safety
+   * weighted by `comfort`. So a hungry village falls below `leaveBelow`
+   * and families leave until the land feeds the rest.
+   */
+  foodFloor: 0.1,
+  comfortBase: 0.6,
+  comfort: [0.4, 0.35, 0.25] as readonly number[],
   /**
    * Families stop arriving and births pause while food security is below
    * this, so a village levels off fed rather than hungry (GAMEPLAY §4.1).
    */
   growFood: 1,
+  /**
+   * ...counting the need for at least this many days ahead (so the store
+   * of a harvest just brought in does not look like plenty a few days
+   * before the harvest day, and the village does not fill up with
+   * families it cannot feed through the winter).
+   */
+  growHorizon: 40,
+  /** Families leave a village only while more than this many people live there (no failure). */
+  stayers: 4,
   /** Natural births/deaths per person per year (small, roughly balanced). */
   birthRate: 0.04,
   deathRate: 0.035,
@@ -95,6 +123,8 @@ export interface SettlementState {
   herd?: HerdState;
   /** The village's mill turned today (GAMEPLAY §1.2: a little wellbeing; absent in old saves). */
   milling?: boolean;
+  /** Field ditches dug (or being dug) off the player's canals (people/ditches.ts; absent: none). */
+  ditches?: Ditch[];
   /** Share of the village's houses lit by the power grid yesterday, 0..1 (M6, power/grid.ts; absent: none). */
   light?: number;
 }
@@ -166,10 +196,10 @@ export class Settlement {
   }
 
   /** Food security: stock relative to need until the next harvest (+ margin). */
-  foodSecurity(dayOfYear: number): number {
+  foodSecurity(dayOfYear: number, minDays = 0): number {
     const s = this.state;
     if (s.population <= 0) return 1;
-    return s.food / (s.population * ECONOMY.consumption * (this.daysToHarvest(dayOfYear) + 6));
+    return s.food / (s.population * ECONOMY.consumption * (Math.max(minDays, this.daysToHarvest(dayOfYear)) + 6));
   }
 
   /** Advance one game day. */
@@ -190,16 +220,19 @@ export class Settlement {
     const winter = Math.floor(dayOfYear / DAYS_PER_SEASON) === 3;
     const warm = winter && (s.wood ?? 0) >= 1 ? ECONOMY.warmWinter : 0;
     if (s.wood !== undefined) s.wood = Math.max(0, s.wood - (winter ? ECONOMY.woodBurnWinter : ECONOMY.woodBurn));
+    const E = ECONOMY;
+    const fed01 = Math.min(1, this.foodSecurity(dayOfYear));
+    const comfort = E.comfort[0]! * housing + E.comfort[1]! * s.waterAccess + E.comfort[2]! * s.safety;
     const target = Math.min(
       1,
-      0.55 * Math.min(1, this.foodSecurity(dayOfYear)) + 0.2 * housing + 0.15 * s.waterAccess + 0.1 * s.safety + warm + (s.milling ? MILL.wellbeing : 0) + POWER.wellbeing * (s.light ?? 0),
+      (E.foodFloor + (1 - E.foodFloor) * fed01) * (E.comfortBase + (1 - E.comfortBase) * comfort) + warm + (s.milling ? MILL.wellbeing : 0) + POWER.wellbeing * (s.light ?? 0),
     );
     s.wellbeing += (target - s.wellbeing) / ECONOMY.wellbeingTau;
     s.mood = nextMood(s.mood ?? 0, s.wellbeing);
 
     // Natural change (small, mostly cosmetic).
     const perDay = 1 / DAYS_PER_YEAR;
-    const fed = this.foodSecurity(dayOfYear) >= ECONOMY.growFood;
+    const fed = this.foodSecurity(dayOfYear, ECONOMY.growHorizon) >= ECONOMY.growFood;
     const births = fed ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
     const deaths = s.population * (ECONOMY.deathRate + (starving ? ECONOMY.starvationDeathRate : 0)) * perDay;
     if (rng.next() < births) {
@@ -213,7 +246,8 @@ export class Settlement {
 
     // Migration: the main lever, rate-limited by housing.
     const free = Math.max(0, this.freeHouses);
-    const pArrive = fed ? ECONOMY.arrivalRate * Math.max(0, s.wellbeing - ECONOMY.arriveAbove) * free : 0;
+    const arriveAbove = s.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
+    const pArrive = fed ? ECONOMY.arrivalRate * Math.max(0, s.wellbeing - arriveAbove) * free : 0;
     if (free > 0 && rng.next() < pArrive) {
       const n = rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1);
       s.population += n;
@@ -221,8 +255,8 @@ export class Settlement {
     }
     const households = Math.ceil(s.population / ECONOMY.houseCapacity);
     const pLeave = ECONOMY.departureRate * Math.max(0, ECONOMY.leaveBelow - s.wellbeing) * households;
-    if (s.population > 0 && rng.next() < pLeave) {
-      const n = Math.min(s.population, rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));
+    if (s.population > ECONOMY.stayers && rng.next() < pLeave) {
+      const n = Math.min(s.population - ECONOMY.stayers, rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));
       s.population -= n;
       ev.left += n;
     }
@@ -231,6 +265,7 @@ export class Settlement {
 
   /** Whether the settlement wants another house built. */
   wantsHouse(): boolean {
-    return this.freeHouses < 1 && this.state.wellbeing > 0.5;
+    const small = this.state.population < ECONOMY.smallVillage;
+    return this.freeHouses < 1 && this.state.wellbeing > (small ? ECONOMY.houseSmall : 0.5);
   }
 }
