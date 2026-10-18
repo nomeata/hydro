@@ -223,10 +223,35 @@ year; gardens give green within about one season.
   per (settlement, site).
 - Cached paths are invalidated by a per-16×16-tile "water version" that is
   bumped whenever a tile's wet/dry state changes.
-- **Footbridges:** when pathfinding repeatedly fails across water at most 3
-  cells wide, NPCs build a plank bridge there. It is a `bridge` landuse that
-  makes the cell passable, rendered with Kenney planks. Without bridges, a
-  player's canal would cut a village off from its fields.
+- ☑ **Fields by the way there** (`people/reach.ts`): once a day each
+  village computes a walking map from its store (bounded Dijkstra, radius
+  30, the A* step costs: slope, wading, trodden paths, bridges). A cell at
+  straight distance d is claimed as a field only if walking there costs at
+  most 1.45·d + 6 (and nearer by path ranks higher); a field costing more
+  than 1.8·d + 10 (a river shifted, a bridge was swept away) is given up
+  once harvested, at once if cut off, unless a footbridge is on its way.
+  Good land turned down for the walk is the village's wish for a bridge.
+- ☑ **Footbridges** (`people/bridges.ts`): daily, a village of 4+ people
+  with far fields or such wishes looks for a crossing: from a dry bank it
+  can reach, straight (8 directions) over 1–4 wet cells (at least one
+  ≥ 0.24 m deep; no structures, outlets or plans) to a dry bank opposite.
+  The score is the walking it saves on the way to that land (≥ 60 cells
+  summed), less 6 per deck cell, plus a little for well-trodden banks
+  (traffic). One bridge at a time, three per village at most. A builder
+  hammers it together from the village bank (10 visits; a stack of planks
+  waits there); finished, its deck cells become `LandUse.Bridge`, walkable
+  for people and herds (path.ts), its deck 0.35 m above the water. A
+  flood that rises over the deck sweeps the planks away (the piles stay,
+  `broken`); after 4 days, with the water below the deck again, the
+  villagers rebuild it, higher (above the flood, at most 1.2 m above the
+  banks). A crossing that can't be worked for 60 days is given up. Saved
+  in `PeopleState.bridges` (absent in older saves). Rendered by the
+  structures layer as an arched plank deck on piles with handrails (piles
+  first, then the planks out from the village bank, rails last); the
+  wreck shows snapped piles, deck stubs and a plank hanging into the
+  water. People on a deck (bridge or jetty) are drawn on the planks
+  (`render/structures/decks.ts`). Achievement Footbridge. Ferries over
+  wide calm rivers: not yet.
 
 ### 5.3 Floods
 Rising water near people makes them run uphill. Crops drown,
@@ -351,6 +376,14 @@ and behaviour.
 - **Migration:** families walk in from the fog edge with bundles and walk out
   again. Abandoned houses become ruins that stay for years: the visible
   memory of a setback.
+- ☑ **Flood ruins** (`ruinDesign` in `render/village/houses.ts`): a
+  house's own walls, wrecked: leaning out, broken off, one fallen flat; the
+  roof caved in and lying askew inside; broken rafters, boards, roof shards
+  and stones strewn about, the barrel on its side; a mud stain around the
+  plinth, everything drained of colour and stained brown below the flood
+  line. No scaffolding or stacked planks, so it never reads as a building
+  site. Weeds grow over it: tufts after a season, shrubs and flowers after
+  a year (`BuildingInfo.weeds`, from `Building.ruinedDay`).
 - **Building:** the crowd at a plan grows with wellbeing.
 - ☑ **Wood:** a woodpile behind the store grows with the logs (three
   sizes); cows, sheep, pigs and chicks show a village's herd.
