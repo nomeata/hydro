@@ -14,11 +14,11 @@ import { newLedger, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { ErosionScratch, defaultGeoParams, erosionStep, overtopStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
 import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
-import { SpiritCrew, cancelPlans, keepsPlan, planDike, planLevel, planTrench } from './plans/plans';
+import { SpiritCrew, cancelPlans, keepsPlan, planDike, planLevel, planTrench, takenGround } from './plans/plans';
 import { Structures, type StructuresState } from './structures/structures';
 import { Gatekeeper } from './structures/gatekeeper';
 import { PEOPLE_TICK, PeopleSystem, type PeopleHost, type PeopleState } from './people/village';
-import { CellFlag, SOIL_PROPS, type World } from './world';
+import { CellFlag, LandUse, SOIL_PROPS, type World } from './world';
 import { History, type HistoryState } from './history';
 import { START_REVEAL, isRevealed, revealDisc, revealRadius } from './fog';
 import { Achievements, type AchievementsState } from './achievements';
@@ -297,6 +297,58 @@ export class Simulation {
     this.power.dismantle(set);
   }
 
+  /**
+   * Mark the cells structures stand on (CellFlag.Structure): weirs, gates'
+   * passages, wheels and their heads, turbines and their penstock ends,
+   * pumps (inlet, house, outlet) and poles. Derived from the structure
+   * lists, so it is redone after every command and on load.
+   */
+  syncStructureFlags(): void {
+    const w = this.world;
+    const f = w.flags;
+    for (let i = 0; i < f.length; i++) f[i] = f[i]! & ~CellFlag.Structure;
+    const mark = (i: number) => {
+      if (i >= 0 && i < f.length) f[i] = f[i]! | CellFlag.Structure;
+    };
+    const at = (x: number, y: number) => {
+      if (w.inBounds(x, y)) mark(w.idx(x, y));
+    };
+    const st = this.structures;
+    for (const wr of st.weirs) wr.cells.forEach(mark);
+    for (const g of st.gates) g.passage.forEach(mark);
+    for (const wh of st.wheels) {
+      mark(wh.cell);
+      mark(wh.head);
+    }
+    const pw = this.power;
+    for (const t of pw.turbines) {
+      at(t.x, t.y);
+      mark(t.a);
+      mark(t.b);
+    }
+    for (const p of pw.poles) at(p.x, p.y);
+    for (const p of pw.pumps) {
+      at(p.x, p.y);
+      at(p.hx, p.hy);
+      at(p.ox, p.oy);
+    }
+  }
+
+  /** Fields, gardens and pastures on ground that is taken (plans.ts takenGround) go back to plain land (daily). */
+  private clearTakenGround(): void {
+    const w = this.world;
+    const lu = w.landuse;
+    for (let i = 0; i < lu.length; i++) {
+      const u = lu[i]!;
+      // (Yards stay: villagers line the banks by their own houses.)
+      if (u !== LandUse.Field && u !== LandUse.Garden && u !== LandUse.Pasture) continue;
+      if (!takenGround(w, i)) continue;
+      lu[i] = LandUse.None;
+      w.crop[i] = 0;
+      this.fieldsDirty = true;
+    }
+  }
+
   /** The selection's Remove (ui/selection.ts). */
   private removeStructure(kind: string, id: number): void {
     const st = this.structures;
@@ -464,6 +516,7 @@ export class Simulation {
         this.lookDirty = true;
       }
       this.power.daily();
+      this.clearTakenGround();
       this.recordHistory(today - 1);
       this.achievements.daily(this, today - 1);
       this.ideas.daily(this, today - 1);
@@ -485,6 +538,11 @@ export class Simulation {
   }
 
   command(cmd: Command): void {
+    this.applyCommand(cmd);
+    this.syncStructureFlags();
+  }
+
+  private applyCommand(cmd: Command): void {
     const w = this.world;
     switch (cmd.type) {
       case 'planTrench': {
@@ -686,6 +744,7 @@ export class Simulation {
     this.fieldsDirty = true;
     if (st.structures) this.structures.setState(st.structures);
     if (st.power) this.power.setState(st.power);
+    this.syncStructureFlags();
     if (st.geo) {
       Object.assign(this.sedLedger, st.geo.sedLedger);
       this.erosionScratch.time = st.geo.time;

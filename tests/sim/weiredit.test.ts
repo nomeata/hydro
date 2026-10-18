@@ -355,3 +355,34 @@ describe('the Remove brush', () => {
     expect(b.stateHash()).toBe(sim.stateHash());
   }, 60_000);
 });
+
+describe('villagers do not farm on works', () => {
+  it('fields on a weir, a gate, a dike crest or a planned cell go back to plain land; a levelled terrace stays farmable', async () => {
+    const sim = new Simulation(channel(0, 1), 1);
+    const w = sim.world;
+    sim.command({ type: 'planWeir', points: [[10, 10], [10, 22]], height: 1.5 });
+    sim.command({ type: 'planDike', points: [[30, 10], [30, 22]], width: 2, height: 2 });
+    sim.command({ type: 'planLevel', points: [[44, 5], [52, 5]], width: 4 });
+    await build(sim, 20);
+    const weirCell = w.idx(10, 16);
+    const crest = w.idx(30, 16);
+    const terrace = w.idx(48, 5);
+    const planned = w.idx(56, 8);
+    expect(w.flags[weirCell]! & CellFlag.Structure).toBeTruthy();
+    expect((w.flags[crest]! & CellFlag.Fill) !== 0).toBe(true);
+    w.plan[planned] = w.terrain(planned) - 1;
+    for (const i of [weirCell, crest, terrace, planned, w.idx(40, 26)]) {
+      w.landuse[i] = LandUse.Field;
+      w.crop[i] = 100;
+    }
+    await runDays(sim, 1);
+    expect(w.landuse[weirCell]).toBe(LandUse.None);
+    expect(w.landuse[crest]).toBe(LandUse.None);
+    expect(w.landuse[planned]).toBe(LandUse.None);
+    expect(w.landuse[terrace]).toBe(LandUse.Field);
+    expect(w.landuse[w.idx(40, 26)]).toBe(LandUse.Field);
+    // Structure footprints follow the structures: a removed weir frees its ground.
+    sim.command({ type: 'removeStructure', kind: 'weir', id: sim.structures.weirs[0]!.id });
+    expect(w.flags[weirCell]! & CellFlag.Structure).toBeFalsy();
+  }, 60_000);
+});

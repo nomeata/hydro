@@ -251,6 +251,32 @@ export function clearGround(world: World, i: number): boolean {
   return true;
 }
 
+/**
+ * Ground the villagers must not farm, graze or build on: a structure's
+ * footprint (CellFlag.Structure: weirs, gates, wheels, turbines, pumps,
+ * poles), stone lining, a pending plan, or the crest and slopes of an
+ * earthen bank (fill standing more than RIDGE m above ground within two
+ * cells; a levelled terrace's flat inside stays farmable).
+ */
+export function takenGround(world: World, i: number): boolean {
+  if ((world.flags[i]! & (CellFlag.Structure | CellFlag.Lined)) !== 0 || !Number.isNaN(world.plan[i]!)) return true;
+  if ((world.flags[i]! & CellFlag.Fill) === 0) return false;
+  const W = world.width;
+  const x = i % W;
+  const y = (i / W) | 0;
+  const z = world.terrain(i) - RIDGE;
+  // Within two cells of the bank's edge (a dike's crest is a few cells wide).
+  for (let k = 1; k <= 2; k++) {
+    if (x - k >= 0 && world.terrain(i - k) < z) return true;
+    if (x + k < W && world.terrain(i + k) < z) return true;
+    if (y - k >= 0 && world.terrain(i - k * W) < z) return true;
+    if (y + k < world.height && world.terrain(i + k * W) < z) return true;
+  }
+  return false;
+}
+/** Height (m) above a neighbour that makes a fill cell part of a bank's crest or slope. */
+const RIDGE = 0.5;
+
 /** Whether the plan tools may plan cell i: not under a house (or a mill, well, store) or a footbridge. */
 export function keepsPlan(landuse: number): boolean {
   return landuse !== LandUse.Building && landuse !== LandUse.Bridge;
