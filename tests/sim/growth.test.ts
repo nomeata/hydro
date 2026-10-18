@@ -52,6 +52,7 @@ function village(people = 24): Simulation {
 /** Private hooks of the people system used here. */
 interface Hooks {
   tendCamp(s: unknown, day: number): void;
+  planHouses(s: unknown): void;
 }
 
 const facts = (f: Partial<GrowthFacts>): GrowthFacts => ({ wellbeing: 0.9, arriveAbove: 0.6, fed: 2, freeHouses: 0, building: false, goodLeft: 10, ...f });
@@ -184,5 +185,47 @@ describe('ideas point at the growth limit', () => {
     sim.ideas.look(sim, day + 4);
     sim.ideas.look(sim, day + 6);
     expect(sim.ideas.list().some((i) => i.kind === 'room' && i.tool === 'even')).toBe(true);
+  });
+});
+
+describe('houses and fields', () => {
+  it('build houses on open ground, and on the poorest field only when the fields have closed in', () => {
+    const sim = village();
+    sim.run(STEPS_PER_DAY);
+    const p = sim.people!;
+    const w = sim.world;
+    const s = p.settlements[0]!;
+    const st = s.state;
+    st.wellbeing = 0.9;
+    st.population = st.houses * ECONOMY.houseCapacity;
+    const hooks = p as unknown as Hooks;
+    const houses = () => p.buildings.filter((b) => b.kind === 'house');
+    // Open ground about: the new house does not take a field.
+    const n0 = houses().length;
+    const fieldsBefore = new Set<number>();
+    for (let i = 0; i < w.size; i++) if (w.landuse[i] === LandUse.Field) fieldsBefore.add(i);
+    if (!p.buildings.some((b) => b.kind === 'house' && b.progress < 1)) hooks.planHouses(s);
+    const fresh = houses().filter((b) => b.progress < 1);
+    expect(fresh.length).toBe(1);
+    expect(fieldsBefore.has(w.idx(fresh[0]!.x, fresh[0]!.y))).toBe(false);
+    expect(houses().length).toBeLessThanOrEqual(n0 + 1);
+    // Finish it, fill it, and farm every open cell around the village; one corner is poor land.
+    fresh[0]!.progress = 1;
+    st.houses++;
+    st.population = st.houses * ECONOMY.houseCapacity;
+    for (let y = 16; y <= 46; y++)
+      for (let x = 15; x <= 45; x++) {
+        const i = w.idx(x, y);
+        if (w.landuse[i] === LandUse.None && w.water[i]! < 0.01) w.landuse[i] = LandUse.Field;
+        if (x >= 38 && y >= 34) w.fertility[i] = 0.2;
+      }
+    const before = p.housesOnFields;
+    hooks.planHouses(s);
+    const onField = houses().filter((b) => b.progress < 1);
+    expect(onField.length).toBe(1);
+    expect(p.housesOnFields).toBe(before + 1);
+    const b = onField[0]!;
+    expect(w.fertility[w.idx(b.x, b.y)]).toBeCloseTo(0.2, 5);
+    expect(w.landuse[w.idx(b.x, b.y)]).toBe(LandUse.Building);
   });
 });

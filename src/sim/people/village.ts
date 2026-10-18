@@ -398,6 +398,8 @@ export class PeopleSystem {
   private blocked = new Map<number, number>();
   /** Good land each village could still claim (by id; manageFields, daily): the land limit of growth. */
   private goodLeft = new Map<number, number>();
+  /** Houses built on a field for want of open ground (diagnostics; not saved). */
+  housesOnFields = 0;
   /** Villages (ids) where newcomers camp regardless (debugVillage). */
   private readonly debugCamp = new Set<number>();
   /** Cells currently targeted by someone. */
@@ -1739,10 +1741,15 @@ export class PeopleSystem {
       this.buildingsDirty = true;
       return;
     }
-    // Look for a free, safe spot near the centre, not hugging other buildings.
+    // Look for a free, safe spot near the centre, not hugging other buildings. Houses never
+    // take a field while open ground is left; when the fields have closed in on the
+    // village, the poorest field nearest the centre gives way (else growth would stall
+    // for want of room while the land around is farmed).
     const w = this.world;
     let best = -1;
     let bestScore = -Infinity;
+    let field = -1;
+    let fieldScore = -Infinity;
     for (let r = 2; r <= 12; r++) {
       for (let k = 0; k < 8 * r; k++) {
         const ang = (k / (8 * r)) * Math.PI * 2;
@@ -1750,17 +1757,37 @@ export class PeopleSystem {
         const y = Math.round(s.state.y + Math.sin(ang) * r);
         if (!w.inBounds(x, y)) continue;
         const i = w.idx(x, y);
-        if (!this.buildable(i) || !this.spacious(x, y)) continue;
-        const score = -r - this.slope(i) * 4 - w.floodMemory[i]! / 50 - w.vegetation[i]! * 3 + this.rng.next() * 0.5;
-        if (score > bestScore) {
-          bestScore = score;
-          best = i;
+        if (!this.spacious(x, y)) continue;
+        if (this.buildable(i)) {
+          const score = -r - this.slope(i) * 4 - w.floodMemory[i]! / 50 - w.vegetation[i]! * 3 + this.rng.next() * 0.5;
+          if (score > bestScore) {
+            bestScore = score;
+            best = i;
+          }
+        } else if (best < 0 && w.landuse[i] === LandUse.Field && this.houseOnField(i)) {
+          const score = -w.fertility[i]! * 10 - r * 0.3 - this.slope(i) * 4;
+          if (score > fieldScore) {
+            fieldScore = score;
+            field = i;
+          }
         }
       }
       if (best >= 0 && r >= 4) break;
     }
+    if (best < 0 && field >= 0) {
+      best = field;
+      w.crop[field] = 0;
+      this.fieldCrop[field] = FieldCrop.Common;
+      this.housesOnFields++;
+    }
     if (best < 0) return;
     this.addBuilding('house', s.state.id, best % w.width, (best / w.width) | 0);
+  }
+
+  /** A field cell a house could stand on if it were not farmed (as `buildable`, but for the field). */
+  private houseOnField(i: number): boolean {
+    const w = this.world;
+    return w.water[i]! < 0.01 && w.floodMemory[i]! < 60 && Number.isNaN(w.plan[i]!) && !this.ditchCells.has(i) && !takenGround(w, i) && this.slope(i) < 0.25;
   }
 
   private spacious(x: number, y: number): boolean {

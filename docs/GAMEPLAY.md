@@ -563,6 +563,13 @@ does not grow (`food`). It grows again on a surplus: better yields, not
 more land (every farmer works 28 fields, so food per head rises only
 with yield per field), until the good land runs out (`land`).
 
+**Houses and fields.** Houses never take a field while open ground is
+left within 12 cells (`planHouses`); fields are claimed from 3 cells out,
+so on a farmed plain they can close in on the village and leave no site
+(`room`). Then the poorest field (low fertility first, the edge before
+the centre) gives way to the house, so a village is not stalled for room
+by its own fields, nor does it eat its best land.
+
 **Camping newcomers** (`tendCamp`, village.ts; `CAMP` in settlement.ts):
 when the limit is `room` or `land` and families would come, one family
 (2–4) walks in from beyond the edge and camps 9–17 cells from the centre
