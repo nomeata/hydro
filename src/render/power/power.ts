@@ -341,8 +341,8 @@ export class PowerLayer {
 
   private layoutTurbine(t: PowerInfo['turbines'][number], tops: Map<string, { y: number; yaw: number }>): void {
     const P = this.pieces;
-    // Downstream: where the water goes now (b by default).
-    const toB = t.flow >= 0;
+    // Downstream: where the water goes now (standing still: the lower side).
+    const toB = t.flow > 0 || (t.flow === 0 && this.surface(t.bx, t.by) <= this.surface(t.ax, t.ay));
     const ux = (toB ? t.bx - t.ax : t.ax - t.bx) / (Math.hypot(t.bx - t.ax, t.by - t.ay) || 1);
     const uy = (toB ? t.by - t.ay : t.ay - t.by) / (Math.hypot(t.bx - t.ax, t.by - t.ay) || 1);
     const dx = toB ? t.bx : t.ax;

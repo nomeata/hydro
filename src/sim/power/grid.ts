@@ -444,7 +444,13 @@ export class PowerGrid {
         // Pumped storage: a pump on this network fills the pool.
         const ux = up % w.width;
         const uy = (up / w.width) | 0;
-        const paired = net.pumps.some((p) => Math.hypot(p.ox - ux, p.oy - uy) <= POWER.pairReach && Math.abs(w.surface(w.idx(p.ox, p.oy)) - su) < 1);
+        // (It lifts into this pool: its outlet at the pool's level, its inlet well below it.)
+        const paired = net.pumps.some(
+          (p) =>
+            Math.hypot(p.ox - ux, p.oy - uy) <= POWER.pairReach &&
+            Math.abs(w.surface(w.idx(p.ox, p.oy)) - su) < 1 &&
+            w.surface(w.idx(p.x, p.y)) < su - 0.5,
+        );
         const f = paired ? 0 : smooth(level - POWER.storageBand, level - POWER.spillBand, su);
         const p = turbinePower(q, head);
         pFree += f * p;

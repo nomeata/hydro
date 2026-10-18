@@ -143,7 +143,13 @@ See GAMEPLAY.md §1.5 "as built"; code in `sim/power/`, `render/power/`.
 - ☑ Power poles (150): a stroke of poles from a turbine (6 cells apart,
   joining existing poles; never in water or houses), networks, sagging
   wires; card scene; Village Lights; power in the history chart
-- ☐ Electric pump (250), pumped storage; demand curve by day/season ☑
+- ☑ Electric pump (250): a stroke from the water to the outlet (24 cells,
+  30 m), runs on spare power (houses first); pumped storage emerges: a
+  turbine whose pool a pump on its network fills only covers the houses'
+  shortfall (evening peak); card scene; Night and Day; demand curve by
+  day/season
+- ☐ Mills rebuilt as power houses, turbine gate mode, power-dependent
+  professions and population caps
 - Power-dependent professions and higher population caps
 
 ## M7 — Endless world ◐

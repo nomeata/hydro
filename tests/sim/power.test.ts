@@ -270,6 +270,28 @@ describe('power grid', () => {
     expect(Math.abs(totalStored(w) - expected) / (L.inflow - l0.inflow)).toBeLessThan(1e-3);
   });
 
+  it('pumped storage: the pump fills the basin on spare power, the basin turbine gives it back when the houses want more', () => {
+    const sim = flowing();
+    sim.command({ type: 'placeTurbine', points: [[30, 16]] });
+    sim.command({ type: 'placeTurbine', points: [[40, 24]] });
+    expect(sim.power.turbines.length).toBe(2);
+    sim.command({ type: 'placePump', points: [[40, 17], [40, 28]] });
+    sim.command({ type: 'placePoles', points: [[31, 16], [36, 21], [40, 24]] });
+    build(sim);
+    // A town: more than the river turbine can give at the evening peak, much less at night.
+    sim.power.houses = () => Array.from({ length: 30 }, (_, k) => ({ id: 100 + k, x: 34 + (k % 6), y: 20 + Math.floor(k / 6) * 0.2, settlement: 1 }));
+    sim.run(3 * DAY);
+    const d = sim.power.lastDay;
+    expect(d.pumps).toBeGreaterThan(0);
+    expect(d.storage).toBeGreaterThan(0);
+    // The basin turbine never runs free: it only covers the evening's shortfall.
+    const basin = sim.power.turbines[1]!;
+    expect(basin.produced).toBeGreaterThan(0);
+    expect(d.produced).toBeCloseTo(d.houses + d.pumps + d.dumped, -2);
+    sim.run(DAY);
+    expect(sim.achievements.hasEarned('nightAndDay')).toBe(true);
+  });
+
   it('is saved and resumes exactly; saves without power still load', async () => {
     const sim = flowing();
     sim.command({ type: 'placeTurbine', points: [[30, 16]] });
