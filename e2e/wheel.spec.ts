@@ -76,7 +76,9 @@ test('the water wheel: drawn from the river onto the bank, built, and turning wi
   await expect(page.locator('button[data-tool=wheel]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.tools .hint')).toContainText('lifts water');
   const a = await toScreen(page, x, y);
-  const b = await toScreen(page, hx + (hx - x), hy + (hy - y));
+  // To just past the head cell (on a phone the view is only a few cells wide).
+  const len = Math.hypot(hx - x, hy - y);
+  const b = await toScreen(page, hx + ((hx - x) / len) * 0.4, hy + ((hy - y) / len) * 0.4);
   await page.mouse.move(a[0], a[1]);
   await page.mouse.down();
   for (let k = 1; k <= 8; k++) await page.mouse.move(a[0] + ((b[0] - a[0]) * k) / 8, a[1] + ((b[1] - a[1]) * k) / 8);

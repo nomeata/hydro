@@ -92,6 +92,21 @@ being used. Something that is neither is cosmetic.
   stands still, which teaches the rule. At v = 1 m/s, h = 0.6 m,
   H = 3 m: Q ≈ 2.5 L/s ≈ 215 m³/day — enough to keep a 150 m trench wet
   and ~40 fields growing (fields draw 0.1 m³/day each).
+- **As built** (`sim/structures/wheel.ts`, tool `wheel`): a stroke from
+  the river onto the bank; the wheel stands where it starts (in water
+  ≥ 0.2 m deep, or the deepest water next to it), the head cell is the
+  first dry cell along the stroke within 3 cells; a tap picks the lowest
+  dry cell within 2. Refused (the hint line says why, live while
+  drawing): dry start, no bank in reach, head > 5 m or < 0.2 m above the
+  river's surface, unknown land. The spirit crew builds the wheel and
+  lines the head cell. Lift `Q = min(gain·P/(ρ g H), 0.2 m³/s)` per
+  hydraulic second with `gain = 10` (`PARAMS.wheelGain`, standing for
+  the fast hydraulic clock; a hydraulic day is only 300 s), so the
+  reference case lifts ≈ 0.13 m³/s ≈ 38 m³ per game day: a thin stream
+  that wets a trench and its fields. The trough stops while 0.5 m of
+  water stands at its outlet. Ledger: `lifted`. Achievement **Uphill**
+  (100 m³ lifted). Rivers vary by world: some valleys have no current
+  fast enough (seed 1 is lake-like), which is the rule teaching itself.
 - **Why not a pump?** The wheel's lift comes from the river's own
   movement, so it fits "water is the protagonist"; it fails gracefully
   in a dry summer (slow river ⇒ slow wheel), which is the kind of

@@ -77,7 +77,10 @@ unlocks), for trying late tools by hand or in a test.
   scene's sim), Skip closes the dialog, and the worker and canvas are gone
   again (`SimClient.live`); no console errors. For visual review,
   `npx tsx tools/shot-intro.ts [--phone] [--times 2,6]` screenshots each
-  panel at given scene times (needs a preview server, default port 4233).
+  panel at given scene times (needs a preview server, default port 4233);
+  `npx tsx tools/shot-card.ts --tool wheel` does the same for a tool card.
+  `HYDRO_PW_PORT=<port> npx playwright test` runs the e2e suite on a
+  preview port of one's own (parallel agents).
 - **Picking correctness:** clicking a known screen position hits the expected
   world cell for several camera angles.
 
