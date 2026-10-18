@@ -216,6 +216,7 @@ export class GameRenderer {
     this.scene.add(this.weather.group);
     this.buildings = new BuildingsLayer(this.scene, this.heights);
     this.buildings.setShadows(this.shadows);
+    this.buildings.setLook(this.tex.look.image.data as Uint8Array, W);
     this.crops = new CropLayer(this.scene, this.heights);
     this.plots = new PlotLayer(this.scene, this.heights);
     this.cues = new VillageCuesLayer(this.scene, this.heights);
@@ -321,6 +322,7 @@ export class GameRenderer {
     if (s.look) {
       (this.tex.look.image.data as Uint8Array).set(s.look.subarray(0, n * 4));
       this.tex.look.needsUpdate = true;
+      this.buildings.setLook(this.tex.look.image.data as Uint8Array, this.info.width);
     }
     if (s.plan) {
       const any = packPlan(s.plan, this.tex.plan.image.data as Float32Array);

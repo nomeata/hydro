@@ -593,7 +593,11 @@ export class StructuresLayer {
       const g = Math.min(yc, heightToY(foot));
       this.put(P.ashlar, w.x, w.y, w.rot, u, g - 0.25, bl * 0.98, yc - g + 0.25 - 0.08, 1.15);
       this.put(P.coping, w.x, w.y, w.rot, u, yc - 0.09, bl * 0.94, 0.13, k % 2 ? 0.95 : 1.05);
-      if (drowned && hs.depthAt(px, py) > 0.05) this.put(P.foam, px + ox * 0.75 - c * u, py + oy * 0.75 - sn * u, w.rot, u, yc - 0.1, bl * 1.02, 0.06, 0.4);
+      if (drowned && hs.depthAt(px, py) > 0.05) {
+        const fx = px + ox * 0.85;
+        const fy = py + oy * 0.85;
+        this.put(P.foam, fx - c * u, fy - sn * u, w.rot, u, heightToY(surfAt(fx, fy)) - 0.02, bl * 1.02, 0.07, 0.55);
+      }
     }
     if (prog < 0.999) return;
     // Little stone posts at either end of the crest.

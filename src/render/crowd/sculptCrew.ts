@@ -78,7 +78,7 @@ export class SculptCrew {
       const d = r + 5 + this.rand() * 4;
       const sx = x + Math.cos(a) * d;
       const sy = y + Math.sin(a) * d;
-      if (!this.known(sx, sy)) return;
+      if (!this.known(sx, sy) || !this.dry(sx, sy)) return;
       this.crew.push({ id: this.nextId++, variant: Math.floor(this.rand() * 10), x: sx, y: sy, vx: 0, vy: 0, heading: 0, goal: this.pick(x, y), work: 0, leaving: false, goneAt: 0 });
     }
   }

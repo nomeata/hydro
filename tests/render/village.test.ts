@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { MODELS, type ModelName } from '../../src/render/objects/manifest';
 import type { StaticModel } from '../../src/render/objects/loader';
-import { scatter, VegetationLayer, VegKind } from '../../src/render/objects/vegetation';
+import { scatter, snowCap, VegetationLayer, VegKind } from '../../src/render/objects/vegetation';
+import { SNOW_ATTRIBUTE } from '../../src/render/objects/snowCap';
+import { weirSites } from '../../src/render/worldLayers';
+import { SculptCrew } from '../../src/render/crowd/sculptCrew';
 import type { HeightSampler } from '../../src/render/coords';
 import { LandUse, SoilType } from '../../src/sim/world';
 import { FIELD_BYTES } from '../../src/shared/protocol';
@@ -251,5 +254,78 @@ describe('vegetation and land use', () => {
     const after = layer.instanceCount;
     expect(after).toBeLessThan(before);
     layer.dispose();
+  });
+});
+
+describe('snow on objects', () => {
+  const n = 64;
+  const lookWith = (snow: number) => {
+    const look = new Uint8Array(n * n * 4);
+    for (let i = 0; i < n * n; i++) {
+      look[i * 4] = SoilType.Loam;
+      look[i * 4 + 1] = 128;
+      look[i * 4 + 2] = 245;
+      look[i * 4 + 3] = snow;
+    }
+    return look;
+  };
+  const heights = flat(n);
+  const isTree = (p: { kind: VegKind }) => p.kind === VegKind.Deciduous || p.kind === VegKind.Conifer;
+
+  it('trees keep their species and places when it snows, and carry the cover', () => {
+    const bare = scatter({ heights, look: lookWith(0), width: n, height: n, seed: 3 }, 0, 0, n, n).filter(isTree);
+    const snowy = scatter({ heights, look: lookWith(230), width: n, height: n, seed: 3 }, 0, 0, n, n).filter(isTree);
+    expect(snowy.map((p) => [p.kind, p.x, p.y])).toEqual(bare.map((p) => [p.kind, p.x, p.y]));
+    expect(snowy.every((p) => (p.snow ?? 0) > 0.85)).toBe(true);
+    expect(snowCap(0)).toBe(0);
+    expect(snowCap(0.95)).toBe(1);
+    expect(snowCap(0.5)).toBeGreaterThan(0.3);
+  });
+
+  it('VegetationLayer caps trees with snow per instance, and dulls deciduous leaves in winter', async () => {
+    const scene = new THREE.Scene();
+    const layer = new VegetationLayer(scene, heights, lookWith(0), n, n, 3, { library: stub, autoCull: false, season: 3 });
+    await layer.ready;
+    const camera = new THREE.OrthographicCamera(-100, 100, 100, -100, -1000, 1000);
+    camera.position.set(32, 100, 32);
+    camera.lookAt(32, 0, 32);
+    const snowOf = () => {
+      layer.cull(camera);
+      const tree = layer.group.children.find((m) => m.name.startsWith('veg-tree') && (m as THREE.InstancedMesh).count > 0) as THREE.InstancedMesh;
+      const a = tree.geometry.getAttribute(SNOW_ATTRIBUTE);
+      return { cap: a.getX(0), dull: a.getY(0), material: tree.material as THREE.Material };
+    };
+    const before = snowOf();
+    expect(before.cap).toBe(0);
+    expect(before.dull).toBeGreaterThan(0);
+    expect(before.material.name).toMatch(/-snow$/);
+    layer.update(lookWith(230));
+    layer.flush();
+    expect(snowOf().cap).toBeGreaterThan(0.8);
+    layer.dispose();
+  });
+});
+
+describe('weir building sites', () => {
+  it('are on the dry bank at both ends of an unfinished weir, and the crew keeps its feet dry', () => {
+    // A river along y 8..12 (wet), a weir across it from (20, 4) to (20, 16).
+    const heights: HeightSampler = { width: 32, height: 32, terrainAt: () => 10, depthAt: (_x, y) => (y >= 8 && y <= 12 ? 1 : 0) };
+    const weir = { id: 1, kind: 'weir' as const, x: 20, y: 4, x2: 20, y2: 16, rot: Math.PI / 2, width: 12, top: 11, sill: 10, open: false, progress: 0.4 };
+    const sites = weirSites({ heights, structures: { structures: [weir] } } as never);
+    expect(sites.length).toBe(2);
+    for (const [x, y] of sites) {
+      expect(heights.depthAt(x, y)).toBe(0);
+      expect(Math.abs(x - 20)).toBeLessThan(0.01);
+    }
+    expect(Math.min(...sites.map(([, y]) => Math.abs(y - 7.5)))).toBeLessThan(0.6);
+    expect(weirSites({ heights, structures: { structures: [{ ...weir, progress: 1 }] } } as never)).toEqual([]);
+    const crew = new SculptCrew(undefined, (x, y) => heights.depthAt(x, y) < 0.05);
+    for (let k = 0; k < 60 * 30; k++) {
+      for (const [x, y] of sites) crew.site(x, y);
+      crew.advance(1 / 60);
+    }
+    expect(crew.count).toBeGreaterThan(0);
+    const f = crew.frame();
+    for (let k = 0; k < f.count; k++) expect(heights.depthAt(f.pos[k * 5]!, f.pos[k * 5 + 1]!)).toBe(0);
   });
 });

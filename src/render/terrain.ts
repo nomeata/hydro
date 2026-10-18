@@ -198,6 +198,8 @@ const FRAGMENT_COLOUR = /* glsl */ `
       float cover = smoothstep(0.0, 0.18, snow - mix(0.12, 0.62, snowN) + 0.12) * (1.0 - 0.7 * smoothstep(0.9, 1.7, slope));
       vec3 snowCol = mix(uSnowShade, uSnow, smoothstep(0.35, 0.8, snowN + 0.3 * snow));
       c = mix(c, snowCol, cover);
+      // Snow glows a little (it reads white, not grey, under the soft winter light).
+      planGlow += snowCol * cover * 0.1;
       // Stone lining (cobbles), and planned lining.
       vec4 ln = liningColour(c, cell);
       c = mix(c, ln.rgb, ln.a);
