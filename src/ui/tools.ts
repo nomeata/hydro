@@ -36,6 +36,11 @@ const POWER_MODES: ModeDef[] = [
     icon: ICONS.turbine,
     hint: 'Light for the village: tap the crest of a weir or dam. The water falling through it turns a turbine, and the houses near it light up.',
   },
+  {
+    id: 'poles',
+    icon: ICONS.pole,
+    hint: 'The village too far from the turbine? Draw a line of poles from it to the houses: every house near a pole gets light.',
+  },
 ];
 
 export interface ToolHost {

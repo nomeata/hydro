@@ -23,10 +23,11 @@
  */
 import type { PowerInfo, PowerStats, Pt, SimTime } from '../../shared/protocol';
 import { CELL_AREA, DT, STEPS_PER_DAY } from '../constants';
-import type { World } from '../world';
+import { LandUse, type World } from '../world';
 import {
   LINK_SPAN,
   POLE_SNAP,
+  POLE_SPACING,
   POWER,
   SUPPLY_RADIUS,
   houseDemand,
@@ -256,12 +257,28 @@ export class PowerGrid {
     let prev = -1;
     let added = 0;
     const pos = polePositions(points);
-    pos.forEach(([x, y], k) => {
-      if (!w.inBounds(x, y)) return;
-      const i = w.idx(x, y);
+    // A pole stands on open dry ground: here, or right beside (not in a house or on a bridge).
+    const spot = (x: number, y: number): [number, number] | null => {
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!w.inBounds(nx, ny)) continue;
+        const i = w.idx(nx, ny);
+        const lu = w.landuse[i]!;
+        if (w.water[i]! >= 0.1 || lu === LandUse.Building || lu === LandUse.Bridge || (this.allow && !this.allow(i))) continue;
+        return [nx, ny];
+      }
+      return null;
+    };
+    pos.forEach(([x0, y0], k) => {
+      if (!w.inBounds(x0, y0)) return;
+      let x = x0;
+      let y = y0;
       let id = this.nearestNode(x, y, POLE_SNAP);
       if (id < 0) {
-        if (w.water[i]! >= 0.1 || (this.allow && !this.allow(i))) return;
+        const s = spot(x0, y0);
+        if (!s) return;
+        [x, y] = s;
         id = this.nextId++;
         this.poles.push({ id, x, y, progress: 0 });
         added++;
@@ -270,7 +287,8 @@ export class PowerGrid {
       }
       if (prev >= 0) {
         const a = this.nodePos(prev)!;
-        if (Math.hypot(a[0] - x, a[1] - y) <= LINK_SPAN + 1) this.link(prev, id);
+        // (A pole skipped in the water leaves a longer span.)
+        if (Math.hypot(a[0] - x, a[1] - y) <= 2 * POLE_SPACING + 1) this.link(prev, id);
       }
       prev = id;
     });

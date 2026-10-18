@@ -31,6 +31,7 @@ export const ACHIEVEMENT_ICONS: Readonly<Record<string, string>> = {
   weir: ICONS.weir,
   gate: ICONS.gate,
   wheel: ICONS.wheel,
+  pole: ICONS.pole,
   light: svg(
     `<path d="M3 27h26" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="17" r="11" fill="#ffe7a3" opacity="0.55"/><path d="M8 27v-10h16v10z" fill="#f4e3c3" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 17.5L16 8l11 9.5z" fill="#d9694a" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/><rect x="11" y="19" width="4" height="4" fill="#ffd27a" stroke="#c58a1c" stroke-width="1.2"/><rect x="18" y="19" width="4" height="4" fill="#ffd27a" stroke="#c58a1c" stroke-width="1.2"/>`,
   ),

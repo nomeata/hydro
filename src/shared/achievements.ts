@@ -67,6 +67,7 @@ export const ACHIEVEMENTS: readonly AchievementInfo[] = [
   { id: 'millersHead', title: 'Miller’s Head', description: 'Villagers build a mill where your works make the water fall.', icon: 'mill', category: 'water' },
   { id: 'uphill', title: 'Uphill', description: `A water wheel lifts its first ${ACH.liftedM3} m³ of river water onto the bank.`, icon: 'wheel', category: 'water' },
   { id: 'brightWindows', title: 'Bright Windows', description: 'A turbine in your weir or dam lights its first cottage.', icon: 'light', category: 'water' },
+  { id: 'villageLights', title: 'Village Lights', description: `${ACH.gridHouses} houses on the power grid.`, icon: 'pole', category: 'water' },
   { id: 'safetyValve', title: 'Safety Valve', description: 'A sluice gate opens before the flood spills over its dike.', icon: 'valve', category: 'water' },
   // The land
   { id: 'newGround', title: 'New Ground', description: 'Villagers farm land that was too dry for fields at first.', icon: 'sprout', category: 'land' },

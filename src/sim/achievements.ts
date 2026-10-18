@@ -320,6 +320,7 @@ export class Achievements {
     if (pw && !pw.empty) {
       const st = pw.stats();
       if (st.houses > 0 && st.supplied > 0) this.earn('brightWindows', day);
+      if (st.houses >= ACH.gridHouses) this.earn('villageLights', day);
     }
     const p = h.people;
     if (p) {
