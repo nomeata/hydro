@@ -55,9 +55,8 @@ export const IDEAS = {
   millDepth: 0.3,
   millSpeed: 0.4,
   millCells: 3,
-  /** Turbine and poles: villages with at least this many houses; poles when less than this share is lit. */
+  /** Turbine: villages with at least this many houses. */
   houses: 4,
-  litShare: 0.25,
   /**
    * Growth limits (settlement.ts classifyGrowth): land, when the good land
    * is used up — then the dry, fertile, flat ground within this reach that
@@ -78,7 +77,8 @@ const TOOL: Readonly<Record<IdeaKind, string>> = {
   marsh: 'dig',
   mill: 'weir',
   turbine: 'turbine',
-  poles: 'poles',
+  // (No longer found: the villagers put up the power lines themselves.)
+  poles: 'turbine',
   land: 'dig',
   room: 'even',
 };
@@ -248,7 +248,7 @@ function ideaText(h: AchievementHost, f: Found): string {
     case 'turbine':
       return `Your weir ${where('by')} could light the houses — try a turbine on its crest.`;
     case 'poles':
-      return `${cap(label)}’s houses are far from power — a line of poles from the turbine could reach them.`;
+      return `${cap(label)}’s houses are far from power — its builders are putting up a line of poles.`;
     case 'land':
       return `The good land of ${label} is all farmed and newcomers are waiting — the dry ground ${where('around')} could feed them if a channel brought it water.`;
     case 'room':
@@ -403,7 +403,7 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
     out.push({ kind: 'land', village: k, ...a, weight: Math.min(0.4, sx[best]!.length / 400) });
   }
 
-  // Power: a finished weir without a turbine; houses far from power.
+  // Power: a finished weir without a turbine (the villagers bring the power home themselves).
   const houses = new Map<number, number>();
   for (const b of p.buildings) if (b.kind === 'house' && b.progress >= 1) houses.set(b.settlement, (houses.get(b.settlement) ?? 0) + 1);
   const pw = h.power;
@@ -421,12 +421,6 @@ export function findProblems(h: AchievementHost, judgeDry: boolean): Found[] {
       }
     }
     if (best) out.push({ kind: 'turbine', village: best.k, x: best.x, y: best.y, r: 4, weight: 0 });
-  }
-  if (pw && pw.turbines.length > 0 && pw.lastDay.produced > 0) {
-    for (const v of villages) {
-      if ((v.s.light ?? 0) >= IDEAS.litShare) continue;
-      out.push({ kind: 'poles', village: v.k, x: Math.round(v.s.x), y: Math.round(v.s.y), r: 6, weight: 0 });
-    }
   }
   return out;
 }

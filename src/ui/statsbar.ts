@@ -12,7 +12,6 @@ const GOAL_ICONS: Readonly<Record<string, string>> = {
   gate: ICONS.gate,
   wheel: ICONS.wheel,
   turbine: ICONS.turbine,
-  poles: ICONS.pole,
   pump: ICONS.pump,
 };
 

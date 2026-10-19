@@ -39,7 +39,7 @@ export interface IdeasOptions {
 /** How often waiting toasts look whether the dialog has closed (ms). */
 const QUIET_RETRY_MS = 400;
 
-const TOOL_ICONS: Readonly<Record<string, string>> = { poles: 'pole' };
+const TOOL_ICONS: Readonly<Record<string, string>> = {};
 
 export class AchievementsUi {
   private earned: AchievementEarned[] = [];

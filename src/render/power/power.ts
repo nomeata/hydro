@@ -134,10 +134,6 @@ export class PowerLayer {
   private runnerMesh: THREE.InstancedMesh;
   private runners: { id: number; x: number; y: number; z: number; yaw: number; speed: number }[] = [];
   private readonly angles = new Map<number, number>();
-  /** Where wires attach to each node ("x,y"), after the last layout (a ghost line hangs on these). */
-  nodeTops = new Map<string, { y: number; yaw: number }>();
-  /** A ghost layer: attachment points of the real grid's nodes its wires may end at. */
-  anchors: ReadonlyMap<string, { y: number; yaw: number }> | null = null;
   private time = 0;
   /** Winter glows a little more (0..1 from the season). */
   private winter = 0;
@@ -149,9 +145,8 @@ export class PowerLayer {
   private readonly up = new THREE.Vector3(0, 1, 0);
   private readonly c = new THREE.Color();
 
-  /** Wire thickness (three.js units; a ghost line draws them thicker). */
-  private readonly wireThick: number;
-  private readonly poleScale: number;
+  /** Wire thickness (three.js units). */
+  private readonly wireThick = 0.012;
 
   constructor(
     scene: THREE.Object3D,
@@ -160,9 +155,6 @@ export class PowerLayer {
     material?: THREE.Material,
   ) {
     this.group.name = material ? 'power-ghost' : 'power';
-    this.wireThick = material ? 0.05 : 0.012;
-    // (A ghost line's poles stand a little taller, so the line reads at a distance.)
-    this.poleScale = material ? 1.6 : 1;
     scene.add(this.group);
     const make = (name: string, g: THREE.BufferGeometry, cap = 32): Piece => {
       const mesh = new THREE.InstancedMesh(g, material ?? vertexColorMaterial(), cap);
@@ -335,7 +327,7 @@ export class PowerLayer {
           this.put(this.pieces.pole, p.x + 0.5, g - 0.02, p.y + 0.5, 0, 1, Math.max(0.15, p.progress), 1);
           continue;
         }
-        tops.set(`${p.x},${p.y}`, { y: g + POLE_TOP * this.poleScale, yaw: 0 });
+        tops.set(`${p.x},${p.y}`, { y: g + POLE_TOP, yaw: 0 });
       }
       for (const p of info.pumps) this.layoutPump(p, tops);
       // Poles turn their arms across the line (the mean direction of their wires).
@@ -358,9 +350,8 @@ export class PowerLayer {
         const d = dir.get(key) ?? [1, 0];
         const yaw = -Math.atan2(d[1], d[0]);
         tops.set(key, { y: tops.get(key)!.y, yaw });
-        this.put(this.pieces.pole, p.x + 0.5, this.ground(p.x, p.y) - 0.02, p.y + 0.5, yaw, this.poleScale, this.poleScale, this.poleScale);
+        this.put(this.pieces.pole, p.x + 0.5, this.ground(p.x, p.y) - 0.02, p.y + 0.5, yaw, 1, 1, 1);
       }
-      if (this.anchors) for (const [k, v] of this.anchors) if (!tops.has(k)) tops.set(k, v);
       for (let k = 0; k + 3 < W.length; k += 4) {
         const a = tops.get(`${W[k]},${W[k + 1]}`);
         const b = tops.get(`${W[k + 2]},${W[k + 3]}`);
@@ -371,7 +362,6 @@ export class PowerLayer {
       p.mesh.count = p.n;
       p.mesh.instanceMatrix.needsUpdate = true;
     }
-    this.nodeTops = tops;
     this.layoutGlows();
   }
 

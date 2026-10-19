@@ -52,7 +52,7 @@ export interface SelectionHost {
   /** The ghost of a weir as it will stand (an edit in progress), or none. */
   setWeirGhost?(list: readonly StructureInfo[]): void;
   /** The ghost of a moved pump (red when its new place does not work), or none. */
-  setPowerGhost?(g: { poles: readonly Pt[]; wires: readonly number[]; pump?: PumpGhost } | null, ok?: boolean): void;
+  setPowerGhost?(g: { pump: PumpGhost } | null, ok?: boolean): void;
   /** The ghost of a moved wheel (red when not), or none. */
   setWheelGhost?(site: { x: number; y: number; hx: number; hy: number } | null, ok: boolean): void;
   /** Water depth (m) and speed (m/s) at cell i (the pump's and wheel's rules). */
@@ -249,6 +249,8 @@ export class Selection {
     this.drag = null;
     this.disarm();
     this.title.textContent = NAMES[sel.kind];
+    // (Power poles are the villagers': they put them where they are needed.)
+    this.removeBtn.hidden = sel.kind === 'pole';
     this.note.textContent = '';
     this.powerSig = '';
     this.powerAt = 0;
@@ -510,7 +512,7 @@ export class Selection {
         if (!p) return;
         const site = pumpSite({ width: m.width, height: m.height, terrain: (i) => m.terrain(i), depth, allowed }, [[p.x, p.y], d.at]);
         d.ok = !!site?.ok;
-        this.host.setPowerGhost?.(site ? { poles: [], wires: [], pump: { id: -1, x: site.x, y: site.y, hx: site.hx, hy: site.hy, ox: site.ox, oy: site.oy, progress: 1, flow: 0, power: 0 } } : null, d.ok);
+        this.host.setPowerGhost?.(site ? { pump: { id: -1, x: site.x, y: site.y, hx: site.hx, hy: site.hy, ox: site.ox, oy: site.oy, progress: 1, flow: 0, power: 0 } } : null, d.ok);
         this.note.textContent = site?.ok ? `lifts ${Math.max(0, site.lift).toFixed(1)} m` : (site?.reason ?? '');
       } else {
         const w = this.info('wheel');
