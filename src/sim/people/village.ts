@@ -266,7 +266,7 @@ export const FOUNDING = {
   food: 300,
   /** The first village: its founders, and the food they bring (enough to last until the first harvest). */
   startPeople: 4,
-  startFood: 650,
+  startFood: 500,
 };
 export const ATTRACT_BLOCK = 8;
 /** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
@@ -2164,7 +2164,7 @@ export class PeopleSystem {
     }
     // Shortage: good land used up, more hands than fields and not food enough to grow.
     const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
-    const needFood = s.foodSecurity(doy, ECONOMY.growHorizon) < ECONOMY.growFood;
+    const needFood = s.growSecurity(doy) < ECONOMY.growFood;
     if (time.season !== 3 && nGood >= good.length && total < want && needFood) {
       const share = s.foodSecurity(doy) < HARDY.hungryBelow ? HARDY.hungryShare : HARDY.share;
       const cap = Math.floor(HARDY.base + share * (common + nGood)) - (total - common - nGood);
@@ -2189,7 +2189,7 @@ export class PeopleSystem {
     const limit = classifyGrowth({
       wellbeing: st.wellbeing,
       arriveAbove: st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove,
-      fed: s.foodSecurity(doy, ECONOMY.growHorizon),
+      fed: s.growSecurity(doy),
       freeHouses: s.freeHouses,
       building: this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress < 1),
       goodLeft: this.goodLeft.get(st.id) ?? 0,

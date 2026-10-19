@@ -60,6 +60,7 @@ export const ECONOMY = {
    * families it cannot feed through the winter).
    */
   growHorizon: 40,
+  hamlet: 15,
   /**
    * The recovery floor (no failure; GAMEPLAY §4.2): families leave a village
    * only while more than this many people live there, and at or below it
@@ -265,10 +266,14 @@ export class Settlement {
     return s.houses - Math.ceil(s.population / ECONOMY.houseCapacity);
   }
 
-  /** Agents deliver food (person-days). Excess beyond storage is lost. */
+  /**
+   * Agents deliver food (person-days). Excess beyond storage is lost (but a
+   * delivery never shrinks the stock: the founders' provisions are more than a
+   * hamlet's store holds, and the first sack of fish used to throw them away).
+   */
   bookFood(amount: number): void {
     const s = this.state;
-    s.food = Math.min(this.storageCap, s.food + amount);
+    s.food = Math.max(s.food, Math.min(this.storageCap, s.food + amount));
   }
 
   /** Days until the next main harvest, given the day of year. */
@@ -282,6 +287,16 @@ export class Settlement {
     const s = this.state;
     if (s.population <= 0) return 1;
     return s.food / (s.population * ECONOMY.consumption * (Math.max(minDays, this.daysToHarvest(dayOfYear)) + 6));
+  }
+
+  /**
+   * Food security as growth judges it: over `growHorizon` days at least, but a
+   * hamlet (under `hamlet` people) grows on its store until the next harvest
+   * (the founders' provisions; round 4: dry starts otherwise stalled at 6–10
+   * people until their first good harvest).
+   */
+  growSecurity(dayOfYear: number): number {
+    return this.foodSecurity(dayOfYear, this.state.population < ECONOMY.hamlet ? 0 : ECONOMY.growHorizon);
   }
 
   /** Advance one game day. */
@@ -314,7 +329,7 @@ export class Settlement {
 
     // Natural change (small, mostly cosmetic).
     const perDay = 1 / DAYS_PER_YEAR;
-    const fed = this.foodSecurity(dayOfYear, ECONOMY.growHorizon) >= ECONOMY.growFood;
+    const fed = this.growSecurity(dayOfYear) >= ECONOMY.growFood;
     const floor = s.population <= ECONOMY.stayers;
     const births = fed || floor ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
     const deaths = s.population * (ECONOMY.deathRate + (starving && !floor ? ECONOMY.starvationDeathRate : 0)) * perDay;
