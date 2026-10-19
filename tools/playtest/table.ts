@@ -73,3 +73,23 @@ for (const bot of bots.filter((b) => b !== 'baseline')) {
   });
   console.log(`| ${bot} | ${row.join(' | ')} |`);
 }
+console.log('');
+console.log('Response: days from the first works to the first day the bot run has more houses + camps than the hands-off run (– never), and to +2 houses:');
+for (const bot of bots.filter((b) => b !== 'baseline')) {
+  const row = seeds.map((s) => {
+    const r = get(bot, s);
+    const b = get('baseline', s);
+    if (!r || !b || !r.actions.length) return '–';
+    const a0 = r.actions[0]!;
+    const from = a0.day;
+    const more = (k: number, d: number) => (r.daily.houses[d] ?? 0) + (k ? 0 : r.daily.camps?.[d] ?? 0) - ((b.daily.houses[d] ?? 0) + (k ? 0 : b.daily.camps?.[d] ?? 0));
+    let first = -1;
+    let two = -1;
+    for (let d = from; d < r.daily.houses.length; d++) {
+      if (first < 0 && more(0, d) > 0) first = d - from;
+      if (two < 0 && more(1, d) >= 2) two = d - from;
+    }
+    return `${first < 0 ? '–' : first}/${two < 0 ? '–' : two}`;
+  });
+  console.log(`| ${bot} | ${row.join(' | ')} |`);
+}

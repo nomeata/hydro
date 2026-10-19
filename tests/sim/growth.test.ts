@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DAYS_PER_SEASON, STEPS_PER_DAY } from '../../src/sim/constants';
 import { loadGame, saveGame } from '../../src/sim/persist';
 import { Task } from '../../src/sim/people/agents';
-import { CAMP, ECONOMY, campsFor, classifyGrowth, type GrowthFacts } from '../../src/sim/people/settlement';
+import { CAMP, ECONOMY, Settlement, campsFor, classifyGrowth, type GrowthFacts } from '../../src/sim/people/settlement';
 import { Simulation } from '../../src/sim/sim';
 import { LandUse, SoilType, World } from '../../src/sim/world';
 import { CAMP_ID } from '../../src/shared/protocol';
@@ -73,7 +73,32 @@ describe('growth limits', () => {
     expect(campsFor('room', 0.9, 0.6)).toBe(true);
     expect(campsFor('land', 0.9, 0.6)).toBe(true);
     expect(campsFor('land', 0.5, 0.6)).toBe(false);
-    for (const l of ['open', 'building', 'food', 'wellbeing'] as const) expect(campsFor(l, 0.9, 0.6)).toBe(false);
+    // A house going up: the next family waits at the edge for it (round 5: camps lead, houses follow).
+    expect(campsFor('building', 0.9, 0.6)).toBe(true);
+    for (const l of ['open', 'food', 'wellbeing'] as const) expect(campsFor(l, 0.9, 0.6)).toBe(false);
+  });
+
+  it('draws families year-round on spare good land while the store lasts (round 5)', () => {
+    const s = new Settlement(0, 10, 10, 20, 0);
+    const doy = 10; // spring: the harvest (day 29) is 19 days off
+    const need = (days: number) => 20 * days;
+    s.state.food = need(s.daysToHarvest(doy) + 6) * 1.4; // lasts to the harvest, but not 46 days
+    expect(s.growSecurity(doy)).toBeLessThan(ECONOMY.growFood);
+    expect(s.growth(doy)).toBe(0); // no spare land
+    s.state.spareLand = ECONOMY.spareFamily * ECONOMY.spareFamilies;
+    expect(s.growth(doy)).toBe(1);
+    s.state.spareLand = ECONOMY.spareFamily;
+    expect(s.growth(doy)).toBeCloseTo(1 / ECONOMY.spareFamilies);
+    // The store would not last comfortably: no.
+    s.state.food = need(s.daysToHarvest(doy) + 6);
+    expect(s.growth(doy)).toBe(0);
+    // A village that did not feed itself last year: no.
+    s.state.food = need(s.daysToHarvest(doy) + 6) * 1.4;
+    s.state.yieldLog = new Array<number>(48).fill(0);
+    s.state.yieldLog[30] = 20 * 48 * 0.8;
+    s.state.logDays = 48;
+    expect(s.outlook()).toBeCloseTo(0.8);
+    expect(s.growth(doy)).toBe(0);
   });
 
   it('judges each village daily', () => {

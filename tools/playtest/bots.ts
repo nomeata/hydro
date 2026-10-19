@@ -23,7 +23,7 @@ import { rasterisePath, type PlanGrid } from '../../src/sim/plans/plans';
 import { WEIR_MAX_HEIGHT } from '../../src/sim/structures/structures';
 import { wheelSite, wheelSites, type WheelGrid } from '../../src/sim/structures/wheel';
 import { LandUse } from '../../src/sim/world';
-import { canalCommand, earthOf, footprintOf, planCanal, worthOf, type CanalPlan, type CanalStart } from './canal';
+import { canalCommand, earthOf, footprintOf, planCanal, shapeAfter, worthOf, type CanalPlan, type CanalStart } from './canal';
 import {
   cellsAround,
   cellX,
@@ -634,18 +634,24 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
   // The line: a band of land cells some distance back from the river. Of a few bands, the one
   // whose footprint takes the fewest fields for the low land it protects (round 4: the banks
   // took the best fields by the river).
-  let best: { commands: Command[]; pieces: number; runs: number; score: number; band: number; lost: number } | null = null;
+  let best: { commands: Command[]; pieces: number; runs: number; score: number; band: number; lost: number; leak: number } | null = null;
   const toWater = waterDistances(sim, around, 8);
-  for (const [lo, hi] of DIKE_BANDS) {
-    const plan = dikeLine(sim, around, toWater, protect, crest, lo, hi);
-    if (!plan) continue;
-    const foot = new Set(footprintOf(sim, plan.commands));
-    const lost = [...foot].filter((i) => fields.has(i)).length;
-    // Protected: the low land behind the line (farther from the water), not under the banks.
-    const kept = protect.filter((i) => !foot.has(i) && (toWater.get(i) ?? Infinity) >= hi).length;
-    const score = kept - 3 * lost;
-    if (!best || score > best.score) best = { ...plan, score, band: lo, lost };
-  }
+  // A line only in front of the low land is flanked: the flood runs round its ends over low
+  // ground (round 5). So the line reaches farther along the river until the flood, filled
+  // from the river over ground below the crest, no longer gets behind it.
+  for (const [lo, hi] of DIKE_BANDS)
+    for (const reach of DIKE_REACH) {
+      const plan = dikeLine(sim, around, toWater, protect, crest, lo, hi, reach);
+      if (!plan) continue;
+      const foot = new Set(footprintOf(sim, plan.commands));
+      const lost = [...foot].filter((i) => fields.has(i)).length;
+      const wet = floodFill(sim, x, y, R + 12, crest, shapeAfter(sim, plan.commands));
+      // Protected: the low land behind the line, not under the banks and out of the flood's reach.
+      const kept = protect.filter((i) => !foot.has(i) && !wet.has(i)).length;
+      const leak = protect.filter((i) => wet.has(i)).length;
+      const score = kept - 3 * lost;
+      if (!best || score > best.score) best = { ...plan, score, band: lo, lost, leak };
+    }
   if (!best || best.score < 10) return null;
   const { commands, pieces } = best;
   if (!commands.length) return null;
@@ -665,7 +671,7 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
     commands: cmds,
     targets: protect,
     earth: e,
-    note: `${cmds.length} dike piece(s) of ${pieces} (${best.runs} run(s)) ${best.band}–${best.band + 1} cells from the river, crest ${(crest - surface).toFixed(1)} m above it, ${protect.length} low cells behind, ${best.lost} fields under the banks, ${Math.round(e)} m³`,
+    note: `${cmds.length} dike piece(s) of ${pieces} (${best.runs} run(s)) ${best.band}–${best.band + 1} cells from the river, ${best.leak} low cells still reached round the ends, crest ${(crest - surface).toFixed(1)} m above it, ${protect.length} low cells behind, ${best.lost} fields under the banks, ${Math.round(e)} m³`,
     memory: remembered.length,
   };
 }
@@ -700,9 +706,40 @@ const DIKE_BANDS: [number, number][] = [
   [5.5, 6.5],
 ];
 const DIKE_WIDTH = 1;
+/** How far along the river (cells from the protected land) a dike line may run. */
+const DIKE_REACH = [6, 10, 15];
+
+/**
+ * Cells a flood at `crest` reaches from the river within `r` of (x, y): filled
+ * 4-connected over ground below the crest (with `z` for the planned terrain).
+ */
+function floodFill(sim: Simulation, x: number, y: number, r: number, crest: number, z: Map<number, number>): Set<number> {
+  const w = sim.world;
+  const cells = cellsAround(sim, x, y, r, false);
+  const inside = new Set(cells);
+  const low = (i: number) => (z.get(i) ?? w.terrain(i)) < crest - 0.05;
+  const wet = new Set<number>();
+  const stack: number[] = [];
+  for (const i of cells)
+    if (isRiver(w, i) && low(i)) {
+      wet.add(i);
+      stack.push(i);
+    }
+  const W = w.width;
+  while (stack.length) {
+    const i = stack.pop()!;
+    const cx = i % W;
+    for (const j of [cx > 0 ? i - 1 : -1, cx < W - 1 ? i + 1 : -1, i - W, i + W]) {
+      if (j < 0 || j >= w.size || wet.has(j) || !inside.has(j) || !low(j)) continue;
+      wet.add(j);
+      stack.push(j);
+    }
+  }
+  return wet;
+}
 
 /** The dike pieces along the band `lo`–`hi` cells from the river in front of `protect` (planDikes). */
-function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number>, protect: number[], crest: number, lo: number, hi: number): { commands: Command[]; pieces: number; runs: number } | null {
+function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number>, protect: number[], crest: number, lo: number, hi: number, reach: number): { commands: Command[]; pieces: number; runs: number } | null {
   const w = sim.world;
   const W = w.width;
   const near = new Map<number, number>();
@@ -711,14 +748,14 @@ function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number
     const d = toWater.get(i) ?? Infinity;
     if (d >= lo && d < hi) near.set(i, d);
   }
-  // Only the stretch in front of the protected land: within 6 cells of it.
+  // Only the stretch in front of the protected land: within `reach` cells of it.
   const prot = new Set(protect);
   const line = [...near.keys()].filter((i) => {
     if (w.landuse[i] === LandUse.Building || w.landuse[i] === LandUse.Yard) return false;
     const cx = cellX(w, i);
     const cy = cellY(w, i);
-    for (let dy = -6; dy <= 6; dy++)
-      for (let dx = -6; dx <= 6; dx++) if (w.inBounds(cx + dx, cy + dy) && prot.has(w.idx(cx + dx, cy + dy))) return true;
+    for (let dy = -reach; dy <= reach; dy++)
+      for (let dx = -reach; dx <= reach; dx++) if (dx * dx + dy * dy <= reach * reach && w.inBounds(cx + dx, cy + dy) && prot.has(w.idx(cx + dx, cy + dy))) return true;
     return false;
   });
   if (line.length < 4) return null;
