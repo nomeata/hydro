@@ -266,7 +266,7 @@ export const FOUNDING = {
   food: 300,
   /** The first village: its founders, and the food they bring (enough to last until the first harvest). */
   startPeople: 4,
-  startFood: 500,
+  startFood: 400,
 };
 export const ATTRACT_BLOCK = 8;
 /** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
