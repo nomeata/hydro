@@ -124,6 +124,8 @@ export class GameRenderer {
   private depthPrevIsA = true;
   private readonly listeners: FrameListener[] = [];
   private lastFrameMs: number | null = null;
+  /** Some cell of the ground look has snow (A > 0). */
+  private lookHasSnow = true;
   /** The game-time animation clock: stops while paused (gameClock.ts). */
   readonly clock = new GameClock();
   private snapPending = false;
@@ -221,6 +223,8 @@ export class GameRenderer {
     this.buildings = new BuildingsLayer(this.scene, this.heights);
     this.buildings.setShadows(this.shadows);
     this.buildings.setLook(this.tex.look.image.data as Uint8Array, W);
+    this.lookHasSnow = hasSnow(this.tex.look.image.data as Uint8Array);
+    this.updateSnowAny();
     this.crops = new CropLayer(this.scene, this.heights);
     this.plots = new PlotLayer(this.scene, this.heights);
     this.cues = new VillageCuesLayer(this.scene, this.heights);
@@ -302,6 +306,7 @@ export class GameRenderer {
     this.weather.setFronts(s.climate.fronts);
     // Hoar frost on the grass below freezing (the day's temperature).
     this.terrain.uniforms.uFrost.value = Math.min(1, Math.max(0, -s.climate.temperature / 4));
+    this.updateSnowAny();
     const wu = this.water.uniforms;
     wu.uDepthA.value = this.prevDepthTex();
     wu.uDepthB.value = this.curDepthTex();
@@ -331,6 +336,8 @@ export class GameRenderer {
       (this.tex.look.image.data as Uint8Array).set(s.look.subarray(0, n * 4));
       this.tex.look.needsUpdate = true;
       this.buildings.setLook(this.tex.look.image.data as Uint8Array, this.info.width);
+      this.lookHasSnow = hasSnow(this.tex.look.image.data as Uint8Array);
+      this.updateSnowAny();
     }
     if (s.plan) {
       const any = packPlan(s.plan, this.tex.plan.image.data as Float32Array);
@@ -448,6 +455,12 @@ export class GameRenderer {
     wu.uShallow.value.copy(p.waterShallow);
     wu.uDeep.value.copy(p.waterDeep);
     this.flow.setLeafColours(p.leafA, p.leafB);
+  }
+
+  /** Snow anywhere, or frost: the terrain shader fetches its snow noise only then. */
+  private updateSnowAny(): void {
+    const tu = this.terrain.uniforms;
+    tu.uSnowAny.value = this.lookHasSnow || tu.uFrost.value > 0 ? 1 : 0;
   }
 
   addFrameListener(fn: FrameListener): () => void {
@@ -649,4 +662,10 @@ export class GameRenderer {
       pixelRatio: this.gl.getPixelRatio(),
     });
   }
+}
+
+/** Whether any cell of a ground look (RGBA bytes) has snow. */
+function hasSnow(look: Uint8Array): boolean {
+  for (let i = 3; i < look.length; i += 4) if (look[i]! > 0) return true;
+  return false;
 }

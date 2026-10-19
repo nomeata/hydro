@@ -56,6 +56,8 @@ export interface TerrainUniforms extends FrontUniforms, FogUniforms {
   uNoise: { value: THREE.Texture };
   /** Hoar frost on the grass on freezing days (0..1, from the air temperature). */
   uFrost: { value: number };
+  /** 1 when any cell has snow or there is frost (the snow noise is fetched only then). */
+  uSnowAny: { value: number };
   uFields: { value: THREE.Texture };
   uFieldsOn: { value: number };
   uFieldSoil: { value: THREE.Color };
@@ -119,6 +121,7 @@ uniform vec3 uSnow;
 uniform vec3 uSnowShade;
 uniform sampler2D uNoise;
 uniform float uFrost;
+uniform float uSnowAny;
 
 float tHash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
@@ -169,25 +172,6 @@ const FRAGMENT_COLOUR = /* glsl */ `
       vec4 l = (l0 + l1 + l2) / 3.0;
       float moist = l.g;
       float veg = l.b;
-      // Snow is smooth across cells: bilinear over the four cells around (the
-      // fourth is the one this triangle does not touch), eased so no grid shows.
-      // One fetch: the cell opposite c0 (software GL runs both sides of a ternary).
-      float s3 = lookAt(lower ? qi + ivec2(1, 1) : qi).a;
-      float s00 = lower ? l0.a : s3;
-      float s11 = lower ? s3 : l0.a;
-      vec2 fe = f * f * (3.0 - 2.0 * f);
-      float snow = mix(mix(s00, l1.a, fe.x), mix(l2.a, s11, fe.x), fe.y);
-      // The noise only matters for snow and frost: skip its fetches elsewhere
-      // (all summer, and on snow-free ground).
-      // (Gradients taken outside the branch, where they are defined.)
-      vec2 nuv = vTerrWorld.xz;
-      vec2 ndx = dFdx(nuv);
-      vec2 ndy = dFdy(nuv);
-      float snowN = 0.5;
-      if (snow > 0.0 || uFrost > 0.0) {
-        snowN = textureGrad(uNoise, nuv * 0.045, ndx * 0.045, ndy * 0.045).r * 0.6
-          + textureGrad(uNoise, nuv * 0.19 + 0.31, ndx * 0.19, ndy * 0.19).b * 0.4;
-      }
       // Vegetation: yellowish when dry, lush when moist, dark forest when dense.
       vec3 grass = mix(uGrassDry, uGrassLush, smoothstep(0.1, 0.6, moist));
       grass = mix(grass, uForest, smoothstep(0.62, 0.9, veg));
@@ -202,15 +186,29 @@ const FRAGMENT_COLOUR = /* glsl */ `
       float slope = sqrt(max(1.0 - ny * ny, 0.0)) / max(ny, 0.05);
       vec3 cliff = mix(vec3(0.30, 0.18, 0.09), uSoil[0], smoothstep(1.0, 1.8, slope));
       c = mix(c, cliff, smoothstep(0.55, 1.1, slope) * 0.85);
-      // Hoar frost on freezing days: pale, bluish grass in patches.
-      if (uFrost > 0.0) c = mix(c, vec3(0.80, 0.85, 0.88), uFrost * 0.55 * smoothstep(0.3, 0.75, snowN + 0.25 * veg));
-      // Snow: soft-edged patches where it is thin (the noise decides which
-      // ground shows first), less on steep slopes; white with a cool shade.
-      float cover = smoothstep(0.0, 0.18, snow - mix(0.12, 0.62, snowN) + 0.12) * (1.0 - 0.7 * smoothstep(0.9, 1.7, slope));
-      vec3 snowCol = mix(uSnowShade, uSnow, smoothstep(0.35, 0.8, snowN + 0.3 * snow));
-      c = mix(c, snowCol, cover);
-      // Snow glows a little (it reads white, not grey, under the soft winter light).
-      planGlow += snowCol * cover * 0.1;
+      // Snow and frost: skipped while the whole valley is free of both
+      // (uSnowAny: a uniform, so the noise's derivatives stay defined).
+      float cover = 0.0;
+      if (uSnowAny > 0.5) {
+        // Snow is smooth across cells: bilinear over the four cells around (the
+        // fourth is the one this triangle does not touch), eased so no grid shows.
+        float s3 = lookAt(lower ? qi + ivec2(1, 1) : qi).a;
+        float s00 = lower ? l0.a : s3;
+        float s11 = lower ? s3 : l0.a;
+        vec2 fe = f * f * (3.0 - 2.0 * f);
+        float snow = mix(mix(s00, l1.a, fe.x), mix(l2.a, s11, fe.x), fe.y);
+        vec2 nuv = vTerrWorld.xz;
+        float snowN = texture(uNoise, nuv * 0.045).r * 0.6 + texture(uNoise, nuv * 0.19 + 0.31).b * 0.4;
+        // Hoar frost on freezing days: pale, bluish grass in patches.
+        if (uFrost > 0.0) c = mix(c, vec3(0.80, 0.85, 0.88), uFrost * 0.55 * smoothstep(0.3, 0.75, snowN + 0.25 * veg));
+        // Snow: soft-edged patches where it is thin (the noise decides which
+        // ground shows first), less on steep slopes; white with a cool shade.
+        cover = smoothstep(0.0, 0.18, snow - mix(0.12, 0.62, snowN) + 0.12) * (1.0 - 0.7 * smoothstep(0.9, 1.7, slope));
+        vec3 snowCol = mix(uSnowShade, uSnow, smoothstep(0.35, 0.8, snowN + 0.3 * snow));
+        c = mix(c, snowCol, cover);
+        // Snow glows a little (it reads white, not grey, under the soft winter light).
+        planGlow += snowCol * cover * 0.1;
+      }
       // Stone lining (cobbles), and planned lining.
       vec4 ln = liningColour(c, cell);
       c = mix(c, ln.rgb, ln.a);
@@ -278,6 +276,7 @@ export function createTerrainUniforms(
     uSnowShade: { value: new THREE.Color(0xd6e4f4) },
     uNoise: { value: tex.noise },
     uFrost: { value: 0 },
+    uSnowAny: { value: 1 },
     uFields: { value: tex.fields },
     uFieldsOn: { value: 0 },
     uFieldSoil: { value: new THREE.Color(0x8a5d3b) },
@@ -310,7 +309,7 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
   };
   const withDefines = mat as unknown as { defines: Record<string, string> };
   withDefines.defines = {};
-  mat.customProgramCacheKey = () => `hydro-terrain-v7${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}`;
+  mat.customProgramCacheKey = () => `hydro-terrain-v8${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}`;
   return mat;
 }
 
