@@ -174,6 +174,8 @@ describe('clip mapping', () => {
     expect(personClip(EntityAnim.Run, CarryKind.None, 0)).toMatchObject({ clip: PersonClip.Run, gait: 2 });
     expect([PropKind.Hoe, PropKind.Shovel]).toContain(personClip(EntityAnim.Work, CarryKind.None, 3).prop);
     expect(personClip(EntityAnim.Work, CarryKind.None, 0).clip).toBe(PersonClip.Work);
+    // Clearing snow off a field: the dig swing, always with a shovel.
+    for (const seed of [0, 1]) expect(personClip(EntityAnim.Shovel, CarryKind.None, seed)).toMatchObject({ clip: PersonClip.Work, prop: PropKind.Shovel });
     expect(personClip(EntityAnim.Build, CarryKind.None, 0)).toMatchObject({ clip: PersonClip.Build, prop: PropKind.Hammer });
     expect(personClip(EntityAnim.Sit, CarryKind.None, 0).clip).toBe(PersonClip.Sit);
     expect(personClip(EntityAnim.Fish, CarryKind.None, 0)).toMatchObject({ clip: PersonClip.Fish, prop: PropKind.Rod });

@@ -20,12 +20,16 @@ const arg = (k: string, d: string) => {
 };
 mkdirSync('out', { recursive: true });
 
-/** Season variants: season index, crop stage of the showcase fields. */
-const SEASONS: { name: string; season: number; day: number; crop: number }[] = [
+/** Season variants: season index, crop stage of the showcase fields, snow (water equivalent, m) over the land. */
+const SEASONS: { name: string; season: number; day: number; crop: number; snow?: number }[] = [
   { name: 'spring', season: 0, day: 8, crop: 70 },
   { name: 'summer', season: 1, day: 4, crop: 170 },
   { name: 'ripe', season: 1, day: 11, crop: 240 },
   { name: 'autumn', season: 2, day: 6, crop: 0 },
+  // Fields under snow (stay readable at every zoom): deep winter snow on bare
+  // land, and a late snow on a young spring crop.
+  { name: 'winter', season: 3, day: 6, crop: 0, snow: 0.03 },
+  { name: 'thaw', season: 0, day: 3, crop: 40, snow: 0.004 },
 ];
 
 if (mode === 'make') {
@@ -97,6 +101,8 @@ if (mode === 'make') {
     let top = -Infinity;
     for (let y = y0; y < y0 + 4; y++) for (let x = x0 + 8; x < x0 + 12; x++) top = Math.max(top, w.terrain(w.idx(x, y)) + 0.05);
     for (let y = y0; y < y0 + 4; y++) for (let x = x0 + 8; x < x0 + 12; x++) w.water[w.idx(x, y)] = top + 0.07 - w.terrain(w.idx(x, y));
+    // Snow over the whole map (none on the paddy's water).
+    for (let i = 0; i < w.size; i++) w.snow[i] = s.snow && w.water[i]! < 0.01 ? s.snow : 0;
     st.pegs = pegs;
     (p as unknown as { rebuildPegMask(): void }).rebuildPegMask();
     sim.step = (DAYS_PER_YEAR + s.season * DAYS_PER_SEASON + s.day) * STEPS_PER_DAY + STEPS_PER_DAY / 2;
@@ -117,6 +123,7 @@ if (mode === 'make') {
     { name: 'close', phone: false, cam: { viewHeight: 12, pitch: 0.75 } },
     { name: 'desktop', phone: false, cam: { viewHeight: 36 } },
     { name: 'phone', phone: true, cam: { viewHeight: 40 } },
+    { name: 'far', phone: false, cam: { viewHeight: 90 } },
   ];
   for (const s of SEASONS.filter((x) => only.includes(x.name))) {
     const b64 = readFileSync(`out/crops-${s.name}.bin`).toString('base64');

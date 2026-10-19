@@ -209,6 +209,8 @@ const FRAGMENT_COLOUR = /* glsl */ `
         // ground shows first), less on steep slopes; white with a cool shade.
         cover = smoothstep(0.0, 0.18, snow - mix(0.12, 0.62, snowN) + 0.12) * (1.0 - 0.7 * smoothstep(0.9, 1.7, slope));
         vec3 snowCol = mix(uSnowShade, uSnow, smoothstep(0.35, 0.8, snowN + 0.3 * snow));
+        // Fields stay readable under snow: furrows, outline, crops poking through (fields.ts).
+        cover = fieldSnow(vTerrWorld, snow, cover, snowCol);
         // Desire paths through the snow: trodden, thinner, grey-brown slush
         // with darker wet ruts (the sim melts it faster too, soilwater.ts).
         // The snow thins gradually towards the way (a noisy fringe of

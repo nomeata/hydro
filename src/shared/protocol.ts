@@ -176,6 +176,8 @@ export const enum EntityAnim {
   Eat = 8,
   /** Felling a tree with an axe. */
   Chop = 9,
+  /** Shovelling snow off a field before sowing: the dig swing, always with a shovel. */
+  Shovel = 10,
 }
 
 /** What a person carries (rendered as a small prop). */

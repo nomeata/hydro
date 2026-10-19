@@ -155,6 +155,8 @@ export function personClip(anim: number, carry: number, seed: number): ClipChoic
       return { clip: PersonClip.Run, rate: 1, gait: 2, prop: PropKind.None };
     case EntityAnim.Work:
       return { clip: PersonClip.Work, rate: 0.42, gait: 0, prop: seed & 1 ? PropKind.Shovel : PropKind.Hoe };
+    case EntityAnim.Shovel:
+      return { clip: PersonClip.Work, rate: 0.55, gait: 0, prop: PropKind.Shovel };
     case EntityAnim.Build:
       return { clip: PersonClip.Build, rate: 1.1, gait: 0, prop: PropKind.Hammer };
     case EntityAnim.Chop:

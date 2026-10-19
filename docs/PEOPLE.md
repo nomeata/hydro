@@ -122,6 +122,23 @@ and water over 15 cm drowns them (`CROP_MOISTURE.drown`). Fields that stand
 in water when they should be sown are given up, and the village claims dry
 land elsewhere.
 
+**Clearing snow before sowing** (`SNOW_CLEARING` in `people/village.ts`).
+A field cell due for sowing under more than 1.5 mm of snow water (thinner
+snow is patchy and sown straight into) is first shovelled clear: a work
+step a little longer than sowing (`SiteKind.ClearSnow`, the shovel swing
+`EntityAnim.Shovel`) that clears a short strip, the cell and the next
+unsown field cell on either side, then the cells are sown as usual. The snow is piled on
+the nearest cell beyond the field (open land or pasture, dry, no structure)
+within 3 cells, a bank along the field's edge that melts later; deep
+inside a large field it is trodden in and soaks into the soil (any excess
+stays on top). No water is made or lost. Snow falling on a sown field is
+left alone. Under snow, fields stay readable at every zoom (terrain
+shader, `fieldSnow` in `render/village/fields.ts`): the snow is ribbed by
+the furrows, the outline shows as a shaded seam at least a pixel wide,
+and clods, stubble or crop rows poke through thin snow; at a distance this
+averages to a greyer, ribbed white. Review: `tools/shot-crops.ts` (winter
+and thaw scenes, far view).
+
 ### 3.2 Vegetation (M3-δ, `sim/vegetation.ts`)
 Once a game day every cell's `vegetation` (0..1) moves towards what the
 land supports. One number carries both layers:
