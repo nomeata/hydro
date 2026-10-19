@@ -23,6 +23,8 @@ export const ECONOMY = {
   houseCapacity: 4,
   /** Expected arriving families per day at w = 1 with one free house. */
   arrivalRate: 0.6,
+  /** A family arrives when the summed arrival chances pass a threshold drawn from this range. */
+  pullNeed: [0.6, 1.4] as readonly number[],
   /** Expected leaving families per day per household at w = 0. */
   departureRate: 0.05,
   /** Arrivals need w above this; departures happen below the second. */
@@ -143,6 +145,9 @@ export interface SettlementState {
    * `classifyGrowth`; absent in old saves until the next day).
    */
   limit?: GrowthLimit;
+  /** Summed arrival chances since the last family came, and the sum the next one needs (Settlement.day). */
+  pull?: number;
+  pullNeed?: number;
   /** Day from which `limit` has been one that stops growth (land, food, wellbeing, room); absent while growing. */
   stalledSince?: number;
   /**
@@ -326,10 +331,19 @@ export class Settlement {
     const free = Math.max(0, this.freeHouses);
     const arriveAbove = s.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
     const pArrive = fed ? ECONOMY.arrivalRate * Math.max(0, s.wellbeing - arriveAbove) * free : 0;
-    if (free > 0 && rng.next() < pArrive) {
-      const n = rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1);
-      s.population += n;
-      ev.arrived += n;
+    // Families come as the village's pull adds up (expected arrivals a day), each when it passes a
+    // threshold drawn around 1: the same rate as a daily chance, with far less luck in it
+    // (round 4: two runs of one village differed by 17 arrivals in a season by chance alone).
+    if (free > 0 && pArrive > 0) {
+      s.pull = (s.pull ?? 0) + pArrive;
+      s.pullNeed ??= ECONOMY.pullNeed[0] + (ECONOMY.pullNeed[1] - ECONOMY.pullNeed[0]) * rng.next();
+      if (s.pull >= s.pullNeed) {
+        s.pull -= s.pullNeed;
+        delete s.pullNeed;
+        const n = rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1);
+        s.population += n;
+        ev.arrived += n;
+      }
     }
     const households = Math.ceil(s.population / ECONOMY.houseCapacity);
     const pLeave = ECONOMY.departureRate * Math.max(0, ECONOMY.leaveBelow - s.wellbeing) * households;
