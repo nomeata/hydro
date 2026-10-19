@@ -42,7 +42,7 @@ Fun on screen fast.
 ## M1c — Deep water ◐
 - ☑ Lateral groundwater (hourly Darcy diffusion), springs/bogs via overflow
 - ☑ Deep percolation sink so closed basins don't fill up over years
-- Snow + melt; ☑ climate anomaly (wet/dry years, GAMEPLAY §4.3 P1)
+- Snow + melt (☑ footprints in snow, slushy desire paths); ☑ climate anomaly (wet/dry years, GAMEPLAY §4.3 P1)
 - ☑ Phone bench page (`?bench=1`)
 - ☑ CPU cap on touch devices (sim duty cycle 45%, `?duty=` overrides)
 - Quality tiers (pending real-device numbers)

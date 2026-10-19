@@ -169,7 +169,12 @@ New world fields:
   `people/desire.ts`): every walker (people and animals) adds 4 per cell it
   enters, a day takes 1/16 of it away; open land with traffic ≥ 180 becomes
   `LandUse.Path` (a few walks a day), a path below 24 fades back to meadow
-  (a month or two unused). Paths are 1.2× quicker to walk, cheaper for
+  (a month or two unused). In winter a path is trodden grey-brown slush
+  (terrain shader) and its snow melts faster (as if 1.5 °C warmer, twice
+  as fast: `PARAMS.pathMelt*`); off the paths every walker leaves
+  footprints in the snow (`render/footprints.ts`: a client-side ring of
+  ≤ 3000 instanced prints, fading over ~1.6 game days on the game clock,
+  faster under falling snow, gone where the snow melts). Paths are 1.2× quicker to walk, cheaper for
   A* (×0.8, so people keep to them), seal the soil a little (infiltration
   ×0.6) and are drawn by the terrain shader as soft trodden earth with an
   organic edge and tufts of grass (`pathColour` in `render/village/fields.ts`).

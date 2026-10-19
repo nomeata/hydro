@@ -7,6 +7,7 @@ import type { EntityFrame, Snapshot } from '../shared/protocol';
 import { CrowdLayer } from './crowd/crowd';
 import { FakeCrowd, type FakeCrowdOptions } from './crowd/fakeCrowd';
 import { FishJumps } from './fishJumps';
+import { FootprintLayer } from './footprints';
 import { SculptCrew } from './crowd/sculptCrew';
 import { VegetationLayer } from './objects/vegetation';
 import type { GameRenderer, InitialData } from './renderer';
@@ -18,6 +19,8 @@ export class WorldLayers {
   readonly vegetation: VegetationLayer;
   readonly crowd: CrowdLayer;
   readonly fishJumps: FishJumps;
+  /** Footprints in the snow behind walking people and animals. */
+  readonly footprints: FootprintLayer;
   /** The cosmetic crew tamping freshly sculpted ground (crowd/sculptCrew.ts), merged into the entities. */
   readonly sculptCrew: SculptCrew;
   /** Grazing animals merged into the entities; created on the first snapshot. */
@@ -45,6 +48,8 @@ export class WorldLayers {
     if (data.revealed) this.vegetation.setRevealed(data.revealed);
     this.crowd = new CrowdLayer(renderer.scene, renderer.heights, { camera: renderer.camera.camera });
     this.fishJumps = new FishJumps(renderer.scene, renderer.heights);
+    this.footprints = new FootprintLayer(renderer.heights, renderer.lookTexture, () => renderer.groundBytes());
+    renderer.scene.add(this.footprints.mesh);
     this.fishJumps.known = (x, y) => !renderer.fog.enabled || renderer.fog.at(x, y) >= 200;
     this.sculptCrew = new SculptCrew(
       (x, y) => !renderer.fog.enabled || renderer.fog.known(x, y),
@@ -56,6 +61,8 @@ export class WorldLayers {
       if (clock.playDt > 0) for (const [x, y] of this.sites) this.sculptCrew.site(x, y);
       this.sculptCrew.advance(clock.playDt);
       this.crowd.update(clock.playDt, clock.playMs, clock.animDt);
+      this.footprints.snowfall = renderer.snowfall;
+      this.footprints.update(clock.playDt, clock.gameSpeed, this.crowd.tracks.tracks.values());
       const cam = renderer.camera.getCurrentState();
       this.fishJumps.update(clock.animDt, cam.x, cam.y, cam.viewHeight);
     });
@@ -104,6 +111,8 @@ export class WorldLayers {
     this.vegetation.dispose();
     this.crowd.dispose();
     this.fishJumps.dispose();
+    this.renderer.scene.remove(this.footprints.mesh);
+    this.footprints.dispose();
   }
 }
 

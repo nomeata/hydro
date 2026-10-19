@@ -130,6 +130,8 @@ export class GameRenderer {
     return this.buildingList;
   }
   private season = 1;
+  /** 0..1: the strongest snow front's intensity (fresh snow covers footprints). */
+  snowfall = 0;
   private readonly tex: {
     terrain: THREE.DataTexture;
     look: THREE.DataTexture;
@@ -302,6 +304,16 @@ export class GameRenderer {
     canvas.addEventListener('webglcontextrestored', this.onRestored);
   }
 
+  /** The ground look texture (RGBA per cell, A = snow cover). */
+  get lookTexture(): THREE.DataTexture {
+    return this.tex.look;
+  }
+
+  /** Current ground look (A = snow) and land use (fields texture, R = LandUse) bytes. */
+  groundBytes(): { look: Uint8Array; fields: Uint8Array } {
+    return { look: this.tex.look.image.data as Uint8Array, fields: this.tex.fields.image.data as Uint8Array };
+  }
+
   /**
    * New terrain heights for rows [y0, y1) (the brushes' instant feedback,
    * client/sculptor.ts; snapshots go through applySnapshot).
@@ -333,6 +345,8 @@ export class GameRenderer {
     this.power.gameSpeed = this.flow.gameSpeed;
     this.clock.gameSpeed = this.flow.gameSpeed;
     this.weather.setFronts(s.climate.fronts);
+    this.snowfall = 0;
+    for (const f of s.climate.fronts) if (f.snow) this.snowfall = Math.max(this.snowfall, Math.min(1, f.intensity));
     // Hoar frost on the grass below freezing (the day's temperature).
     this.terrain.uniforms.uFrost.value = Math.min(1, Math.max(0, -s.climate.temperature / 4));
     this.updateSnowAny();
