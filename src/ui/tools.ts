@@ -17,7 +17,7 @@ import type { Sculptor } from '../client/sculptor';
 import type { BrushTool } from '../shared/protocol';
 import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
-import { isUnlocked, unlockPopulation } from '../shared/unlocks';
+import { PROGRESSION, isUnlocked, unlockPopulation } from '../shared/unlocks';
 import { wheelSite, wheelSites, type WheelGrid, type WheelSite } from '../sim/structures/wheel';
 import { pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
 import { gateTapSite, type GateSite } from '../sim/structures/structures';
@@ -240,6 +240,8 @@ export class ToolPalette {
   private awaitingPlan = false;
   /** Highest village population seen (drives tool unlocks). */
   private population = 0;
+  /** Whether the palette has seen the game's population yet (no unlock pulse for an old save's first snapshot). */
+  private primed = false;
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -321,7 +323,7 @@ export class ToolPalette {
     TOOLS.forEach((t, k) => {
       const key = hotkey(k);
       const b = document.createElement('button');
-      b.innerHTML = `${t.icon}<span>${t.label}</span><i class="lock">${ICONS.lock}</i>${key ? `<kbd class="key">${key}</kbd>` : ''}`;
+      b.innerHTML = `${t.icon}<span>${t.label}</span><i class="ring"></i><i class="lock">${ICONS.lock}</i>${key ? `<kbd class="key">${key}</kbd>` : ''}`;
       b.dataset.tool = t.id;
       b.setAttribute('aria-label', t.label);
       b.addEventListener('click', () => this.select(t.id));
@@ -344,6 +346,7 @@ export class ToolPalette {
     });
     this.select('look');
     this.setPopulation(0);
+    this.primed = false;
     this.setBrushSize(this.brushSize);
   }
 
@@ -396,14 +399,39 @@ export class ToolPalette {
       b.classList.toggle('locked', locked);
       b.title = locked ? `${toolName(id)}: unlocks at ${unlockPopulation(id)} villagers` : toolName(id);
     }
+    const progress = unlockProgress(
+      [...this.buttons.keys()].map((id) => ({ id, need: unlockPopulation(id === 'power' ? 'turbine' : id), locked: this.isLocked(id) })),
+      this.population,
+    );
     for (const [id, b] of this.buttons) {
       const locked = this.isLocked(id);
+      if (this.primed && b.classList.contains('locked') && !locked) this.pulse(b);
       b.classList.toggle('locked', locked);
       const k = TOOLS.findIndex((t) => t.id === id);
       const key = hotkey(k);
       const name = `${TOOLS[k]!.label}${key ? ` (${key})` : ''}`;
-      b.title = locked ? `${name}: unlocks at ${unlockPopulation(id === 'power' ? 'turbine' : id)} villagers` : name;
+      const need = unlockPopulation(id === 'power' ? 'turbine' : id);
+      b.title = locked ? `${name}: unlocks at ${need} villagers${progress?.id === id ? ` (${this.population} so far)` : ''}` : name;
+      // Only the next tool to unlock shows how close it is: a ring filling round its edge.
+      const next = progress?.id === id;
+      b.classList.toggle('next', next);
+      if (next) b.style.setProperty('--progress', progress.fraction.toFixed(3));
+      else b.style.removeProperty('--progress');
     }
+    this.primed = true;
+  }
+
+  /** A short celebratory pulse on a tool button that just unlocked. */
+  private pulse(b: HTMLElement): void {
+    b.classList.remove('unlock-pulse');
+    void b.offsetWidth; // restart the animation
+    b.classList.add('unlock-pulse');
+    const done = (e: AnimationEvent): void => {
+      if (e.target !== b) return;
+      b.classList.remove('unlock-pulse');
+      b.removeEventListener('animationend', done);
+    };
+    b.addEventListener('animationend', done);
   }
 
   /** Keyboard: digits 1…9, 0 pick the tools in palette order; Escape returns to Look; Ctrl/Cmd+Z undoes the last stroke. */
@@ -1079,4 +1107,22 @@ function simplify(points: Pt[]): Pt[] {
 /** Hotkey for the k-th tool: 1…9, then 0 (none beyond the tenth). */
 function hotkey(k: number): string | null {
   return k < 9 ? String(k + 1) : k === 9 ? '0' : null;
+}
+
+/**
+ * The next locked tool (lowest unlock population) and its progress 0..1: a
+ * log scale from the milestone before it (the last tool unlocked, or 1) to its
+ * own, like the population bar, so early villagers count as much as late ones.
+ */
+export function unlockProgress(
+  tools: readonly { id: string; need: number; locked: boolean }[],
+  population: number,
+): { id: string; fraction: number } | null {
+  let best: { id: string; need: number } | null = null;
+  for (const t of tools) if (t.locked && t.need > 0 && (!best || t.need < best.need)) best = t;
+  if (!best) return null;
+  let prev = 1;
+  for (const m of PROGRESSION) if (m.population < best.need && m.population <= population) prev = Math.max(prev, m.population);
+  const fraction = population <= prev ? 0 : Math.min(1, Math.log(population / prev) / Math.log(best.need / prev));
+  return { id: best.id, fraction };
 }

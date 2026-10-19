@@ -249,10 +249,12 @@ The player asked for "more direct endorphin hits". Decisions:
     scale from the last milestone to the next (the progression in
     `src/shared/unlocks.ts`: 15, 30, 50, 100, 150, 250; beyond, doublings).
     Reaching a milestone gives a small sparkle and a note of what unlocked.
-    The next tool's icon sits at the bar's end, so the bar reads
-    "villagers → Weir" without words; the goal follows the highest
-    population reached (unlocks are kept), so a shrinking village never aims
-    at a tool it already has.
+    The bar itself is just villagers (no tool icon: one read as "the icon
+    for a large population"); the next tool's progress shows on the tool
+    palette instead: the next locked tool's button gets a ring round its
+    edge filling (log scale from the previous unlock) towards its threshold,
+    padlock kept, and a short golden pulse at unlock. Progress follows the
+    highest population reached (unlocks are kept).
   - **Prosperity**: the population-weighted mean of the settlements'
     wellbeing, in % ("waiting for settlers" before the first village).
 - **History chart**: tapping the stats bar opens the whole game's story:

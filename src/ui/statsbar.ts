@@ -2,18 +2,9 @@
  * Stats bar (top right): the two headline stats, population and
  * prosperity, as small chunky bars. The population bar fills on a log scale
  * from the last tool-unlock milestone to the next and sparkles when a new
- * one is reached; the next tool's icon sits at its end, so the bar reads
- * "villagers → Weir" without words. Tapping the bar opens the history chart.
+ * one is reached (the next tool's own progress shows on its palette button,
+ * ui/tools.ts). Tapping the bar opens the history chart.
  */
-
-/** The icon of each tool that unlocks (the palette's icons). */
-const GOAL_ICONS: Readonly<Record<string, string>> = {
-  weir: ICONS.weir,
-  gate: ICONS.gate,
-  wheel: ICONS.wheel,
-  turbine: ICONS.turbine,
-  pump: ICONS.pump,
-};
 
 /**
  * The population bar's goal: the next milestone above the highest
@@ -37,8 +28,6 @@ export class StatsBar {
   private readonly popFill: HTMLElement;
   private readonly popNum: HTMLElement;
   private readonly popRow: HTMLElement;
-  private readonly goalIco: HTMLElement;
-  private goalTool = '';
   private readonly prosFill: HTMLElement;
   private readonly prosNum: HTMLElement;
   private readonly prosRow: HTMLElement;
@@ -60,7 +49,7 @@ export class StatsBar {
       <span class="stat pop">
         <i class="ico">${ICONS.face}</i>
         <span class="track"><span class="fill"></span></span>
-        <i class="ico goal">${ICONS.faces}</i>
+        <i class="ico">${ICONS.faces}</i>
         <b class="num">0</b>
       </span>
       <span class="stat pros">
@@ -73,7 +62,6 @@ export class StatsBar {
     this.popRow = el.querySelector('.pop')!;
     this.popFill = this.popRow.querySelector('.fill')!;
     this.popNum = this.popRow.querySelector('.num')!;
-    this.goalIco = this.popRow.querySelector('.goal')!;
     this.prosRow = el.querySelector('.pros')!;
     this.prosFill = this.prosRow.querySelector('.fill')!;
     this.prosNum = this.prosRow.querySelector('.num')!;
@@ -100,13 +88,6 @@ export class StatsBar {
       const { next, tools, fraction } = populationGoal(pop, peak);
       this.popFill.style.width = `${(fraction * 100).toFixed(1)}%`;
       this.popNum.textContent = String(pop);
-      const tool = tools.find((t) => GOAL_ICONS[t]) ?? '';
-      if (tool !== this.goalTool) {
-        this.goalTool = tool;
-        this.goalIco.innerHTML = tool ? GOAL_ICONS[tool]! : ICONS.faces;
-        this.goalIco.classList.toggle('tool', !!tool);
-        this.goalIco.dataset.tool = tool;
-      }
       const goal = tools.length ? `${tools.map(toolName).join(' & ')} at ${next}` : `next milestone: ${next}`;
       this.popRow.title = `${pop} villagers · ${goal}`;
       this.prosRow.classList.toggle('empty', pros === null);
