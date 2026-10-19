@@ -49,8 +49,9 @@ export const CLIMATE = {
    * Big freshets (spring floods that go over the floodplain): from year
    * `bigFrom` (0-based) on, a year has one with chance `bigChance · exp(bigWet · a)`
    * (clamped to `bigChanceRange`; return period ≈ 4 years, likelier in wet
-   * years; at least `bigEarly` in the years before `bigEarlyUntil`, so the
-   * floodplain fields learn what a flood is early: round 5), and its freshet
+   * years; at least `bigEarly` in the years before `bigEarlyUntil`, and one
+   * of them has one for sure, so the floodplain fields learn what a flood is
+   * early: round 5), and its freshet
    * is `bigFactor` (+ up to `bigSpread`) times the usual one, lasting
    * `bigDays` days. Drawn from a hash of seed and year.
    */
@@ -106,7 +107,12 @@ export function bigFreshet(seed: number, year: number, a: number): number {
   if (year < CLIMATE.bigFrom) return 0;
   const r = new Rng((seed * 0x2545f491) ^ (year * 0x9e3779b1) ^ 0xf1d0);
   const [lo, hi] = CLIMATE.bigChanceRange;
-  const chance = Math.max(clamp(CLIMATE.bigChance * Math.exp(CLIMATE.bigWet * a), lo!, hi!), year < CLIMATE.bigEarlyUntil ? CLIMATE.bigEarly : 0);
+  let chance = Math.max(clamp(CLIMATE.bigChance * Math.exp(CLIMATE.bigWet * a), lo!, hi!), year < CLIMATE.bigEarlyUntil ? CLIMATE.bigEarly : 0);
+  // The last early year has one if the first early year drew none (its draw was above bigEarly).
+  if (year === CLIMATE.bigEarlyUntil - 1 && year > CLIMATE.bigFrom) {
+    const first = new Rng((seed * 0x2545f491) ^ (CLIMATE.bigFrom * 0x9e3779b1) ^ 0xf1d0).next();
+    if (first >= CLIMATE.bigEarly) chance = 1;
+  }
   const u = r.next();
   return u < chance ? CLIMATE.bigFactor + CLIMATE.bigSpread * r.next() : 0;
 }

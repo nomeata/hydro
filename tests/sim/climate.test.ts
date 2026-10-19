@@ -22,7 +22,7 @@ describe('river climate', () => {
     expect(perYear).toBeGreaterThan(1 / 5);
     expect(perYear).toBeLessThan(1 / 3);
     expect(wet).toBeGreaterThan(dry * 2);
-    expect(early / 200).toBeGreaterThan(0.65);
+    expect(early / 200).toBeGreaterThan(0.95);
     // Deterministic, and several times an ordinary freshet.
     expect(bigFreshet(7, 4, 0.1)).toBe(bigFreshet(7, 4, 0.1));
     const big = [...Array(200).keys()].map((s) => bigFreshet(s, 3, 0.3)).find((b) => b > 0)!;
