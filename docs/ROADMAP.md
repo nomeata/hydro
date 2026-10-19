@@ -103,7 +103,8 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   lining only by houses, growth pauses when food is short, economy retuned
   so that water decides what is farmable
 - ☑ Unlocks without the Lining tool (weir 15, gate 30; milestones 50, 100,
-  250 for wheel, turbine, pump; 150 dropped with the pole tool); hints that say why
+  250 for wheel, turbine, pump; 150 dropped with the pole tool); hints that say why;
+  the next locked tool's palette button shows a progress ring, pulsing at unlock
 - ☑ Villager-operated gates (GAMEPLAY §2; `sim/structures/gatekeeper.ts`):
   summer release for dry fields, never while houses below are wet, flood
   relief by itself; a villager walks over and turns the wheel; no tap to
