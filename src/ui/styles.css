@@ -762,6 +762,56 @@ html, body {
 .select-panel .sel-remove.armed { background: #c0392b; color: #fff; }
 .select-panel .sel-note { font-size: 11.5px; opacity: 0.8; margin-top: 4px; }
 .select-panel .sel-note[hidden] { display: none; }
+/* In place: the bubble over the selected thing (name, ×, readout), placed by ui/selection.ts each frame. */
+.select-panel.sel-bubble {
+  position: fixed; left: 0; top: 0; z-index: 6; min-width: 0; max-width: min(300px, calc(100vw - 12px));
+  padding: 4px 6px 5px 10px; pointer-events: auto;
+}
+.sel-bubble .sel-head { gap: 6px; }
+.sel-bubble .sel-title { font-size: 12.5px; white-space: nowrap; }
+.sel-bubble .sel-note { font-size: 11.5px; opacity: 0.85; flex: 1; }
+.sel-bubble .sel-note:empty { display: none; }
+.select-panel.sel-bubble .sel-remove {
+  min-width: 34px; min-height: 34px; padding: 0 8px; margin-left: auto; font-size: 18px; line-height: 1; border-radius: 17px;
+}
+.select-panel.sel-bubble .sel-remove.armed { font-size: 13px; }
+@media (pointer: coarse) { .select-panel.sel-bubble .sel-remove { min-width: 44px; min-height: 44px; border-radius: 22px; } }
+/* The weir's crest handle: drag up or down; it shows the crest's height. */
+.sel-height {
+  position: fixed; left: -26px; top: -18px; width: 52px; height: 36px; padding: 0; border: 3px solid var(--wood-dark); border-radius: 18px;
+  background: #fff7d6; color: var(--ink); font: 700 12px/1 system-ui, sans-serif; cursor: ns-resize; touch-action: none; z-index: 5;
+  box-shadow: 0 1px 3px rgba(40, 30, 10, 0.5);
+}
+.sel-height[hidden] { display: none; }
+.sel-height::before, .sel-height::after { content: ''; position: absolute; left: 50%; margin-left: -5px; border: 5px solid transparent; }
+.sel-height::before { top: -13px; border-bottom-color: var(--wood-dark); }
+.sel-height::after { bottom: -13px; border-top-color: var(--wood-dark); }
+.sel-handle.sel-route::after { background: #d8f0ff; border-color: #2f6f99; }
+.sel-handle.sel-route.bad::after { background: #ffb3a8; border-color: #c0392b; }
+/* Live state of a turbine, pole or pump (ui/powerReadout.ts). */
+.select-panel .sel-power { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+.select-panel .sel-power[hidden] { display: none; }
+.sel-power .pw-top { display: flex; align-items: center; gap: 8px; }
+.sel-power .pw-runner { width: 22px; height: 22px; flex: none; stroke: #6f8796; }
+.sel-power.running .pw-runner { stroke: #c9a14a; animation: pw-spin 1.1s linear infinite; }
+@keyframes pw-spin { to { transform: rotate(360deg); } }
+.sel-power .pw-gauge {
+  position: relative; flex: 1; height: 18px; border-radius: 9px; background: var(--paper-2); overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(60, 40, 20, 0.25);
+}
+.sel-power .pw-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(#ffd977, #e8a93a); transition: width 0.4s; }
+.sel-power.idle .pw-fill { background: #b8b2a6; }
+.sel-power .pw-label { position: relative; display: block; text-align: center; line-height: 18px; font-size: 11.5px; font-weight: 700; }
+.sel-power .pw-head { font-weight: 700; font-size: 12px; white-space: nowrap; color: #2f6f99; }
+.sel-power .pw-houses { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.sel-power .pw-house { width: 16px; height: 16px; display: inline-block; }
+.sel-power .pw-house svg { width: 100%; height: 100%; display: block; fill: #9c9488; }
+.sel-power .pw-house svg .win { fill: #5b5348; }
+.sel-power .pw-house.lit svg { fill: #c46a3f; }
+.sel-power .pw-house.lit svg .win { fill: #ffe27a; filter: drop-shadow(0 0 2px #ffcf4a); }
+.sel-power .pw-more { font-size: 11px; font-weight: 700; opacity: 0.75; margin-left: 2px; }
+.sel-power .pw-text { font-size: 11.5px; line-height: 1.35; }
+.sel-power.idle .pw-text { color: #8a4b1f; }
 .sel-overlay { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none !important; overflow: visible; }
 .sel-overlay line { stroke: #ffe58a; stroke-width: 3; stroke-dasharray: 8 6; stroke-linecap: round; filter: drop-shadow(0 1px 1px rgba(60, 40, 20, 0.6)); }
 .sel-overlay circle { fill: rgba(255, 226, 120, 0.18); stroke: #ffe58a; stroke-width: 3; stroke-dasharray: 7 5; }

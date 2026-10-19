@@ -4,7 +4,7 @@ import { findWeir, openGame, recordTexts, runDays, settleFrames, toScreen } from
 const power = (page: Page) => page.evaluate(() => (window as any).__hydro.renderer.power.state);
 
 test('the turbine: tapped onto a weir, built, and making power from the water falling through it', async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(420_000);
   const errors = await openGame(page, '&size=128&cheat=1', './?test=1&seed=3');
   const site = await findWeir(page);
   expect(site).not.toBeNull();
@@ -26,6 +26,9 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
   // The tap shows the head before it places the turbine.
   await expect.poll(hints).toContainEqual(expect.stringMatching(/head|No head/));
   await expect.poll(async () => (await power(page))?.turbines.length ?? 0, { timeout: 15_000 }).toBe(1);
+  // The tool stays selected after placing.
+  await expect(page.locator('button[data-tool=power]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.modes button[data-mode=turbine]')).toHaveAttribute('aria-pressed', 'true');
   await runDays(page, 2);
   await expect.poll(async () => (await power(page))?.turbines[0].progress, { timeout: 30_000 }).toBe(1);
   // The pool fills up to the crest, then the turbine runs with the river.
@@ -37,6 +40,20 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
   expect(t.power).toBeGreaterThan(1000);
   const stats = await page.evaluate(() => (window as any).__hydro.client.latest.stats.power);
   expect(stats.produced).toBeGreaterThan(1000);
+  // Its runner turns.
+  await settleFrames(page, 2);
+  expect((await page.evaluate(() => (window as any).__hydro.renderer.power.runnerSpeeds))[0].speed).toBeGreaterThan(0);
+  // Selected (Look mode, a tap), it shows its head and power.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
+  const tp = await toScreen(page, t.x, t.y);
+  await page.mouse.click(tp[0], tp[1]);
+  const readout = page.locator('[data-testid=power-readout]');
+  await expect(readout).toBeVisible({ timeout: 15_000 });
+  await expect(readout).toContainText('kW');
+  await expect(readout).toContainText('m of head');
+  await expect(readout).toHaveClass(/running/);
+  await page.keyboard.press('Escape');
 
   // A power line from the turbine to the village: its houses light up.
   const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
@@ -59,7 +76,7 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
   expect(st.poles.every((p: any) => p.progress >= 1)).toBe(true);
   expect(st.wires.length).toBeGreaterThan(0);
   expect(st.lit.length).toBeGreaterThan(0);
-  await settleFrames(page);
+  await settleFrames(page, 3);
   expect(await page.evaluate(() => (window as any).__hydro.renderer.power.litHouses)).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
@@ -103,8 +120,8 @@ test('the electric pump: drawn from the river up the bank, it lifts water on the
         for (let dx = -r; dx <= r; dx++) {
           const i = (ty! + dy) * W + tx! + dx;
           if (!m.isRevealed(tx! + dx, ty! + dy)) continue;
-          // (Not right by the wall: the turbine's own intake is there.)
-          if (!wet && r >= 2 && depth[i]! > 0.4) wet = [tx! + dx, ty! + dy];
+          // (Right by the wall too: a pump there no longer stops the turbine.)
+          if (!wet && depth[i]! > 0.4) wet = [tx! + dx, ty! + dy];
           // Up on the bank, above the water.
           if (wet && !dry && r >= 3 && Math.hypot(tx! + dx - wet[0], ty! + dy - wet[1]) >= 2.5 && depth[i]! < 0.01 && m.terrain(i) > m.terrain(wet[1] * W + wet[0]) + depth[wet[1] * W + wet[0]]! + 0.5) dry = [tx! + dx, ty! + dy];
         }
@@ -125,9 +142,14 @@ test('the electric pump: drawn from the river up the bank, it lifts water on the
   await expect(page.locator('.tools .hint')).toContainText('Lifts the water');
   await page.mouse.up();
   await expect.poll(async () => (await power(page))?.pumps.length ?? 0, { timeout: 15_000 }).toBe(1);
+  // Still the pump.
+  await expect(page.locator('.modes button[data-mode=pump]')).toHaveAttribute('aria-pressed', 'true');
   await runDays(page, 1);
   const pump = (await power(page)).pumps[0];
   expect(pump.progress).toBe(1);
   await expect.poll(async () => (await power(page)).pumps[0].flow, { timeout: 20_000 }).toBeGreaterThan(0);
+  // The pump beside it does not stop the turbine.
+  await runDays(page, 1);
+  expect((await power(page)).turbines[0].power).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });

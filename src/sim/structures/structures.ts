@@ -150,6 +150,64 @@ function current(w: World, i: number): number {
   return Number.isNaN(p) ? w.terrain(i) : p;
 }
 
+/** What the gate's tap rule needs to see of the ground (the sim's world, or the UI's mirror). */
+export interface GateGrid {
+  readonly width: number;
+  readonly height: number;
+  /** Ground height including planned earthworks (m). */
+  current(i: number): number;
+}
+
+/** Where a gate tapped at `p` onto a dike or weir would go (Structures.placeGate's tap rule; also the tool's hover ghost). */
+export interface GateSite {
+  /** Whether a gate fits (enough wall above the ground beside it). */
+  ok: boolean;
+  /** Centre cell, unit step along the wall, crest and sill (m). */
+  cx: number;
+  cy: number;
+  dx: number;
+  dy: number;
+  top: number;
+  sill: number;
+  /** As StructureInfo: the leaf's centre, direction and width (cells). */
+  x: number;
+  y: number;
+  rot: number;
+  width: number;
+}
+
+export function gateTapSite(g: GateGrid, p: Pt, width: number): GateSite | null {
+  const W = g.width;
+  const H = g.height;
+  const n = Math.max(1, Math.min(3, Math.round(width)));
+  const cx = Math.round(p[0]);
+  const cy = Math.round(p[1]);
+  if (cx < 0 || cy < 0 || cx >= W || cy >= H) return null;
+  const at = (x: number, y: number): number => g.current(Math.max(0, Math.min(H - 1, y)) * W + Math.max(0, Math.min(W - 1, x)));
+  const ridge = (ux: number, uy: number): number => {
+    let s = 0;
+    for (const k of [-2, -1, 1, 2]) s += at(cx + ux * k, cy + uy * k);
+    return s;
+  };
+  const [dx, dy] = ridge(1, 0) >= ridge(0, 1) ? [1, 0] : [0, 1];
+  const top = at(cx, cy);
+  let sill = Infinity;
+  for (const s of [-1, 1]) for (let k = 2; k <= PASSAGE_REACH; k++) sill = Math.min(sill, at(cx - dy * k * s, cy + dx * k * s));
+  const offs = n === 1 ? [0] : n === 2 ? [0, 1] : [-1, 0, 1];
+  let sx = 0;
+  let sy = 0;
+  let m = 0;
+  for (const k of offs) {
+    const x = cx + dx * k;
+    const y = cy + dy * k;
+    if (x < 0 || y < 0 || x >= W || y >= H) continue;
+    sx += x;
+    sy += y;
+    m++;
+  }
+  return { ok: top - sill >= MIN_GATE_HEAD, cx, cy, dx, dy, top, sill, x: sx / m, y: sy / m, rot: dx === 1 ? 0 : Math.PI / 2, width: m };
+}
+
 export class Structures {
   /** Planned lining: cell → progress 0..1 (Map keeps placement order). */
   readonly lining = new Map<number, number>();
@@ -518,24 +576,12 @@ export class Structures {
     let dy: number;
     let top: number;
     let sill: number;
-    const at = (x: number, y: number): number => w.idx(Math.max(0, Math.min(W - 1, x)), Math.max(0, Math.min(w.height - 1, y)));
 
     if (len < 1.5) {
       // Tap on a dike or weir: the gate line follows the ridge.
-      cx = Math.round(a[0]);
-      cy = Math.round(a[1]);
-      if (!w.inBounds(cx, cy)) return null;
-      const ridge = (ux: number, uy: number): number => {
-        let s = 0;
-        for (const k of [-2, -1, 1, 2]) s += current(w, at(cx + ux * k, cy + uy * k));
-        return s;
-      };
-      if (ridge(1, 0) >= ridge(0, 1)) [dx, dy] = [1, 0];
-      else [dx, dy] = [0, 1];
-      top = current(w, w.idx(cx, cy));
-      sill = Infinity;
-      for (const s of [-1, 1])
-        for (let k = 2; k <= PASSAGE_REACH; k++) sill = Math.min(sill, current(w, at(cx - dy * k * s, cy + dx * k * s)));
+      const site = gateTapSite({ width: W, height: w.height, current: (i) => current(w, i) }, a, n);
+      if (!site) return null;
+      ({ cx, cy, dx, dy, top, sill } = site);
     } else {
       // Stroke across a channel: a dike along it with the gate at the lowest point.
       const ux = (b[0] - a[0]) / len;

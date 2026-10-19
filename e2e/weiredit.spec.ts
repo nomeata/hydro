@@ -2,10 +2,10 @@ import { expect, test, type Page } from '@playwright/test';
 import { findWeir, openGame, runDays, settleFrames, toScreen, touchPath } from './helpers';
 
 /**
- * Selecting and editing structures (ui/selection.ts, DESIGN.md §4): tap a
- * weir in Look mode, raise and lower its crest, drag an end out, take it
- * down; tap a pole and remove it. Mouse on the desktop project, real touch
- * (CDP) on the phone project.
+ * Selecting and editing structures in place (ui/selection.ts, DESIGN.md §4):
+ * tap a weir in Look mode, drag its crest handle up and down, drag an end
+ * out along its line, take it down with its ×; tap a pole and remove it.
+ * Mouse on the desktop project, real touch (CDP) on the phone project.
  */
 
 type Weir = { id: number; x: number; y: number; x2: number; y2: number; top: number; sill: number; progress: number };
@@ -29,6 +29,34 @@ async function press(page: Page, phone: boolean, sel: string): Promise<void> {
   else await page.locator(sel).click();
 }
 
+/**
+ * Drag the crest handle up (dir −1) or down (+1) a pixel or two at a time
+ * until it shows `label`, then let go (mouse or touch).
+ */
+async function dragHeight(page: Page, phone: boolean, dir: number, label: string): Promise<void> {
+  const h = page.locator('[data-testid=weir-height]');
+  const box = (await h.boundingBox())!;
+  const x = box.x + box.width / 2;
+  let y = box.y + box.height / 2;
+  const cdp = phone ? await page.context().newCDPSession(page) : null;
+  const pt = () => [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+  if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt() });
+  else {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+  }
+  for (let k = 0; k < 200 && (await h.textContent()) !== label; k++) {
+    y += dir * 2;
+    if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pt() });
+    else await page.mouse.move(x, y);
+  }
+  expect(await h.textContent()).toBe(label);
+  if (cdp) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+  } else await page.mouse.up();
+}
+
 /** Drag from a to b in steps (mouse or touch). */
 async function drag(page: Page, phone: boolean, a: [number, number], b: [number, number]): Promise<void> {
   const pts: [number, number][] = [];
@@ -40,8 +68,8 @@ async function drag(page: Page, phone: boolean, a: [number, number], b: [number,
   await page.mouse.up();
 }
 
-test('a weir is selected with a tap, its crest raised and lowered, an end dragged out, and removed', async ({ page }, info) => {
-  test.setTimeout(400_000);
+test('a weir is selected with a tap, its crest handle dragged up and down, an end dragged out along its line, and removed', async ({ page }, info) => {
+  test.setTimeout(600_000);
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&size=128&cheat=1', './?test=1&seed=3');
   const site = await findWeir(page);
@@ -62,30 +90,31 @@ test('a weir is selected with a tap, its crest raised and lowered, an end dragge
   const panel = page.locator('[data-testid=selection]');
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('Weir');
-  await expect(panel.locator('.sel-crest output')).toHaveText('1.5 m');
+  await expect(panel).toContainText('crest 1.5 m');
+  await expect(page.locator('[data-testid=weir-height]')).toHaveText('1.5 m');
   // (Handles follow the camera every frame; a slow machine draws few.)
   await expect(page.locator('.sel-handle[data-end="1"]')).toBeVisible({ timeout: 20_000 });
   await settleFrames(page);
   await page.screenshot({ path: `test-results/weir-selected-${info.project.name}.png` });
 
-  // + raises the crest a quarter metre; the crew rebuilds it.
-  await press(page, phone, '.sel-raise');
+  // Dragging the crest handle up raises the crest a quarter metre (a ghost wall follows); the crew rebuilds it.
+  await dragHeight(page, phone, -1, '1.75 m');
   await expect.poll(async () => (await weirs(page))[0]!.top, { timeout: 15_000 }).toBeCloseTo(w0.top + 0.25, 2);
-  await expect(panel.locator('.sel-crest output')).toHaveText('1.75 m');
-  await press(page, phone, '.sel-lower');
-  await press(page, phone, '.sel-lower');
+  await expect(panel).toContainText('crest 1.75 m');
+  await settleFrames(page);
+  await dragHeight(page, phone, 1, '1.25 m');
   await expect.poll(async () => (await weirs(page))[0]!.top, { timeout: 15_000 }).toBeCloseTo(w0.top - 0.25, 2);
-  await expect(panel.locator('.sel-crest output')).toHaveText('1.25 m');
+  await expect(panel).toContainText('crest 1.25 m');
   expect(await page.evaluate(() => (window as any).__hydro.client.latest.stats)).toBeTruthy();
 
-  // Drag the far end two cells further out along the line.
+  // Drag the far end two cells further out (and a little aside: it stays on the wall's line).
   const len = Math.hypot(w0.x2 - w0.x, w0.y2 - w0.y);
   const ux = (w0.x2 - w0.x) / len;
   const uy = (w0.y2 - w0.y) / len;
   const handle = page.locator('.sel-handle[data-end="1"]');
   const box = (await handle.boundingBox())!;
   const from: [number, number] = [box.x + box.width / 2, box.y + box.height / 2];
-  const to = await toScreen(page, Math.round(w0.x2 + ux * 2), Math.round(w0.y2 + uy * 2));
+  const to = await toScreen(page, Math.round(w0.x2 + ux * 2 - uy * 1.5), Math.round(w0.y2 + uy * 2 + ux * 1.5));
   await drag(page, phone, from, to);
   await expect
     .poll(async () => {
@@ -96,6 +125,9 @@ test('a weir is selected with a tap, its crest raised and lowered, an end dragge
   const w1 = (await weirs(page))[0]!;
   expect(w1.id).toBe(w0.id);
   expect(Math.hypot(w1.x - w0.x, w1.y - w0.y)).toBeLessThan(0.01);
+  // Not turned: the far end is still on the old line.
+  const cross = Math.abs((w1.x2 - w0.x) * uy - (w1.y2 - w0.y) * ux);
+  expect(cross).toBeLessThan(0.6);
   // The crew builds the longer weir.
   await builtWithin(page, 3);
   await settleFrames(page);
@@ -144,7 +176,7 @@ test('with the weir tool a tap on a weir selects it; a pole is selected and remo
   await settleFrames(page);
   await tap(page, phone, await toScreen(page, pole.x, pole.y));
   await expect(page.locator('[data-testid=selection]')).toContainText('Power pole');
-  await expect(page.locator('.sel-crest')).toBeHidden();
+  await expect(page.locator('[data-testid=weir-height]')).toBeHidden();
   await press(page, phone, '.sel-remove');
   await press(page, phone, '.sel-remove');
   await expect.poll(async () => (await page.evaluate(() => (window as any).__hydro.renderer.power.state?.poles.length ?? 0))).toBe(0);

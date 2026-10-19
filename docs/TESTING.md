@@ -85,6 +85,10 @@ unlocks), for trying late tools by hand or in a test.
     the mirror's and the sim's terrain drop along the path at once, the
     tool stays selected; Undo (button and Ctrl+Z) brings the ground back
     (`e2e/sculpt.spec.ts`); a structure tool's stroke places a plan;
+    every tool stays selected, and its ghost (power line, weir wall, gate,
+    red wheel) shows first; brushes tint fields and strokes, Undo flashes
+    (`e2e/tools.spec.ts`); a weir is edited in place by its handles
+    (`e2e/weiredit.spec.ts`);
   - touch (phone profile): one finger brushes, a second finger turns the
     stroke into a pan/zoom (the brush bites only after 90 ms);
   - camera: wheel zooms, drag pans, right-drag rotates (assert camera state);

@@ -468,27 +468,32 @@ export class PowerGrid {
       const full: { t: Turbine; up: number; down: number; head: number; q: number; f: number; p: number }[] = [];
       let pFree = 0;
       let pStore = 0;
-      for (const t of net.turbines) {
+      const sides = net.turbines.map((t) => {
         const sa = w.surface(t.a);
         const sb = w.surface(t.b);
         const up = sa >= sb ? t.a : t.b;
-        const down = up === t.a ? t.b : t.a;
-        const head = Math.abs(sa - sb);
-        const q = water[up]! > POWER.keep + 0.01 ? turbineFlow(head) : 0;
-        const su = w.surface(up);
-        t.mark = Math.max(su, (t.mark ?? su) - POWER.markDecay / STEPS_PER_DAY);
-        const level = Math.min(t.crest, t.mark);
-        // Pumped storage: a pump on this network fills the pool.
+        return { t, up, down: up === t.a ? t.b : t.a, head: Math.abs(sa - sb), su: w.surface(up) };
+      });
+      // Pumped storage: a pump on this network fills the pool. (It lifts into this pool: its outlet
+      // at the pool's level on ground the pool covers or would cover, not up on the wall or a bank
+      // above it, and its inlet well below.)
+      const paired = sides.map(({ up, su }) => {
         const ux = up % w.width;
         const uy = (up / w.width) | 0;
-        // (It lifts into this pool: its outlet at the pool's level, its inlet well below it.)
-        const paired = net.pumps.some(
-          (p) =>
-            Math.hypot(p.ox - ux, p.oy - uy) <= POWER.pairReach &&
-            Math.abs(w.surface(w.idx(p.ox, p.oy)) - su) < 1 &&
-            w.surface(w.idx(p.x, p.y)) < su - 0.5,
-        );
-        const f = paired ? 0 : smooth(level - POWER.storageBand, level - POWER.spillBand, su);
+        return net.pumps.some((p) => {
+          const o = w.idx(p.ox, p.oy);
+          return Math.hypot(p.ox - ux, p.oy - uy) <= POWER.pairReach && Math.abs(w.surface(o) - su) < 1 && w.terrain(o) <= su + 0.05 && w.surface(w.idx(p.x, p.y)) < su - 0.5;
+        });
+      });
+      // Storage needs something else to fill it: a network of nothing but paired turbines runs them free
+      // (else a pump beside a lone turbine would stop it, and itself).
+      const allPaired = paired.every(Boolean);
+      for (let n = 0; n < sides.length; n++) {
+        const { t, up, down, head, su } = sides[n]!;
+        const q = water[up]! > POWER.keep + 0.01 ? turbineFlow(head) : 0;
+        t.mark = Math.max(su, (t.mark ?? su) - POWER.markDecay / STEPS_PER_DAY);
+        const level = Math.min(t.crest, t.mark);
+        const f = paired[n] && !allPaired ? 0 : smooth(level - POWER.storageBand, level - POWER.spillBand, su);
         const p = turbinePower(q, head);
         pFree += f * p;
         pStore += (1 - f) * p;
