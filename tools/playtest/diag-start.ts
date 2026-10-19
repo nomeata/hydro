@@ -9,6 +9,7 @@
  */
 import { STEPS_PER_DAY } from '../../src/sim/constants';
 import { newGame } from '../../src/sim/newgame';
+import { fertileStart } from '../../src/sim/worldgen';
 import { cropGrowth, FARMING } from '../../src/sim/people/village';
 import { LandUse } from '../../src/sim/world';
 import { villages } from './geo';
@@ -26,8 +27,8 @@ const size = Number(opt('size', '128'));
 const day = Number(opt('day', '2'));
 const R = 18;
 
-console.log('| seed | start | h m | d | plain | good | dry fertile | fields | good share |');
-console.log('|---|---|---|---|---|---|---|---|---|');
+console.log('| seed | start | h m | d | plain | est. good/dry | good | dry fertile | fields | good share |');
+console.log('|---|---|---|---|---|---|---|---|---|---|');
 for (const seed of seeds) {
   const { sim, gen } = newGame(seed, size);
   sim.run(STEPS_PER_DAY * day);
@@ -51,6 +52,6 @@ for (const seed of seeds) {
     }
   const s = gen.start;
   console.log(
-    `| ${seed} | ${s.terrace ? 'terrace' : 'meadow'} | ${s.height.toFixed(1)} | ${s.dist.toFixed(0)} | ${s.plain} | ${good} | ${dry} | ${fields} | ${((100 * good) / Math.max(1, good + dry)).toFixed(0)}% |`,
+    `| ${seed} | ${s.terrace ? 'terrace' : 'meadow'}${fertileStart(seed) ? ' (fertile)' : ''} | ${s.height.toFixed(1)} | ${s.dist.toFixed(0)} | ${s.plain} | ${s.good ?? '-'}/${s.dry ?? '-'} | ${good} | ${dry} | ${fields} | ${((100 * good) / Math.max(1, good + dry)).toFixed(0)}% |`,
   );
 }
