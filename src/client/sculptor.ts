@@ -32,6 +32,11 @@ export class Sculptor {
   undoable = 0;
   /** The current stroke touched (came near) cells the brush leaves alone. */
   touchedFixed = false;
+  /** The current stroke changed the ground of a field, garden or pasture (the crop there is lost). */
+  touchedField = false;
+  /** Height change per cell of the current stroke (m), and of the last strokes (for undo's flash). */
+  strokeDz = new Map<number, number>();
+  private history: Map<number, number>[] = [];
 
   constructor(
     private readonly mirror: WorldMirror,
@@ -54,6 +59,10 @@ export class Sculptor {
     this.radius = radius;
     this.strokeId++;
     this.touchedFixed = false;
+    this.touchedField = false;
+    this.strokeDz = new Map();
+    this.history.push(this.strokeDz);
+    if (this.history.length > 40) this.history.shift();
   }
 
   /** The brush held at (x, y) (cells) for dt seconds: change the mirror now, send with the next flush. */
@@ -62,8 +71,12 @@ export class Sculptor {
     const W = m.width;
     const r = this.radius;
     const t = m.terrainH;
+    const lu = m.landuse;
     brushSample(this.grid, this.tool, x, y, r, dt, (i, dz) => {
       t[i] = t[i]! + dz;
+      this.strokeDz.set(i, (this.strokeDz.get(i) ?? 0) + dz);
+      // (LandUse Field, Garden, Pasture.)
+      if (!this.touchedField && lu[i]! >= 1 && lu[i]! <= 3 && Math.abs(dz) > 1e-4) this.touchedField = true;
       this.batch.cells.push(i);
       this.batch.dz.push(dz);
     });
@@ -103,11 +116,16 @@ export class Sculptor {
     this.y1 = -Infinity;
   }
 
-  /** Undo the last stroke (the sim's terrain comes back with the next snapshot). */
-  undo(): void {
+  /** Undo the last stroke (the sim's terrain comes back with the next snapshot); returns the cells it had changed (m), if known. */
+  undo(): Map<number, number> | null {
     this.flush();
     this.send({ type: 'undoSculpt' });
     this.undoable = Math.max(0, this.undoable - 1);
+    // (Strokes that changed nothing are not on the sim's undo list.)
+    let h = this.history.pop();
+    while (h && h.size === 0) h = this.history.pop();
+    if (h === this.strokeDz) this.strokeDz = new Map();
+    return h ?? null;
   }
 
   /**

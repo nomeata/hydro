@@ -292,6 +292,47 @@ describe('power grid', () => {
     expect(sim.achievements.hasEarned('nightAndDay')).toBe(true);
   });
 
+  it('a pump drawing beside a lone turbine does not stop it: with nothing else to fill its pool, the turbine runs free and the pump on its surplus', () => {
+    const sim = flowing();
+    sim.command({ type: 'placeTurbine', points: [[30, 16]] });
+    build(sim);
+    sim.run(DAY / 4);
+    const t = sim.power.turbines[0]!;
+    const before = t.power;
+    expect(before).toBeGreaterThan(30000);
+    // From the tailwater right below the wall up onto the wall beside the turbine (as in the e2e power spec).
+    sim.command({ type: 'placePump', points: [[32, 16], [30, 20]] });
+    expect(sim.power.pumps.length).toBe(1);
+    build(sim);
+    sim.run(DAY / 4);
+    expect(t.power).toBeGreaterThan(before * 0.8);
+    const pump = sim.power.pumps[0]!;
+    expect(pump.flow).toBeGreaterThan(0);
+    expect(pump.power).toBeCloseTo(POWER.pumpRating, 0);
+  });
+
+  it('a pump whose outlet stands above the pool (on the wall or a bank) does not make the turbine storage', () => {
+    // A small river behind a high dam: the pool settles below the crest.
+    const sim = flowing(3, bed(30) + 3);
+    sim.command({ type: 'placeTurbine', points: [[30, 16]] });
+    sim.command({ type: 'placeTurbine', points: [[40, 24]] });
+    sim.command({ type: 'placePoles', points: [[31, 16], [36, 21], [40, 24]] });
+    build(sim);
+    sim.run(4 * DAY);
+    const t = sim.power.turbines[0]!;
+    const before = Math.abs(t.flow);
+    expect(before).toBeGreaterThan(0.3);
+    // From the deepest tailwater onto the dam's crest, above the pool: that water is not stored behind it.
+    const w = sim.world;
+    let inlet: [number, number] = [31, 16];
+    for (let x = 31; x <= 34; x++) for (let y = 14; y <= 18; y++) if (w.water[w.idx(x, y)]! > w.water[w.idx(...inlet)]!) inlet = [x, y];
+    sim.command({ type: 'placePump', points: [inlet, [30, 20]] });
+    expect(sim.power.pumps.length).toBe(1);
+    build(sim);
+    sim.run(DAY / 2);
+    expect(Math.abs(t.flow)).toBeGreaterThan(before * 0.5);
+  });
+
   it('is saved and resumes exactly; saves without power still load', async () => {
     const sim = flowing();
     sim.command({ type: 'placeTurbine', points: [[30, 16]] });
