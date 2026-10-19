@@ -9,7 +9,11 @@ import { LandUse, type World } from '../world';
 export const MAX_WADE = 0.4;
 /** Steepest slope (rise over run, both in metres) people will walk. */
 export const MAX_SLOPE = 0.9;
-/** Cost factor for stepping onto a trodden path (they are quicker, and people like them). */
+/**
+ * Cost factor for stepping onto a trodden path (they are quicker, and people
+ * like them), or across a yard (the trampled ground between houses: else
+ * people would wear a ring road around every cluster of yards).
+ */
 export const PATH_COST = 0.6;
 /**
  * Trodden grass (traffic, not yet a path) is a little cheaper too, up to
@@ -49,7 +53,7 @@ export function stepCost(world: World, i: number, j: number, dist: number, bridg
   if (rise > MAX_SLOPE && !onBridge && !(bridge?.(i) ?? false)) return Infinity;
   let c = dist * (1 + 3 * rise * rise);
   if (!onBridge && dj > 0.05) c *= 1 + 6 * dj; // wading is slow
-  else if (world.landuse[j] === LandUse.Path) c *= PATH_COST; // people keep to the trodden paths
+  else if (world.landuse[j] === LandUse.Path || world.landuse[j] === LandUse.Yard) c *= PATH_COST; // people keep to the trodden paths (and cut across yards)
   else {
     const t = world.traffic[j]!;
     if (t > 0) c *= 1 - (TROD_BONUS * Math.min(t, TROD_FULL)) / TROD_FULL;

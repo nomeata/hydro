@@ -13,7 +13,13 @@
  * - never into a 2×2 block (paths stay about one cell wide; existing thick
  *   spots are thinned, keeping the most trodden cells and the connections);
  * - dead ends that lead nowhere (not to a house, field, bridge or the
- *   water) and lone specks fade sooner (`stub`), any path below `off`.
+ *   water) and lone specks fade sooner (`stub`), any path below `off`;
+ * - no duplicates: a way never grows alongside another one a cell or two
+ *   away that it does not join nearby (a parallel track), and of two such
+ *   tracks the less trodden one gives way, cell by cell; a short loop (a
+ *   ring of path, yards and houses of at most `loop` cells, such as a rung
+ *   between two ways or a lane round a cluster of yards) loses its least
+ *   trodden cell. Walkers then keep to the one way that is left.
  */
 import { CellFlag, LandUse, type World } from '../world';
 
@@ -29,6 +35,10 @@ export const DESIRE = {
   link: 40,
   /** Dead ends and lone path cells fade below this traffic. */
   stub: 72,
+  /** Loops of at most this many cells (path, yards, houses) are broken. */
+  loop: 14,
+  /** Two ways closer than 3 cells count as one only if joined within this many cells of path. */
+  near: 8,
 };
 
 // The eight neighbours in ring order (E, NE, N, NW, W, SW, S, SE).
@@ -137,11 +147,13 @@ export function updateDesirePaths(w: World): boolean {
       const pathGroups = RING_GROUPS[r.path]!;
       // A high-traffic cell starts a path; a fairly trodden one continues a path
       // end (one piece of path beside it, in line); any trodden one closes a gap.
+      // (Growing a path end never closes a loop with a yard beside it, and a new
+      // track never starts beside an old one.)
       const ok =
         groups >= 2 ||
-        (t >= DESIRE.grow && pathGroups === 1 && popcount(r.path) <= 2) ||
-        (t >= DESIRE.on && (r.path | r.ends) === 0);
-      if (ok && !wouldThicken(w, x, y)) {
+        (t >= DESIRE.grow && pathGroups === 1 && RING_GROUPS[near] === 1 && popcount(r.path) <= 2 && !isCorner(r.path)) ||
+        (t >= DESIRE.on && (r.path | r.ends) === 0 && !pathWithin(w, x, y, 2));
+      if (ok && !wouldThicken(w, x, y) && (r.path === 0 || parallelStrength(w, i) < 0)) {
         landuse[i] = LandUse.Path;
         changed = true;
         parent[i] = i;
@@ -163,15 +175,326 @@ export function updateDesirePaths(w: World): boolean {
         changed = true;
         continue;
       }
+      // Straighten: a corner of a staircase is cut (its neighbours stay joined
+      // corner to corner), and a tooth of a zigzag moves into the line.
+      if (n === 2 && r.ends === 0) {
+        const s2 = straighten(w, x, y, r.path);
+        if (s2) {
+          changed = true;
+          continue;
+        }
+      }
       // Thin a thick spot: drop the least trodden cell of a 2×2 block when its
       // neighbours stay connected without it.
       if (n >= 3 && RING_GROUPS[r.path | r.ends] === 1 && thickWeakest(w, x, y)) {
+        landuse[i] = LandUse.None;
+        changed = true;
+        continue;
+      }
+      // A rung of a ladder or a lane on a short loop: the least trodden cell goes.
+      if (RING_GROUPS[r.path | r.ends]! >= 2 && onShortLoop(w, x, y, r.path | r.ends)) {
+        landuse[i] = LandUse.None;
+        changed = true;
+        continue;
+      }
+      // The weaker of two parallel tracks gives way.
+      if (n >= 1 && parallelStrength(w, i) > meanTraffic(w, ballCells, ballN)) {
         landuse[i] = LandUse.None;
         changed = true;
       }
     }
   }
   return changed;
+}
+
+/** Whether a ring mask is exactly two orthogonal neighbours a quarter turn apart (an L: the corner cell is not needed). */
+function isCorner(m: number): boolean {
+  for (let k = 0; k < 8; k += 2) if (m === ((1 << k) | (1 << ((k + 2) & 7)))) return true;
+  return false;
+}
+
+/**
+ * Straighten path cell (x, y) with exactly the two path neighbours in ring
+ * mask m (and no yard, house or bridge beside it): an L corner is dropped;
+ * a tooth (two diagonal neighbours on the same side) moves into the line
+ * between them. Returns whether the land use changed.
+ */
+function straighten(w: World, x: number, y: number, m: number): boolean {
+  const { width: W, landuse, traffic, water, flags } = w;
+  const i = y * W + x;
+  if (isCorner(m)) {
+    landuse[i] = LandUse.None;
+    return true;
+  }
+  for (let k = 1; k < 8; k += 2) {
+    // Diagonals k and k + 2 share the orthogonal neighbour k + 1 (same side).
+    if (m !== ((1 << k) | (1 << ((k + 2) & 7)))) continue;
+    const o = (k + 1) & 7;
+    const j = (y + RY[o]!) * W + x + RX[o]!;
+    if (landuse[j] !== LandUse.None || water[j]! >= 0.05 || (flags[j]! & CellFlag.Lined) !== 0) return false;
+    landuse[i] = LandUse.None;
+    if (wouldThicken(w, x + RX[o]!, y + RY[o]!)) {
+      landuse[i] = LandUse.Path;
+      return false;
+    }
+    landuse[j] = LandUse.Path;
+    traffic[j] = Math.max(traffic[j]!, traffic[i]!);
+    return true;
+  }
+  return false;
+}
+
+/** Whether any path cell lies within Chebyshev distance r of (x, y) (other than itself). */
+function pathWithin(w: World, x: number, y: number, r: number): boolean {
+  const { width: W, height: H, landuse } = w;
+  for (let dy = -r; dy <= r; dy++)
+    for (let dx = -r; dx <= r; dx++) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if ((dx || dy) && nx >= 0 && ny >= 0 && nx < W && ny < H && landuse[ny * W + nx] === LandUse.Path) return true;
+    }
+  return false;
+}
+
+// Breadth-first searches over path cells (8-connected), depth-limited. Two
+// independent scratch sets: the cell under test, and a neighbour's line.
+let netStamp: Uint32Array | null = null;
+let netDist: Uint8Array | null = null;
+let netGen = 0;
+let ballStamp: Uint32Array | null = null;
+let ballGen = 0;
+let netCells: Int32Array = new Int32Array(0);
+let netN = 0;
+let ballCells: Int32Array = new Int32Array(0);
+let ballN = 0;
+
+function ensureScratch(w: World): void {
+  if (!netStamp || netStamp.length !== w.size) {
+    netStamp = new Uint32Array(w.size);
+    netDist = new Uint8Array(w.size);
+    ballStamp = new Uint32Array(w.size);
+    netGen = ballGen = 0;
+  }
+}
+
+/**
+ * Path cells within `depth` steps of cell s along the path (s counts as path).
+ * Into netCells/netN (with netDist, marked in netStamp) or ballCells/ballN.
+ */
+function bfs(w: World, s: number, depth: number, net: boolean): void {
+  const { width: W, height: H, landuse } = w;
+  const stamp = net ? netStamp! : ballStamp!;
+  const gen = net ? ++netGen : ++ballGen;
+  let cells = net ? netCells : ballCells;
+  if (cells.length < 256) cells = new Int32Array(256);
+  let n = 0;
+  let head = 0;
+  stamp[s] = gen;
+  cells[n++] = s;
+  const dist = netDist!;
+  // Depth per entry (only kept in netDist for the net search; local otherwise).
+  const dep: number[] = [0];
+  while (head < n) {
+    const i = cells[head]!;
+    const d = dep[head++]!;
+    if (net) dist[i] = d;
+    if (d >= depth) continue;
+    const x = i % W;
+    const y = (i / W) | 0;
+    for (let k = 0; k < 8; k++) {
+      const nx = x + RX[k]!;
+      const ny = y + RY[k]!;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx;
+      if (stamp[j] === gen || landuse[j] !== LandUse.Path) continue;
+      stamp[j] = gen;
+      if (n >= cells.length) {
+        const c2 = new Int32Array(cells.length * 2);
+        c2.set(cells);
+        cells = c2;
+      }
+      cells[n++] = j;
+      dep.push(d + 1);
+    }
+  }
+  if (net) {
+    netCells = cells;
+    netN = n;
+  } else {
+    ballCells = cells;
+    ballN = n;
+  }
+}
+
+/** Mean traffic of the first n cells of a list. */
+function meanTraffic(w: World, cells: Int32Array, n: number): number {
+  let s = 0;
+  for (let k = 0; k < n; k++) s += w.traffic[cells[k]!]!;
+  return n ? s / n : 0;
+}
+
+/** Principal direction (unit) of a set of cells, or null when they do not form a line. */
+function lineDir(w: World, cells: Int32Array, n: number): [number, number] | null {
+  if (n < 3) return null;
+  const W = w.width;
+  let mx = 0;
+  let my = 0;
+  for (let k = 0; k < n; k++) {
+    mx += cells[k]! % W;
+    my += (cells[k]! / W) | 0;
+  }
+  mx /= n;
+  my /= n;
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  for (let k = 0; k < n; k++) {
+    const dx = (cells[k]! % W) - mx;
+    const dy = ((cells[k]! / W) | 0) - my;
+    sxx += dx * dx;
+    syy += dy * dy;
+    sxy += dx * dy;
+  }
+  const tr = sxx + syy;
+  const disc = Math.sqrt(((sxx - syy) * (sxx - syy)) / 4 + sxy * sxy);
+  const l1 = tr / 2 + disc;
+  const l2 = tr / 2 - disc;
+  if (l1 <= 0 || l2 > 0.3 * l1) return null;
+  const a = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  return [Math.cos(a), Math.sin(a)];
+}
+
+/**
+ * Whether cell i runs alongside another track: a path cell a cell or two
+ * away, not joined to i within DESIRE.near cells of path, whose line runs
+ * the same way and lies beside (not ahead of) i. Returns the strongest such
+ * track's mean traffic, or −1. For a candidate (open land), i counts as path.
+ * Leaves i's own line (within 3 cells) in ballCells/ballN for the caller.
+ */
+function parallelStrength(w: World, i: number): number {
+  ensureScratch(w);
+  const { width: W, height: H, landuse } = w;
+  bfs(w, i, DESIRE.near, true);
+  // i's own line: the cells of its net search within 3 steps.
+  let own = new Int32Array(64);
+  let on = 0;
+  for (let k = 0; k < netN && on < 64; k++) if (netDist![netCells[k]!]! <= 3) own[on++] = netCells[k]!;
+  const dirI = lineDir(w, own, on);
+  let best = -1;
+  if (dirI) {
+    const x = i % W;
+    const y = (i / W) | 0;
+    const gen = netGen;
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        if (landuse[j] !== LandUse.Path || netStamp![j] === gen) continue;
+        // Beside, not ahead: the offset runs across i's line.
+        const len = Math.hypot(dx, dy);
+        if (Math.abs((dx * dirI[0] + dy * dirI[1]) / len) > 0.75) continue;
+        bfs(w, j, 3, false);
+        const dirJ = lineDir(w, ballCells, ballN);
+        if (!dirJ || Math.abs(dirI[0] * dirJ[0] + dirI[1] * dirJ[1]) < 0.8) continue;
+        best = Math.max(best, meanTraffic(w, ballCells, ballN));
+      }
+  }
+  // For the caller: i's own line in ballCells.
+  if (ballCells.length < on) ballCells = new Int32Array(Math.max(256, on));
+  ballCells.set(own.subarray(0, on));
+  ballN = on;
+  return best;
+}
+
+let loopStamp: Uint32Array | null = null;
+let loopFrom: Int32Array | null = null;
+let loopGen = 0;
+
+/**
+ * Whether path cell (x, y) lies on a loop of at most DESIRE.loop cells
+ * through path, yard, building and bridge cells, and is its least trodden
+ * path cell (ties: the later index goes). `mask`: ring mask of its path and
+ * end neighbours (in two or more groups).
+ */
+function onShortLoop(w: World, x: number, y: number, mask: number, any = false): boolean {
+  const { width: W, height: H, landuse, traffic } = w;
+  if (!loopStamp || loopStamp.length !== w.size) {
+    loopStamp = new Uint32Array(w.size);
+    loopFrom = new Int32Array(w.size);
+    loopGen = 0;
+  }
+  const i = y * W + x;
+  const node = (lu: number) => lu === LandUse.Path || lu === LandUse.Yard || lu === LandUse.Building || lu === LandUse.Bridge;
+  // One start per ring group: label the groups by walking the ring.
+  const group = new Int8Array(8).fill(-1);
+  let ng = 0;
+  for (let k = 0; k < 8; k++) {
+    if (!(mask & (1 << k)) || group[k]! >= 0) continue;
+    const st = [k];
+    group[k] = ng;
+    while (st.length) {
+      const a = st.pop()!;
+      const nb = [(a + 1) & 7, (a + 7) & 7];
+      if ((a & 1) === 0) nb.push((a + 2) & 7, (a + 6) & 7);
+      for (const b of nb)
+        if (mask & (1 << b) && group[b]! < 0) {
+          group[b] = ng;
+          st.push(b);
+        }
+    }
+    ng++;
+  }
+  if (ng < 2) return false;
+  // Breadth-first from group 0's cells (not through i) until another group's cell.
+  const stamp = loopStamp;
+  const from = loopFrom!;
+  const gen = ++loopGen;
+  stamp[i] = gen;
+  const q: number[] = [];
+  const dep: number[] = [];
+  const target = new Set<number>();
+  for (let k = 0; k < 8; k++) {
+    if (group[k]! < 0) continue;
+    const j = (y + RY[k]!) * W + x + RX[k]!;
+    if (group[k] === 0) {
+      stamp[j] = gen;
+      from[j] = -1;
+      q.push(j);
+      dep.push(1);
+    } else target.add(j);
+  }
+  const limit = DESIRE.loop - 1;
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h]!;
+    if (target.has(c)) {
+      // Found a loop: is i its least trodden path cell?
+      if (any) return true;
+      const t = traffic[i]!;
+      for (let p = c; p !== -1; p = from[p]!) {
+        if (landuse[p] !== LandUse.Path) continue;
+        const tp = traffic[p]!;
+        if (tp < t || (tp === t && p > i)) return false;
+      }
+      return true;
+    }
+    if (dep[h]! >= limit) continue;
+    const cx = c % W;
+    const cy = (c / W) | 0;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + RX[k]!;
+      const ny = cy + RY[k]!;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx;
+      if (stamp[j] === gen || !node(landuse[j]!)) continue;
+      stamp[j] = gen;
+      from[j] = c;
+      q.push(j);
+      dep.push(dep[h]! + 1);
+    }
+  }
+  return false;
 }
 
 let scratch: Int32Array | null = null;
@@ -302,4 +625,24 @@ export function pathStats(w: World): { cells: number; groups: number; largest: n
     if (n <= 3) small += n;
   }
   return { cells, groups, largest, small, thick };
+}
+
+/**
+ * Duplicates in the path network: path cells running alongside another
+ * track they do not join nearby (`parallel`), and path cells on a loop of
+ * at most DESIRE.loop cells through path, yards and houses (`loop`).
+ */
+export function pathDuplicates(w: World): { parallel: number; loop: number } {
+  const { width: W, landuse } = w;
+  let parallel = 0;
+  let loop = 0;
+  for (let i = 0; i < w.size; i++) {
+    if (landuse[i] !== LandUse.Path) continue;
+    const x = i % W;
+    const y = (i / W) | 0;
+    if (parallelStrength(w, i) >= 0) parallel++;
+    const r = ring(w, x, y);
+    if (RING_GROUPS[r.path | r.ends]! >= 2 && onShortLoop(w, x, y, r.path | r.ends, true)) loop++;
+  }
+  return { parallel, loop };
 }

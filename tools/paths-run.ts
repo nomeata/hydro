@@ -10,7 +10,7 @@ import { writeFileSync } from 'node:fs';
 import { STEPS_PER_DAY } from '../src/sim/constants';
 import { newGame } from '../src/sim/newgame';
 import { saveGame } from '../src/sim/persist';
-import { pathStats } from '../src/sim/people/desire';
+import { pathDuplicates, pathStats } from '../src/sim/people/desire';
 import { LandUse } from '../src/sim/world';
 
 const arg = (k: string, d: string) => {
@@ -31,9 +31,10 @@ const marks = [...new Set([...saveAt.filter((d) => d > 0 && d <= days), days])].
 let day = 0;
 const report = () => {
   const s = pathStats(w);
+  const d = pathDuplicates(w);
   console.log(
     `day ${day}: ${s.cells} path cells in ${s.groups} groups, largest ${s.largest}, ` +
-      `isolated ${s.small} (groups ≤ 3 cells), ${s.thick} thick (2×2 blocks); pop ${st.population} (${((Date.now() - t0) / 1000).toFixed(0)} s)`,
+      `isolated ${s.small} (groups ≤ 3 cells), ${s.thick} thick (2×2 blocks), ${d.parallel} parallel, ${d.loop} on short loops; pop ${st.population} (${((Date.now() - t0) / 1000).toFixed(0)} s)`,
   );
 };
 for (const m of marks) {
