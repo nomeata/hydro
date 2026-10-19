@@ -12,8 +12,9 @@
    hand": the ground itself is sculpted directly, with brushes (raise, dig,
    even) that change it at once under the finger, so the interesting wait
    is for the *water* and the *people* to respond, not for construction.
-   Stone structures (weirs, gates, wheels, turbines, poles, pumps) are
-   still *planned*, and a quick crew builds them. (Having villagers do the
+   Stone structures (weirs, gates, wheels, turbines, pumps) are
+   still *planned*, and a quick crew builds them. The power lines are the
+   villagers' own (§5). (Having villagers do the
    earthworks was tried and felt odd; it is off, see
    `PARAMS.villagersBuildPlans`. Planned trenches, dikes and levels were the
    first design, replaced by the brushes: plans felt indirect for earth.)
@@ -126,8 +127,7 @@ The ground is sculpted with three **brushes**; structures are placed as
 | Weir | Drawn as a line across a river: a stone wall on the ground as it is (no earthworks), its crest at most 4 m above the ground on its lower side, with a stone apron at its foot. Built to be overtopped: holds the pool at the crest and spills the surplus safely; the place for mills and turbines | 15 villagers |
 | Sluice gate | Tap a weir or a bank (or draw across a channel for a stone wall with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Worked by the villagers (GAMEPLAY.md §2): released in summer to water their fields, opened before the water spills over; with no village near it opens by itself as flood relief | 30 villagers |
 | Water wheel | Draw from fast river water onto the bank: the current turns a noria that lifts water up to 5 m into the head cell, and on along the player's canal (GAMEPLAY.md §1.3; wells and mills are villager creations) | 50 villagers |
-| Turbine | Tap the crest of a weir or dam: power from the real head × flow through it (the Power tool's first mode) | 100 |
-| Power line / pole | Draw a line of poles from a turbine: houses within 8 cells of a pole are lit | 150 |
+| Turbine | Tap the crest of a weir or dam: power from the real head × flow through it (the Power tool's first mode). Once it turns, the villagers put up the power lines themselves (no tool) | 100 |
 | Electric pump, pumped storage | Draw from water to an outlet: lifts water on spare power; a turbine below a pumped basin generates when the houses want more | 250 |
 
 **The brushes** (decision; `sim/plans/sculpt.ts`, `brushwork.ts`,
@@ -154,9 +154,11 @@ takes back the last strokes (the last 12, not across reloads).
   ground dug 0.3 m below it is `CellFlag.Canal` (villagers line such
   canals near home). Plants are buried or dug out.
 - *What is in the way:* houses (and mills, wells, stores, ruins) and
-  footbridges are never changed, nor structures (weir, gate, wheel,
-  turbine, poles, pump) or the crew's work on them: the brush fades out
-  over two cells around them (`Snapshot.fixed`). Fields, gardens,
+  jetties are never changed, nor structures (weir, gate, wheel,
+  turbine, pump) or the crew's work on them: the brush fades out
+  over two cells around them (`Snapshot.fixed`). Footbridges and power
+  poles are not in the way: ground moved under one knocks it down, and
+  the villagers put it up again. Fields, gardens,
   pastures, paths and yards under the brush go back to plain land, and
   the villagers' stone lining comes off.
 - *The crew is cosmetic for earth:* a few workers walk up to freshly
@@ -169,11 +171,12 @@ takes back the last strokes (the last 12, not across reloads).
   their pending trench, dike and level plans finished on load.
 
 **Selecting and editing.** In Look mode a tap on a weir, gate, water
-wheel, turbine, pole or pump selects it (with the weir tool, a tap on a
+wheel, turbine, power pole or pump selects it (with the weir tool, a tap on a
 weir too): a ring or, for a weir, a dashed line with a handle at each end;
 a tap elsewhere or Escape lets go. Everything is edited in place, with no
 panel: a small bubble over it names it and holds a **×** to take it down
-(tap twice: it asks "Remove?" first). A weir's end handles slide along its
+(tap twice: it asks "Remove?" first; not a pole: the poles are the
+villagers'). A weir's end handles slide along its
 own line (lengthen or shorten, never turn it), and a handle on its crest
 is dragged up or down to raise or lower it (0.25 m steps, 0.5 m above the
 ground under it up to 4 m above the ground on its lower side); a ghost of
@@ -189,7 +192,7 @@ the wall to its new crest and lines it again. A removed weir goes back to its gr
 turbines in it go with it); a removed gate's opening is filled back up to
 the dam's crest. The Remove (erase) tool is a brush for structures:
 plans under it are cancelled, and every structure it touches, built or
-not (weir, gate, wheel, turbine, pole, pump), is taken down the same way
+not (weir, gate, wheel, turbine, pump; not the villagers' poles), is taken down the same way
 (the crew's plans for lowering a weir or plugging a gate are kept even if
 the brush passes over them again). Mouse and touch alike
 (`ui/selection.ts`).
@@ -274,6 +277,8 @@ The player asked for "more direct endorphin hits". Decisions:
 - Purely hydro-powered society. Power = efficiency × ρ g × head × flow, with
   head and flow taken from the actual simulated water.
 - Poles carry power; every building within a radius of a pole is supplied.
+  The villagers put up the lines themselves once a turbine turns
+  (GAMEPLAY.md §1.5): the player builds the power, the people bring it home.
 - Benefits: lit houses (more evening activity), electric pumps, more efficient
   farming and crafts, higher population cap, happier people.
 - Demand varies over day and season; pumped storage balances it.

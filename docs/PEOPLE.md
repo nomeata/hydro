@@ -379,6 +379,16 @@ they look after the water by their homes on their own:
   water ≥ 0.5 m deep for 2–3 cells straight out, fish, open water beyond)
   and its builders build one wooden jetty there. Its deck cells become
   `bridge` land use (walkable); a fisher then prefers its end.
+- **Power lines** (`sim/power/lines.ts`, GAMEPLAY.md §1.5). Once the
+  player's first turbine makes power, the villages plan the grid
+  themselves: lines from the grid to each village and pump, to the houses
+  no pole reaches, and between separate grids, routed beside the paths and
+  along field edges, poles evenly spaced and straightened. A builder of
+  the nearest village carries a pole out (a log) and puts it up (two
+  visits; after houses, the jetty and footbridges); poles out of every
+  village's reach (56 cells) the spirit crew puts up. Floods and ground
+  moved under a pole knock it down; the builders put it up again, and
+  move poles out of the way of new houses and fields.
 - Later: harbours, boats and shipping between villages on lakes and
   canals (ports & shipping), village irrigation ditches and check dams.
 
