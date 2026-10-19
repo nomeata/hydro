@@ -108,8 +108,55 @@ const ARM = 0.2;
 /** Wire sag (three.js units) per cell of span, and segments per span. */
 const SAG = 0.012;
 const SEGMENTS = 6;
-/** Window pane size (tile units) and its height above the wall base. */
-const PANE = { w: 0.2, h: 0.24, y: 0.5 };
+/**
+ * Window pane (tile units): the opening of the fantasy-town window walls is
+ * 0.4 wide and 0.5 high, centred 0.5 up the wall; the wall slab runs from
+ * 0.1 inside the tile edge to the edge. The pane fills the opening (a hair
+ * larger, its rim hidden in the wall) and sits `inset` behind the outer
+ * face: just behind the mullions, inside the reveal, so it reads as glass
+ * in the window rather than a card stuck on the wall.
+ */
+export const PANE = { w: 0.42, h: 0.52, y: 0.5, inset: 0.065 };
+/** Door lamp: half its size (world units; the box is 1 × 1.2 × 1 scaled by `2·half`) and its height up the wall (tile units). */
+export const LAMP = { half: 0.03, y: 0.72, side: 0.3 };
+/** Wall plinth: the wall pieces stand this far (tile units) above the house's foot. */
+const WALL_BASE = 0.07;
+
+/** World placement of one lit house's panes (centre and outward normal) and door lamp (centre). */
+export interface GlowSpots {
+  panes: { x: number; y: number; z: number; nx: number; nz: number; w: number; h: number }[];
+  lamp: { x: number; y: number; z: number };
+}
+
+/**
+ * Where a house's window panes and door lamp go, in three.js units, for a
+ * house whose foot is at height `foot`. The house mesh is placed at the
+ * footprint centre (x + 0.5, y + 0.5) rotated by `rot` about +y (three.js
+ * convention, as buildings.ts does), and its parts scale by the design's
+ * `scale`/`vscale`.
+ */
+export function houseGlowSpots(b: Pick<BuildingInfo, 'id' | 'x' | 'y' | 'rot'>, foot: number): GlowSpots {
+  const sp = houseSpots(houseVariant(b.id));
+  const c = Math.cos(b.rot);
+  const s = Math.sin(b.rot);
+  // Rotate a local direction (tile axes) into the world.
+  const turn = (lx: number, lz: number): [number, number] => [lx * c + lz * s, -lx * s + lz * c];
+  const toWorld = (lx: number, lz: number): [number, number] => {
+    const [wx, wz] = turn(lx * sp.scale, lz * sp.scale);
+    return [b.x + 0.5 + wx, b.y + 0.5 + wz];
+  };
+  const panes = sp.windows.map((w) => {
+    // `w` is on the wall's outer face; step back into the opening.
+    const [x, z] = toWorld(w.x - w.ox * PANE.inset, w.z - w.oz * PANE.inset);
+    const [nx, nz] = turn(w.ox, w.oz);
+    return { x, y: foot + (WALL_BASE + PANE.y) * sp.vscale, z, nx, nz, w: PANE.w * sp.scale, h: PANE.h * sp.vscale };
+  });
+  // The lamp hangs on the wall beside the door, its back against the outer face.
+  const d = sp.door;
+  const out = LAMP.half / sp.scale;
+  const [lx, lz] = toWorld(d.x + d.ox * out + d.oz * LAMP.side, d.z + d.oz * out - d.ox * LAMP.side);
+  return { panes, lamp: { x: lx, y: foot + LAMP.y * sp.vscale, z: lz } };
+}
 
 interface Glow {
   house: number;
@@ -506,28 +553,17 @@ export class PowerLayer {
       if (b.kind !== 'house' || b.progress < 1) continue;
       const lv = level.get(b.id);
       if (lv === undefined || lv <= 0) continue;
-      const sp = houseSpots(houseVariant(b.id));
-      const foot = this.footHeight(b.x, b.y);
-      const rot = b.rot;
-      const c = Math.cos(rot);
-      const s = Math.sin(rot);
-      const toWorld = (lx: number, lz: number): [number, number] => [b.x + 0.5 + (lx * c + lz * s) * sp.scale, b.y + 0.5 + (-lx * s + lz * c) * sp.scale];
-      const panes: THREE.Matrix4[] = [];
-      for (const wdw of sp.windows) {
-        const [wx, wz] = toWorld(wdw.x + wdw.ox * 0.035, wdw.z + wdw.oz * 0.035);
-        // Facing out of the wall: the plane's normal is +x after rotateY(π/2)… i.e. its local +x.
-        const yaw = Math.atan2(-wdw.oz, wdw.ox) + rot;
-        this.q.setFromAxisAngle(this.up, yaw);
-        this.p.set(wx, foot + (0.07 + PANE.y) * sp.vscale, wz);
-        this.s.set(1, PANE.h * sp.vscale, PANE.w * sp.scale);
-        panes.push(new THREE.Matrix4().compose(this.p, this.q, this.s));
-      }
-      // The lamp hangs on the wall beside the door; the pool of light lies in front.
-      const d = sp.door;
-      const [lx, lz] = toWorld(d.x + d.ox * 0.06 + d.oz * 0.3, d.z + d.oz * 0.06 - d.ox * 0.3);
+      const spots = houseGlowSpots(b, this.footHeight(b.x, b.y));
+      const panes = spots.panes.map((p) => {
+        // The plane faces its local +x (rotateY(π/2) of a PlaneGeometry): turn that to the pane's normal.
+        this.q.setFromAxisAngle(this.up, Math.atan2(-p.nz, p.nx));
+        this.p.set(p.x, p.y, p.z);
+        this.s.set(1, p.h, p.w);
+        return new THREE.Matrix4().compose(this.p, this.q, this.s);
+      });
       this.q.identity();
-      this.p.set(lx, foot + 0.72 * sp.vscale, lz);
-      this.s.setScalar(0.06);
+      this.p.set(spots.lamp.x, spots.lamp.y, spots.lamp.z);
+      this.s.setScalar(2 * LAMP.half);
       const lamp = new THREE.Matrix4().compose(this.p, this.q, this.s);
       this.glows.push({ house: b.id, level: lv, panes, lamp });
     }
