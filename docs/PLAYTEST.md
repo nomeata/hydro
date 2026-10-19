@@ -443,3 +443,64 @@ those were cut short by container restarts and a heavily loaded machine
 Re-run on main with footbridges and walking-distance fields; a weir +
 canal bot; the dike runs' lower population; seed 7/8 floor; unlock pacing
 (weir 15 now comes at ~16–20 min).
+
+## Round 3 (tune3, October 2026)
+
+Bots redesigned on the direct terrain API with one earth budget (see
+"Player bots" above: `weircanal`, `wheel`, `dike`, `drain`, `vandal`,
+`undo`, `good`, plus `canal` and round 2's `irrigate`). Building and
+watching them uncovered several things that were not balance at all:
+
+### Bugs found by the bots
+- **Farmers fled from the footbridge over a player's canal** all day (the
+  flee check ignored bridges; also fixed independently on main by
+  `bridgefix`), and from **canal corners cut on diagonal steps** (A* let
+  people step diagonally past deep water; they rounded into it and ran).
+  Fields across the canal went unsown and the village starved: seed 3's
+  weir + canal village sowed 56 of 313 fields by mid-spring (baseline: all).
+  Now: no diagonal step past water deeper than wading depth, and people run
+  only from water clearly deeper than that (`FLEE_DEPTH` = 0.65 m). Seed 1's
+  hands-off village had 3542 flights in four years at a ford; now none.
+- **A canal from a weir's pool became the river's bypass** when it started
+  by the weir's end (the pool drained round the weir through it). The
+  planner keeps canals off water lower than their own.
+- **A mill at the weir's drop held the harvest.** Every sack went to the
+  mill and waited for the one miller, so the store looked empty for weeks
+  after the harvest and growth (which needs food for 40 days ahead) never
+  started: the good player's seed 3 village stood at 20 people for three
+  years. Farmers now take their sacks to the store while grain backs up
+  at the mill (`MILL.backlog` 72).
+- Canals dug through fields and the houses' ring cost more than they
+  watered: the planner counts the fields its footprint takes, values
+  the village's dry fields over open land, and keeps out of the ring the
+  houses grow into.
+
+### Seed 1 crash (review item 13: 96 % → 12 % in years 5–6, 256²)
+Re-run hands-off at 256² for seven years (main + the people fixes): the
+big freshets of years 3 and 4 flooded 151 and 288 land cells and took most
+floodplain fields (501 → 114 in the spring of year 4); the village could
+claim back only 10 cells a day, and land claimed after the sowing window
+stayed bare, so two weak harvests (with summer dry stress ~0.9) emptied
+the store: prosperity 24 % in the spring of year 5, recovered to 96 % by
+its end. Not a bug: drought and flood together. Made gentler: while a
+village has fewer than half the fields its farmers can work it claims 30
+cells a day (`FARMING.reclaimPerDay`). With that (and the other changes)
+the same run never fell below 75 %. The ideas for it are the flood idea
+(dike, top priority after a big freshet) and the dry-fields idea (dig a
+channel), both raised by the sim; surfacing them in the HUD is fixhud's.
+
+### Changes
+- **Recovery floor 8** (`ECONOMY.stayers`, was 4): families leave only
+  above it, and at or below it hunger kills nobody and births do not wait
+  for a full store. Seeds 7 and 8 (steep, dry) fell to 5 in their dry
+  second year; now 8–11 (hungry: prosperity 40–70 %). A better start site
+  was looked for (a farmland term in the meadow start): on seed 7 every
+  site near water is as steep, so it was dropped.
+- **Hungry villages sow more hardy crops** (`HARDY.hungryShare` 1 below
+  food security 0.5, else ¼ of the ordinary fields).
+- **Canal and ditch water wets 8 cells** (`CAPILLARY.canalReach`, was 4;
+  rivers 2.5): full growth within ~4.4 cells of a canal's water. With 4
+  a canal's own footprint (5 cells wide) took about as much land as it
+  watered.
+- **Founders bring 500 days of food** (`FOUNDING.startFood`, was 400): the
+  weir unlock (15) comes at day 27–35 (13–17 min at 1×).
