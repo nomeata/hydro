@@ -107,16 +107,16 @@ export function printStyle(kind: number, variant: number): { kind: PrintKind; si
   switch (kind) {
     case EntityKind.Person:
     case EntityKind.Child:
-      return { kind: PrintKind.Boot, size: 0.075 * s, stride: 0.16 * s, side: 0.045 * s };
+      return { kind: PrintKind.Boot, size: 0.1 * s, stride: 0.18 * s, side: 0.05 * s };
     case EntityKind.Cow:
-      return { kind: PrintKind.Hoof, size: 0.1, stride: 0.17, side: 0.07 };
+      return { kind: PrintKind.Hoof, size: 0.12, stride: 0.18, side: 0.08 };
     case EntityKind.Sheep:
     case EntityKind.Pig:
-      return { kind: PrintKind.Hoof, size: 0.07 * s, stride: 0.12, side: 0.05 };
+      return { kind: PrintKind.Hoof, size: 0.09 * s, stride: 0.14, side: 0.055 };
     case EntityKind.Dog:
-      return { kind: PrintKind.Paw, size: 0.06, stride: 0.12, side: 0.035 };
+      return { kind: PrintKind.Paw, size: 0.08, stride: 0.14, side: 0.04 };
     case EntityKind.Chick:
-      return { kind: PrintKind.Paw, size: 0.035, stride: 0.06, side: 0.015 };
+      return { kind: PrintKind.Paw, size: 0.05, stride: 0.08, side: 0.02 };
     default:
       return null;
   }
@@ -189,7 +189,7 @@ void main() {
   }
   float m = 1.0 - smoothstep(0.75, 1.0, d);
   if (m * vAlpha < 0.01) discard;
-  gl_FragColor = vec4(uColour, m * vAlpha * 0.6);
+  gl_FragColor = vec4(uColour, m * vAlpha * 0.75);
   #include <colorspace_fragment>
 }
 `;
@@ -246,7 +246,7 @@ export class FootprintLayer {
         uLook: { value: look },
         uGrid: { value: new THREE.Vector2(heights.width, heights.height) },
         // A shaded dent in the snow: cool blue-grey.
-        uColour: { value: new THREE.Color(0x8796b4) },
+        uColour: { value: new THREE.Color(0x6f7f9e) },
       },
       transparent: true,
       depthWrite: false,
@@ -269,8 +269,6 @@ export class FootprintLayer {
     if (playDt > 0) this.now += ((playDt * Math.max(0, gameSpeed)) / SECONDS_PER_DAY_1X) * (1 + 6 * this.snowfall);
     const b = this.buffer;
     const { look, fields } = this.ground();
-    const W = this.heights.width;
-    const H = this.heights.height;
     for (const t of tracks) {
       let st = this.steps.get(t);
       if (!st) {
@@ -287,44 +285,73 @@ export class FootprintLayer {
         st.y = t.y;
         continue;
       }
-      if (t.anim !== EntityAnim.Walk && t.anim !== EntityAnim.Run && t.anim !== EntityAnim.Carry) continue;
       const style = printStyle(t.kind, t.variant);
-      if (!style || d2 < style.stride * style.stride) continue;
-      st.x = t.x;
-      st.y = t.y;
-      st.left = !st.left;
-      const cx = Math.round(t.x);
-      const cy = Math.round(t.y);
-      if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
-      const ci = cy * W + cx;
-      if (look[ci * 4 + 3]! < SNOW_MIN) continue;
-      if (fields && fields[ci * 4] === LANDUSE_PATH) continue;
-      if (this.heights.depthAt(t.x, t.y) > 0.01) continue;
-      // Step sideways from the line of walking (left/right foot).
+      if (!style || (t.anim !== EntityAnim.Walk && t.anim !== EntityAnim.Run && t.anim !== EntityAnim.Carry)) {
+        // Standing, working or sitting: no trail from here.
+        st.x = t.x;
+        st.y = t.y;
+        continue;
+      }
+      if (d2 < style.stride * style.stride) continue;
+      // One print per stride along the way (a slow frame may cover several).
       const len = Math.sqrt(d2);
-      const nx = -dy / len;
-      const ny = dx / len;
-      const off = st.left ? style.side : -style.side;
-      const px = t.x + nx * off;
-      const py = t.y + ny * off;
-      const yaw = Math.atan2(dx, dy);
-      const i = b.spawn(px, py, yaw, style.kind, style.size, this.now);
-      const pa = this.aPrint.array as Float32Array;
-      pa[i * 4] = px;
-      pa[i * 4 + 1] = heightToY(this.heights.terrainAt(px, py)) + 0.012;
-      pa[i * 4 + 2] = py;
-      pa[i * 4 + 3] = yaw;
-      const ma = this.aMeta.array as Float32Array;
-      ma[i * 4] = this.now;
-      ma[i * 4 + 1] = style.kind;
-      ma[i * 4 + 2] = style.size * 2;
-      if (i < this.dirtyLo) this.dirtyLo = i;
-      if (i > this.dirtyHi) this.dirtyHi = i;
+      const ux = dx / len;
+      const uy = dy / len;
+      const n = Math.min(4, Math.floor(len / style.stride));
+      for (let k = 1; k <= n; k++) {
+        st.left = !st.left;
+        this.lay(st.x + ux * style.stride * k, st.y + uy * style.stride * k, ux, uy, st.left, style, look, fields);
+      }
+      if (n < 4) {
+        st.x += ux * style.stride * n;
+        st.y += uy * style.stride * n;
+      } else {
+        st.x = t.x;
+        st.y = t.y;
+      }
     }
     this.flush();
     this.material.uniforms.uNow!.value = this.now;
     this.geometry.instanceCount = b.count;
     this.mesh.visible = b.count > 0 && this.anyLive();
+  }
+
+  /** Lay one print at (x, y) walking along (ux, uy), if the ground there is snowy open land. */
+  private lay(
+    x: number,
+    y: number,
+    ux: number,
+    uy: number,
+    left: boolean,
+    style: NonNullable<ReturnType<typeof printStyle>>,
+    look: Uint8Array,
+    fields: Uint8Array | null,
+  ): void {
+    const W = this.heights.width;
+    const cx = Math.round(x);
+    const cy = Math.round(y);
+    if (cx < 0 || cy < 0 || cx >= W || cy >= this.heights.height) return;
+    const ci = cy * W + cx;
+    if (look[ci * 4 + 3]! < SNOW_MIN) return;
+    if (fields && fields[ci * 4] === LANDUSE_PATH) return;
+    if (this.heights.depthAt(x, y) > 0.01) return;
+    // Step sideways from the line of walking (left/right foot).
+    const off = left ? style.side : -style.side;
+    const px = x - uy * off;
+    const py = y + ux * off;
+    const yaw = Math.atan2(ux, uy);
+    const i = this.buffer.spawn(px, py, yaw, style.kind, style.size, this.now);
+    const pa = this.aPrint.array as Float32Array;
+    pa[i * 4] = px;
+    pa[i * 4 + 1] = heightToY(this.heights.terrainAt(px, py)) + 0.012;
+    pa[i * 4 + 2] = py;
+    pa[i * 4 + 3] = yaw;
+    const ma = this.aMeta.array as Float32Array;
+    ma[i * 4] = this.now;
+    ma[i * 4 + 1] = style.kind;
+    ma[i * 4 + 2] = style.size * 2;
+    if (i < this.dirtyLo) this.dirtyLo = i;
+    if (i > this.dirtyHi) this.dirtyHi = i;
   }
 
   /** Some print is still visible on the fade clock (the newest fades last). */
