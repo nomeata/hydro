@@ -59,36 +59,36 @@ export const ECONOMY = {
    * before the harvest day, and the village does not fill up with
    * families it cannot feed through the winter).
    */
-  growHorizon: 40,
+  growHorizon: 50,
   hamlet: 15,
   /**
-   * Year-round growth on spare food and land (round 5, GAMEPLAY §4.6):
-   * besides the store's window after the harvest, families come whenever the
-   * store comfortably lasts to the harvest (food security ≥ `spareStore`),
-   * the year ahead feeds the village (`outlook` ≥ `spareFed`: last year's
-   * food, the fields' share scaled by what they promise now against a year
-   * ago, so new or newly watered fields count at once) and either the
-   * outlook is above the need by more than `spareMargin` (spare food) or good
-   * land within reach is left unfarmed for want of hands (spare land: what it
-   * would yield, `SettlementState.spareLand`). The arrival rate scales with
-   * the families the surplus would feed (`spareFamily` person-days a year
-   * each), full from `spareFamilies`. `spareGrowth` 0 turns it off.
+   * Year-round growth (round 5, GAMEPLAY §4.6): besides the store's window
+   * after the harvest, while crops stand in the fields families come when
+   * the store and the harvest the fields promise (`SettlementState.standing`)
+   * would feed the village to the harvest after next with `spareAhead` to
+   * spare (spoilage eats ~10 % of a year's store): spare food; or, while that
+   * food just lasts, when good land within reach is left unfarmed for want of
+   * hands (spare land: what it would yield, `spareLand`). The arrival rate
+   * scales with the families the spare food and land would feed
+   * (`spareFamily` person-days a year each), full from `spareFamilies`. So
+   * water that saves a dry crop, or new fields, show within the season.
+   * `spareGrowth` 0 turns it off.
    */
   spareGrowth: 1,
-  spareStore: 0.6,
-  spareFed: 1,
-  spareMargin: 0.3,
+  spareAhead: 1.1,
+  spareStore: 1,
   spareFamilies: 2,
   spareFamily: 4 * 48,
-  /** The promise's gain over a year ago is believed within this range. */
-  promiseGain: [0.6, 1.6] as readonly number[],
   /**
-   * ...and shrinks gently when the land no longer feeds it: while the store
-   * won't last to the harvest and last year's food was below this share of
-   * the need, a family leaves now and then (`shrinkRate` per household a
+   * ...and shrinks gently when the land no longer feeds it: while store and
+   * standing crops fall below `shrinkBelow` of the need to the harvest
+   * after next, a family leaves now and then (`shrinkRate` per household a
    * day per unit of the shortfall) before hunger sets in.
    */
-  shrinkBelow: 0.9,
+  /** The first guess at how a promise comes true (round 5: spring moisture promises ~1.3× the harvest), and its range. */
+  promiseBias: 0.75,
+  promiseBiasRange: [0.4, 1.5] as readonly number[],
+  shrinkBelow: 0.85,
   shrinkRate: 0.05,
   /**
    * The recovery floor (no failure; GAMEPLAY §4.2): families leave a village
@@ -191,26 +191,20 @@ export interface SettlementState {
   /** Day from which another family may camp (after one moved on). */
   campAgain?: number;
   /**
-   * Food brought in since yesterday's day() and per day of the last year
-   * (index: day of year; round 5's year-round growth judges the surplus by
-   * it), and how many days of it are filled (absent in old saves: none).
+   * The harvest the standing crops promise (person-days; 0 outside the
+   * growing seasons), and what the good land still unclaimed within reach
+   * would yield in a year (village.ts manageFields, daily).
    */
-  booked?: number;
-  yieldLog?: number[];
-  /** The same for food that does not come from the fields (fish, milk). */
-  bookedOther?: number;
-  otherLog?: number[];
-  logDays?: number;
-  /**
-   * The food the village's fields promise in a year (person-days, from their
-   * soil and moisture today), and what the good land still unclaimed within
-   * reach would add (village.ts manageFields, daily).
-   */
-  promise?: number;
+  standing?: number;
   spareLand?: number;
-  /** The fields' promise per day of the last year, and today's against a year ago (Settlement.day). */
-  promiseLog?: number[];
-  promiseGain?: number;
+  /**
+   * How the standing crops' promise came true: last harvests against what the
+   * crops promised through the growing days (EMA), and this year's sums for it.
+   */
+  promiseBias?: number;
+  promisedSum?: number;
+  promisedDays?: number;
+  harvested?: number;
 }
 
 /**
@@ -321,10 +315,9 @@ export class Settlement {
    * delivery never shrinks the stock: the founders' provisions are more than a
    * hamlet's store holds, and the first sack of fish used to throw them away).
    */
-  bookFood(amount: number, fromFields = true): void {
+  bookFood(amount: number): void {
     const s = this.state;
-    s.booked = (s.booked ?? 0) + amount;
-    if (!fromFields) s.bookedOther = (s.bookedOther ?? 0) + amount;
+    s.harvested = (s.harvested ?? 0) + amount;
     s.food = Math.max(s.food, Math.min(this.storageCap, s.food + amount));
   }
 
@@ -351,76 +344,31 @@ export class Settlement {
     return this.foodSecurity(dayOfYear, this.state.population < ECONOMY.hamlet ? 0 : ECONOMY.growHorizon);
   }
 
-  /** Food brought in over the last year against a year's need (NaN until a year is logged). */
-  produced(): number {
+  /**
+   * Store and standing crops against the need to the harvest after next (NaN
+   * outside the growing seasons, when nothing stands in the fields).
+   */
+  ahead(dayOfYear: number): number {
     const s = this.state;
-    if ((s.logDays ?? 0) < DAYS_PER_YEAR || s.population <= 0) return NaN;
-    let sum = 0;
-    for (const v of s.yieldLog!) sum += v;
-    return sum / (s.population * ECONOMY.consumption * DAYS_PER_YEAR);
-  }
-
-  /** What the fields promise in a year against a year's need (NaN before the first planning). */
-  promised(): number {
-    const s = this.state;
-    if (s.promise === undefined || s.population <= 0) return NaN;
-    return s.promise / (s.population * ECONOMY.consumption * DAYS_PER_YEAR);
+    if (!s.standing || s.population <= 0) return NaN;
+    return (s.food + s.standing * (s.promiseBias ?? ECONOMY.promiseBias)) / (s.population * ECONOMY.consumption * (this.daysToHarvest(dayOfYear) + DAYS_PER_YEAR + 6));
   }
 
   /**
    * How strongly the village draws families now, 0..1 (0: it cannot feed
    * more): 1 in the store's window after the harvest (`growSecurity`), else,
-   * year-round, by the spare food and good land (round 5).
+   * while crops stand, by the spare food and good land (round 5).
    */
   growth(dayOfYear: number): number {
     const E = ECONOMY;
     const s = this.state;
     if (this.growSecurity(dayOfYear) >= E.growFood) return 1;
-    if (!E.spareGrowth || this.foodSecurity(dayOfYear) < E.spareStore) return 0;
-    const out = this.outlook();
-    if (out < E.spareFed) return 0;
-    const need = s.population * E.consumption * DAYS_PER_YEAR;
-    // Spare food is judged once the harvest is in (while it comes in, last year's sacks and
-    // this year's are both in the log).
-    const foodFam = Number.isNaN(out) || this.harvesting(dayOfYear) ? 0 : (Math.max(0, out - 1 - E.spareMargin) * need) / E.spareFamily;
+    const a = this.ahead(dayOfYear);
+    if (!E.spareGrowth || !(a >= 1) || this.foodSecurity(dayOfYear) < E.spareStore) return 0;
+    const need = s.population * E.consumption * (this.daysToHarvest(dayOfYear) + DAYS_PER_YEAR + 6);
+    const foodFam = (Math.max(0, a - E.spareAhead) * need) / E.spareFamily;
     const landFam = (s.spareLand ?? 0) / E.spareFamily;
     return Math.min(1, (foodFam + landFam) / E.spareFamilies);
-  }
-
-  /** Sacks came in from the fields in the last few days. */
-  harvesting(dayOfYear: number): boolean {
-    const s = this.state;
-    if (!s.yieldLog) return false;
-    for (let k = 0; k < 4; k++) {
-      const d = (dayOfYear - k + DAYS_PER_YEAR) % DAYS_PER_YEAR;
-      if (s.yieldLog[d]! - (s.otherLog?.[d] ?? 0) > 0.5) return true;
-    }
-    return false;
-  }
-
-  /**
-   * The year ahead against a year's need (NaN until a year is logged): last
-   * year's catch, and last year's harvest scaled by what the fields promise
-   * now against a year ago (more fields, or fields a canal waters, count at
-   * once; the promise itself swings with the season and the soil, so only
-   * its change is used).
-   */
-  outlook(): number {
-    const p = this.produced();
-    if (Number.isNaN(p)) return p;
-    const other = this.catchShare();
-    const [lo, hi] = ECONOMY.promiseGain;
-    const gain = Math.max(lo!, Math.min(hi!, this.state.promiseGain ?? 1));
-    return other + (p - other) * gain;
-  }
-
-  /** Last year's food that did not come from the fields (fish, milk) against a year's need. */
-  catchShare(): number {
-    const s = this.state;
-    if (!s.otherLog || s.population <= 0) return 0;
-    let sum = 0;
-    for (const v of s.otherLog) sum += v;
-    return sum / (s.population * ECONOMY.consumption * DAYS_PER_YEAR);
   }
 
   /** Advance one game day. */
@@ -428,18 +376,20 @@ export class Settlement {
     const s = this.state;
     const ev: DayEvents = { arrived: 0, left: 0, born: 0, died: 0 };
 
-    // Last year's harvest and catch, day by day.
-    const log = (s.yieldLog ??= new Array<number>(DAYS_PER_YEAR).fill(0));
-    log[dayOfYear % DAYS_PER_YEAR] = s.booked ?? 0;
-    s.booked = 0;
-    const other = (s.otherLog ??= new Array<number>(DAYS_PER_YEAR).fill(0));
-    other[dayOfYear % DAYS_PER_YEAR] = s.bookedOther ?? 0;
-    s.bookedOther = 0;
-    s.logDays = Math.min(DAYS_PER_YEAR, (s.logDays ?? 0) + 1);
-    const pl = (s.promiseLog ??= new Array<number>(DAYS_PER_YEAR).fill(0));
-    const ago = pl[dayOfYear % DAYS_PER_YEAR]!;
-    s.promiseGain = ago > 0 && s.promise !== undefined ? s.promise / ago : 1;
-    pl[dayOfYear % DAYS_PER_YEAR] = s.promise ?? 0;
+    // Learn how the crops' promise comes true: the food brought in from the end of spring
+    // (harvest and catch) against the promise over the growing days.
+    if (dayOfYear === DAYS_PER_SEASON - 1) s.harvested = 0;
+    if (dayOfYear < 2 * DAYS_PER_SEASON && s.standing) {
+      s.promisedSum = (s.promisedSum ?? 0) + s.standing;
+      s.promisedDays = (s.promisedDays ?? 0) + 1;
+    }
+    if (dayOfYear === DAYS_PER_YEAR - 1 && (s.promisedDays ?? 0) > 4) {
+      const [lo, hi] = ECONOMY.promiseBiasRange;
+      const bias = Math.max(lo!, Math.min(hi!, (s.harvested ?? 0) / (s.promisedSum! / s.promisedDays!)));
+      s.promiseBias = 0.5 * (s.promiseBias ?? ECONOMY.promiseBias) + 0.5 * bias;
+      s.promisedSum = 0;
+      s.promisedDays = 0;
+    }
 
     // Eat and spoil.
     const need = s.population * ECONOMY.consumption;
@@ -499,8 +449,8 @@ export class Settlement {
       }
     }
     const households = Math.ceil(s.population / ECONOMY.houseCapacity);
-    const out = this.outlook();
-    const short = !Number.isNaN(out) && this.foodSecurity(dayOfYear) < 1 ? Math.max(0, ECONOMY.shrinkBelow - out) : 0;
+    const a = this.ahead(dayOfYear);
+    const short = a < ECONOMY.shrinkBelow ? ECONOMY.shrinkBelow - a : 0;
     const pLeave = (ECONOMY.departureRate * Math.max(0, ECONOMY.leaveBelow - s.wellbeing) + ECONOMY.shrinkRate * short) * households;
     if (s.population > ECONOMY.stayers && rng.next() < pLeave) {
       const n = Math.min(s.population - ECONOMY.stayers, rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));

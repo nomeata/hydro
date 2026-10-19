@@ -78,27 +78,30 @@ describe('growth limits', () => {
     for (const l of ['open', 'food', 'wellbeing'] as const) expect(campsFor(l, 0.9, 0.6)).toBe(false);
   });
 
-  it('draws families year-round on spare good land while the store lasts (round 5)', () => {
+  it('draws families while crops stand, on spare food or spare good land (round 5)', () => {
     const s = new Settlement(0, 10, 10, 20, 0);
     const doy = 10; // spring: the harvest (day 29) is 19 days off
-    const need = (days: number) => 20 * days;
-    s.state.food = need(s.daysToHarvest(doy) + 6) * 1.4; // lasts to the harvest, but not 46 days
+    const need = 20 * (s.daysToHarvest(doy) + 48 + 6);
+    s.state.food = 20 * 30; // lasts to the harvest, but not the growth horizon: no window
+    s.state.promiseBias = 1;
     expect(s.growSecurity(doy)).toBeLessThan(ECONOMY.growFood);
-    expect(s.growth(doy)).toBe(0); // no spare land
+    expect(s.growth(doy)).toBe(0); // nothing stands in the fields
+    // The crops promise just enough: no spare food, and no spare land.
+    s.state.standing = need - s.state.food;
+    expect(s.ahead(doy)).toBeCloseTo(1);
+    expect(s.growth(doy)).toBe(0);
+    // ...with spare good land: families come.
     s.state.spareLand = ECONOMY.spareFamily * ECONOMY.spareFamilies;
     expect(s.growth(doy)).toBe(1);
     s.state.spareLand = ECONOMY.spareFamily;
     expect(s.growth(doy)).toBeCloseTo(1 / ECONOMY.spareFamilies);
-    // The store would not last comfortably: no.
-    s.state.food = need(s.daysToHarvest(doy) + 6) * 0.5;
+    // A poor harvest ahead: not even on spare land.
+    s.state.standing = 0.8 * need - s.state.food;
     expect(s.growth(doy)).toBe(0);
-    // A village that did not feed itself last year: no.
-    s.state.food = need(s.daysToHarvest(doy) + 6) * 1.4;
-    s.state.yieldLog = new Array<number>(48).fill(0);
-    s.state.yieldLog[30] = 20 * 48 * 0.8;
-    s.state.logDays = 48;
-    expect(s.outlook()).toBeCloseTo(0.8);
-    expect(s.growth(doy)).toBe(0);
+    // A rich one: spare food alone draws them.
+    delete s.state.spareLand;
+    s.state.standing = (ECONOMY.spareAhead + 0.2) * need - s.state.food;
+    expect(s.growth(doy)).toBeCloseTo(Math.min(1, (0.2 * need) / ECONOMY.spareFamily / ECONOMY.spareFamilies));
   });
 
   it('judges each village daily', () => {

@@ -680,7 +680,8 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
   if (!commands.length) return null;
   let cmds = commands;
   let e = earthOf(sim, cmds);
-  // Over budget: keep the pieces nearest the village.
+  // Over budget: keep the pieces nearest the village (a ring open at one end protects nothing).
+  if (e > earth && best.band < 0) return null;
   if (e > earth) {
     const d = (c: Command) => (c.type === 'shapeLine' ? Math.min(...c.points.map((p) => Math.hypot(p[0] - x, p[1] - y))) : 0);
     cmds = [...commands].sort((p, q) => d(p) - d(q));

@@ -582,7 +582,23 @@ village with `?stats=1` as `limit`):
 | `food` | the store won't last though good land is left: yields too poor for a surplus (dry or tired fields) or a lean season | the dry-fields idea in summer; sacks by the store run low | water for the fields, fish |
 | `wellbeing` | fed, but not attractive (water access, safety, housing) | mood props (no smoke, idle people) | a well, keeping floods off |
 | `room` | fed and attractive, a house is wanted but no site is left | **newcomers camp** at the edge; the idea "no room left for houses" | level dry ground beside the village (Even), keep a flood plain dry |
-| `building` / `open` | a house is going up / waits for a family | builders at work; a family walking in | — |
+| `building` / `open` | a house is going up / waits for a family | builders at work, a family camping for it (round 5); a family walking in | — |
+
+**Year-round growth (round 5).** Besides the store's window after the
+harvest, a village draws families on any day when (`Settlement.growth`):
+the store is not running out (food security ≥ `spareStore` 0.6), the year
+ahead feeds it (`outlook` ≥ 1: last year's harvest and catch from a
+48-day log, the harvest part scaled by what the fields promise today —
+soil, fertility, moisture — against the same day a year ago, so fields a
+canal waters or newly claimed fields count at once) and there is a
+surplus: spare food (outlook above 1.3) or spare good land (good land
+within reach left unfarmed for want of hands, valued at what it would
+yield). The arrival rate scales with the families that surplus would
+feed (full from two). Newcomers camp at the edge while their house goes
+up (`building` now camps too), so a canal that adds good land shows first
+as a tent and cart, then a house. When the land no longer feeds the
+village (outlook below 0.9 and the store not lasting), a family leaves
+now and then (`shrinkRate`) before hunger sets in.
 
 Why prosperity can read 90 % while the village stands still: prosperity
 is the wellbeing, whose food part only asks whether the store lasts **to

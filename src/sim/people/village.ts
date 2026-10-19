@@ -2175,16 +2175,23 @@ export class PeopleSystem {
       for (let k = 0; k < n; k++) claim(marginal[k]![1], marginal[k]![2]);
     }
     this.goodLeft.set(st.id, good.length - nGood);
-    // What the fields promise in a year, and what the good land left would add (round 5: growth
-    // on a surplus, year-round). Water standing on a field in spring is gone by sowing, so the
-    // promise counts the soil's moisture, not today's puddle.
-    const promiseOf = (i: number, kind: FieldCrop) =>
-      FARMING.yield * Math.max(0.2, w.fertility[i]!) * kindYield(kind) * (kind === FieldCrop.Paddy ? 1 : kindGrowth(kind, this.fieldMoisture[i]!, 0));
-    let promise = 0;
-    for (const i of this.fieldsOf(s)) promise += promiseOf(i, this.fieldCrop[i] as FieldCrop);
-    st.promise = promise;
+    // The harvest the standing crops promise, and what the good land left would yield (round 5:
+    // year-round growth on spare food and land).
+    const left = Math.max(0, 2 * DAYS_PER_SEASON - doy);
+    let standing = 0;
+    if (growing)
+      for (const i of this.fieldsOf(s)) {
+        const kind = this.fieldCrop[i] as FieldCrop;
+        const c = w.crop[i]! || (canSow ? 8 : 0);
+        if (!c) continue;
+        const f = w.water[i]! > drownDepth(kind) ? 0 : kindGrowth(kind, this.fieldMoisture[i]!, w.water[i]!);
+        const ripe = Math.min(255, c + FARMING.growPerDay * f * left);
+        if (ripe >= FARMING.lateHarvest) standing += FARMING.yield * Math.max(0.2, w.fertility[i]!) * (ripe / 255) * kindYield(kind);
+      }
+    st.standing = standing;
     let spare = 0;
-    for (let k = nGood; k < Math.min(good.length, nGood + SPARE_LAND_CELLS); k++) spare += promiseOf(good[k]![1], FieldCrop.Common);
+    for (let k = nGood; k < Math.min(good.length, nGood + SPARE_LAND_CELLS); k++)
+      spare += FARMING.yield * Math.max(0.2, w.fertility[good[k]![1]]!) * cropGrowth(this.fieldMoisture[good[k]![1]]!);
     st.spareLand = spare;
     // Surplus: good land left over for want of hands; the best few plots are pegged out.
     const pegs = common + nGood >= want ? good.slice(nGood, nGood + PEGS.max).map((c) => c[1]) : [];
@@ -2521,7 +2528,7 @@ export class PeopleSystem {
       }
       case SiteKind.Deliver:
         if (s && a.carry === CarryKind.Log) s.state.wood = Math.min(ECONOMY.woodMax, (s.state.wood ?? 0) + 1);
-        else if (s && a.load > 0) s.bookFood(a.load, a.carry === CarryKind.Sack);
+        else if (s && a.load > 0) s.bookFood(a.load);
         a.load = 0;
         a.carry = CarryKind.None;
         break;
