@@ -798,3 +798,26 @@ near the start) as a 25 % variant: two regimes, one of them flashier.
     and 3 millet covers 5–25 % of the fields from the first summer on,
     paddies appear by the river on seed 1 (10–20 cells), pegs while a
     village has fewer hands than land (after departures, on new villages).
+14. ☑ **Playtest round 3** (docs/PLAYTEST.md, "Round 3"). *As built
+    (October 2026):*
+    - **Canal and ditch water wets 8 cells** (`CAPILLARY.canalReach`; rivers
+      2.5): full growth within ~4.4 cells of a canal's water, so a canal
+      waters more than its banks take.
+    - **Recovery floor of eight** (`ECONOMY.stayers`): families leave only
+      above it; at or below it hunger kills nobody and births do not wait
+      for a full store. A hungry village (food security < 0.5) may sow
+      hardy crops on as many plots as it has ordinary fields.
+    - **After a flood** a village with fewer than half the fields its
+      farmers can work claims 30 cells a day (else 10): the land is ready
+      once the water is gone (the seed-1 crash of the review).
+    - **Mills** take grain only while the miller keeps up (72 waiting);
+      else the sacks go to the store.
+    - **People** run only from water 0.25 m deeper than they wade, never on
+      a footbridge's deck, and take no diagonal step past deep water.
+    - **Founders bring 500 days of food**: the weir (15) unlocks after
+      13–17 minutes at 1×.
+    - Measured: dry seeds gain most from the player's water (a wheel's
+      canal +73–112 % population in four years on seeds 6 and 8); on wet
+      fertile seeds watering land delays the founding of a second village
+      (main's land-limited founding rule), so the good player is better on
+      prosperity there but not on population. Steep seeds hold 8–11.

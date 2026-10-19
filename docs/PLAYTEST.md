@@ -504,3 +504,88 @@ channel), both raised by the sim; surfacing them in the HUD is fixhud's.
   watered.
 - **Founders bring 500 days of food** (`FOUNDING.startFood`, was 400): the
   weir unlock (15) comes at day 27–35 (13–17 min at 1×).
+
+### Hands-off, main (acb8a53, with the growth limiter and camping) → round 3
+
+`--seeds 1..8 --years 4`, 128²; population at the end of years 1–4,
+prosperity over year 4, lowest prosperity after year 1, days to 15 / 30.
+
+| seed | population | prosp. % | lowest % | day 15 / 30 |
+|---|---|---|---|---|
+| 1 | 15/29/36/35 → 17/28/37/37 | 91 → 92 | 81 → 55 | 32/122 → 28/127 |
+| 2 | 13/34/60/77 → 19/40/60/81 | 90 → 97 | 71 → 92 | 71/84 → 32/87 |
+| 3 | 18/28/44/63 → 17/39/58/98 | 88 → 91 | 77 → 80 | 35/124 → 35/83 |
+| 4 | 20/39/62/78 → 25/46/57/72 | 95 → 96 | 71 → 90 | 29/88 → 28/81 |
+| 5 | 19/27/30/27 → 19/24/32/30 | 90 → 87 | 71 → 77 | 31/123 → 28/126 |
+| 6 | 14/24/31/33 → 21/32/32/30 | 96 → 96 | 70 → 86 | 79/135 → 30/82 |
+| 7 | 8/8/5/5 → 11/11/9/9 | 89 → 42 | 17 → 11 | –/– → –/– |
+| 8 | 9/9/9/4 → 10/9/11/8 | 47 → 57 | 12 → 20 | –/– → –/– |
+
+- **Weir unlock** at day 28–35 on every seed with a river (13–17 min at 1×;
+  main 29–79), the gate at day 81–127 (40–64 min) hands-off.
+- **Steep seeds 7 and 8 stay at 8–11** (main: 4–5), hungry
+  (prosperity 42–57 %): the floor, not the land, holds them.
+- **Year 3 is above 15–40 on the fertile river seeds 2–4** (57–60), as on
+  main (44–62): main's founding rule (land-limited villages of 30 count as
+  crowded) founds the second village in year 2. Not changed here (it is
+  the growth branch's rule); lowering yields to pull it down delayed the
+  weir unlock to day 77 (yield 8.5) and left prosperity at 99 %.
+
+### Agency (`--bots good,weircanal,wheel,dike,drain,undo`, 4 years, budget 6000 m³)
+
+Population at the end of years 1–4 (prosperity over year 4); last column
+the mean of the per-seed differences at year 4.
+
+| bot | s1 | s2 | s3 | s4 | s5 | s6 | s7 | s8 | mean Δ |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline | 17/28/37/37 (92%) | 19/40/60/81 (97%) | 17/39/58/98 (91%) | 25/46/57/72 (96%) | 19/24/32/30 (87%) | 21/32/32/30 (96%) | 11/11/9/9 (42%) | 10/9/11/8 (57%) | |
+| good | 14/24/34/32 (92%) | 19/35/57/80 (95%) | 15/37/59/91 (95%) | 21/38/53/67 (96%) | 16/26/31/31 (89%) | 22/29/49/54 (100%) | 11/11/8/9 (61%) | 9/12/11/13 (85%) | +15 % |
+| weircanal | 17/28/37/37 (92%) | 19/24/45/62 (92%) | 17/43/58/94 (91%) | 25/37/63/85 (94%) | 19/31/30/29 (87%) | 21/38/52/61 (100%) | = | = | +11 % |
+| wheel | 17/26/37/34 (95%) | 17/42/71/86 (89%) | 15/37/58/98 (93%) | 20/45/64/89 (94%) | 19/26/31/31 (84%) | 21/29/42/52 (100%) | 11/10/8/7 (59%) | 9/13/17/17 (79%) | +24 % |
+| drain | = | 19/51/73/88 (86%) | 20/37/61/95 (91%) | 21/38/62/78 (96%) | 19/26/30/28 (88%) | 22/32/46/44 (90%) | 11/10/8/8 (51%) | 9/9/9/9 (74%) | +7 % |
+| dike | 17/28/37/36 (79%) | 19/40/60/72 (97%) | 17/39/50/76 (90%) | = | = | = | = | = | −5 % |
+| undo | 6/7/15/20 (77%) | 9/8/17/24 (82%) | 11/8/13/25 (99%) | 11/8/14/41 (98%) | 9/8/13/18 (78%) | 9/8/12/24 (84%) | 11/11/11/8 (35%) | 10/10/11/13 (87%) | −30 % |
+
+(= : the bot found nothing to do; the run equals the baseline.)
+
+- **The dry seeds respond:** seed 6 (64 mm/yr) +73–80 % with the wheel or
+  the good player's contour canal + drain + weir, seed 8 +62–112 % (13–17
+  against 8) and its prosperity 57 → 79–85 %, seed 4 +18–24 % with the
+  weir or wheel canal. Seed 1 (a brook, a floodplain so flat that any weir
+  drowns 70+ fields) has no good site: the bots do nothing or little.
+- **The wheel is the strongest single tool** (+24 % mean; built from the
+  start here, it unlocks at 50): its short canal starts at the head, high
+  on the bank, so its water stands at field level and the villagers dig
+  ditches off it. The weir + canal (+11 %) needs a weir far upstream for
+  head and its canal crosses more land.
+- **The good player is best on the dry seeds (6, 8) and on prosperity**
+  (7 of 8 seeds ≥ baseline), but not best on average (+15 %) and below the
+  baseline on the wet fertile seeds 1–4 (−5 to −14 %): there the
+  baseline founds a second village in year 2 because the first one is
+  land-limited, and watering more land delays exactly that founding. The
+  +30 % target is met on the dry seeds 6 and 8, not across the board.
+- **Dike runs no longer lose people where nothing floods** (they act only
+  after flood memory; 5 of 8 seeds identical). Round 2's loss (−23 %) came
+  from dikes built on day 16 on every seed, 3 cells inside the water's
+  edge, on the best-watered floodplain fields, before anything flooded (and
+  from a run of older field rules); round 2's dike bot re-run on main at
+  the start of round 3 gave 68 / 52 against 64 / 55 (seeds 2, 4). Where
+  the new bot builds (5500–5900 m³ of bank on seeds 1–3) prosperity or
+  population is still 10–22 % lower in year 4: the banks take fields.
+- **Undo recovers:** the vandal's canal and dam leave 7–9 people in
+  year 2; filled back and drained, the villages grow again to 18–41 by
+  year 4 (round 2: stuck at 3–4 for three years), with prosperity
+  77–99 %.
+
+**256² check** (seeds 4 and 6, 3 years, population at year 3): seed 4
+baseline 66, good 70, wheel 59; seed 6 baseline 47, good 23, wheel 43 (the
+baseline founded a second village; the good player's did not). The 128²
+gains on the dry seeds do not carry over to the game's map size: with
+more land the baseline's second village comes sooner, and the founding
+effect above dominates.
+
+### Open
+Founding after irrigation (the good player loses the land-limited
+founding on fertile seeds: founding could also count a village of 30
+that has stopped growing for food); dikes on fields; hands-off year 3
+above 40 on fertile river seeds (main's founding rule).

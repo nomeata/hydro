@@ -89,7 +89,7 @@ Player feedback: more direct progress hits; keep it all positive
 - ☑ Achievements per world (docs/ACHIEVEMENTS.md): checked by the sim
   against a start-of-world baseline, saved; toasts, Achievements card in
   the menu, medals on the history chart
-- ☑ Playtest harness (docs/PLAYTEST.md; round 2 tuning: hunger, ditches, big freshets, dry second year): hands-off and bot runs over many
+- ☑ Playtest harness (docs/PLAYTEST.md; round 2 tuning: hunger, ditches, big freshets, dry second year; round 3: bots on graded canals with an earth budget, flee/mill fixes, recovery floor 8, canals wet 8 cells): hands-off and bot runs over many
   seeds, agency, variety and pacing in numbers; first findings for tuning
 
 ## M3¾ — Player agency ☐
