@@ -3,7 +3,8 @@
  * number of days and reports how connected the paths are, with an ASCII map
  * of the start village; optionally saves the game for tools/shot-paths.ts.
  *
- *   npx tsx tools/paths-run.ts [--seed 1] [--size 128] [--days 96] [--save out/paths.bin] [--map]
+ *   npx tsx tools/paths-run.ts [--seed 1] [--size 128] [--days 96] [--map]
+ *     [--save out/paths --save-at 114,140]   (out/paths-d114.bin + .json, … for tools/shot-paths.ts)
  */
 import { writeFileSync } from 'node:fs';
 import { STEPS_PER_DAY } from '../src/sim/constants';
@@ -20,18 +21,32 @@ const seed = Number(arg('seed', '1'));
 const size = Number(arg('size', '128'));
 const days = Number(arg('days', '96'));
 const save = arg('save', '');
+const saveAt = arg('save-at', String(days)).split(',').map(Number);
 const t0 = Date.now();
 const { sim } = newGame(seed, size);
 const w = sim.world;
 const st = sim.people!.settlements[0]!.state;
 const every = Math.max(1, Math.round(days / 8));
-for (let d = 0; d < days; d += every) {
-  sim.run(STEPS_PER_DAY * Math.min(every, days - d));
+const marks = [...new Set([...saveAt.filter((d) => d > 0 && d <= days), days])].sort((a, b) => a - b);
+let day = 0;
+const report = () => {
   const s = pathStats(w);
   console.log(
-    `day ${Math.min(days, d + every)}: ${s.cells} path cells in ${s.groups} groups, largest ${s.largest}, ` +
+    `day ${day}: ${s.cells} path cells in ${s.groups} groups, largest ${s.largest}, ` +
       `isolated ${s.small} (groups ≤ 3 cells), ${s.thick} thick (2×2 blocks); pop ${st.population} (${((Date.now() - t0) / 1000).toFixed(0)} s)`,
   );
+};
+for (const m of marks) {
+  while (day < m) {
+    const n = Math.min(every - (day % every), m - day);
+    sim.run(STEPS_PER_DAY * n);
+    day += n;
+    if (day % every === 0 || day === m) report();
+  }
+  if (save && saveAt.includes(m)) {
+    writeFileSync(`${save}-d${m}.bin`, new Uint8Array(await saveGame(sim, {})));
+    writeFileSync(`${save}-d${m}.json`, JSON.stringify({ seed, x: st.x, y: st.y, day: m, season: sim.time.season }));
+  }
 }
 if (process.argv.includes('--map')) {
   const R = 30;
@@ -45,8 +60,4 @@ if (process.argv.includes('--map')) {
     }
     console.log(line);
   }
-}
-if (save) {
-  writeFileSync(save, new Uint8Array(await saveGame(sim, {})));
-  writeFileSync(save.replace(/\.bin$/, '.json'), JSON.stringify({ seed, x: st.x, y: st.y, day: sim.step / STEPS_PER_DAY }));
 }

@@ -176,7 +176,8 @@ const FRAGMENT_COLOUR = /* glsl */ `
       vec3 grass = mix(uGrassDry, uGrassLush, smoothstep(0.1, 0.6, moist));
       grass = mix(grass, uForest, smoothstep(0.62, 0.9, veg));
       vec3 c = mix(base, grass, smoothstep(0.04, 0.26, veg));
-      // Fields (furrows, crops) and trampled earth around buildings.
+      // Fields (furrows, crops), desire paths and trampled earth around buildings.
+      gMoist = moist;
       c = fieldColour(c, vTerrWorld);
       // Moisture darkens (wet soil), a little less under vegetation.
       c *= mix(1.0, 0.68, moist * mix(1.0, 0.45, veg));
@@ -200,15 +201,16 @@ const FRAGMENT_COLOUR = /* glsl */ `
         vec2 nuv = vTerrWorld.xz;
         float snowN = texture(uNoise, nuv * 0.045).r * 0.6 + texture(uNoise, nuv * 0.19 + 0.31).b * 0.4;
         // Hoar frost on freezing days: pale, bluish grass in patches.
-        if (uFrost > 0.0) c = mix(c, vec3(0.80, 0.85, 0.88), uFrost * 0.55 * smoothstep(0.3, 0.75, snowN + 0.25 * veg));
+        // (Not on the desire paths: feet scuff it off.)
+        float pathP;
+        float trod = pathMask(vTerrWorld, pathP);
+        if (uFrost > 0.0) c = mix(c, vec3(0.80, 0.85, 0.88), uFrost * 0.55 * smoothstep(0.3, 0.75, snowN + 0.25 * veg) * (1.0 - 0.85 * trod));
         // Snow: soft-edged patches where it is thin (the noise decides which
         // ground shows first), less on steep slopes; white with a cool shade.
         cover = smoothstep(0.0, 0.18, snow - mix(0.12, 0.62, snowN) + 0.12) * (1.0 - 0.7 * smoothstep(0.9, 1.7, slope));
         vec3 snowCol = mix(uSnowShade, uSnow, smoothstep(0.35, 0.8, snowN + 0.3 * snow));
         // Desire paths through the snow: trodden, thinner, grey-brown slush
         // with darker wet ruts (the sim melts it faster too, soilwater.ts).
-        float pathP;
-        float trod = pathMask(vTerrWorld, pathP);
         if (trod > 0.0) {
           float rut = fieldNoise(nuv * 4.3 + 9.1) * 0.65 + fieldNoise(nuv * 11.0) * 0.35;
           cover = max(cover, smoothstep(0.0, 0.1, snow) * 0.9) * (1.0 - trod * 0.4 * smoothstep(0.45, 0.8, rut));
@@ -217,6 +219,9 @@ const FRAGMENT_COLOUR = /* glsl */ `
           vec3 slush = mix(vec3(0.29, 0.20, 0.12), vec3(0.56, 0.51, 0.45), smoothstep(0.3, 0.5, rut));
           slush *= mix(0.82, 1.06, fieldNoise(nuv * 23.0 + 3.7));
           slush = mix(slush, uSnowShade, smoothstep(0.75, 0.9, rut) * 0.55);
+          // Two darker wet tracks along a well-trodden way.
+          float lane = abs(gPathAcross) / max(gPathHalf, 0.05);
+          slush *= 1.0 - 0.3 * (1.0 - smoothstep(0.1, 0.25, abs(lane - 0.5))) * smoothstep(0.2, 0.8, gPathWear);
           snowCol = mix(snowCol, slush, trod * mix(0.7, 0.92, pathP));
         }
         c = mix(c, snowCol, cover);

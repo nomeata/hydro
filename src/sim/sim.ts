@@ -852,14 +852,18 @@ export class Simulation {
     return d;
   }
 
-  /** Pack land use, crop stage, crop stress and field crop (FIELD_BYTES per cell, see Snapshot.fields). */
+  /**
+   * Pack land use, crop stage, crop stress and field crop (FIELD_BYTES per
+   * cell, see Snapshot.fields). On desire paths the crop byte carries the
+   * footfall (traffic) instead, for the width and wear the terrain shader draws.
+   */
   packFields(out: Uint8Array): void {
-    const { landuse, crop, size } = this.world;
+    const { landuse, crop, traffic, size } = this.world;
     const p = this.people;
     const season = this.time.season;
     for (let i = 0; i < size; i++) {
       out[FIELD_BYTES * i] = landuse[i]!;
-      out[FIELD_BYTES * i + 1] = crop[i]!;
+      out[FIELD_BYTES * i + 1] = landuse[i] === LandUse.Path ? traffic[i]! : crop[i]!;
       out[FIELD_BYTES * i + 2] = p ? p.stressAt(i, season) : 0;
       out[FIELD_BYTES * i + 3] = p ? p.fieldCropAt(i) : 0;
     }

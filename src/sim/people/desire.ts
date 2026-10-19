@@ -106,6 +106,13 @@ export function updateDesirePaths(w: World): boolean {
     const t = traffic[i]!;
     if (t > 0) traffic[i] = t - Math.max(1, t >> shift);
   }
+  // Which pieces of path (with the yards and bridges they lead to) are already
+  // joined: a gap is closed only between different pieces, not into a loop.
+  const parent = pieces(w);
+  const find = (a: number): number => {
+    while (parent[a] !== a) a = parent[a] = parent[parent[a]!]!;
+    return a;
+  };
   for (let i = 0; i < w.size; i++) {
     const t = traffic[i]!;
     const lu = landuse[i]!;
@@ -114,7 +121,19 @@ export function updateDesirePaths(w: World): boolean {
       const x = i % W;
       const y = (i / W) | 0;
       const r = ring(w, x, y);
-      const groups = RING_GROUPS[r.path | r.ends]!;
+      const near = r.path | r.ends;
+      let groups = 0;
+      if (RING_GROUPS[near]! >= 2) {
+        let first = -1;
+        for (let k = 0; k < 8 && groups < 2; k++)
+          if (near & (1 << k)) {
+            const root = find((y + RY[k]!) * W + x + RX[k]!);
+            if (first < 0) {
+              first = root;
+              groups = 1;
+            } else if (root !== first) groups = 2;
+          }
+      }
       const pathGroups = RING_GROUPS[r.path]!;
       // A high-traffic cell starts a path; a fairly trodden one continues a path
       // end (one piece of path beside it, in line); any trodden one closes a gap.
@@ -125,6 +144,8 @@ export function updateDesirePaths(w: World): boolean {
       if (ok && !wouldThicken(w, x, y)) {
         landuse[i] = LandUse.Path;
         changed = true;
+        parent[i] = i;
+        for (let k = 0; k < 8; k++) if (near & (1 << k)) parent[find((y + RY[k]!) * W + x + RX[k]!)] = i;
       }
     } else if (lu === LandUse.Path) {
       if (t < DESIRE.off) {
@@ -151,6 +172,32 @@ export function updateDesirePaths(w: World): boolean {
     }
   }
   return changed;
+}
+
+let scratch: Int32Array | null = null;
+
+/** Union-find forest over path, yard, building and bridge cells (8-connected); -1 elsewhere. */
+function pieces(w: World): Int32Array {
+  if (!scratch || scratch.length !== w.size) scratch = new Int32Array(w.size);
+  const parent = scratch;
+  const { width: W, landuse } = w;
+  const joined = (lu: number) => lu === LandUse.Path || lu === LandUse.Building || lu === LandUse.Yard || lu === LandUse.Bridge;
+  const find = (a: number): number => {
+    while (parent[a] !== a) a = parent[a] = parent[parent[a]!]!;
+    return a;
+  };
+  for (let i = 0; i < w.size; i++) {
+    if (!joined(landuse[i]!)) {
+      parent[i] = -1;
+      continue;
+    }
+    parent[i] = i;
+    const x = i % W;
+    // Earlier neighbours: W, SW, S, SE (in index order, y − 1 is "S").
+    const prev = [x > 0 ? i - 1 : -1, x > 0 ? i - W - 1 : -1, i - W, x + 1 < W ? i - W + 1 : -1];
+    for (const j of prev) if (j >= 0 && parent[j]! >= 0) parent[find(j)] = find(i);
+  }
+  return parent;
 }
 
 function popcount(m: number): number {

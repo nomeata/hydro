@@ -134,38 +134,140 @@ vec2 stressAt(vec2 p) {
   return mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
 }
 
-float pathAt(ivec2 c) {
-  return abs(fieldAt(c).r - 4.0) < 0.5 ? 1.0 : 0.0;
+// Desire paths are drawn as bands along the lines between the centres of
+// neighbouring path cells (a path cell joins its path neighbours, and the
+// yards, buildings and bridges beside it), so a path reads as a continuous
+// way, not a chain of squares. The lookup point is gently displaced by
+// low-frequency noise, so straight runs wind a little and the corners of the
+// cell grid round off; the edge is noisy, and the width grows with the
+// footfall (fields texture G = traffic on path cells) and between houses.
+// Cached per fragment: fieldColour and the snow (terrain.ts) both ask.
+bool gPathDone = false;
+float gPathM = 0.0;
+float gPathP = 0.0;
+/** Traffic 0..1 of the nearest stretch of path. */
+float gPathWear = 0.0;
+/** Signed distance (cells) across the nearest stretch, from its centre line. */
+float gPathAcross = 0.0;
+/** Half-width (cells) of the nearest stretch. */
+float gPathHalf = 0.0;
+/** Soil moisture 0..1 under the fragment (set by the terrain shader before fieldColour): muddy paths. */
+float gMoist = 0.0;
+
+// 0: none, 1: path, 2: a way's end (building, yard, bridge). Traffic 0..1 in y.
+vec2 pathNode(ivec2 c) {
+  vec4 t = texelFetch(uFields, clamp(c, ivec2(0), ivec2(uGrid) - 1), 0) * 255.0;
+  int lu = int(t.r + 0.5);
+  if (lu == 4) return vec2(1.0, t.g / 255.0);
+  if (lu == 5 || lu == 6 || lu == 7) return vec2(2.0, 0.6);
+  return vec2(0.0);
 }
 
-// How much of a desire path covers this point (0..1): blended between cell
-// centres with a noisy, organic edge. Also tramples the snow (terrain.ts).
+// Distance from p to segment a-b; across: signed offset, t: 0..1 along.
+float segDist(vec2 p, vec2 a, vec2 b, out float across) {
+  vec2 ab = b - a;
+  vec2 ap = p - a;
+  float t = clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0);
+  vec2 d = ap - ab * t;
+  across = (ab.x * ap.y - ab.y * ap.x) / length(ab);
+  return length(d);
+}
+
+// How much of a desire path covers this point (0..1); p: 1 on the centre line, 0 at the edge.
 float pathMask(vec3 world, out float p) {
+  if (gPathDone) {
+    p = gPathP;
+    return gPathM;
+  }
+  gPathDone = true;
   p = 0.0;
   if (uFieldsOn < 0.5) return 0.0;
-  vec2 q = world.xz - 0.5;
-  ivec2 c = ivec2(floor(q));
-  vec2 f = fract(q);
-  float a = pathAt(c);
-  float b = pathAt(c + ivec2(1, 0));
-  float d = pathAt(c + ivec2(0, 1));
-  float e = pathAt(c + ivec2(1, 1));
-  if (a + b + d + e < 0.5) return 0.0;
-  f = f * f * (3.0 - 2.0 * f);
-  p = mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
-  float n = fieldNoise(world.xz * 2.1 + 7.3) * 0.6 + fieldNoise(world.xz * 6.5) * 0.4;
-  return smoothstep(0.32, 0.62, p + (n - 0.5) * 0.45);
+  vec2 wq = world.xz + (vec2(fieldNoise(world.xz * 0.31 + 11.0), fieldNoise(world.xz * 0.31 + 23.7)) - 0.5) * 0.6;
+  vec2 q = wq - 0.5;
+  ivec2 c = ivec2(floor(q + 0.5));
+  vec2 n[9];
+  bool any = false;
+  bool street = false;
+  for (int k = 0; k < 9; k++) {
+    n[k] = pathNode(c + ivec2(k % 3 - 1, k / 3 - 1));
+    any = any || n[k].x == 1.0;
+    street = street || n[k].x == 2.0;
+  }
+  if (!any) return 0.0;
+  vec2 o = vec2(c) - q;
+  float best = 9.0;
+  float across = 0.0;
+  float wear = 0.0;
+  float ac;
+  // Ends of the ways inside the window: dots at path cells (a lone cell, a
+  // dead end, or a joint whose other half lies outside the window).
+  for (int k = 0; k < 9; k++) {
+    if (n[k].x != 1.0) continue;
+    vec2 a = o + vec2(float(k % 3 - 1), float(k / 3 - 1));
+    float d = length(a);
+    if (d < best) { best = d; across = d; wear = n[k].y; }
+  }
+  // Segments between neighbours in the window (at least one end a path cell;
+  // a diagonal only where no path cell at its corners already joins the two).
+  for (int k = 0; k < 9; k++) {
+    int kx = k % 3;
+    int ky = k / 3;
+    if (n[k].x == 0.0) continue;
+    for (int e = 0; e < 4; e++) {
+      ivec2 dd = e == 0 ? ivec2(1, 0) : e == 1 ? ivec2(0, 1) : e == 2 ? ivec2(1, 1) : ivec2(-1, 1);
+      int mx = kx + dd.x;
+      int my = ky + dd.y;
+      if (mx < 0 || mx > 2 || my > 2) continue;
+      vec2 m = n[my * 3 + mx];
+      if (m.x == 0.0 || (m.x == 2.0 && n[k].x == 2.0)) continue;
+      if (e >= 2 && (n[ky * 3 + mx].x == 1.0 || n[my * 3 + kx].x == 1.0)) continue;
+      vec2 a = o + vec2(float(kx - 1), float(ky - 1));
+      float d = segDist(vec2(0.0), a, a + vec2(dd), ac);
+      if (d < best) {
+        best = d;
+        across = ac;
+        wear = max(n[k].x == 1.0 ? n[k].y : 0.0, m.x == 1.0 ? m.y : 0.0);
+      }
+    }
+  }
+  float edgeN = fieldNoise(world.xz * 1.9 + 7.3) * 0.75 + fieldNoise(world.xz * 4.3) * 0.25;
+  float half_ = (0.16 + 0.13 * smoothstep(0.25, 0.95, wear) + (street ? 0.07 : 0.0)) * (0.8 + 0.4 * edgeN);
+  float soft = 0.05 + 0.6 * length(fwidth(world.xz));
+  gPathWear = wear;
+  gPathAcross = across;
+  gPathHalf = half_;
+  gPathP = clamp(1.0 - best / half_, 0.0, 1.0);
+  gPathM = 1.0 - smoothstep(half_ - soft, half_ + soft, best);
+  p = gPathP;
+  return gPathM;
 }
 
-// Desire paths: trodden earth with a little grass still showing along the middle.
+// Desire paths: warm trodden earth, darker and rutted where many feet go,
+// a margin of flattened grass, tufts on little-used ways; muddy when wet.
 vec3 pathColour(vec3 ground, vec3 world) {
   float p;
   float m = pathMask(world, p);
+  if (gPathHalf <= 0.0) return ground;
+  // Flattened, paler grass in a margin along the edge.
+  float margin = (1.0 - smoothstep(gPathHalf, gPathHalf + 0.16, abs(gPathAcross))) * (1.0 - m);
+  ground = mix(ground, ground * vec3(1.06, 1.02, 0.84) + vec3(0.03, 0.025, 0.0), margin * 0.55);
   if (m <= 0.0) return ground;
-  vec3 earth = uPath * mix(0.9, 1.08, fieldNoise(world.xz * 4.7 + 1.9));
-  // Tufts of grass survive where fewer feet go.
-  float tuft = smoothstep(0.62, 0.8, fieldNoise(world.xz * 9.0 + 3.3)) * (1.0 - smoothstep(0.75, 1.0, p));
-  return mix(ground, earth, m * (0.92 - 0.6 * tuft));
+  float grain = fieldNoise(world.xz * 5.3 + 1.9);
+  vec3 earth = uPath * mix(0.88, 1.1, grain);
+  // Worn ways: a darker, packed centre with two ruts.
+  float wear = smoothstep(0.3, 1.0, gPathWear);
+  float a = abs(gPathAcross) / max(gPathHalf, 0.05);
+  float rut = (1.0 - smoothstep(0.08, 0.2, abs(a - 0.5))) * wear;
+  earth *= mix(1.0, 0.86, wear * p);
+  earth *= 1.0 - 0.22 * rut;
+  // Mud in the wet: dark, glossy, puddles in the ruts.
+  float wet = smoothstep(0.35, 0.75, gMoist);
+  earth = mix(earth, vec3(0.3, 0.21, 0.13) * mix(0.85, 1.1, grain), wet * 0.6);
+  float pud = wet * smoothstep(0.55, 0.75, rut + 0.5 * fieldNoise(world.xz * 3.3 + 5.1) - 0.2);
+  earth = mix(earth, vec3(0.4, 0.5, 0.56) * (0.9 + 0.1 * sin(uTime * 1.2 + world.x * 2.3)), pud * 0.7);
+  // Tufts of grass survive where fewer feet go (and along the middle of a little-used way).
+  float tuft = smoothstep(0.62, 0.8, fieldNoise(world.xz * 9.0 + 3.3)) * (1.0 - wear) * (0.4 + 0.6 * smoothstep(0.6, 0.9, p));
+  return mix(ground, earth, m * (0.95 - 0.55 * tuft));
 }
 
 // Pegged plot (good land staked out, not ploughed): the meadow a little trodden and
