@@ -189,7 +189,7 @@ export function updateDesirePaths(w: World): boolean {
       }
       // Straighten: a corner of a staircase is cut (its neighbours stay joined
       // corner to corner), and a tooth of a zigzag moves into the line.
-      if (n === 2 && r.ends === 0) {
+      if ((n === 2 || n === 3) && r.ends === 0) {
         const moved = straighten(w, x, y, r.path);
         if (moved !== -1) {
           changed = true;
@@ -224,9 +224,15 @@ export function updateDesirePaths(w: World): boolean {
   return changed;
 }
 
-/** Whether a ring mask is exactly two orthogonal neighbours a quarter turn apart (an L: the corner cell is not needed). */
+/**
+ * Whether a ring mask is a corner of a way: two orthogonal neighbours a
+ * quarter turn apart, no other orthogonal one, and any diagonal ones
+ * touching them. The corner cell is not needed: its neighbours stay joined
+ * corner to corner without it.
+ */
 function isCorner(m: number): boolean {
-  for (let k = 0; k < 8; k += 2) if (m === ((1 << k) | (1 << ((k + 2) & 7)))) return true;
+  const orth = m & 0x55;
+  for (let k = 0; k < 8; k += 2) if (orth === ((1 << k) | (1 << ((k + 2) & 7)))) return RING_GROUPS[m] === 1;
   return false;
 }
 

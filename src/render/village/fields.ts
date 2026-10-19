@@ -382,7 +382,7 @@ float pathMask(vec3 world, out float p) {
   gPathDone = true;
   p = 0.0;
   if (uFieldsOn < 0.5) return 0.0;
-  vec2 wq = world.xz + (vec2(fieldNoise(world.xz * 0.31 + 11.0), fieldNoise(world.xz * 0.31 + 23.7)) - 0.5) * 0.5;
+  vec2 wq = world.xz + (vec2(fieldNoise(world.xz * 0.31 + 11.0), fieldNoise(world.xz * 0.31 + 23.7)) - 0.5) * 0.4;
   // Cell (cx, cy) has its centre at q = (cx, cy).
   vec2 q = wq - 0.5;
   ivec2 c0 = ivec2(floor(q));

@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../../src/shared/rng';
 import { walk, type Walker } from '../../src/sim/people/agents';
-import { pathStats, updateDesirePaths } from '../../src/sim/people/desire';
+import { pathDuplicates, pathStats, updateDesirePaths } from '../../src/sim/people/desire';
 import { PathFinder } from '../../src/sim/people/path';
 import { LandUse, SOIL_PROPS, SoilType, World } from '../../src/sim/world';
 
@@ -78,6 +78,8 @@ describe('desire paths', () => {
     expect(s.largest).toBeGreaterThanOrEqual(0.8 * s.cells);
     expect(s.small).toBe(0);
     expect(s.thick).toBe(0);
+    // One way per direction: no parallel tracks, no short loops.
+    expect(pathDuplicates(w)).toEqual({ parallel: 0, loop: 0 });
     // The way to the well reaches it from the house's yard.
     const nearPath = (x: number, y: number) => {
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (w.landuse[w.idx(x + dx, y + dy)] === LandUse.Path) return true;
@@ -111,5 +113,72 @@ describe('desire paths', () => {
     expect(s.groups).toBe(1);
     for (let x = 3; x <= 20; x++) expect(w.landuse[w.idx(x, 11)]).toBe(LandUse.Path);
     expect(w.landuse[w.idx(10, 5)]).toBe(LandUse.None);
+  });
+
+  it('merge parallel tracks: the less trodden one gives way', () => {
+    const w = meadow(32);
+    for (let x = 4; x <= 26; x++) {
+      w.landuse[w.idx(x, 10)] = LandUse.Path;
+      w.traffic[w.idx(x, 10)] = 230;
+      w.landuse[w.idx(x, 12)] = LandUse.Path;
+      w.traffic[w.idx(x, 12)] = 140;
+    }
+    expect(pathDuplicates(w).parallel).toBeGreaterThan(30);
+    for (let d = 0; d < 6; d++) updateDesirePaths(w);
+    expect(pathDuplicates(w).parallel).toBe(0);
+    for (let x = 4; x <= 26; x++) expect(w.landuse[w.idx(x, 10)]).toBe(LandUse.Path);
+    let weak = 0;
+    for (let x = 4; x <= 26; x++) if (w.landuse[w.idx(x, 12)] === LandUse.Path) weak++;
+    expect(weak).toBeLessThan(6);
+  });
+
+  it('break short loops (a ladder loses its rungs) but stay connected', () => {
+    const w = meadow(32);
+    for (let x = 4; x <= 26; x++) {
+      w.landuse[w.idx(x, 10)] = LandUse.Path;
+      w.traffic[w.idx(x, 10)] = 230;
+    }
+    // A loop beside the way: up, along and back down, 3 cells out.
+    for (let y = 11; y <= 13; y++) {
+      for (const x of [10, 16]) {
+        w.landuse[w.idx(x, y)] = LandUse.Path;
+        w.traffic[w.idx(x, y)] = 120;
+      }
+    }
+    for (let x = 11; x <= 15; x++) {
+      w.landuse[w.idx(x, 13)] = LandUse.Path;
+      w.traffic[w.idx(x, 13)] = 120;
+    }
+    expect(pathDuplicates(w).loop).toBeGreaterThan(0);
+    for (let d = 0; d < 4; d++) updateDesirePaths(w);
+    expect(pathDuplicates(w).loop).toBe(0);
+    expect(pathStats(w).groups).toBe(1);
+    for (let x = 4; x <= 26; x++) expect(w.landuse[w.idx(x, 10)]).toBe(LandUse.Path);
+  });
+
+  it('straighten staircases and zigzags', () => {
+    const w = meadow(32);
+    // A staircase (right, up, right, up, …) and a zigzag along y = 20/21.
+    let x = 4;
+    let y = 4;
+    for (let k = 0; k < 8; k++) {
+      w.landuse[w.idx(x, y)] = LandUse.Path;
+      if (k & 1) y++;
+      else x++;
+    }
+    for (let k = 4; k <= 26; k++) w.landuse[w.idx(k, 20 + (k & 1))] = LandUse.Path;
+    for (let i = 0; i < w.size; i++) if (w.landuse[i] === LandUse.Path) w.traffic[i] = 200;
+    for (let d = 0; d < 3; d++) updateDesirePaths(w);
+    const s = pathStats(w);
+    expect(s.groups).toBe(2);
+    // The zigzag became (mostly) a straight row.
+    const row = (y: number) => {
+      let n = 0;
+      for (let k = 4; k <= 26; k++) if (w.landuse[w.idx(k, y)] === LandUse.Path) n++;
+      return n;
+    };
+    expect(Math.max(row(20), row(21))).toBeGreaterThan(18);
+    // The staircase lost its corners: a diagonal, no cell with two orthogonal path neighbours a corner apart.
+    expect(pathStats(w).cells).toBeLessThan(8 + 23);
   });
 });
