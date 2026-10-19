@@ -506,6 +506,8 @@ export function buildScene(id: SceneId): Simulation {
   const sim = new Simulation(w, SEED, { people: { startX: v.x, startY: v.y } });
   // Everything is known in the scenes.
   sim.fog = false;
+  // The cards stage their own power lines.
+  sim.power.autoGrid = false;
   w.revealed.fill(255);
   sim.weather.autoFronts = false;
   // A steady river: the staged scenes don't follow the river seasons.

@@ -19,11 +19,21 @@
  * inlet → outlet), so it is conserved; the energy is booked in `ledger`
  * (J): produced = houses + pumps + dumped.
  *
+ * Lines: the player places turbines and pumps; the villagers plan the
+ * poles and wires themselves once a turbine has made power (planGrid,
+ * lines.ts): from the grid to every village and pump, to the houses no
+ * pole reaches, and between separate grids, so the colony has one grid.
+ * The village builders put the poles up (poleSite, workPole; the spirit
+ * crew those out of reach); floods and ground moved under a pole knock it
+ * down (floods, groundCheck) and they put it up again; poles in the way of
+ * new houses, fields, plans or the water move aside.
+ *
  * Deterministic (no RNG), saved as PowerState.
  */
 import type { PowerInfo, PowerStats, Pt, SimTime } from '../../shared/protocol';
 import { CELL_AREA, DT, STEPS_PER_DAY } from '../constants';
 import { LandUse, type World } from '../world';
+import { LINES, placeAlong, poleCost, routeLine } from './lines';
 import {
   LINK_SPAN,
   POLE_SNAP,
@@ -67,6 +77,14 @@ export interface Pole {
   x: number;
   y: number;
   progress: number;
+  /** The village whose builders put it up (-1 or absent: the spirit crew; player poles of older saves). */
+  settlement?: number;
+  /** Day it was planned, moved or knocked down (absent: long ago). */
+  since?: number;
+  /** Knocked down (by a flood, or ground moved under it) on this day, until rebuilt. */
+  down?: number;
+  /** Ground height (m) when it was put up: moved much, the pole falls. */
+  ground?: number;
 }
 
 export interface Pump {
@@ -115,6 +133,15 @@ export interface PowerState {
   /** Light per house today: pairs [houseId, sum of light shares over the day's steps]. */
   light: number[];
   lightSteps: number;
+  /** Lines that found no way: pairs [target key, day to try again] (absent in older saves). */
+  failed?: number[];
+}
+
+/** A village as the grid's planner sees it: its id and centre (the store). */
+export interface GridVillage {
+  id: number;
+  x: number;
+  y: number;
 }
 
 /** A house as the grid sees it (people/village.ts buildings). */
@@ -128,6 +155,8 @@ export interface GridHouse {
 /** Turbine progress per unit of lining work (a turbine is ~3 lined cells' work), poles and pumps. */
 const TURBINE_WORK = 0.33;
 const POLE_WORK = 2;
+/** The spirit crew's poles (out of the villages' reach) go up more slowly, one at a time. */
+const CREW_POLE_WORK = 0.6;
 const PUMP_WORK = 0.5;
 
 function newLedger(): PowerLedger {
@@ -160,6 +189,12 @@ export class PowerGrid {
   allow: ((i: number) => boolean) | null = null;
   /** The village houses (set by the simulation; none without villages). */
   houses: () => readonly GridHouse[] = () => [];
+  /** The villages (set by the simulation): the grid's lines run to them. */
+  villages: () => readonly GridVillage[] = () => [];
+  /** The villagers plan and build the lines (off in the staged tool-card scenes). */
+  autoGrid = true;
+  /** Lines that found no way: target key → day to try again. */
+  private failed = new Map<number, number>();
   /** Told each day of every village's mean light share (0..1) of that day. */
   onVillageLight: ((settlement: number, share: number) => void) | null = null;
   /** Set when what the renderer shows changed. */
@@ -316,50 +351,42 @@ export class PowerGrid {
     return p;
   }
 
-  /** Remove power structures (finished or not) within a radius (the Remove tool). */
+  /** Remove turbines and pumps (finished or not) within a radius (the Remove tool; the poles are the villagers'). */
   cancel(x: number, y: number, radius: number): boolean {
     const r2 = radius * radius;
     const near = (px: number, py: number) => (px - x) ** 2 + (py - y) ** 2 <= r2;
     const gone = new Set<number>();
     const t = this.turbines.filter((o) => !near(o.x, o.y) || (gone.add(o.id), false));
-    const p = this.poles.filter((o) => !near(o.x, o.y) || (gone.add(o.id), false));
     const n = this.pumps.length;
     this.pumps = this.pumps.filter((o) => !near(o.hx, o.hy) && !near(o.x, o.y));
     if (!gone.size && n === this.pumps.length) return false;
     this.turbines = t;
-    this.poles = p;
-    const wires: number[] = [];
-    for (let k = 0; k + 1 < this.wires.length; k += 2)
-      if (!gone.has(this.wires[k]!) && !gone.has(this.wires[k + 1]!)) wires.push(this.wires[k]!, this.wires[k + 1]!);
-    this.wires = wires;
+    this.dropWires(gone);
     this.changed();
     return true;
   }
 
-  /** Remove one turbine, pole or pump by id (the selection's Remove). */
+  /** Remove one turbine or pump by id (the selection's Remove; the poles are the villagers'). */
   remove(id: number): boolean {
-    const n = this.turbines.length + this.poles.length + this.pumps.length;
+    const n = this.turbines.length + this.pumps.length;
     this.turbines = this.turbines.filter((o) => o.id !== id);
-    this.poles = this.poles.filter((o) => o.id !== id);
     this.pumps = this.pumps.filter((o) => o.id !== id);
-    if (n === this.turbines.length + this.poles.length + this.pumps.length) return false;
+    if (n === this.turbines.length + this.pumps.length) return false;
     this.dropWires(new Set([id]));
     this.changed();
     return true;
   }
 
-  /** Earthworks planned over power structures take them down (see Structures.dismantle). */
+  /** Earthworks planned over turbines and pumps take them down (see Structures.dismantle); poles move out of the way (planGrid). */
   dismantle(cells: ReadonlySet<number>): boolean {
     if (cells.size === 0) return false;
     const W = this.world.width;
     const at = (x: number, y: number) => cells.has(y * W + x);
     const gone = new Set<number>();
     for (const t of this.turbines) if (at(t.x, t.y) || cells.has(t.a) || cells.has(t.b)) gone.add(t.id);
-    for (const p of this.poles) if (at(p.x, p.y)) gone.add(p.id);
     for (const p of this.pumps) if (at(p.x, p.y) || at(p.hx, p.hy) || at(p.ox, p.oy)) gone.add(p.id);
     if (!gone.size) return false;
     this.turbines = this.turbines.filter((o) => !gone.has(o.id));
-    this.poles = this.poles.filter((o) => !gone.has(o.id));
     this.pumps = this.pumps.filter((o) => !gone.has(o.id));
     this.dropWires(gone);
     this.changed();
@@ -378,19 +405,349 @@ export class PowerGrid {
   }
 
   // ---------------------------------------------------------------------------
-  // Building (the spirit crew, as for the stone work)
+  // Building: turbines and pumps by the spirit crew (as the stone work), poles by the village builders
 
   get pending(): boolean {
     return this.turbines.some((t) => t.progress < 1) || this.poles.some((p) => p.progress < 1) || this.pumps.some((p) => p.progress < 1);
   }
 
-  crewWork(amount: number): void {
-    for (const o of [...this.turbines, ...this.poles, ...this.pumps]) {
+  /**
+   * The spirit crew's work: turbines and pumps, and the poles no village
+   * builds (out of every village's reach, waiting too long, or the
+   * player's own of older saves), one at a time. Without `day` (staging)
+   * every pole goes up at once.
+   */
+  crewWork(amount: number, day?: number): void {
+    for (const o of [...this.turbines, ...this.pumps]) {
       if (o.progress >= 1) continue;
-      const k = 'a' in o ? TURBINE_WORK : 'ox' in o ? PUMP_WORK : POLE_WORK;
-      o.progress = Math.min(1, o.progress + amount * k);
+      o.progress = Math.min(1, o.progress + amount * ('a' in o ? TURBINE_WORK : PUMP_WORK));
       this.dirty = true;
     }
+    const w = this.world;
+    let n = day === undefined ? Infinity : 1;
+    for (const p of this.poles) {
+      if (p.progress >= 1 || n <= 0) continue;
+      if (day !== undefined && (!this.crewPole(p, day) || w.water[w.idx(p.x, p.y)]! >= LINES.dry)) continue;
+      p.progress = Math.min(1, p.progress + amount * (day === undefined ? POLE_WORK : CREW_POLE_WORK));
+      if (p.progress >= 1) this.raised(p);
+      n--;
+      this.dirty = true;
+    }
+  }
+
+  /** Whether the spirit crew puts pole p up (no village's builders do). */
+  private crewPole(p: Pole, day: number): boolean {
+    return (p.settlement ?? -1) < 0 || day - (p.since ?? -Infinity) > LINES.crewAfter;
+  }
+
+  private raised(p: Pole): void {
+    p.progress = 1;
+    p.ground = this.world.terrain(this.world.idx(p.x, p.y));
+    delete p.down;
+    this.dirty = true;
+  }
+
+  /** The pole a builder of village `settlement` should put up next (lowest id first), or null. */
+  poleSite(settlement: number, day: number, blocked: (i: number) => boolean): { id: number; cell: number } | null {
+    const w = this.world;
+    for (const p of this.poles) {
+      if (p.progress >= 1 || (p.settlement ?? -1) !== settlement || this.crewPole(p, day)) continue;
+      const i = w.idx(p.x, p.y);
+      if (w.water[i]! >= LINES.dry || blocked(i)) continue;
+      return { id: p.id, cell: i };
+    }
+    return null;
+  }
+
+  /** A builder's visit to pole `id`: returns true when it was just put up. */
+  workPole(id: number): boolean {
+    const p = this.poles.find((o) => o.id === id);
+    if (!p || p.progress >= 1) return false;
+    p.progress = Math.min(1, p.progress + LINES.perVisit);
+    this.dirty = true;
+    if (p.progress < 1) return false;
+    this.raised(p);
+    return true;
+  }
+
+  /** Floods (every 30 steps): deep or quick water knocks standing poles down. Returns whether any fell. */
+  floods(day: number): boolean {
+    const w = this.world;
+    let any = false;
+    for (const p of this.poles) {
+      if (p.progress < 1) continue;
+      const i = w.idx(p.x, p.y);
+      const d = w.water[i]!;
+      if (d < LINES.floodWade) continue;
+      if (d >= LINES.floodDeep || Math.hypot(w.velX[i]!, w.velY[i]!) >= LINES.floodSpeed) {
+        this.knock(p, day);
+        any = true;
+      }
+    }
+    return any;
+  }
+
+  /** After the brushes (and daily): a standing pole whose ground moved more than LINES.ground falls. */
+  groundCheck(day: number): boolean {
+    const w = this.world;
+    let any = false;
+    for (const p of this.poles) {
+      if (p.progress < 1) continue;
+      const h = w.terrain(w.idx(p.x, p.y));
+      if (p.ground === undefined) p.ground = h;
+      else if (Math.abs(h - p.ground) > LINES.ground) {
+        this.knock(p, day);
+        any = true;
+      }
+    }
+    return any;
+  }
+
+  /** Down it goes: a stump is left, and the builders come back for it. */
+  private knock(p: Pole, day: number): void {
+    p.progress = LINES.stump;
+    p.down = day;
+    p.since = day;
+    delete p.ground;
+    this.dirty = true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The villagers' grid (lines.ts): planned daily, once a turbine has made power
+
+  /**
+   * Daily: move poles out of the way of new houses, fields, plans and the
+   * water (or give them up), then, once any turbine has made power, plan
+   * the next lines: from the grid to each village (its store) and pump
+   * not on it yet, to stray stretches of line, to the houses no pole
+   * reaches, and between separate grids, nearest first; at most
+   * LINES.routesPerDay a day, and none while many poles wait to be built.
+   */
+  planGrid(day: number): void {
+    if (!this.autoGrid) return;
+    for (const [k, until] of this.failed) if (until <= day) this.failed.delete(k);
+    this.repair(day);
+    if (!this.turbines.some((t) => t.progress >= 1 && t.produced > 0)) return;
+    for (let r = 0; r < LINES.routesPerDay; r++) {
+      if (this.poles.filter((p) => p.progress < 1).length >= LINES.maxPending) break;
+      if (!this.nextLine(day)) break;
+    }
+  }
+
+  private repair(day: number): void {
+    const w = this.world;
+    const gone = new Set<number>();
+    for (const p of this.poles) {
+      const i = w.idx(p.x, p.y);
+      const lu = w.landuse[i]!;
+      const field = lu === LandUse.Field || lu === LandUse.Garden;
+      let move: boolean;
+      if (w.water[i]! >= LINES.dry) {
+        // Knocked down, or not yet built, and the water stays: dry ground nearby.
+        const since = p.down ?? (p.progress < 1 ? (p.since ?? -Infinity) : Infinity);
+        move = day - since > LINES.wetDays;
+      } else move = field || !Number.isFinite(poleCost(w, i, null, true));
+      if (!move) continue;
+      const to = this.moveSpot(p);
+      if (to) {
+        p.x = to[0];
+        p.y = to[1];
+        p.progress = 0;
+        p.since = day;
+        delete p.down;
+        delete p.ground;
+        this.dirty = true;
+      } else if (!field) gone.add(p.id);
+    }
+    // Poles left without a wire carry nothing.
+    for (const p of this.poles) if (!gone.has(p.id) && !this.wires.includes(p.id)) gone.add(p.id);
+    if (!gone.size) return;
+    this.poles = this.poles.filter((p) => !gone.has(p.id));
+    this.dropWires(gone);
+    this.changed();
+  }
+
+  /** The best dry cell within LINES.moveReach for pole p, its spans still reaching its neighbours. */
+  private moveSpot(p: Pole): [number, number] | null {
+    const w = this.world;
+    const nb: [number, number][] = [];
+    for (let k = 0; k + 1 < this.wires.length; k += 2) {
+      const o = this.wires[k] === p.id ? this.wires[k + 1]! : this.wires[k + 1] === p.id ? this.wires[k]! : -1;
+      const q = o >= 0 ? this.nodePos(o) : null;
+      if (q) nb.push(q);
+    }
+    const others = this.nodes().filter(([id]) => id !== p.id);
+    const R = LINES.moveReach;
+    let best: [number, number] | null = null;
+    let bc = Infinity;
+    for (let dy = -R; dy <= R; dy++)
+      for (let dx = -R; dx <= R; dx++) {
+        const d = Math.hypot(dx, dy);
+        if (d === 0 || d > R) continue;
+        const x = p.x + dx;
+        const y = p.y + dy;
+        if (!w.inBounds(x, y)) continue;
+        const c = poleCost(w, w.idx(x, y), this.allow);
+        if (!Number.isFinite(c)) continue;
+        if (others.some(([, ox, oy]) => Math.hypot(ox - x, oy - y) < LINES.minGap)) continue;
+        if (nb.some(([ox, oy]) => Math.hypot(ox - x, oy - y) > LINK_SPAN)) continue;
+        const v = c + 0.5 * d;
+        if (v < bc) {
+          bc = v;
+          best = [x, y];
+        }
+      }
+    return best;
+  }
+
+  /** Plan the most wanted line; false when nothing is wanted. */
+  private nextLine(day: number): boolean {
+    const w = this.world;
+    const W = w.width;
+    const parent = new Map<number, number>();
+    const find = (a: number): number => {
+      let r = a;
+      while (parent.get(r) !== r) r = parent.get(r)!;
+      parent.set(a, r);
+      return r;
+    };
+    for (const t of this.turbines) if (t.progress >= 1) parent.set(t.id, t.id);
+    for (const p of this.poles) parent.set(p.id, p.id);
+    for (let k = 0; k + 1 < this.wires.length; k += 2) {
+      const a = this.wires[k]!;
+      const b = this.wires[k + 1]!;
+      if (parent.has(a) && parent.has(b)) parent.set(find(a), find(b));
+    }
+    interface Node {
+      id: number;
+      x: number;
+      y: number;
+      root: number;
+    }
+    const nodes: Node[] = [];
+    for (const t of this.turbines) if (t.progress >= 1) nodes.push({ id: t.id, x: t.x, y: t.y, root: find(t.id) });
+    for (const p of this.poles) nodes.push({ id: p.id, x: p.x, y: p.y, root: find(p.id) });
+    const powered = new Set<number>();
+    for (const t of this.turbines) if (t.progress >= 1 && t.produced > 0) powered.add(find(t.id));
+    const live = nodes.filter((n) => powered.has(n.root));
+    if (!live.length) return false;
+    const R = SUPPLY_RADIUS;
+    const nearest = (x: number, y: number, among: readonly Node[] = live): { n: Node; d: number } => {
+      let n = among[0]!;
+      let d = Infinity;
+      for (const o of among) {
+        const e = Math.hypot(o.x - x, o.y - y);
+        if (e < d) {
+          d = e;
+          n = o;
+        }
+      }
+      return { n, d };
+    };
+    const covered = (x: number, y: number) => live.some((o) => Math.hypot(o.x - x, o.y - y) <= R);
+    const houses = this.houses();
+    interface Target {
+      key: number;
+      from: Node;
+      d: number;
+      to: [number, number];
+      node: Node | null;
+      score?: (x: number, y: number) => number;
+    }
+    let best: Target | null = null;
+    const offer = (t: Target) => {
+      if (this.failed.has(t.key)) return;
+      if (!best || t.d < best.d) best = t;
+    };
+    // Villages and pumps not on the grid, and stray lines that reach houses.
+    for (const v of this.villages()) {
+      const vh = houses.filter((h) => h.settlement === v.id);
+      if (!vh.length || covered(v.x, v.y) || vh.some((h) => covered(h.x, h.y))) continue;
+      const { n, d } = nearest(v.x, v.y);
+      const reach = (x: number, y: number) => -0.4 * vh.filter((h) => Math.hypot(h.x - x, h.y - y) <= R - 1).length;
+      offer({ key: v.y * W + v.x, from: n, d, to: [v.x, v.y], node: null, score: reach });
+    }
+    for (const p of this.pumps) {
+      if (covered(p.hx, p.hy)) continue;
+      const { n, d } = nearest(p.hx, p.hy);
+      offer({ key: p.hy * W + p.hx, from: n, d, to: [p.hx, p.hy], node: null });
+    }
+    const stray = new Map<number, Node[]>();
+    for (const n of nodes) if (!powered.has(n.root)) stray.set(n.root, [...(stray.get(n.root) ?? []), n]);
+    for (const [root, list] of stray) {
+      if (!houses.some((h) => list.some((o) => Math.hypot(o.x - h.x, o.y - h.y) <= R))) continue;
+      let pick: Target | null = null;
+      for (const o of list) {
+        const { n, d } = nearest(o.x, o.y);
+        if (!pick || d < pick.d) pick = { key: -1 - root, from: n, d, to: [o.x, o.y], node: o };
+      }
+      if (pick) offer(pick);
+    }
+    // Then the houses no pole reaches yet.
+    if (!best) {
+      const open = houses.filter((h) => !covered(h.x, h.y));
+      const reach = (x: number, y: number) => -0.4 * open.filter((h) => Math.hypot(h.x - x, h.y - y) <= R - 1).length;
+      for (const h of open) {
+        const { n, d } = nearest(h.x, h.y);
+        offer({ key: h.y * W + h.x, from: n, d, to: [h.x, h.y], node: null, score: reach });
+      }
+    }
+    // Then one grid of all.
+    if (!best && powered.size > 1) {
+      const roots = [...powered];
+      for (let a = 0; a < roots.length; a++)
+        for (let b = a + 1; b < roots.length; b++) {
+          const A = live.filter((n) => n.root === roots[a]);
+          const B = live.filter((n) => n.root === roots[b]);
+          for (const o of B) {
+            const { n, d } = nearest(o.x, o.y, A);
+            offer({ key: -1 - Math.min(roots[a]!, roots[b]!), from: n, d, to: [o.x, o.y], node: o });
+          }
+        }
+    }
+    const t = best as Target | null;
+    if (!t) return false;
+    if (t.d > LINES.maxLine || !this.buildLine(t.from, t.to, t.node, nodes, day, t.score)) this.failed.set(t.key, day + LINES.retryDays);
+    return true;
+  }
+
+  /** Plan a line of poles from node `from` to `to` (node `node`, or a spot beside it). Returns whether it could. */
+  private buildLine(
+    from: { id: number; x: number; y: number },
+    to: [number, number],
+    node: { id: number } | null,
+    nodes: readonly { x: number; y: number }[],
+    day: number,
+    score?: (x: number, y: number) => number,
+  ): boolean {
+    const w = this.world;
+    const path = routeLine(w, w.idx(from.x, from.y), w.idx(to[0], to[1]), this.allow);
+    if (!path) return false;
+    const others = nodes.map((n): [number, number] => [n.x, n.y]);
+    const opts = { allow: this.allow, toNode: node !== null, others, endScore: score };
+    const poles = placeAlong(w, path, opts) ?? placeAlong(w, path, { ...opts, fields: true });
+    if (!poles || (!poles.length && !node)) return false;
+    const villages = this.villages();
+    let prev = from.id;
+    for (const [x, y] of poles) {
+      // Built by the nearest village's builders, if it is near enough.
+      let owner = -1;
+      let od: number = LINES.reach;
+      for (const v of villages) {
+        const d = Math.hypot(v.x - x, v.y - y);
+        if (d <= od) {
+          od = d;
+          owner = v.id;
+        }
+      }
+      const id = this.nextId++;
+      this.poles.push({ id, x, y, progress: 0, settlement: owner, since: day });
+      this.link(prev, id);
+      prev = id;
+    }
+    if (node) this.link(prev, node.id);
+    this.changed();
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -625,16 +982,27 @@ export class PowerGrid {
   }
 
   info(): PowerInfo {
+    // Wires hang between standing poles (and turbines) only: a line goes up pole by pole.
+    const up = new Map<number, [number, number]>();
+    for (const t of this.turbines) up.set(t.id, [t.x, t.y]);
+    for (const p of this.poles) if (p.progress >= 1) up.set(p.id, [p.x, p.y]);
     const wires: number[] = [];
     for (let k = 0; k + 1 < this.wires.length; k += 2) {
-      const a = this.nodePos(this.wires[k]!);
-      const b = this.nodePos(this.wires[k + 1]!);
+      const a = up.get(this.wires[k]!);
+      const b = up.get(this.wires[k + 1]!);
       if (a && b) wires.push(a[0], a[1], b[0], b[1]);
     }
-    // Pumps hang on the nearest pole with a short wire.
+    // Pumps hang on the nearest standing pole with a short wire.
     for (const p of this.pumps) {
-      const n = this.nearestNode(p.hx, p.hy, SUPPLY_RADIUS);
-      const q = n >= 0 ? this.nodePos(n) : null;
+      let q: [number, number] | null = null;
+      let bd = SUPPLY_RADIUS;
+      for (const o of up.values()) {
+        const d = Math.hypot(o[0] - p.hx, o[1] - p.hy);
+        if (d <= bd) {
+          bd = d;
+          q = o;
+        }
+      }
       if (q) wires.push(q[0], q[1], p.hx, p.hy);
     }
     const W = this.world.width;
@@ -652,7 +1020,8 @@ export class PowerGrid {
         flow: Math.round(t.flow * 10) / 10,
         power: t.power,
       })),
-      poles: this.poles.map((p) => ({ id: p.id, x: p.x, y: p.y, progress: p.progress })),
+      // (Planned poles show once the builders start on them.)
+      poles: this.poles.filter((p) => p.progress > 0).map((p) => ({ id: p.id, x: p.x, y: p.y, progress: p.progress })),
       wires,
       pumps: this.pumps.map((p) => ({ id: p.id, x: p.x, y: p.y, hx: p.hx, hy: p.hy, ox: p.ox, oy: p.oy, progress: p.progress, flow: p.flow, power: p.power })),
       lit: [...this.lit].flat(),
@@ -671,6 +1040,7 @@ export class PowerGrid {
       lastDay: this.lastDay,
       light: [...this.light].flat(),
       lightSteps: this.lightSteps,
+      failed: this.failed.size ? [...this.failed].flat() : undefined,
     });
   }
 
@@ -687,6 +1057,9 @@ export class PowerGrid {
     this.light.clear();
     for (let k = 0; k + 1 < s.light.length; k += 2) this.light.set(s.light[k]!, s.light[k + 1]!);
     this.lightSteps = s.lightSteps;
+    this.failed.clear();
+    const f = s.failed ?? [];
+    for (let k = 0; k + 1 < f.length; k += 2) this.failed.set(f[k]!, f[k + 1]!);
     this.lit.clear();
     this.changed();
   }

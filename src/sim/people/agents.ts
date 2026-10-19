@@ -67,6 +67,8 @@ export const enum SiteKind {
   Bridge = 19,
   /** Dig a field ditch off the player's canal (site = the ditch cell; people/ditches.ts). */
   Ditch = 20,
+  /** Put up a power pole (site = the pole's id; power/grid.ts). */
+  Pole = 21,
 }
 
 export interface Agent {
