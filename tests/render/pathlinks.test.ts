@@ -65,3 +65,60 @@ describe('path texels', () => {
     expect(dst[4 * (1 * Wd + 3) + 3]).toBe(N);
   });
 });
+
+describe('village lanes', () => {
+  it('join every door and the store in one tree through the yards, without loops', async () => {
+    const { villageLanes } = await import('../../src/render/village/lanes');
+    const { FIELD_BYTES } = await import('../../src/shared/protocol');
+    const { RING_X, RING_Y } = await import('../../src/render/village/fields');
+    // Three buildings two cells apart in a row, their yards merged into one cluster.
+    const Wd = 12;
+    const H = 7;
+    const src = new Uint8Array(Wd * H * FIELD_BYTES);
+    const bs = [
+      { id: 1, kind: 'store' as const, x: 3, y: 3, rot: 0, progress: 1 },
+      { id: 2, kind: 'house' as const, x: 5, y: 3, rot: Math.PI / 2, progress: 1 },
+      { id: 3, kind: 'house' as const, x: 7, y: 3, rot: -Math.PI / 2, progress: 1 },
+    ];
+    for (const b of bs)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) src[FIELD_BYTES * ((b.y + dy) * Wd + b.x + dx)] = dx || dy ? LandUse.Yard : LandUse.Building;
+    for (const b of bs) src[FIELD_BYTES * (b.y * Wd + b.x)] = LandUse.Building;
+    const dst = new Uint8Array(Wd * H * 4);
+    for (let i = 0; i < Wd * H; i++) dst[4 * i] = src[FIELD_BYTES * i]!;
+    villageLanes(src, dst, Wd * H, Wd, bs);
+    // Lane cells and the links between them (each counted from both sides).
+    let cells = 0;
+    let half = 0;
+    const seen = new Set<number>();
+    const stack: number[] = [];
+    for (let i = 0; i < Wd * H; i++) {
+      if (src[FIELD_BYTES * i] !== LandUse.Yard || !dst[4 * i + 2]) continue;
+      cells++;
+      const m = dst[4 * i + 2]! & ~dst[4 * i + 3]!;
+      for (let k = 0; k < 8; k++) if (m & (1 << k)) half++;
+      if (!stack.length && !seen.size) {
+        seen.add(i);
+        stack.push(i);
+      }
+    }
+    while (stack.length) {
+      const i = stack.pop()!;
+      const m = dst[4 * i + 2]! & ~dst[4 * i + 3]!;
+      for (let k = 0; k < 8; k++) {
+        if (!(m & (1 << k))) continue;
+        const j = i + RING_Y[k]! * Wd + RING_X[k]!;
+        if (!seen.has(j)) {
+          seen.add(j);
+          stack.push(j);
+        }
+      }
+    }
+    expect(cells).toBeGreaterThanOrEqual(3);
+    expect(seen.size).toBe(cells); // connected
+    expect(half / 2).toBe(cells - 1); // a tree
+    // Each house's door cell (local +x turned by rot: house 2 faces −y, house 3 faces +y) is on a lane, with an end into the house.
+    expect(dst[4 * (2 * Wd + 5) + 3]).toBe(1 << 2);
+    expect(dst[4 * (4 * Wd + 7) + 3]).toBe(1 << 6);
+  });
+});

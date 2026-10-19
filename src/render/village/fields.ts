@@ -121,8 +121,8 @@ function joinYards(src: Uint8Array, dst: Uint8Array, n: number, width: number): 
 }
 
 const LU_PATH = 4;
-const LU_YARD = 5;
-const LU_BUILDING = 6;
+const LU_YARD = 6;
+const LU_BUILDING = 5;
 const LU_BRIDGE = 7;
 /** Ring order of a cell's neighbours (E, NE, N, NW, W, SW, S, SE; N = +y), as in sim/people/desire.ts. */
 export const RING_X = [1, 1, 0, -1, -1, -1, 0, 1] as const;
@@ -393,7 +393,9 @@ float pathMask(vec3 world, out float p) {
   for (int k = 0; k < 4; k++) {
     ivec2 o = ivec2(k & 1, k >> 1);
     vec4 t = texelFetch(uFields, clamp(c0 + o, ivec2(0), ivec2(uGrid) - 1), 0) * 255.0;
-    if (int(t.r + 0.5) != 4) continue;
+    // Path cells, and yard cells a village lane crosses (lanes.ts).
+    int lu = int(t.r + 0.5);
+    if (lu != 4 && (lu != 6 || t.b < 0.5)) continue;
     float d = pathCellDist(q - vec2(c0 + o), int(t.b + 0.5), int(t.a + 0.5));
     best = pathSmin(best, d, 0.1);
     // Bilinear weight of the cell: the width blends smoothly from cell to cell.
