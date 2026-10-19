@@ -714,3 +714,136 @@ fields); growth window (store vs growth horizon) bounds what more food can
 do; canal-side founding needs open watered land beyond the first
 village's fields; dikes that hold big freshets (crest, closing the
 floodplain at both ends).
+
+## Round 5 (tune5, October 2026)
+
+Owner's decisions: (1) responsive growth — families come year-round when
+the village has spare food or spare good land, camps first, houses
+after, gently capped, hands-off kept in its band; (2) floods with a job
+— early floods that reach the floodplain fields, dikes that visibly
+protect land and are not flanked. Measured with `--seeds 1..8 --years 4
+--bots good,weircanal,wheel,dike` (128², budget 6000 m³; reference: main
+at 8d7eac6 re-run, identical to round 4's table), hands-off seeds 9–16
+for 3 years, and seeds 3, 6 at 256² for 3 years. New: `daily.camps` in
+the results, a response line in `table.ts` (days from the first works
+to the first day the bot run has more houses + camps than the hands-off
+run, and to +2 houses), and scratch tools `diag-spare.ts` (growth inputs
+per village), `diag-flood.ts` (fields by height above the river, fields
+under water per spring), `diag-dike.ts` (the dike bot's look after a
+forced early flood).
+
+### Growth: what was tried
+The store-window rule (grow while the store holds 46 days of need) lets
+families in only for the 1–3 weeks after a harvest; between harvests a
+village sits at `food`/`land` with the store running out ~10 days before
+the next harvest (spoilage takes ~10 % of a year's food), so a hands-off
+village is food-limited, not idle. Four ways to judge "spare food" were
+tried (each a 4-year run on 1–8 seeds, `diag-spare.ts` on seeds 3, 4, 6):
+
+| variant | hands-off year 3 (seeds 1–6) | bots | why dropped / kept |
+|---|---|---|---|
+| A: last year's food (48-day log) > need + 15 %, plus spare land | 36/67/41/60/57/15 | – | good years fill villages that then starve (seed 3: 44 people, 0.87 of need next year) |
+| B: spare good land only, store ≥ 1.2× to the harvest (run b1) | 36/69/41/60/53/15 | good +31, weircanal +34, wheel +18, dike −2 (mean; median ≈ 0) | land-limited villages never have spare land: works' new land is taken by the farmers already there; the path fired mostly in new villages |
+| C: A with the fields' promise gain and a looser store gate (b2) | 37/79/53/62/57/15, prosperity 69–78 % | good −14 (5 seeds) | overshoot and hunger |
+| D (kept): standing crops' promise, learned bias, store must last; horizon 50 (c1/d1) | 30/65/49/48/43/16 | see below | |
+
+D: while crops stand, store + what they promise (each sown field grown on
+at today's moisture, × a per-village bias learned from last year's
+harvest, ~0.75) against the need to the harvest after next; families
+come on spare food (> 1.1) or spare good land, rate scaled by the
+families it feeds. Spring moisture promises ~1.3× what the summer
+delivers, hence the bias; without the store gate (tried) villages took
+in families in a dry spring and starved before the harvest (seed 6
+weircanal: store empty for 20 days). Growth horizon 40 → 50 days so the
+window does not fill a village it cannot carry to the next harvest.
+Camps now also stand while a house goes up (villages ≥ 12).
+
+### Floods
+Freshet stage near the village rises little: seed 5, 12× the base
+flow, +0.55 m near the village, 2 fields wet (`stage` probe); its fields
+lie 0.5–3 m above the river. Fields by height above the river at the end
+of year 1 (`diag-flood.ts`): seed 4 (fertile start) 147 of 353 below
+1 m, seeds 3, 5, 8 a few dozen. Forced early big freshet 4.5× on seed 4
+(`bigFrom=1`, every spring): 50 fields under water in year 2, 32–36 in
+years 3–4; the village ended year 2 at 27 people against 48 without it.
+Changes: big freshets from the second year, one for sure in year 2 or 3
+(`bigEarly` 0.5, `bigEarlyUntil` 3), 4.5–6× an ordinary freshet (was
+3–4.5). In the normal climate (seeds 2, 4, 9, 15, 4 years): flooded land
+433 / 42 / 12 / 23 cells, 2 houses ruined and rebuilt on seed 2; seeds
+whose fields stand on a dry terrace see the river rise and stay in its
+bed.
+
+**Dike bot.** Round 4's band lines were flanked: on seed 4 after the
+year-2 flood, 170–320 of the 180–340 low cells were still reached by a
+flood filled from the river over ground below the crest (`floodFill`).
+Now the bot (a) waits until the flood has gone down (the crest planned on
+rising water was a metre low), (b) tries lines reaching 6/10/15 cells
+along the river and **ring dikes** round each cluster of low fields
+≥ 2 or 4 cells from the water, (c) scores land the flood reaches
+without the banks and not with them, minus 1.5 × fields under the
+banks, and drops a ring it cannot afford (an open ring protects
+nothing). On seed 4 with forced floods the ring (crest 2.5 m, 4655 m³,
+47 fields under it) keeps the fields dry: 0–2 fields under water in
+years 3–4 against 32–36, population 25/43 against 27/40 at the start of
+years 3/4 (+7 %). In the normal climate it builds only where floods
+reach fields (seeds 2, 4) and changes population by −4 … −10 % there:
+the banks take 36–50 fields for land flooded one spring in three.
+
+### Hands-off
+
+Seeds 1–8 from the agency run below (big freshets still 3–4.5× there),
+seeds 9–16 on the final code.
+
+| | round 4 | round 5 |
+|---|---|---|
+| weir unlock (15) | day 13–26 | day 13–27 (seeds 1–8), 12–26 (9–16): 6–14 min |
+| year 3 in 15–40 | 10/16 | 8/16: seeds 1, 6, 8, 9, 11, 12, 15, 16; above 2, 3, 4, 5, 13 (43–65); below 7, 10, 14 (9–13) |
+| year 4, seeds 1–8 | 34/70/53/84/60/17/12/12 | 36/78/71/54/57/16/8/15 |
+
+### Agency (128², 4 years; population at the end of years 1–4, prosperity in year 4)
+
+Run d1, before the freshets were raised to 4.5–6× (with them, seeds 2
+and 4 hands-off end year 4 at 62 and 56).
+
+| bot | s1 | s2 | s3 | s4 | s5 | s6 | s7 | s8 | mean Δ | main |
+|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | 17/25/30/36 (95%) | 18/36/65/78 (85%) | 16/30/49/71 (81%) | 23/38/48/54 (89%) | 18/32/43/57 (94%) | 15/14/16/16 (76%) | 16/10/12/8 (35%) | 17/12/15/15 (50%) | | |
+| good | 16/25/30/32 | 18/34/56/60 | 18/26/42/59 | 22/34/47/56 | 18/28/42/55 | 16/23/27/37 (96%) | 16/12/9/14 | 15/12/11/15 | +19 % | +19 % |
+| weircanal | = | 18/37/62/77 | 18/26/39/62 | 17/33/44/56 | 18/28/42/52 | 16/23/39/50 (95%) | = | 17/12/16/14 | +23 % | +19 % |
+| wheel | 17/25/33/38 | 18/33/49/58 | 18/31/44/65 | 20/37/55/63 | 19/30/44/57 | 19/22/26/26 (95%) | 16/9/14/12 | 15/12/16/16 (76%) | +13 % | +23 % |
+| dike | = | 18/34/53/60 | = | = | = | = | = | = | −3 % | +1 % |
+
+(= : nothing to do.) Seeds ≥ +30 %: good 1/8 (6), weircanal 1/8 (6),
+wheel 2/8 (4, 6). Response (days from the first works to more houses +
+camps than hands-off / to +2 houses): good 7, 49, 25, 15, 49, 32, 100, –
+/ +2 houses on 2 seeds (63–81 days); weircanal 13–149 / 63–71; wheel
+13–82 / 81–98. Main: 4–69 / 58–153.
+
+**256²** (seeds 3, 6, 3 years; big freshets 3–4.5× in this run):
+seed 3 baseline 17/28/47, weircanal 16/22/43 (−9 %), wheel 17/27/52
+(+11 %); seed 6 baseline 15/14/17 (73 %), weircanal 15/17/24 (+41 %,
+89 %), wheel 14/14/20 (+18 %). Round 4: +33/+28 and +53/+47.
+
+### Findings
+- **The +30 % target is not met**, and the year-round rule does not
+  move the bot deltas beyond the noise (main +19/+19/+23, round 5
+  +19/+23/+13; single runs of one seed differ by ±20 % on founding timing
+  alone). Where the bots water a dry terrace (seed 6) the village doubles
+  or triples, as before.
+- **Why**: the works raise yields on part of the fields and take others
+  (canal footprints, banks); on the fertile and brook seeds the net food
+  change is small, and total population follows the number of villages
+  (one founding a year at most, from the first village at 30–40) more
+  than any one village's food. A canal's new good land is farmed by the
+  farmers already there (they had fewer fields than hands), so it shows as
+  a bigger harvest, not as spare land and camps.
+- **Floods** now come early and reach the floodplain fields where there
+  are any (seeds 2, 4); dikes no longer get flanked, but a ring that takes
+  40–50 fields does not pay for a flood one spring in three.
+
+### Open
+Bots that water the fields they do not take (ditch networks rather than
+wide canals); founding beside canal-watered land beyond the first
+village's fields; dikes set on unfarmed ground or cheaper (the earth
+budget and field loss decide); the hands-off band on dry seeds 10, 14
+(9–13 people in year 3).
