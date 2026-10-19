@@ -123,6 +123,18 @@ export function updateDesirePaths(w: World): boolean {
     while (parent[a] !== a) a = parent[a] = parent[parent[a]!]!;
     return a;
   };
+  // Cell c (just made path, parent[c] = c) joins the pieces beside it.
+  const join = (c: number) => {
+    const cx = c % W;
+    const cy = (c / W) | 0;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + RX[k]!;
+      const ny = cy + RY[k]!;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= w.height) continue;
+      const j = ny * W + nx;
+      if (parent[j]! >= 0 && find(j) !== c) parent[find(j)] = c;
+    }
+  };
   for (let i = 0; i < w.size; i++) {
     const t = traffic[i]!;
     const lu = landuse[i]!;
@@ -136,7 +148,7 @@ export function updateDesirePaths(w: World): boolean {
       if (RING_GROUPS[near]! >= 2) {
         let first = -1;
         for (let k = 0; k < 8 && groups < 2; k++)
-          if (near & (1 << k)) {
+          if (near & (1 << k) && parent[(y + RY[k]!) * W + x + RX[k]!]! >= 0) {
             const root = find((y + RY[k]!) * W + x + RX[k]!);
             if (first < 0) {
               first = root;
@@ -157,7 +169,7 @@ export function updateDesirePaths(w: World): boolean {
         landuse[i] = LandUse.Path;
         changed = true;
         parent[i] = i;
-        for (let k = 0; k < 8; k++) if (near & (1 << k)) parent[find((y + RY[k]!) * W + x + RX[k]!)] = i;
+        join(i);
       }
     } else if (lu === LandUse.Path) {
       if (t < DESIRE.off) {
@@ -178,9 +190,14 @@ export function updateDesirePaths(w: World): boolean {
       // Straighten: a corner of a staircase is cut (its neighbours stay joined
       // corner to corner), and a tooth of a zigzag moves into the line.
       if (n === 2 && r.ends === 0) {
-        const s2 = straighten(w, x, y, r.path);
-        if (s2) {
+        const moved = straighten(w, x, y, r.path);
+        if (moved !== -1) {
           changed = true;
+          // A tooth moved into the line: the new cell joins its neighbours' piece.
+          if (moved >= 0) {
+            parent[moved] = moved;
+            join(moved);
+          }
           continue;
         }
       }
@@ -217,31 +234,32 @@ function isCorner(m: number): boolean {
  * Straighten path cell (x, y) with exactly the two path neighbours in ring
  * mask m (and no yard, house or bridge beside it): an L corner is dropped;
  * a tooth (two diagonal neighbours on the same side) moves into the line
- * between them. Returns whether the land use changed.
+ * between them. Returns −1 if nothing changed, −2 for a dropped corner,
+ * else the cell the tooth moved to.
  */
-function straighten(w: World, x: number, y: number, m: number): boolean {
+function straighten(w: World, x: number, y: number, m: number): number {
   const { width: W, landuse, traffic, water, flags } = w;
   const i = y * W + x;
   if (isCorner(m)) {
     landuse[i] = LandUse.None;
-    return true;
+    return -2;
   }
   for (let k = 1; k < 8; k += 2) {
     // Diagonals k and k + 2 share the orthogonal neighbour k + 1 (same side).
     if (m !== ((1 << k) | (1 << ((k + 2) & 7)))) continue;
     const o = (k + 1) & 7;
     const j = (y + RY[o]!) * W + x + RX[o]!;
-    if (landuse[j] !== LandUse.None || water[j]! >= 0.05 || (flags[j]! & CellFlag.Lined) !== 0) return false;
+    if (landuse[j] !== LandUse.None || water[j]! >= 0.05 || (flags[j]! & CellFlag.Lined) !== 0) return -1;
     landuse[i] = LandUse.None;
     if (wouldThicken(w, x + RX[o]!, y + RY[o]!)) {
       landuse[i] = LandUse.Path;
-      return false;
+      return -1;
     }
     landuse[j] = LandUse.Path;
     traffic[j] = Math.max(traffic[j]!, traffic[i]!);
-    return true;
+    return j;
   }
-  return false;
+  return -1;
 }
 
 /** Whether any path cell lies within Chebyshev distance r of (x, y) (other than itself). */
