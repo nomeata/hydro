@@ -63,7 +63,7 @@ describe('more settlements', () => {
     expect(own).toBeGreaterThan(0);
     // Everybody farms the fields of their own village.
     for (const a of p.agents) {
-      if (a.siteKind !== SiteKind.Sow && a.siteKind !== SiteKind.Tend && a.siteKind !== SiteKind.Harvest) continue;
+      if (a.siteKind !== SiteKind.Sow && a.siteKind !== SiteKind.ClearSnow && a.siteKind !== SiteKind.Tend && a.siteKind !== SiteKind.Harvest) continue;
       if (a.task !== 1 && a.task !== 2) continue;
       expect(p.ownerOf(a.site % w.width, (a.site / w.width) | 0)!.state.id).toBe(a.settlement);
     }

@@ -69,6 +69,8 @@ export const enum SiteKind {
   Ditch = 20,
   /** Put up a power pole (site = the pole's id; power/grid.ts). */
   Pole = 21,
+  /** Shovel the snow off a field cell before sowing it (site = the field cell; village.ts `clearSnow`). */
+  ClearSnow = 22,
 }
 
 export interface Agent {

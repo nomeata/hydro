@@ -97,6 +97,52 @@ const TIRED_SPEED = 0.6;
  * Farming: fields a farmer looks after, and the food a ripe field cell gives
  * (person-days, × fertility). Exported so tools can tune them.
  */
+/**
+ * Clearing snow before sowing (docs/PEOPLE.md §3.1): a field cell due for
+ * sowing under more than `min` of snow (water equivalent, m; thinner snow is
+ * patchy and sown straight into) is shovelled clear first, a work step of
+ * `timer` people-ticks. The snow goes onto the nearest cell beyond the
+ * field within `reach` cells (a bank along the field's edge that melts
+ * later); deep inside a large field, where there is none, it is trodden in
+ * and soaks into the soil. Either way no water is made or lost.
+ */
+export const SNOW_CLEARING = { min: 0.0015, timer: 40, reach: 3 };
+
+/** Ring offsets (dx, dy) by distance, nearest first, for `clearSnow`. */
+const CLEAR_RING: [number, number][] = (() => {
+  const r = SNOW_CLEARING.reach;
+  const out: [number, number, number][] = [];
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if ((dx || dy) && dx * dx + dy * dy <= r * r + 0.5) out.push([dx, dy, dx * dx + dy * dy]);
+  out.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0]);
+  return out.map(([dx, dy]) => [dx, dy]);
+})();
+
+/** Shovel the snow off field cell `i` (see `SNOW_CLEARING`). Mass-conserving. */
+export function clearSnow(w: World, i: number): void {
+  const swe = w.snow[i]!;
+  if (swe <= 0) return;
+  w.snow[i] = 0;
+  const W = w.width;
+  const x = i % W;
+  const y = (i / W) | 0;
+  for (const [dx, dy] of CLEAR_RING) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!w.inBounds(nx, ny)) continue;
+    const j = ny * W + nx;
+    const lu = w.landuse[j];
+    if (lu !== LandUse.None && lu !== LandUse.Pasture) continue;
+    if (w.water[j]! > 0.02 || w.flags[j]! & CellFlag.Structure) continue;
+    w.snow[j]! += swe;
+    return;
+  }
+  // No bank in reach: trodden into the soil (any excess stays on top).
+  const cap = w.soil[i]! * SOIL_PROPS[w.soilType[i]!]!.porosity;
+  const soak = Math.max(0, Math.min(swe, cap - w.ground[i]!));
+  w.ground[i]! += soak;
+  w.water[i]! += swe - soak;
+}
+
 /** Good land counted as spare at most (cells, about three farmers' worth; round 5). */
 const SPARE_LAND_CELLS = 84;
 
@@ -2315,6 +2361,10 @@ export class PeopleSystem {
         a.timer = 40;
         a.anim = EntityAnim.Work;
         break;
+      case SiteKind.ClearSnow:
+        a.timer = SNOW_CLEARING.timer;
+        a.anim = EntityAnim.Shovel;
+        break;
       case SiteKind.Harvest:
         a.timer = 40;
         a.anim = EntityAnim.Work;
@@ -2490,6 +2540,9 @@ export class PeopleSystem {
       }
       case SiteKind.Sow:
         if (w.landuse[a.site] === LandUse.Field && w.crop[a.site] === 0) w.crop[a.site] = 8;
+        break;
+      case SiteKind.ClearSnow:
+        if (w.landuse[a.site] === LandUse.Field) clearSnow(w, a.site);
         break;
       case SiteKind.Tend:
         // Tending helps a little (weeding); growth itself comes from the land.
@@ -2890,7 +2943,8 @@ export class PeopleSystem {
         kind = SiteKind.Harvest;
         prio = 3;
       } else if (c === 0 && canSow) {
-        kind = SiteKind.Sow;
+        // Snow is shovelled off first (sowing into snow looks wrong).
+        kind = w.snow[i]! > SNOW_CLEARING.min ? SiteKind.ClearSnow : SiteKind.Sow;
         prio = 2;
       } else if (c > 0) {
         kind = SiteKind.Tend;
@@ -2929,6 +2983,7 @@ export class PeopleSystem {
         k === SiteKind.Earthwork ||
         k === SiteKind.Ditch ||
         k === SiteKind.Sow ||
+        k === SiteKind.ClearSnow ||
         k === SiteKind.Tend ||
         k === SiteKind.Harvest ||
         k === SiteKind.Fish ||

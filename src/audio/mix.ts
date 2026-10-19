@@ -390,7 +390,7 @@ export function entitySources(e: EntityFrame | undefined | null, out: SpotSource
     if (kind === EntityKind.Person) {
       if (anim === EntityAnim.Build) s = 'hammer';
       else if (anim === EntityAnim.Chop) s = 'chop';
-      else if (anim === EntityAnim.Work) s = 'dig';
+      else if (anim === EntityAnim.Work || anim === EntityAnim.Shovel) s = 'dig';
     } else if (kind === EntityKind.Cow) s = 'moo';
     else if (kind === EntityKind.Sheep) s = 'baa';
     else if (kind === EntityKind.Chick) s = 'peep';
