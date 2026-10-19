@@ -94,7 +94,6 @@ export class IntroScenes {
   /** 'shape' timeline state. */
   private drew = false;
   private lastT = 0;
-  private lastAt: Pt | null = null;
   private sculptor: Sculptor | null = null;
   private readonly onResize = () => this.renderer?.resize();
   private readonly tmp = new THREE.Vector3();
@@ -210,7 +209,6 @@ export class IntroScenes {
   private resetScript(): void {
     this.drew = false;
     this.lastT = 0;
-    this.lastAt = null;
     this.sculptor?.reset();
     this.renderer?.brushCursor.set(null);
     this.hand.style.opacity = '0';
@@ -290,10 +288,34 @@ export class IntroScenes {
     const rest: [number, number] = [tool[0] + cr.width * 0.18, tool[1] - cr.height * 0.25];
     let p: [number, number];
     let press = false;
-    // The brush is held for the part of the draw window since the last frame:
-    // slow frames (software GL, a weak phone) still dig the whole channel.
-    const held = Math.max(0, Math.min(t, T_RELEASE) - Math.max(this.lastT, T_DRAW));
+    // Where the brush is at script time `time` (s): out along the line and back.
+    const brushAt = (time: number): Pt => {
+      const k = (time - T_DRAW) / (T_RELEASE - T_DRAW);
+      const f = k < 0.5 ? ease(k * 2) : ease((1 - k) * 2);
+      const drawn = partialPath(pts, Math.max(0.02, f));
+      return drawn[drawn.length - 1]!;
+    };
+    // The brush digs along the script's own timeline, in short steps over
+    // the part of the draw window since the last frame: slow frames (software
+    // GL, a weak phone: a second or more each) still dig the whole channel,
+    // not just where the hand happened to be when a frame came.
+    const a = Math.max(this.lastT, T_DRAW);
+    const b = Math.min(t, T_RELEASE);
     this.lastT = t;
+    const sc = this.sculptor;
+    if (sc && b > a) {
+      if (!this.drew) {
+        this.drew = true;
+        sc.begin('dig', DIG.radius);
+      }
+      const n = Math.max(1, Math.ceil((b - a) / 0.04));
+      const step = (b - a) / n;
+      for (let k = 0; k < n; k++) {
+        const at = brushAt(a + (k + 0.5) * step);
+        sc.sample(at[0], at[1], step * DIG.boost);
+      }
+      sc.flush();
+    }
     if (t < T_TAP - 0.5) {
       p = rest;
     } else if (t < T_TAP) {
@@ -305,35 +327,13 @@ export class IntroScenes {
       p = lerp2(tool, start, ease(Math.max(0, (k - 0.25) / 0.75)));
     } else if (t < T_RELEASE) {
       press = true;
-      // Out along the line and back: the brush digs where it is held.
-      const k = (t - T_DRAW) / (T_RELEASE - T_DRAW);
-      const f = k < 0.5 ? ease(k * 2) : ease((1 - k) * 2);
-      const drawn = partialPath(pts, Math.max(0.02, f));
-      const at = drawn[drawn.length - 1]!;
+      this.pressTool('dig');
+      const at = brushAt(t);
       p = this.toScreen(at);
-      const sc = this.sculptor;
-      if (sc) {
-        if (!this.drew) {
-          this.drew = true;
-          this.lastAt = at;
-          sc.begin('dig', DIG.radius);
-        }
-        // From where the brush was last frame to here (slow frames: no gaps).
-        const from = this.lastAt ?? at;
-        const n = Math.max(1, Math.ceil(Math.hypot(at[0] - from[0], at[1] - from[1]) / (DIG.radius * 0.4)));
-        for (let k = 1; k <= n; k++) sc.sample(from[0] + ((at[0] - from[0]) * k) / n, from[1] + ((at[1] - from[1]) * k) / n, (held * DIG.boost) / n);
-        this.lastAt = at;
-        sc.flush();
-      }
       this.renderer?.brushCursor.set({ x: at[0], y: at[1], r: DIG.radius, tool: 'dig', active: true });
     } else {
       if (this.drew) {
         this.drew = false;
-        // The rest of the hold, up to the release, where the brush last was.
-        if (this.sculptor && this.lastAt && held > 0) {
-          this.sculptor.sample(this.lastAt[0], this.lastAt[1], held * DIG.boost);
-          this.sculptor.flush();
-        }
         this.renderer?.brushCursor.set(null);
         // The brush stays in the hand; let the water come quickly.
         this.client.setSpeed(4);
