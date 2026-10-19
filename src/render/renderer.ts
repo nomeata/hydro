@@ -31,6 +31,7 @@ import { PlotLayer } from './village/plots';
 import { VillageCuesLayer } from './village/cues';
 import { MillWheelsLayer } from './village/millwheels';
 import { fieldsToRgba } from './village/fields';
+import { villageLanes } from './village/lanes';
 import { StructuresLayer } from './structures/structures';
 import { WheelPreview } from './structures/wheelPreview';
 import { BrushCursor } from './brushCursor';
@@ -125,6 +126,8 @@ export class GameRenderer {
   readonly fog: FogField;
   /** Latest building list (unfiltered; buildings in the fog are not drawn). */
   private buildingList: readonly BuildingInfo[] = [];
+  /** The last snapshot fields (paths and lanes are redrawn when the buildings change too). */
+  private lastFields: Uint8Array | null = null;
   /** The village buildings of the latest snapshot. */
   get buildingInfos(): readonly BuildingInfo[] {
     return this.buildingList;
@@ -425,9 +428,15 @@ export class GameRenderer {
       this.cues.setVillages(vs);
     }
     this.cues.setWind(s.climate.windDir, s.climate.windSpeed);
-    if (s.fields) {
-      fieldsToRgba(s.fields, this.tex.fields.image.data as Uint8Array, n);
+    if (s.fields) this.lastFields = s.fields;
+    if (this.lastFields && (s.fields || s.buildings)) {
+      // Paths and the lanes between the houses (which follow the buildings too).
+      const data = this.tex.fields.image.data as Uint8Array;
+      fieldsToRgba(this.lastFields, data, n, this.info.width);
+      villageLanes(this.lastFields, data, n, this.info.width, this.buildingList);
       this.tex.fields.needsUpdate = true;
+    }
+    if (s.fields) {
       this.terrain.uniforms.uFieldsOn.value = 1;
       this.crops.setFields(s.fields);
       this.plots.setFields(s.fields);

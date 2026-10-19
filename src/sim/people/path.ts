@@ -9,7 +9,11 @@ import { LandUse, type World } from '../world';
 export const MAX_WADE = 0.4;
 /** Steepest slope (rise over run, both in metres) people will walk. */
 export const MAX_SLOPE = 0.9;
-/** Cost factor for stepping onto a trodden path (they are quicker, and people like them). */
+/**
+ * Cost factor for stepping onto a trodden path (they are quicker, and people
+ * like them), or across a yard (the trampled ground between houses: else
+ * people would wear a ring road around every cluster of yards).
+ */
 export const PATH_COST = 0.6;
 /**
  * Trodden grass (traffic, not yet a path) is a little cheaper too, up to
@@ -27,13 +31,15 @@ export interface PathOptions {
   maxExpand?: number;
   /** Extra passability (e.g. bridges): returns true if cell i is walkable regardless of water. */
   bridge?: (i: number) => boolean;
+  /** Deepest water to wade through (default MAX_WADE; people caught in a flood struggle through anything). */
+  wade?: number;
 }
 
 /** Cost of entering cell j from cell i (distance dist in cells), or Infinity. */
-export function stepCost(world: World, i: number, j: number, dist: number, bridge?: (i: number) => boolean): number {
+export function stepCost(world: World, i: number, j: number, dist: number, bridge?: (i: number) => boolean, maxWade = MAX_WADE): number {
   const dj = world.water[j]!;
   const onBridge = bridge?.(j) ?? false;
-  if (dj > MAX_WADE && !onBridge) return Infinity;
+  if (dj > maxWade && !onBridge) return Infinity;
   if (dist > 1 && !onBridge && !(bridge?.(i) ?? false)) {
     // No cutting a corner of deep water (a narrow canal) on a diagonal step: walkers round
     // to the cells they pass, and would find themselves in it.
@@ -42,14 +48,14 @@ export function stepCost(world: World, i: number, j: number, dist: number, bridg
     const dy = ((j / W) | 0) - ((i / W) | 0);
     const c1 = i + dx;
     const c2 = i + dy * W;
-    if ((world.water[c1]! > MAX_WADE && !(bridge?.(c1) ?? false)) || (world.water[c2]! > MAX_WADE && !(bridge?.(c2) ?? false))) return Infinity;
+    if ((world.water[c1]! > maxWade && !(bridge?.(c1) ?? false)) || (world.water[c2]! > maxWade && !(bridge?.(c2) ?? false))) return Infinity;
   }
   const rise = Math.abs(world.terrain(j) - world.terrain(i)) / (5 * dist);
   // Stepping on or off a bridge (or jetty) ignores the ground beneath it.
   if (rise > MAX_SLOPE && !onBridge && !(bridge?.(i) ?? false)) return Infinity;
   let c = dist * (1 + 3 * rise * rise);
   if (!onBridge && dj > 0.05) c *= 1 + 6 * dj; // wading is slow
-  else if (world.landuse[j] === LandUse.Path) c *= PATH_COST; // people keep to the trodden paths
+  else if (world.landuse[j] === LandUse.Path || world.landuse[j] === LandUse.Yard) c *= PATH_COST; // people keep to the trodden paths (and cut across yards)
   else {
     const t = world.traffic[j]!;
     if (t > 0) c *= 1 - (TROD_BONUS * Math.min(t, TROD_FULL)) / TROD_FULL;
@@ -198,7 +204,7 @@ export class PathFinder {
         if (nx < x0 || nx > x1 || ny < y0 || ny > y1) continue;
         const n = ny * W + nx;
         if (closed.has(n)) continue;
-        const c = stepCost(w, cur, n, dist, opts.bridge);
+        const c = stepCost(w, cur, n, dist, opts.bridge, opts.wade);
         if (!Number.isFinite(c)) continue;
         const ng = g[cur]! + c;
         if (stamp[n] === gen && g[n]! <= ng) continue;

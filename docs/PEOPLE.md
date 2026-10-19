@@ -192,24 +192,40 @@ New world fields:
   block, so paths stay about one cell wide (thick spots in old saves are
   thinned, keeping the most trodden cells and the connections). Dead ends
   into open meadow and lone specks fade below 72, any path below 24 (a
-  month or two unused). A* converges routes onto the ways others walk:
-  paths cost ×0.6, trodden grass up to ×0.75 (`path.ts`), so a few walks
-  in the same direction pull later routes onto one track.
+  month or two unused). No duplicates: a way never grows beside another
+  track (a path cell one or two cells away, running the same way, not
+  joined within 8 cells of path), and of two such tracks the less trodden
+  gives way cell by cell; a loop of ≤ 14 cells through path, yards and
+  houses (a ladder's rung, a lane round a cluster of yards) loses its least
+  trodden cell; corners of staircases are cut and zigzag teeth move into
+  the line (straighter ways). A* converges routes onto the ways others walk:
+  paths and yards cost ×0.6 (people cut across the yards between houses
+  instead of wearing a ring road round them), trodden grass up to ×0.75
+  (`path.ts`), so a few walks in the same direction pull later routes onto
+  one track. `pathDuplicates` counts parallel and short-loop cells.
   `npx tsx tools/paths-run.ts --seed 1 --days 140 --map` reports the
   network's shape (groups, specks, thick spots) with an ASCII map of the
   village; `--save out/p1 --save-at 114,140` then
   `npx tsx tools/shot-paths.ts out/p1-d114 --tag after` screenshots it
   (desktop and phone; needs `vite preview`).
-  Drawing (`pathMask`/`pathColour` in `render/village/fields.ts`): bands
-  along the lines between the centres of neighbouring path cells (and into
-  yards and onto bridges; a diagonal only where no path cell already turns
-  the corner), the lookup point displaced by low-frequency noise so ways
-  wind a little and grid corners round off; noisy soft edges, width from
+  Drawing (`pathMask`/`pathColour` in `render/village/fields.ts`): the
+  renderer computes each path cell's links (`pathLinks`, into the fields
+  texture's B and A bytes): its path neighbours (a diagonal only where no
+  path cell already turns the corner), bridges, and one yard or house only
+  where the way ends — a way passing along yards draws no rungs into them,
+  but each piece of path joins each cluster of yards it touches once, from
+  its most trodden cell. The shader draws, per cell, a quadratic Bézier
+  from the middle of one link to the other through the cell centre
+  (neighbours' curves meet with the same tangent: no grid corners), spokes
+  blended by a smooth minimum at junctions and dead ends; only the 2 × 2
+  cells around a point are looked at. The lookup point is displaced by
+  low-frequency noise so ways wind a little; noisy soft edges, width from
   the footfall (the fields texture's crop byte carries `traffic` on path
-  cells) and wider between houses; warm trodden earth, darker and rutted
+  cells, raised beside houses), blended bilinearly across cells; warm trodden earth, darker and rutted
   where worn, a margin of flattened grass, tufts on little-used ways, mud
   and puddles in the ruts when the soil is wet. In winter a path is trodden
-  grey-brown slush with two wet tracks (terrain shader), free of hoar frost,
+  grey-brown slush with two wet tracks (terrain shader), the snow thinning
+  gradually towards it through a noisy fringe of greyish trodden snow, free of hoar frost,
   and its snow melts faster (as if 1.5 °C warmer, twice
   as fast: `PARAMS.pathMelt*`); off the paths every walker leaves
   footprints in the snow (`render/footprints.ts`: a client-side ring of
