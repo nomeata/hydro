@@ -4,19 +4,28 @@ import { openGame, runDays, settleFrames } from './helpers';
 
 /** Pixels (of the game view) that differ between two screenshots. */
 function diffPixels(a: Buffer, b: Buffer): number {
+  return diffInfo(a, b).n;
+}
+
+/** Changed pixels and where they are (for diagnosing a failure). */
+function diffInfo(a: Buffer, b: Buffer): { n: number; where: string } {
   const pa = PNG.sync.read(a);
   const pb = PNG.sync.read(b);
   expect([pb.width, pb.height]).toEqual([pa.width, pa.height]);
   let n = 0;
+  const at: string[] = [];
   for (let i = 0; i < pa.data.length; i += 4) {
     if (
       Math.abs(pa.data[i]! - pb.data[i]!) > 2 ||
       Math.abs(pa.data[i + 1]! - pb.data[i + 1]!) > 2 ||
       Math.abs(pa.data[i + 2]! - pb.data[i + 2]!) > 2
-    )
+    ) {
       n++;
+      const p = i / 4;
+      if (at.length < 12) at.push(`${p % pa.width},${Math.floor(p / pa.width)}`);
+    }
   }
-  return n;
+  return { n, where: at.join(' ') };
 }
 
 const shot = (page: Page) => page.locator('#view').screenshot({ timeout: 120_000 });
@@ -60,11 +69,13 @@ test('pausing freezes every animation (people, animals, smoke, water, wheels)', 
   await page.waitForTimeout(1000);
   await settleFrames(page, 5);
   const b = await shot(page);
-  const paused = diffPixels(a, b);
-  if (process.env.HYDRO_PAUSE_DUMP) {
+  const { n: paused, where } = diffInfo(a, b);
+  if (process.env.HYDRO_PAUSE_DUMP || paused >= 20) {
+    // (test-results/ is kept by CI: the two frames show what still moved.)
     const { writeFileSync } = await import('node:fs');
-    writeFileSync(`${process.env.HYDRO_PAUSE_DUMP}/a.png`, a);
-    writeFileSync(`${process.env.HYDRO_PAUSE_DUMP}/b.png`, b);
+    writeFileSync(process.env.HYDRO_PAUSE_DUMP ? `${process.env.HYDRO_PAUSE_DUMP}/a.png` : info.outputPath('paused-a.png'), a);
+    writeFileSync(process.env.HYDRO_PAUSE_DUMP ? `${process.env.HYDRO_PAUSE_DUMP}/b.png` : info.outputPath('paused-b.png'), b);
+    if (paused) console.log(`paused changes at ${where}`);
   }
   await info.attach('paused', { body: a, contentType: 'image/png' });
   console.log(`changed pixels: running ${live}, paused ${paused}`);
