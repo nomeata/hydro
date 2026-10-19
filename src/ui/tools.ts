@@ -33,6 +33,8 @@ export function isBrush(id: ToolId): id is BrushTool {
 
 /** Touch: wait this long before the brush bites, so a second finger (pan, zoom) can still come (ms). */
 const TOUCH_DELAY = 90;
+/** Unlock pulse on a tool button: two 1 s glows (styles.css unlock-glow), and a little slack. */
+const PULSE_MS = 2300;
 
 /**
  * The power tools share one palette button (so the palette stays one row
@@ -421,16 +423,28 @@ export class ToolPalette {
     this.primed = true;
   }
 
+  /** Ends of the unlock pulses running now. */
+  private readonly pulseEnds = new Map<HTMLElement, () => void>();
+
   /** A short celebratory pulse on a tool button that just unlocked. */
   private pulse(b: HTMLElement): void {
+    this.pulseEnds.get(b)?.();
     b.classList.remove('unlock-pulse');
     void b.offsetWidth; // restart the animation
     b.classList.add('unlock-pulse');
-    const done = (e: AnimationEvent): void => {
-      if (e.target !== b) return;
+    // Ends with its animation, or on time when no animationend comes (the
+    // palette hidden, a busy or throttled page): the class never lingers.
+    const end = (): void => {
+      clearTimeout(timer);
+      this.pulseEnds.delete(b);
       b.classList.remove('unlock-pulse');
       b.removeEventListener('animationend', done);
     };
+    const done = (e: AnimationEvent): void => {
+      if (e.target === b) end();
+    };
+    const timer = setTimeout(end, PULSE_MS);
+    this.pulseEnds.set(b, end);
     b.addEventListener('animationend', done);
   }
 
