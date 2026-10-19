@@ -328,6 +328,7 @@ describe('the Remove brush', () => {
         expect(sim.structures.gates[0]!.progress).toBe(1);
         expect(sim.structures.weirs[0]!.cells.every((c) => (w.flags[c]! & CellFlag.Lined) !== 0)).toBe(true);
       }
+      const poles = sim.power.poles.length;
       const weirTop = sim.structures.weirs[0]!.top;
       const gateTop = sim.structures.gates[0]!.top;
       // A stroke over each (the brush sends several points along it).
@@ -341,8 +342,8 @@ describe('the Remove brush', () => {
       expect(sim.structures.gates.length).toBe(0);
       expect(sim.structures.wheels.length).toBe(0);
       expect(sim.power.turbines.length).toBe(0);
-      // (Not the villagers' poles.)
-      expect(sim.power.poles.length).toBe(1);
+      // (Not the villagers' poles; a lone one without wires they take away themselves, daily.)
+      expect(sim.power.poles.length).toBe(poles);
       expect(sim.power.pumps.length).toBe(0);
       // The crew takes the built ones down: the weir back to its ground, the gate's opening plugged.
       await build(sim, 20);
