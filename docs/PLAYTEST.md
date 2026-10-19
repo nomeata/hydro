@@ -701,7 +701,12 @@ seeds): founding rule alone (run A) good +17 %, weircanal +8 %, wheel
   are undone seeds 1–5 grow back to 24–31 by year 4 (prosperity 84–99 %).
   Seeds 6 and 7 stay at the floor of 8 (dry, hungry starts).
 
-**256² check** (seeds 3 and 6, 3 years): see below.
+**256² check** (seeds 3 and 6, 3 years; population at the end of years
+1–3): seed 3 baseline 17/29/39, weircanal 16/30/52 (+33 %, a second
+village), wheel 17/28/50 (+28 %), good 17/20/36 (−8 %); seed 6 baseline
+15/10/15 (81 %), good and weircanal 15/15/23 (+53 %, 94 %), wheel 15/14/22
+(+47 %). The direction holds at the game's size (round 3: seed 6's good
+player had half the baseline's people, 23 against 47).
 
 ### Open
 Agency on brook and fertile seeds (bots find no site, or works take
