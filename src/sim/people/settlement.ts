@@ -143,6 +143,8 @@ export interface SettlementState {
    * `classifyGrowth`; absent in old saves until the next day).
    */
   limit?: GrowthLimit;
+  /** Day from which `limit` has been one that stops growth (land, food, wellbeing, room); absent while growing. */
+  stalledSince?: number;
   /**
    * Newcomers camping at the village edge (docs/GAMEPLAY.md §4.6): a family
    * that would like to settle but finds no room (no site for a house) or no

@@ -243,8 +243,9 @@ export const FOUNDING = {
   interval: DAYS_PER_YEAR,
   /** Total population of all villages that makes people look for new land. */
   minPopulation: 40,
-  /** A single village this big without free houses also sends people out. */
+  /** A single village this big that has stopped growing (`stalledDays` without growth) also sends people out. */
   crowdedPopulation: 30,
+  stalledDays: 12,
   /** Minimum distance (cells) to every other settlement. */
   minSpacing: 26,
   /**
@@ -847,7 +848,7 @@ export class PeopleSystem {
       this.herds.daily(s, this.herdHome(s), time.season === 3, !this.noAnimals);
       this.assignJobs(s, host);
       this.manageLand(s, time);
-      this.judgeGrowth(s, doy);
+      this.judgeGrowth(s, doy, time.day);
       this.tendCamp(s, time.day);
     }
     this.peakPopulation = Math.max(this.peakPopulation, this.population);
@@ -1275,10 +1276,11 @@ export class PeopleSystem {
   private wantsNewVillage(day: number): boolean {
     if (!this.settlements.length || day - this.lastFounding < FOUNDING.interval) return false;
     if (this.population >= FOUNDING.minPopulation) return true;
-    // Crowded: no free house, or newcomers turned away for want of room or land (a village
-    // held back by its land keeps one house free, so the free-house test alone never fired).
-    const full = (s: Settlement) => s.freeHouses <= 0 || s.state.limit === 'land' || s.state.limit === 'room';
-    return this.settlements.some((s) => s.state.population >= FOUNDING.crowdedPopulation && full(s));
+    // Crowded: a village of 30 that has stopped growing for any reason (no land, no room, too
+    // little food, not attractive) for a while sends people out, so a player who waters its
+    // land does not delay the second village (docs/PLAYTEST.md round 4).
+    const stalled = (s: Settlement) => s.state.stalledSince !== undefined && day - s.state.stalledSince >= FOUNDING.stalledDays;
+    return this.settlements.some((s) => s.state.population >= FOUNDING.crowdedPopulation && stalled(s));
   }
 
   /**
@@ -2170,9 +2172,9 @@ export class PeopleSystem {
   }
 
   /** Daily, after the planning: what holds the village's growth back (settlement.ts classifyGrowth). */
-  private judgeGrowth(s: Settlement, doy: number): void {
+  private judgeGrowth(s: Settlement, doy: number, day: number): void {
     const st = s.state;
-    st.limit = classifyGrowth({
+    const limit = classifyGrowth({
       wellbeing: st.wellbeing,
       arriveAbove: st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove,
       fed: s.foodSecurity(doy, ECONOMY.growHorizon),
@@ -2180,6 +2182,10 @@ export class PeopleSystem {
       building: this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress < 1),
       goodLeft: this.goodLeft.get(st.id) ?? 0,
     });
+    st.limit = limit;
+    // Since when the village has stood still (for founding: a village held back for any reason sends people out).
+    if (limit === 'open' || limit === 'building') delete st.stalledSince;
+    else st.stalledSince ??= day;
   }
 
   /** Shallow, still standing water a paddy could be laid out in (otherwise as buildable for a field). */
