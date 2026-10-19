@@ -129,7 +129,9 @@ footprint for its cost.
 
 Dev tools: `tools/playtest/try-bot.ts` (a bot's first look at a cached
 game day and the response a few days on), `exp.ts` (jobs in-process with
-tunables overridden: `--set FARMING.yield=12`), `diag-map.ts` (ASCII map
+tunables overridden: `--set FARMING.yield=12`; `--floods` gives every
+spring from the third year a big freshet), `diag-start.ts` (how each
+seed's start was chosen and the land in its field radius), `diag-map.ts` (ASCII map
 of a village after a bot's works), `diag-crops.ts` (fields sown, ripe,
 who does what), `table.ts` (the round tables below).
 
@@ -589,3 +591,121 @@ Founding after irrigation (the good player loses the land-limited
 founding on fertile seeds: founding could also count a village of 30
 that has stopped growing for food); dikes on fields; hands-off year 3
 above 40 on fertile river seeds (main's founding rule).
+
+## Round 4 (tune4, October 2026)
+
+Lead's decisions: (1) a village of 30 that has stopped growing for any
+reason counts as crowded; (2) dry terraces as the usual start, fertile
+floodplains rarer; (3) dikes on unfarmed ground, judged with floods that
+reach the fields. Measured with `--seeds 1..8 --years 4 --bots
+good,weircanal,wheel,dike,undo` (128², budget 6000 m³), plus hands-off
+`exp.ts` runs on seeds 1–16.
+
+### Changes
+- **Founding** (`FOUNDING.stalledDays`, village.ts `judgeGrowth`): a
+  village of ≥ 30 whose growth limit has been `land`, `food`,
+  `wellbeing` or `room` for 12 days sends people out (was: no free house,
+  or `land`/`room` that day). A block 16–26 cells from a village may be
+  settled if ≥ 30 % of it lies within a player canal's reach
+  (`FOUNDING.canalSpacing`, `canalShare`: new villages follow the canals).
+- **Start** (worldgen `terracePass`, `fieldLand`): a dry terrace scores the
+  land within the field radius (18) on its own side of the river: land
+  crops grow on now ("good", wanted 120–180 cells: 15–30 people) and
+  fertile land too dry but at most 2.5 m above the water (what a weir or
+  wheel canal can water; full score from 200). The relaxed pass (a lower
+  or farther bench, from 1.5 m) competes on score. One world in four
+  (`fertileStart(seed)`, a hash) keeps the floodplain-rich terrace. Seeds
+  1–16: 10 dry terraces, 3 fertile terraces (4, 9, 15), 3 meadow fallbacks
+  (2, 7, 8: no terrace qualifies).
+- **The founders' food was thrown away**: `bookFood` capped the store at a
+  hamlet's capacity (1.5 years for 4 people) on the first delivery of fish,
+  so the 500 days the founders brought were ~290. Now a delivery never
+  shrinks the stock, and the founders bring 400 days.
+- **Hamlets grow on their store** (`ECONOMY.hamlet` 15): under 15 people,
+  growth asks for food until the next harvest, not 40 days ahead. Dry
+  starts otherwise stood at 6–10 people until a good harvest (seeds 10, 14:
+  weir unlock at day 126–135).
+- **Arrivals by pull**: the daily arrival chance adds up and a family comes
+  when the sum passes a threshold drawn from 0.6–1.4 (same mean rate).
+  Two runs of one village differed by 17 arrivals in a season by luck
+  alone (seed 2: 1 arrival in 18 days at 0.24 a day), which swamped every
+  bot comparison.
+- **Bots**: the weir's pool is judged at crest + the head of water pouring
+  over it (Q = 1.7 L h^1.5; on seed 2 the "2 fields" pool took ~50 bank
+  fields), fields on its wet margin count, drowned fields weigh 3×. The
+  dike bot tries four bands (2.5–6.5 cells from the river) and takes the
+  one whose banks take fewest fields for the low land behind them, with a
+  1-cell crest.
+
+### Hands-off (seeds 1–16, 128²)
+
+| | round 3 (seeds 1–8) | round 4 |
+|---|---|---|
+| weir unlock (15) | day 28–35 (7/8 seeds; 7, 8 never) | day 13–26 on 16/16 seeds (6–13 min) |
+| year 3 in 15–40 | 4/8 (1, 5, 6; 2–4 above, 7–8 below) | 10/16 (1, 3, 6, 9–12, 14–16); above: 2, 4, 5, 13; 7, 8 at 12 |
+| year 4, seeds 1–8 | 37/81/98/72/30/30/9/8 | 34/70/53/84/60/17/12/12 |
+
+- The dry terraces are hungrier: seed 6 holds 15–18 people at 52–82 %
+  prosperity for four years, seeds 9 and 10 17–23 at 59–77 %.
+- Steep seeds 7 and 8 now reach 16–17 in year 1 (weir unlocked) and fall
+  back to the floor of 8–12 (prosperity 35–54 %).
+- Above 40 by year 3: the fertile starts (2, 4) and two dry terraces that
+  find a second site once the first village stalls at 30 (5, 13).
+
+### Agency (128², 4 years; population at the end of years 1–4, prosperity in year 4)
+
+| bot | s1 | s2 | s3 | s4 | s5 | s6 | s7 | s8 | mean Δ |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline | 17/26/36/34 (91%) | 19/29/57/70 (91%) | 18/26/33/53 (97%) | 20/43/70/84 (88%) | 18/30/50/60 (90%) | 18/15/15/17 (82%) | 16/12/12/12 (35%) | 13/12/12/12 (54%) | |
+| good | 16/21/38/34 | 17/36/66/81 | 19/28/45/68 | 18/31/52/69 | 18/29/43/55 | 18/21/32/31 (95%) | 16/14/13/9 | 15/14/12/17 | +15 % |
+| weircanal | = | 19/29/57/70 | 16/31/50/82 | 21/34/60/71 | 18/29/43/56 | 18/20/32/32 (94%) | = | 13/11/12/14 | +17 % |
+| wheel | 17/23/36/38 | 19/35/64/77 | 18/30/56/90 | 20/33/60/73 | 19/32/51/66 | 18/23/26/29 (94%) | 16/12/10/12 | 16/14/15/15 | +23 % |
+| dike | = | 19/29/57/73 | = | = | = | = | = | = | +1 % |
+| undo | 17/8/19/25 | 15/8/21/29 | 17/10/15/24 | 18/8/15/26 | 8/8/21/31 | 16/8/8/8 | 12/8/8/8 | 16/14/14/16 | −39 % |
+
+(=: nothing to do, same as the baseline.) Seeds ≥ +30 %: good 2/8 (6, 8),
+weircanal 2/8 (3, 6), wheel 2/8 (3, 6; seed 8 +25 %). Steps on the way (same
+seeds): founding rule alone (run A) good +17 %, weircanal +8 %, wheel
++29 %; with the dry starts (run E, before the store fix and the pull)
++15 / +13 / +22 %.
+
+- **The target (+30 % on most seeds) is not met.** Where the bots bring
+  water to a dry terrace the village grows by half to nine-tenths (seed 6
+  +71–88 %, seed 3 +28–70 %, seed 8 +17–42 %). Elsewhere: seed 1 (a 0.7
+  m³/s brook on a flat plain) offers no weir site and a wheel lifts little;
+  seed 5's weirs water little; on the fertile starts (2, 4) works change
+  little or take fields (seed 4: the weir canal crosses the floodplain
+  fields; −13 to −18 %).
+- **Why gains are capped**: a village grows only while its store holds 46
+  days of need, and the store holds 1.5 years; so after each harvest
+  there is a window of ~3–4 weeks, at most ~0.24 families a day per free
+  house. Food beyond that does not speed growth (1.5 → 2.5 years of
+  storage: no change in the bot deltas, seeds 1–4). Total population
+  grows mainly by more villages, one a year at most (`FOUNDING.interval`);
+  the fertile hands-off seeds already found at that rate.
+- **Founding**: the stalled-village rule fires as intended (hands-off
+  seed 5 founds at day 99; the good player's on seed 5 at day 143 because
+  its village hovered at 29–30). The canal-side founding never fired in
+  these runs: the canals water the first village's own fields, which do
+  not count as open land for a new village.
+- **Dikes**: floods rarely reach the fields of the new starts. With a big
+  freshet every spring from year 3 (`--floods`), land flooded in four years
+  was 0–43 cells except seed 2 (261); the dike bot built on seeds 2–4
+  (once flood memory near the village appeared, years 3–4) and changed
+  population by −7 … +5 %. With freshets 6–7.5× (`CLIMATE.bigFactor=6`)
+  the dikes (crest capped at 2.5 m above the river) did not lower the
+  flooded area (seed 2: 526 → 503, seed 4: 361 → 405) and still took
+  19–64 fields under their banks. In the normal climate the dike bot builds
+  only on seed 2 (+4 %) and equals the baseline elsewhere.
+- **Undo recovers**: the vandal leaves 8 people in year 2; after the works
+  are undone seeds 1–5 grow back to 24–31 by year 4 (prosperity 84–99 %).
+  Seeds 6 and 7 stay at the floor of 8 (dry, hungry starts).
+
+**256² check** (seeds 3 and 6, 3 years): see below.
+
+### Open
+Agency on brook and fertile seeds (bots find no site, or works take
+fields); growth window (store vs growth horizon) bounds what more food can
+do; canal-side founding needs open watered land beyond the first
+village's fields; dikes that hold big freshets (crest, closing the
+floodplain at both ends).

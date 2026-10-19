@@ -592,6 +592,15 @@ does not grow (`food`). It grows again on a surplus: better yields, not
 more land (every farmer works 28 fields, so food per head rises only
 with yield per field), until the good land runs out (`land`).
 
+**Sending people out.** A village of 30 or more that has not grown for 12
+days, whatever holds it back, sends a family to found a new village (if a
+block scores ≥ 0.6 now and at the end of last summer, at most one a year),
+as does a valley total of 40. So watering a village's land does not delay
+the second village: a fed village keeps growing, a stalled one sends
+people out. A hamlet under 15 grows on its store until the harvest (the
+founders' provisions), and families arrive as the daily chances add up
+(`pull`), not by a daily coin toss.
+
 **Houses and fields.** Houses go on open ground within 12 cells when
 there is some (`planHouses`); fields are claimed from 3 cells out,
 so on a farmed plain they can close in on the village and leave no site
@@ -821,3 +830,24 @@ near the start) as a 25 % variant: two regimes, one of them flashier.
       fertile seeds watering land delays the founding of a second village
       (main's land-limited founding rule), so the good player is better on
       prosperity there but not on population. Steep seeds hold 8–11.
+15. ☑ **Playtest round 4** (docs/PLAYTEST.md, "Round 4"). *As built
+    (October 2026):*
+    - **Founding**: a village of 30 that has not grown for 12 days, for
+      any reason (land, food, wellbeing, room), counts as crowded; a new
+      village may settle 16–26 cells from another where the player's
+      canals water the block.
+    - **Dry terrace starts** (P2): the terrace is chosen for 120–180 cells
+      of land crops grow on now within the field radius, on its side of
+      the river, and much fertile land too dry but within 2.5 m of the
+      water (a weir or wheel canal's). One world in four keeps the fertile
+      floodplain terrace; where no terrace qualifies, the meadow fallback.
+    - **Founders' provisions** (400 days) now last: a delivery no longer
+      cuts the store to a hamlet's capacity. A hamlet under 15 grows on its
+      store until the harvest. Weir unlock at day 13–26 on 16 of 16 seeds.
+    - **Arrivals by pull**: daily chances add up to the next family (same
+      rate, less luck).
+    - Measured: hands-off year 3 in 15–40 on 10 of 16 seeds; the player's
+      water lifts dry terraces by half to nine-tenths in four years (seeds
+      3, 6, 8), little on brook and fertile seeds (bot means +15–23 %).
+      Growth stays rate-limited (a few weeks after each harvest), so food
+      beyond enough does not speed it; floods rarely reach terrace fields.
