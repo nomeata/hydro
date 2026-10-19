@@ -405,4 +405,57 @@ vec3 fieldColour(vec3 ground, vec3 world) {
   }
   return mix(ground, col, fieldEdge(c, f));
 }
+
+// Fields under snow (called by the terrain shader's snow): a field stays
+// readable at every zoom. The snow lies in the furrows and thins over the
+// ridges, where clods and stubble (bare fields) or the crop rows (green
+// shoots, standing crop) poke through; drifts outline the field's edge. At
+// a distance, where the rows are finer than a pixel, the same averages out
+// to a ribbed, greyer white with a darker seam along the outline.
+// \`snow\`: smoothed snow amount (look byte, 0..1); returns the new cover,
+// tinting \`snowCol\` where the snow lies in ridges.
+float fieldSnow(vec3 world, float snow, float cover, inout vec3 snowCol) {
+  if (uFieldsOn < 0.5 || cover <= 0.0) return cover;
+  ivec2 c = ivec2(floor(world.xz));
+  vec3 fd = fieldAt(c);
+  if (int(fd.r + 0.5) != 1) return cover;
+  int kind = fieldCropAt(c);
+  if (kind == 2) return cover;
+  vec2 f = fract(world.xz);
+  float inside = fieldEdge(c, f);
+  bool alongX = (patchHash(c / ${PATCH}) & 1u) == 1u;
+  float t = (alongX ? world.z : world.x) * ${ROWS_PER_CELL}.0;
+  float row = 0.5 + 0.5 * cos(6.2831853 * t);
+  float aa = 1.0 - smoothstep(0.18, 0.5, fwidth(t));
+  float crop = fd.g;
+  float g = clamp((crop - ${CROP_SOWN}.0) / (${CROP_RIPE}.0 - ${CROP_SOWN}.0), 0.0, 1.0);
+  bool sown = crop >= ${CROP_SOWN}.0;
+  // Deep snow buries the ridges (the look byte saturates near 15 cm of snow);
+  // a grown crop stands above even that.
+  float bury = smoothstep(0.55, 1.0, snow);
+  float height = sown ? mix(0.35, 1.0, smoothstep(0.0, 0.5, g)) : 0.3;
+  float poke = clamp(height - 0.75 * bury, 0.0, 1.0);
+  // Close up: gaps on the ridge tops (broken up along the row), dark clods,
+  // straw stubble or green shoots inside; far: their share of the field.
+  float along = (alongX ? world.x : world.z) * 6.0 + 1.7 * floor(t);
+  float bits = smoothstep(0.35, 0.65, fieldNoise(vec2(along, floor(t) * 3.7)));
+  float near = smoothstep(1.0 - 0.45 * poke, 1.02 - 0.45 * poke, row) * mix(0.55, 1.0, bits);
+  float gap = mix(0.3 * poke, near, aa) * inside;
+  vec3 show = sown
+    ? mix(vec3(0.36, 0.56, 0.2), vec3(0.62, 0.52, 0.22), smoothstep(0.75, 1.0, g))
+    : mix(vec3(0.33, 0.24, 0.15), uCropRipe * 0.72, 0.5 * bits);
+  // Snow ribbed by the furrows (blue shade in the furrows), slightly greyer
+  // on fields than on meadows, and drifts with a shaded seam at the edge.
+  float rib = mix(1.0 - row, 0.5, 1.0 - aa);
+  snowCol *= mix(1.0, mix(0.93, 0.8, rib), inside);
+  float de = 9.0;
+  if (!isField(c + ivec2(-1, 0))) de = min(de, f.x);
+  if (!isField(c + ivec2(1, 0))) de = min(de, 1.0 - f.x);
+  if (!isField(c + ivec2(0, -1))) de = min(de, f.y);
+  if (!isField(c + ivec2(0, 1))) de = min(de, 1.0 - f.y);
+  float seam = fieldLine(de, 0.06);
+  snowCol = mix(snowCol, snowCol * vec3(0.72, 0.75, 0.82), seam);
+  snowCol = mix(snowCol, show, gap * 0.9);
+  return cover;
+}
 `;
