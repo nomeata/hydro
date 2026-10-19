@@ -328,7 +328,7 @@ describe('the villagers build the grid', () => {
     expect(sim.power.turbines[0]!.produced).toBeGreaterThan(0);
     const houses = sim.people!.houses().length;
     let first = -1;
-    let save: Uint8Array | null = null;
+    let save: ArrayBuffer | null = null;
     for (let d = 0; d < 12 && sim.power.stats().houses < houses; d++) {
       sim.run(DAY);
       if (first < 0 && sim.power.poles.some((p) => p.progress >= 1)) first = d;
