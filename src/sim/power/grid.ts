@@ -693,6 +693,7 @@ export class PowerGrid {
       to: [number, number];
       node: Node | null;
       score?: (x: number, y: number) => number;
+      trim?: (x: number, y: number) => boolean;
     }
     let best: Target | null = null;
     const offer = (t: Target) => {
@@ -705,7 +706,9 @@ export class PowerGrid {
       if (!vh.length || covered(v.x, v.y) || vh.some((h) => covered(h.x, h.y))) continue;
       const { n, d } = nearest(v.x, v.y);
       const reach = (x: number, y: number) => -0.4 * vh.filter((h) => Math.hypot(h.x - x, h.y - y) <= R - 1).length;
-      offer({ key: v.y * W + v.x, from: n, d, to: [v.x, v.y], node: null, score: reach });
+      // The line ends at the village's edge, where a pole reaches all its houses (not in among them).
+      const trim = (x: number, y: number) => vh.every((h) => Math.hypot(h.x - x, h.y - y) <= R - 2);
+      offer({ key: v.y * W + v.x, from: n, d, to: [v.x, v.y], node: null, score: reach, trim });
     }
     for (const p of this.pumps) {
       if (covered(p.hx, p.hy)) continue;
@@ -747,7 +750,7 @@ export class PowerGrid {
     }
     const t = best as Target | null;
     if (!t) return false;
-    if (t.d > LINES.maxLine || !this.buildLine(t.from, t.to, t.node, nodes, day, t.score)) this.failed.set(t.key, day + LINES.retryDays);
+    if (t.d > LINES.maxLine || !this.buildLine(t.from, t.to, t.node, nodes, day, t.score, t.trim)) this.failed.set(t.key, day + LINES.retryDays);
     return true;
   }
 
@@ -759,11 +762,16 @@ export class PowerGrid {
     nodes: readonly { x: number; y: number }[],
     day: number,
     score?: (x: number, y: number) => number,
+    trim?: (x: number, y: number) => boolean,
   ): boolean {
     const w = this.world;
     let path: number[] | null = null;
     for (const m of LINES.margins) if ((path = routeLine(w, w.idx(from.x, from.y), w.idx(to[0], to[1]), this.allow, m))) break;
     if (!path) return false;
+    if (trim && !node) {
+      const k = path.findIndex((i) => trim(i % w.width, (i / w.width) | 0));
+      if (k > 0) path = path.slice(0, k + 1);
+    }
     const others = nodes.map((n): [number, number] => [n.x, n.y]);
     const opts = { allow: this.allow, toNode: node !== null, others, endScore: score };
     const poles = placeAlong(w, path, opts) ?? placeAlong(w, path, { ...opts, fields: true });
