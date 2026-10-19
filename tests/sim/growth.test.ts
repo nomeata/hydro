@@ -90,7 +90,7 @@ describe('growth limits', () => {
     s.state.spareLand = ECONOMY.spareFamily;
     expect(s.growth(doy)).toBeCloseTo(1 / ECONOMY.spareFamilies);
     // The store would not last comfortably: no.
-    s.state.food = need(s.daysToHarvest(doy) + 6);
+    s.state.food = need(s.daysToHarvest(doy) + 6) * 0.5;
     expect(s.growth(doy)).toBe(0);
     // A village that did not feed itself last year: no.
     s.state.food = need(s.daysToHarvest(doy) + 6) * 1.4;

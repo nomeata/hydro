@@ -7,6 +7,7 @@
  *   npx tsx tools/playtest/diag-spare.ts <seed> [bot] [days] [every] [size]
  */
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../../src/sim/constants';
+import { CLIMATE } from '../../src/sim/climate/climate';
 import { newGame } from '../../src/sim/newgame';
 import { makeBot } from './bots';
 import { villages } from './geo';
@@ -16,6 +17,11 @@ const name = process.argv[3] ?? 'baseline';
 const until = Number(process.argv[4] ?? 192);
 const every = Number(process.argv[5] ?? 4);
 const size = Number(process.argv[6] ?? 128);
+// SET="bigFrom=1,bigChanceRange=1:1,bigFactor=4.5": climate overrides.
+for (const kv of (process.env.SET ?? '').split(',').filter(Boolean)) {
+  const [k, v] = kv.split('=') as [string, string];
+  (CLIMATE as Record<string, unknown>)[k] = v.includes(':') ? v.split(':').map(Number) : Number(v);
+}
 const { sim } = newGame(seed, size);
 const bot = name === 'baseline' ? null : makeBot(name);
 for (let d = 0; d < until; d++) {
