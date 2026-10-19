@@ -266,7 +266,7 @@ vec3 pathColour(vec3 ground, vec3 world) {
   float pud = wet * smoothstep(0.55, 0.75, rut + 0.5 * fieldNoise(world.xz * 3.3 + 5.1) - 0.2);
   earth = mix(earth, vec3(0.4, 0.5, 0.56) * (0.9 + 0.1 * sin(uTime * 1.2 + world.x * 2.3)), pud * 0.7);
   // Tufts of grass survive where fewer feet go (and along the middle of a little-used way).
-  float tuft = smoothstep(0.62, 0.8, fieldNoise(world.xz * 9.0 + 3.3)) * (1.0 - wear) * (0.4 + 0.6 * smoothstep(0.6, 0.9, p));
+  float tuft = smoothstep(0.68, 0.85, fieldNoise(world.xz * 6.0 + 3.3)) * (1.0 - wear) * smoothstep(0.55, 0.9, p);
   return mix(ground, earth, m * (0.95 - 0.55 * tuft));
 }
 
