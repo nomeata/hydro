@@ -94,7 +94,9 @@ describe('hardy crops', () => {
     expect(c.millet.length).toBeGreaterThan(0);
     for (const i of c.paddy) expect(pond).toContain(i);
     const hardy = c.millet.length + c.paddy.length;
-    expect(hardy).toBe(Math.floor(HARDY.base + HARDY.share * good.length));
+    // An empty store: the hungry cap (HARDY.hungryShare).
+    expect(hardy).toBe(Math.min(c.millet.length + c.paddy.length, Math.floor(HARDY.base + HARDY.hungryShare * good.length)));
+    expect(hardy).toBeGreaterThan(Math.floor(HARDY.base + HARDY.share * good.length));
     expect(c.pegged.length).toBe(0);
     // Where the dry land is too poor even for millet, the pond is laid out in paddies.
     const s2 = setup(2, 0);
@@ -102,7 +104,7 @@ describe('hardy crops', () => {
     manage(s2.p, time(0), 6);
     const c2 = census(s2.w, s2.p);
     expect(c2.millet.length).toBe(0);
-    expect(c2.paddy.length).toBe(Math.min(land.pond.length, Math.floor(HARDY.base + HARDY.share * land.good.length)));
+    expect(c2.paddy.length).toBe(Math.min(land.pond.length, Math.floor(HARDY.base + HARDY.hungryShare * land.good.length)));
     for (const i of c2.paddy) expect(land.pond).toContain(i);
   });
 

@@ -58,8 +58,13 @@ export const ECONOMY = {
    * families it cannot feed through the winter).
    */
   growHorizon: 40,
-  /** Families leave a village only while more than this many people live there (no failure). */
-  stayers: 4,
+  /**
+   * The recovery floor (no failure; GAMEPLAY §4.2): families leave a village
+   * only while more than this many people live there, and at or below it
+   * hunger kills nobody and births do not wait for a full store (round 3:
+   * the steep valleys' villages starved down to four in their dry second year).
+   */
+  stayers: 8,
   /** Natural births/deaths per person per year (small, roughly balanced). */
   birthRate: 0.04,
   deathRate: 0.035,
@@ -303,8 +308,9 @@ export class Settlement {
     // Natural change (small, mostly cosmetic).
     const perDay = 1 / DAYS_PER_YEAR;
     const fed = this.foodSecurity(dayOfYear, ECONOMY.growHorizon) >= ECONOMY.growFood;
-    const births = fed ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
-    const deaths = s.population * (ECONOMY.deathRate + (starving ? ECONOMY.starvationDeathRate : 0)) * perDay;
+    const floor = s.population <= ECONOMY.stayers;
+    const births = fed || floor ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
+    const deaths = s.population * (ECONOMY.deathRate + (starving && !floor ? ECONOMY.starvationDeathRate : 0)) * perDay;
     if (rng.next() < births) {
       s.population++;
       ev.born++;

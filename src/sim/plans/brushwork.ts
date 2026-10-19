@@ -131,11 +131,11 @@ export class Brushwork {
    * A whole line shaped at once, with the old trench / dike / level profiles
    * (scripted strokes: tests, scenes; the old plan commands map to it):
    * dig grades the floor evenly from start to end `amount` below the
-   * ground, raise heaps a level bank `amount` above the lowest ground on
+   * ground (or between absolute `floor` heights), raise heaps a level bank `amount` above the lowest ground on
    * the line, even flattens to the height at its start. Fixed cells are
    * left alone. Counts as one stroke for undo. Returns the changed cells.
    */
-  shapeLine(kind: BrushTool, points: readonly Pt[], width: number, amount: number, stroke: number): number[] {
+  shapeLine(kind: BrushTool, points: readonly Pt[], width: number, amount: number, stroke: number, floor?: readonly [number, number]): number[] {
     const w = this.world;
     const grid: PlanGrid = {
       width: w.width,
@@ -145,7 +145,7 @@ export class Brushwork {
       terrain: (i) => w.terrain(i),
     };
     const cells =
-      kind === 'dig' ? planTrench(grid, points, width, amount) : kind === 'raise' ? planDike(grid, points, width, amount) : planLevel(grid, points, width);
+      kind === 'dig' ? planTrench(grid, points, width, amount, floor) : kind === 'raise' ? planDike(grid, points, width, amount) : planLevel(grid, points, width);
     const s = this.stroke(stroke);
     const done: number[] = [];
     this.scripted = true;

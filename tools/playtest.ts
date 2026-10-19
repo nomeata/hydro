@@ -4,7 +4,7 @@
  *   npm run playtest -- [--seeds 1..8] [--years 10 | --days N] [--bot-years Y] [--size 128]
  *                       [--bots baseline,irrigate,dike,weir,drain,vandal]
  *                       [--jobs 4] [--out out/playtest] [--act-day 16]
- *                       [--check-every 12] [--window 36] [--ignore-unlocks]
+ *                       [--check-every 12] [--window 36] [--ignore-unlocks] [--budget m³]
  *                       [--force] [--summary-only]
  *
  * Runs a new game per seed hands-off ("baseline") and with each scripted
@@ -76,6 +76,7 @@ async function main(): Promise<void> {
     checkEvery: Number(opt('check-every', '12')),
     window: Number(opt('window', '36')),
     ...(flag('ignore-unlocks') ? { ignoreUnlocks: true } : {}),
+    ...(args.includes('--budget') ? { budget: Number(opt('budget', '0')) } : {}),
   };
   mkdirSync(out, { recursive: true });
   const specs: JobSpec[] = [];
