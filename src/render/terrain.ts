@@ -171,12 +171,23 @@ const FRAGMENT_COLOUR = /* glsl */ `
       float veg = l.b;
       // Snow is smooth across cells: bilinear over the four cells around (the
       // fourth is the one this triangle does not touch), eased so no grid shows.
-      float s00 = lower ? l0.a : lookAt(qi).a;
-      float s11 = lower ? lookAt(qi + ivec2(1, 1)).a : l0.a;
+      // One fetch: the cell opposite c0 (software GL runs both sides of a ternary).
+      float s3 = lookAt(lower ? qi + ivec2(1, 1) : qi).a;
+      float s00 = lower ? l0.a : s3;
+      float s11 = lower ? s3 : l0.a;
       vec2 fe = f * f * (3.0 - 2.0 * f);
       float snow = mix(mix(s00, l1.a, fe.x), mix(l2.a, s11, fe.x), fe.y);
+      // The noise only matters for snow and frost: skip its fetches elsewhere
+      // (all summer, and on snow-free ground).
+      // (Gradients taken outside the branch, where they are defined.)
       vec2 nuv = vTerrWorld.xz;
-      float snowN = texture(uNoise, nuv * 0.045).r * 0.6 + texture(uNoise, nuv * 0.19 + 0.31).b * 0.4;
+      vec2 ndx = dFdx(nuv);
+      vec2 ndy = dFdy(nuv);
+      float snowN = 0.5;
+      if (snow > 0.0 || uFrost > 0.0) {
+        snowN = textureGrad(uNoise, nuv * 0.045, ndx * 0.045, ndy * 0.045).r * 0.6
+          + textureGrad(uNoise, nuv * 0.19 + 0.31, ndx * 0.19, ndy * 0.19).b * 0.4;
+      }
       // Vegetation: yellowish when dry, lush when moist, dark forest when dense.
       vec3 grass = mix(uGrassDry, uGrassLush, smoothstep(0.1, 0.6, moist));
       grass = mix(grass, uForest, smoothstep(0.62, 0.9, veg));
