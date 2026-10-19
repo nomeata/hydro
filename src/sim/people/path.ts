@@ -26,7 +26,7 @@ export function stepCost(world: World, i: number, j: number, dist: number, bridg
   const dj = world.water[j]!;
   const onBridge = bridge?.(j) ?? false;
   if (dj > MAX_WADE && !onBridge) return Infinity;
-  if (dist > 1 && !onBridge) {
+  if (dist > 1 && !onBridge && !(bridge?.(i) ?? false)) {
     // No cutting a corner of deep water (a narrow canal) on a diagonal step: walkers round
     // to the cells they pass, and would find themselves in it.
     const W = world.width;

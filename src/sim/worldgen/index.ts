@@ -333,27 +333,7 @@ function terracePass(
  * 0.05, and penalties for water farther than `near` cells or more than
  * `height` m below (or above) the site.
  */
-export const MEADOW = { slope: 6, steep: 20, near: 14, farPerCell: 0.06, height: 5, highPerMetre: 0.08, riverQ: 0.5, farm: 2, farmRadius: 14, farmSlope: 0.15 };
-
-/**
- * Share of the land within `r` cells of (x, y) that a village can farm:
- * dry, gentle (slope below MEADOW.farmSlope) and fertile. Steep valleys
- * have little of it, so a meadow start there looks for the widest patch
- * (docs/PLAYTEST.md round 3: the steep seeds' villages starved for land).
- */
-function farmland(world: World, slope: Float32Array, x: number, y: number, r: number): number {
-  const W = world.width;
-  let n = 0;
-  let k = 0;
-  for (let dy = -r; dy <= r; dy += 2)
-    for (let dx = -r; dx <= r; dx += 2) {
-      if (dx * dx + dy * dy > r * r || !world.inBounds(x + dx, y + dy)) continue;
-      const j = (y + dy) * W + x + dx;
-      k++;
-      if (world.water[j]! < 0.01 && slope[j]! < MEADOW.farmSlope && world.fertility[j]! >= 0.4) n++;
-    }
-  return k ? n / k : 0;
-}
+export const MEADOW = { slope: 6, steep: 20, near: 14, farPerCell: 0.06, height: 5, highPerMetre: 0.08, riverQ: 0.5 };
 
 /** The old start: the best fertile meadow near the biggest river. */
 function meadowStart(
@@ -407,9 +387,8 @@ function meadowStart(
       const far = Math.max(0, Math.max(wdist[i]!, river) - MEADOW.near) * MEADOW.farPerCell;
       const high = Math.max(0, Math.abs(z[i]! - surf[i]!) - MEADOW.height) * MEADOW.highPerMetre;
       // Not in a bog: the houses want dry feet.
-      const farm = MEADOW.farm * farmland(world, slope, x, y, MEADOW.farmRadius);
       const score =
-        1.2 * f + 1.4 * nearRiver * (0.4 + 0.6 * big) - MEADOW.slope * s - MEADOW.steep * steep - far - high - 0.15 * wet - 0.5 * centre * centre - (3 * bog) / k + farm;
+        1.2 * f + 1.4 * nearRiver * (0.4 + 0.6 * big) - MEADOW.slope * s - MEADOW.steep * steep - far - high - 0.15 * wet - 0.5 * centre * centre - (3 * bog) / k;
       if (score > best) {
         best = score;
         bx = x;

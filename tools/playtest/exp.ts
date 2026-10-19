@@ -12,7 +12,6 @@ import { CAPILLARY, CROP_MOISTURE, FARMING, FOUNDING, HARDY } from '../../src/si
 import { DITCH } from '../../src/sim/people/ditches';
 import { runJob } from './run';
 import { makeBot } from './bots';
-import { makeBot as makeOld } from './oldbots';
 
 const args = process.argv.slice(2);
 const opt = (k: string, d: string): string => {
@@ -30,7 +29,7 @@ const seeds = opt('seeds', '1').split(',').map(Number);
 const days = Number(opt('days', '96'));
 for (const bot of opt('bot', 'baseline').split(',')) {
   for (const seed of seeds) {
-    const r = await runJob({ seed, size: Number(opt('size', '128')), days, bot: bot, actDay: 16, checkEvery: 12, window: 2, ...(args.includes('--ignore-unlocks') ? { ignoreUnlocks: true } : {}) }, () => {}, ((name: string, o: object) => (name.startsWith('old-') ? makeOld(name.slice(4), o) : makeBot(name, o))) as typeof makeBot);
+    const r = await runJob({ seed, size: Number(opt('size', '128')), days, bot: bot, actDay: 16, checkEvery: 12, window: 2, ...(args.includes('--ignore-unlocks') ? { ignoreUnlocks: true } : {}) }, () => {}, makeBot);
     mkdirSync('out/exp', { recursive: true });
     writeFileSync(`out/exp/${opt('tag', 'x')}-${bot}-s${seed}.json`, JSON.stringify(r));
     const pops = r.seasons.map((s) => s.population);
