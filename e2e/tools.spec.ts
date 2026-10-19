@@ -65,6 +65,7 @@ test('tools stay selected; weirs, gates and wheels show their ghosts first', asy
 
   // No power-line mode (the villagers put the lines up), and a turbine drawn over the land shows no live text.
   await expect(page.locator('.modes button')).toHaveCount(2);
+  await expect(page.locator('.tools .hint')).toContainText('Light for the villages', { timeout: 10_000 });
   const hint = await page.locator('.tools .hint').textContent();
   const vp = page.viewportSize()!;
   const release = await stroke(page, phone, line([vp.width * 0.3, vp.height * 0.45], [vp.width * 0.6, vp.height * 0.45]), true);

@@ -169,8 +169,10 @@ test('with the weir tool a tap on a weir selects it; a pole is selected, without
 
   // A pole on dry land beside the start.
   const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
-  await page.evaluate(([x, y]) => (window as any).__hydro.client.command({ type: 'placePoles', points: [[x + 3, y + 3]] }), [startX, startY]);
-  await expect.poll(async () => (await page.evaluate(() => (window as any).__hydro.renderer.power.state?.poles.length ?? 0))).toBe(1);
+  // (As the villagers' line would stand: two poles, put up by the crew.)
+  await page.evaluate(([x, y]) => (window as any).__hydro.client.command({ type: 'placePoles', points: [[x + 3, y + 3], [x + 9, y + 3]] }), [startX, startY]);
+  await runDays(page, 0.2);
+  await expect.poll(async () => (await page.evaluate(() => (window as any).__hydro.renderer.power.state?.poles.filter((p: any) => p.progress >= 1).length ?? 0))).toBeGreaterThan(0);
   const pole = await page.evaluate(() => (window as any).__hydro.renderer.power.state.poles[0]);
   await page.evaluate(([cx, cy]) => (window as any).__hydro.renderer.camera.setState({ x: cx, y: cy, viewHeight: 16 }, true), [pole.x, pole.y]);
   await settleFrames(page);
