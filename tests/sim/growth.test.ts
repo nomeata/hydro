@@ -74,7 +74,8 @@ describe('growth limits', () => {
     expect(campsFor('land', 0.9, 0.6)).toBe(true);
     expect(campsFor('land', 0.5, 0.6)).toBe(false);
     // A house going up: the next family waits at the edge for it (round 5: camps lead, houses follow).
-    expect(campsFor('building', 0.9, 0.6)).toBe(true);
+    expect(campsFor('building', 0.9, 0.6, 20)).toBe(true);
+    expect(campsFor('building', 0.9, 0.6, 6)).toBe(false);
     for (const l of ['open', 'food', 'wellbeing'] as const) expect(campsFor(l, 0.9, 0.6)).toBe(false);
   });
 

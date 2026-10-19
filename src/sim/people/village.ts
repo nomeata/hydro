@@ -1889,7 +1889,7 @@ export class PeopleSystem {
         this.endCamp(st, day, 0);
         return;
       }
-      const waiting = campsFor(limit, wellbeing, arriveAbove) || limit === 'building';
+      const waiting = campsFor(limit, wellbeing, arriveAbove, st.population) || limit === 'building';
       if (waiting && campers.length && day - camp.since < CAMP.stay && w.water[camp.cell]! < 0.05) return;
       // Nothing changes (or the village no longer draws them): they move on.
       for (const a of campers) {
@@ -1903,7 +1903,7 @@ export class PeopleSystem {
       this.endCamp(st, day, CAMP.again);
       return;
     }
-    if (!campsFor(limit, wellbeing, arriveAbove) || day < (st.campAgain ?? 0)) return;
+    if (!campsFor(limit, wellbeing, arriveAbove, st.population) || day < (st.campAgain ?? 0)) return;
     const cell = this.campSite(s);
     if (cell < 0) return;
     const n = this.rng.int(ECONOMY.familySize[0], Math.min(4, ECONOMY.familySize[1]) + 1);

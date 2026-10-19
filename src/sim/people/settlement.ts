@@ -252,8 +252,11 @@ export const CAMP = {
 };
 
 /** Limits under which newcomers camp at the edge: they want to come, but the village can't take them. */
-export function campsFor(limit: GrowthLimit | undefined, wellbeing: number, arriveAbove: number): boolean {
-  return (limit === 'room' || limit === 'land' || limit === 'building') && wellbeing > arriveAbove;
+export function campsFor(limit: GrowthLimit | undefined, wellbeing: number, arriveAbove: number, population = Infinity): boolean {
+  // While a house goes up the next family waits for it at the edge (round 5), once the village is
+  // past its first few houses (a hamlet's founders build for themselves).
+  const building = limit === 'building' && population >= ECONOMY.smallVillage;
+  return (limit === 'room' || limit === 'land' || building) && wellbeing > arriveAbove;
 }
 
 export type Mood = -1 | 0 | 1;
