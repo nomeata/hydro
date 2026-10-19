@@ -37,8 +37,8 @@ test('stats bar is visible and opens the history chart, which closes again', asy
 
 test('the next locked tool shows its unlock progress on the palette and pulses at unlock', async ({ page }) => {
   const errors = await openGame(page, '&size=64');
-  const weir = page.locator('.toolrow button[data-tool=weir]');
-  const gate = page.locator('.toolrow button[data-tool=gate]');
+  const weir = page.locator('.tools .toolrow button[data-tool=weir]');
+  const gate = page.locator('.tools .toolrow button[data-tool=gate]');
   // Only the next tool (the Weir at 15) carries the ring; later ones are plainly locked.
   await expect(weir).toHaveClass(/locked/);
   await expect(weir).toHaveClass(/next/);
@@ -54,12 +54,12 @@ test('the next locked tool shows its unlock progress on the palette and pulses a
   // (Read the class right away: the pulse lasts only two seconds.)
   const cls = await page.evaluate(() => {
     (window as any).__hydro.tools.setPopulation(15);
-    return document.querySelector('.toolrow button[data-tool=weir]')!.className;
+    return document.querySelector('.tools .toolrow button[data-tool=weir]')!.className;
   });
   expect(cls).toContain('unlocked-now');
   await expect(weir).not.toHaveClass(/locked/);
   await expect(gate).toHaveClass(/next/);
-  await expect(page.locator('.toolrow button.next')).toHaveCount(1);
-  await expect(weir).not.toHaveClass(/unlocked-now/, { timeout: 4000 });
+  await expect(page.locator('.tools .toolrow button.next')).toHaveCount(1);
+  await expect(weir).not.toHaveClass(/unlocked-now/, { timeout: 8000 });
   expect(errors).toEqual([]);
 });

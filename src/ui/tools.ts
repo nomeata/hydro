@@ -426,7 +426,12 @@ export class ToolPalette {
     b.classList.remove('unlocked-now');
     void b.offsetWidth; // restart the animation
     b.classList.add('unlocked-now');
-    setTimeout(() => b.classList.remove('unlocked-now'), 2000);
+    const done = (e: AnimationEvent): void => {
+      if (e.target !== b) return;
+      b.classList.remove('unlocked-now');
+      b.removeEventListener('animationend', done);
+    };
+    b.addEventListener('animationend', done);
   }
 
   /** Keyboard: digits 1…9, 0 pick the tools in palette order; Escape returns to Look; Ctrl/Cmd+Z undoes the last stroke. */
