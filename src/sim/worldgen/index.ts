@@ -178,7 +178,7 @@ export const TERRACE = {
    * `dryHeight` m above the water; a full score from `dryFull` cells).
    */
   fieldRadius: 18,
-  good: [150, 240] as readonly number[],
+  good: [170, 230] as readonly number[],
   dryFull: 200,
   dryHeight: 6,
 };
@@ -271,7 +271,7 @@ export const TERRACE_RELAXED: typeof TERRACE = {
   ...TERRACE,
   minDist: 6,
   maxDist: 26,
-  minHeight: 1,
+  minHeight: 1.5,
   maxHeight: 12,
   plainHeight: 1.2,
   plainMin: 30,
@@ -307,11 +307,24 @@ function fieldLand(
       if (r2 > R * R || r2 < 9) continue;
       const j = yy * W + xx;
       if (world.water[j]! > 0.05 || world.fertility[j]! < 0.5 || slope[j]! > 0.25) continue;
+      // On this side of the water (farmers walk; the far bank needs a bridge).
+      if (acrossWater(world, x, y, xx, yy)) continue;
       const m = Math.max(0.6 * moist[j]!, 0.8 * Math.exp(-dist[j]! / 2.5));
       if (m >= GOOD_MOISTURE) good++;
       else if (z[j]! - surf[j]! <= T.dryHeight) dry++;
     }
   return { good, dry };
+}
+
+/** Whether the straight line from (x0, y0) to (x1, y1) crosses open water. */
+function acrossWater(world: World, x0: number, y0: number, x1: number, y1: number): boolean {
+  const n = Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)));
+  for (let k = 1; k < n; k++) {
+    const xx = Math.round(x0 + ((x1 - x0) * k) / n);
+    const yy = Math.round(y0 + ((y1 - y0) * k) / n);
+    if (world.water[yy * world.width + xx]! > 0.3) return true;
+  }
+  return false;
 }
 
 /**
@@ -396,7 +409,7 @@ function terracePass(
         const [lo, hi] = T.good as [number, number];
         const under = Math.max(0, (lo - land.good) / lo);
         const over = Math.max(0, (land.good - hi) / hi);
-        score += 0.4 * plainScore + 1.2 * Math.min(1, land.dry / T.dryFull) - 2 * under - 2 * over;
+        score += 0.4 * plainScore + 1.2 * Math.min(1, land.dry / T.dryFull) - 3 * under - 2 * over;
       }
       if (score > best) {
         best = score;

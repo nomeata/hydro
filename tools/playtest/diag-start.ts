@@ -27,7 +27,7 @@ const size = Number(opt('size', '128'));
 const day = Number(opt('day', '2'));
 const R = 18;
 
-console.log('| seed | start | h m | d | plain | est. good/dry | good | dry fertile | fields | good share |');
+console.log('| seed | start | h m | d | plain | est. good/dry | good | dry fertile | fields | village good left |');
 console.log('|---|---|---|---|---|---|---|---|---|---|');
 for (const seed of seeds) {
   const { sim, gen } = newGame(seed, size);
@@ -52,6 +52,6 @@ for (const seed of seeds) {
     }
   const s = gen.start;
   console.log(
-    `| ${seed} | ${s.terrace ? 'terrace' : 'meadow'}${fertileStart(seed) ? ' (fertile)' : ''} | ${s.height.toFixed(1)} | ${s.dist.toFixed(0)} | ${s.plain} | ${s.good ?? '-'}/${s.dry ?? '-'} | ${good} | ${dry} | ${fields} | ${((100 * good) / Math.max(1, good + dry)).toFixed(0)}% |`,
+    `| ${seed} | ${s.terrace ? 'terrace' : 'meadow'}${fertileStart(seed) ? ' (fertile)' : ''} | ${s.height.toFixed(1)} | ${s.dist.toFixed(0)} | ${s.plain} | ${s.good ?? '-'}/${s.dry ?? '-'} | ${good} | ${dry} | ${fields} | ${v ? ((p as unknown as { goodLeft: Map<number, number> }).goodLeft.get(v.state.id) ?? '-') : '-'} |`,
   );
 }
