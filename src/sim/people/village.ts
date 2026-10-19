@@ -2847,8 +2847,9 @@ export class PeopleSystem {
       if (best >= 0 && bestScore > 1) break;
     }
     if (best < 0) return;
-    // Drop whatever was in hand; the work is abandoned.
-    if (this.goTo(a, best, SiteKind.Wander, time)) {
+    // Drop whatever was in hand; the work is abandoned. Out of the flood through
+    // whatever water lies between (else someone in its midst could not move).
+    if (this.goTo(a, best, SiteKind.Wander, time, best, Infinity)) {
       a.flee = true;
       if (a.carry === CarryKind.Earth) a.carry = CarryKind.None;
     }
@@ -2907,8 +2908,8 @@ export class PeopleSystem {
   }
 
   /** Plan a walk to `cell`; returns false (and blocks the site) if unreachable. */
-  private goTo(a: Agent, cell: number, kind: SiteKind, time: SimTime, site = cell): boolean {
-    const path = this.pf.find(this.cellOf(a), cell, { window: REACH + 8, maxExpand: 4000, bridge: this.onBridge });
+  private goTo(a: Agent, cell: number, kind: SiteKind, time: SimTime, site = cell, wade?: number): boolean {
+    const path = this.pf.find(this.cellOf(a), cell, { window: REACH + 8, maxExpand: 4000, bridge: this.onBridge, wade });
     if (!path) {
       this.blocked.set(cell, time.day + 3);
       return false;

@@ -31,13 +31,15 @@ export interface PathOptions {
   maxExpand?: number;
   /** Extra passability (e.g. bridges): returns true if cell i is walkable regardless of water. */
   bridge?: (i: number) => boolean;
+  /** Deepest water to wade through (default MAX_WADE; people caught in a flood struggle through anything). */
+  wade?: number;
 }
 
 /** Cost of entering cell j from cell i (distance dist in cells), or Infinity. */
-export function stepCost(world: World, i: number, j: number, dist: number, bridge?: (i: number) => boolean): number {
+export function stepCost(world: World, i: number, j: number, dist: number, bridge?: (i: number) => boolean, maxWade = MAX_WADE): number {
   const dj = world.water[j]!;
   const onBridge = bridge?.(j) ?? false;
-  if (dj > MAX_WADE && !onBridge) return Infinity;
+  if (dj > maxWade && !onBridge) return Infinity;
   if (dist > 1 && !onBridge && !(bridge?.(i) ?? false)) {
     // No cutting a corner of deep water (a narrow canal) on a diagonal step: walkers round
     // to the cells they pass, and would find themselves in it.
@@ -46,7 +48,7 @@ export function stepCost(world: World, i: number, j: number, dist: number, bridg
     const dy = ((j / W) | 0) - ((i / W) | 0);
     const c1 = i + dx;
     const c2 = i + dy * W;
-    if ((world.water[c1]! > MAX_WADE && !(bridge?.(c1) ?? false)) || (world.water[c2]! > MAX_WADE && !(bridge?.(c2) ?? false))) return Infinity;
+    if ((world.water[c1]! > maxWade && !(bridge?.(c1) ?? false)) || (world.water[c2]! > maxWade && !(bridge?.(c2) ?? false))) return Infinity;
   }
   const rise = Math.abs(world.terrain(j) - world.terrain(i)) / (5 * dist);
   // Stepping on or off a bridge (or jetty) ignores the ground beneath it.
@@ -202,7 +204,7 @@ export class PathFinder {
         if (nx < x0 || nx > x1 || ny < y0 || ny > y1) continue;
         const n = ny * W + nx;
         if (closed.has(n)) continue;
-        const c = stepCost(w, cur, n, dist, opts.bridge);
+        const c = stepCost(w, cur, n, dist, opts.bridge, opts.wade);
         if (!Number.isFinite(c)) continue;
         const ng = g[cur]! + c;
         if (stamp[n] === gen && g[n]! <= ng) continue;
