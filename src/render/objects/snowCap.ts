@@ -20,7 +20,8 @@ const cache = new WeakMap<THREE.Material, THREE.Material>();
 /** GLSL injected after `beginnormal_vertex` (needs `objectNormal`, and `vColor` set by `color_vertex`). */
 export const SNOW_CAP_VERTEX = /* glsl */ `
   #if defined( USE_COLOR ) || defined( USE_INSTANCING_COLOR )
-  {
+  // Most instances carry no snow (all summer): skip the work for them.
+  if (aSnow.x + aSnow.y > 0.0) {
     #ifdef USE_INSTANCING
       vec3 snowUp = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
     #else
@@ -50,7 +51,7 @@ export function snowCapMaterial<M extends THREE.Material>(base: M): M {
       .replace('#include <common>', `#include <common>\nattribute vec2 ${SNOW_ATTRIBUTE};\nuniform vec3 uSnowCap;`)
       .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>\n${SNOW_CAP_VERTEX}`);
   };
-  m.customProgramCacheKey = () => `snowcap-v1-${base.customProgramCacheKey()}`;
+  m.customProgramCacheKey = () => `snowcap-v2-${base.customProgramCacheKey()}`;
   cache.set(base, m);
   return m;
 }
