@@ -167,17 +167,38 @@ New world fields:
   frees the land for the next year (docs/GAMEPLAY.md §4.3 P3)
 - `traffic` u8: decaying footfall; high values become desire paths (☑ M3-δ,
   `people/desire.ts`): every walker (people and animals) adds 4 per cell it
-  enters, a day takes 1/16 of it away; open land with traffic ≥ 180 becomes
-  `LandUse.Path` (a few walks a day), a path below 24 fades back to meadow
-  (a month or two unused). In winter a path is trodden grey-brown slush
-  (terrain shader) and its snow melts faster (as if 1.5 °C warmer, twice
+  enters, a day takes 1/16 of it away. Paths grow as connected lines, not
+  patches: open land becomes `LandUse.Path` where traffic reaches 150 (a
+  seed), where it continues a path end at ≥ 72, or where it closes a gap
+  between two *separate* pieces of path (or a path and a yard, building or
+  bridge) at ≥ 40 — never into a loop with itself, and never into a 2×2
+  block, so paths stay about one cell wide (thick spots in old saves are
+  thinned, keeping the most trodden cells and the connections). Dead ends
+  into open meadow and lone specks fade below 72, any path below 24 (a
+  month or two unused). A* converges routes onto the ways others walk:
+  paths cost ×0.6, trodden grass up to ×0.75 (`path.ts`), so a few walks
+  in the same direction pull later routes onto one track.
+  `npx tsx tools/paths-run.ts --seed 1 --days 140 --map` reports the
+  network's shape (groups, specks, thick spots) with an ASCII map of the
+  village; `--save out/p1 --save-at 114,140` then
+  `npx tsx tools/shot-paths.ts out/p1-d114 --tag after` screenshots it
+  (desktop and phone; needs `vite preview`).
+  Drawing (`pathMask`/`pathColour` in `render/village/fields.ts`): bands
+  along the lines between the centres of neighbouring path cells (and into
+  yards and onto bridges; a diagonal only where no path cell already turns
+  the corner), the lookup point displaced by low-frequency noise so ways
+  wind a little and grid corners round off; noisy soft edges, width from
+  the footfall (the fields texture's crop byte carries `traffic` on path
+  cells) and wider between houses; warm trodden earth, darker and rutted
+  where worn, a margin of flattened grass, tufts on little-used ways, mud
+  and puddles in the ruts when the soil is wet. In winter a path is trodden
+  grey-brown slush with two wet tracks (terrain shader), free of hoar frost,
+  and its snow melts faster (as if 1.5 °C warmer, twice
   as fast: `PARAMS.pathMelt*`); off the paths every walker leaves
   footprints in the snow (`render/footprints.ts`: a client-side ring of
   ≤ 3000 instanced prints, fading over ~1.6 game days on the game clock,
-  faster under falling snow, gone where the snow melts). Paths are 1.2× quicker to walk, cheaper for
-  A* (×0.8, so people keep to them), seal the soil a little (infiltration
-  ×0.6) and are drawn by the terrain shader as soft trodden earth with an
-  organic edge and tufts of grass (`pathColour` in `render/village/fields.ts`).
+  faster under falling snow, gone where the snow melts). Paths are 1.2×
+  quicker to walk and seal the soil a little (infiltration ×0.6).
 
 Ownership is not stored per cell. It is derived from the nearest settlement
 (per 8×8 block).
