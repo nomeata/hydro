@@ -115,7 +115,7 @@ test('a wheel drawn on dry land shows a red ghost and places nothing', async ({ 
   await openGame(page, '&size=128&cheat=1');
   await page.locator('button[data-tool=wheel]').click();
   const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
-  // The village's own ground (dry): the hint says why, and no wheel appears.
+  // The village's own ground (dry): no wheel appears.
   let dry: [number, number] = [startX, startY];
   dry = await page.evaluate(([sx, sy]) => {
     const h = (window as any).__hydro;
@@ -138,9 +138,11 @@ test('a wheel drawn on dry land shows a red ghost and places nothing', async ({ 
   await expect.poll(() => page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.ghostState?.ok)).toBe(false);
   const hints = await recordTexts(page, '.tools .hint');
   await page.mouse.up();
-  // The red ghost stays a moment and the hint says why; the tool stays, ready for another try.
+  // The red ghost stays a moment and says "not here" by itself (no text); the tool stays, ready for another try.
   expect(await page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.ghostState?.ok)).toBe(false);
-  await expect.poll(hints).toContainEqual(expect.stringContaining('Start in the river'));
+  await page.waitForTimeout(600);
+  expect(await hints()).not.toContainEqual(expect.stringContaining('Start in the river'));
+  await expect(page.locator('.tools .hint')).toContainText('lifts the river');
   await expect(page.locator('button[data-tool=wheel]')).toHaveAttribute('aria-pressed', 'true');
   expect(await page.evaluate(() => (window as any).__hydro.renderer.structures.structures.some((s: any) => s.kind === 'wheel'))).toBe(false);
 });

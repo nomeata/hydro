@@ -4,7 +4,7 @@ import { findWeir, openGame, runDays, settleFrames, toScreen } from './helpers';
 /**
  * Tools stay selected (after a placement or a tap that placed nothing,
  * until Escape or Look), and show what they would make before it is made:
- * ghost poles and wires, the gate's hover ghost, a red wheel off its sites;
+ * the gate's hover ghost, a red wheel off its sites (no live text);
  * the brushes tint the fields they would bury, the ground a stroke raised
  * or dug, and flash an undone stroke (ui/tools.ts).
  */
@@ -44,7 +44,7 @@ async function stroke(page: Page, phone: boolean, pts: [number, number][], hold 
 const line = (a: [number, number], b: [number, number], n = 10): [number, number][] =>
   Array.from({ length: n + 1 }, (_, k) => [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
 
-test('tools stay selected; power lines, gates and wheels show their ghosts first', async ({ page }, info) => {
+test('tools stay selected; weirs, gates and wheels show their ghosts first', async ({ page }, info) => {
   test.setTimeout(500_000);
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&size=128&cheat=1', './?test=1&seed=3');
@@ -63,19 +63,15 @@ test('tools stay selected; power lines, gates and wheels show their ghosts first
   await pressed(page, 'button[data-tool=power]');
   await pressed(page, '.modes button[data-mode=turbine]');
 
-  // Drawing a power line: ghost poles and wires at once, before letting go; the mode stays after.
-  await pick(page, phone, '.modes button[data-mode=poles]');
-  // Across the middle of the screen (a phone shows little of the map).
+  // No power-line mode (the villagers put the lines up), and a turbine drawn over the land shows no live text.
+  await expect(page.locator('.modes button')).toHaveCount(2);
+  await expect(page.locator('.tools .hint')).toContainText('Light for the villages', { timeout: 10_000 });
+  const hint = await page.locator('.tools .hint').textContent();
   const vp = page.viewportSize()!;
-  const a: [number, number] = [vp.width * 0.15, vp.height * 0.45];
-  const b: [number, number] = [vp.width * 0.85, vp.height * 0.45];
-  const release = await stroke(page, phone, line(a, b), true);
-  await expect.poll(() => R('h.renderer.powerGhost.state?.poles.length ?? 0'), { timeout: 60_000 }).toBeGreaterThan(1);
-  expect(await R('h.renderer.powerGhost.state.wires.length')).toBeGreaterThan(0);
+  const release = await stroke(page, phone, line([vp.width * 0.3, vp.height * 0.45], [vp.width * 0.6, vp.height * 0.45]), true);
+  await page.waitForTimeout(400);
+  expect(await page.locator('.tools .hint').textContent()).toBe(hint);
   await release();
-  await expect.poll(() => R('h.renderer.power.state?.poles.length ?? 0'), { timeout: 60_000 }).toBeGreaterThan(1);
-  expect(await R('h.renderer.powerGhost.state.poles.length')).toBe(0);
-  await pressed(page, '.modes button[data-mode=poles]');
   // Escape goes back to looking around.
   await page.keyboard.press('Escape');
   await pressed(page, 'button[data-tool=look]');

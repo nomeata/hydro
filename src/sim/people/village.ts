@@ -108,6 +108,14 @@ export const FARMING = {
   growPerDay: 11,
   /** In autumn the farmers bring in whatever stands (this crop stage at least), at its share of a full yield. */
   lateHarvest: 40,
+  /**
+   * Good land claimed per day at most, and while the village has fewer than
+   * `reclaimBelow` × the fields its farmers could work (after a flood took
+   * them: docs/PLAYTEST.md round 3, the seed-1 crash in years 4–5).
+   */
+  claimPerDay: 10,
+  reclaimPerDay: 30,
+  reclaimBelow: 0.5,
   /** Land is claimed only where crops would grow at least this well today (cropGrowth)... */
   minGrowth: 0.5,
   /** ...or this well by a starving village with less than a third of the fields it could work. */
@@ -120,7 +128,7 @@ export const FARMING = {
  * the player's canals and the villagers' ditches wets the land within
  * `canalReach` (it runs at ground level, where a river is cut into it).
  */
-export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 4 };
+export const CAPILLARY = { own: 0.6, max: 0.8, reach: 2.5, canalReach: 8 };
 
 /** Crops drown under water deeper than `drown` (m); shallower standing water grows them at `soggyGrowth`. */
 export const CROP_MOISTURE = { dry: 0.22, moist: 0.46, soggy: 0.9, soggyGrowth: 0.4, drown: 0.15 };
@@ -150,9 +158,15 @@ export const HARDY = {
   paddyMax: 0.25,
   paddyDrown: 0.4,
   paddySpeed: 0.1,
-  /** A village keeps at most `base` + `share` × its ordinary fields of hardy ones (gentle). */
+  /**
+   * A village keeps at most `base` + `share` × its ordinary fields of hardy
+   * ones (gentle); a hungry one (food security below `hungryBelow`, as on a
+   * steep valley's thin soils) up to `hungryShare` × (docs/PLAYTEST.md round 3).
+   */
   base: 2,
   share: 0.25,
+  hungryShare: 1,
+  hungryBelow: 0.5,
   /** Hardy fields claimed per day at most. */
   perDay: 2,
   /**
@@ -242,6 +256,9 @@ export const FOUNDING = {
   summerDay: 22,
   /** Food (person-days) the founders bring. */
   food: 300,
+  /** The first village: its founders, and the food they bring (enough to last until the first harvest). */
+  startPeople: 4,
+  startFood: 500,
 };
 export const ATTRACT_BLOCK = 8;
 /** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
@@ -272,6 +289,9 @@ export interface Building {
 /** Steps between updates of the mills' wheels. */
 const MILL_EVERY = 30;
 /** Water carriers: share of idle moments spent fetching a bucket, and how far (cells) they walk for it at most. */
+/** People run from water deeper than this (m); they plan walks through water up to MAX_WADE. */
+const FLEE_DEPTH = MAX_WADE + 0.25;
+
 const CARRY = { chance: 0.2, maxDist: 32, fetchSteps: 36, pourSteps: 12 };
 
 /** A ready-made village (PeopleSystem.stage). Coordinates are cells. */
@@ -322,6 +342,14 @@ export interface PeopleState {
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
 export type PeopleEvent = 'harvest' | 'catch' | 'rebuilt' | 'well' | 'mill' | 'bridge';
+
+/** The power grid's poles, as the builders see them (power/grid.ts; set by the simulation). */
+export interface PoleWork {
+  /** The pole a builder of the village should put up next (its id and cell), or null. */
+  site(settlement: number, day: number, blocked: (i: number) => boolean): { id: number; cell: number } | null;
+  /** A builder's visit: returns true when the pole was just put up. */
+  work(id: number): boolean;
+}
 
 export interface PeopleHost {
   /** Called when a cell's terrain changed. */
@@ -441,6 +469,8 @@ export class PeopleSystem {
    */
   onEvent: ((e: PeopleEvent, cell: number) => void) | null = null;
   private readonly onBridge = (i: number): boolean => this.world.landuse[i] === LandUse.Bridge;
+  /** The power grid's poles to put up (set by the simulation; not saved). */
+  poles: PoleWork | null = null;
 
   constructor(
     private readonly world: World,
@@ -641,7 +671,7 @@ export class PeopleSystem {
     const site = this.bestSite(this.startX, this.startY, 4);
     if (site < 0) return;
     // The founders bring enough food to last until the first harvest.
-    this.foundAt(site, 400, 4, false);
+    this.foundAt(site, FOUNDING.startFood, FOUNDING.startPeople, false);
   }
 
   /**
@@ -1946,7 +1976,10 @@ export class PeopleSystem {
     want.set(Job.Miller, mill && mill.progress >= 1 && (mill.grain ?? 0) > 0 ? 1 : 0);
     // Stone work and the jetty need a builder or two (a small mason share, more when prosperous).
     const stoneWork = n >= 4 && (st.lineSites?.length ?? 0) > 0 && (st.lineBudget ?? 0) >= 1;
-    const jettyWork = (st.jetty !== undefined && st.jetty.progress < 1) || this.bridges.site(st.id, this.lastDay, (c) => this.blocked.has(c)) !== null;
+    const jettyWork =
+      (st.jetty !== undefined && st.jetty.progress < 1) ||
+      this.bridges.site(st.id, this.lastDay, (c) => this.blocked.has(c)) !== null ||
+      (this.poles?.site(st.id, this.lastDay, (c) => this.blocked.has(c)) ?? null) !== null;
     const masons = stoneWork || jettyWork ? Math.max(1, Math.round(n * (0.04 + 0.08 * Math.max(0, st.wellbeing)))) : 0;
     want.set(Job.Builder, Math.max(masons, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0));
     // Fishers: as many as the waters sustain (one landing ≈ CATCH a day), up to a quarter.
@@ -2098,8 +2131,11 @@ export class PeopleSystem {
       this.fieldCrop[i] = kind;
       w.vegetation[i] = Math.min(w.vegetation[i]!, 0.15); // cleared
     };
-    // Good land first (at most 10 cells a day); hardy fields do not stand in its way.
-    const nGood = Math.max(0, Math.min(10, want - common, good.length));
+    // Good land first (at most FARMING.claimPerDay cells a day, more while the village has lost
+    // most of its fields, e.g. to a spring flood: the land is ready again once the water is
+    // gone); hardy fields do not stand in its way.
+    const perDay = common < want * FARMING.reclaimBelow ? FARMING.reclaimPerDay : FARMING.claimPerDay;
+    const nGood = Math.max(0, Math.min(perDay, want - common, good.length));
     for (let k = 0; k < nGood; k++) claim(good[k]![1], FieldCrop.Common);
     let total = fields.length + nGood;
     // More fields than hands now: give up bare hardy fields, the poorest first.
@@ -2116,7 +2152,8 @@ export class PeopleSystem {
     const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
     const needFood = s.foodSecurity(doy, ECONOMY.growHorizon) < ECONOMY.growFood;
     if (time.season !== 3 && nGood >= good.length && total < want && needFood) {
-      const cap = Math.floor(HARDY.base + HARDY.share * (common + nGood)) - (total - common - nGood);
+      const share = s.foodSecurity(doy) < HARDY.hungryBelow ? HARDY.hungryShare : HARDY.share;
+      const cap = Math.floor(HARDY.base + share * (common + nGood)) - (total - common - nGood);
       const n = Math.max(0, Math.min(HARDY.perDay, want - total, cap, marginal.length));
       for (let k = 0; k < n; k++) claim(marginal[k]![1], marginal[k]![2]);
     }
@@ -2184,12 +2221,13 @@ export class PeopleSystem {
 
   private updateAgent(a: Agent, time: SimTime, host: PeopleHost): void {
     // Check for rising water every 10 ticks per person (staggered by id): people wade
-    // through fords up to MAX_WADE, and run only from water deeper than that.
-    // The water under a footbridge's deck or a jetty is no reason to run: it
-    // is deep by design (else people turned back mid-way over every bridge).
+    // through fords up to MAX_WADE when they plan a walk, and run only from water clearly
+    // deeper than that (FLEE_DEPTH: a ford or a canal a few cm deeper than when they set
+    // out is no flood). The water under a footbridge's deck or a jetty is no reason to
+    // run: it is deep by design.
     if (!a.flee && a.task !== Task.Leave && (time.step / PEOPLE_TICK + a.id) % 10 === 0) {
       const here = this.cellOf(a);
-      if (this.world.water[here]! > MAX_WADE && !this.onBridge(here)) this.flee(a, time);
+      if (this.world.water[here]! > FLEE_DEPTH && !this.onBridge(here)) this.flee(a, time);
     }
     switch (a.task) {
       case Task.Leave:
@@ -2259,6 +2297,7 @@ export class PeopleSystem {
         break;
       }
       case SiteKind.Jetty:
+      case SiteKind.Pole:
         a.timer = 60;
         a.anim = EntityAnim.Build;
         break;
@@ -2535,6 +2574,10 @@ export class PeopleSystem {
         a.carry = CarryKind.None;
         break;
       }
+      case SiteKind.Pole:
+        this.poles?.work(a.site);
+        a.carry = CarryKind.None;
+        break;
       case SiteKind.Jetty: {
         const j = s?.state.jetty;
         if (j && j.progress < 1) {
@@ -2572,8 +2615,10 @@ export class PeopleSystem {
       (a.carry === CarryKind.Log && a.job === Job.Woodcutter);
     if (delivering) {
       // Grain goes to the mill while its wheel turns (not the miller's own flour, nor fish or milk).
+      // (Only while the miller keeps up: a backlog at the mill is food the village cannot count
+      // on, which held growth back for the whole harvest; round 3.)
       const mill = a.carry === CarryKind.Sack && a.job !== Job.Miller ? this.millOf(s.state.id) : null;
-      if (mill && mill.progress >= 1 && mill.running && this.goTo(a, w.idx(mill.x, mill.y), SiteKind.Mill, time, mill.id)) return;
+      if (mill && mill.progress >= 1 && mill.running && (mill.grain ?? 0) < MILL.backlog && this.goTo(a, w.idx(mill.x, mill.y), SiteKind.Mill, time, mill.id)) return;
       const store = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store');
       if (store && this.goTo(a, w.idx(store.x, store.y), SiteKind.Deliver, time)) return;
     }
@@ -2599,6 +2644,15 @@ export class PeopleSystem {
       if (br && this.goTo(a, br.a, SiteKind.Bridge, time, br.id)) {
         a.carry = CarryKind.Log;
         return;
+      }
+      // Power poles: carry one out and put it up.
+      const pole = this.poles?.site(s.state.id, time.day, (c) => this.blocked.has(c));
+      if (pole) {
+        if (this.goTo(a, pole.cell, SiteKind.Pole, time, pole.id)) {
+          a.carry = CarryKind.Log;
+          return;
+        }
+        this.blocked.set(pole.cell, time.day + 3);
       }
       // Stone work: fetch a stone from the store, then lay it.
       if (a.carry === CarryKind.Stone) {

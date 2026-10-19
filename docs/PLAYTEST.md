@@ -24,7 +24,8 @@ npm run playtest -- --seeds 1..8 --years 10 --bot-years 4 --summary-only
 | `--years` / `--days` | 5 years | length of the hands-off runs |
 | `--bot-years` | = years | length of the bot runs (their effects show within a few years) |
 | `--size` | 128 | map size; the game uses 256, but that is ~4–10× slower |
-| `--bots` | all | `baseline` always runs; bots: `irrigate,dike,weir,drain,vandal` |
+| `--bots` | all | `baseline` always runs; bots: `weircanal,wheel,dike,drain,vandal,undo,good,irrigate` |
+| `--budget` | 6000 | earth each bot may move over the run (m³, dug plus raised) |
 | `--jobs` | CPU count | child processes at a time |
 | `--act-day` / `--check-every` | 16 / 12 | the first day the bots look at the world, and how often they look again |
 | `--window` | 36 | days the untouched control copy runs alongside after a bot's first action |
@@ -81,31 +82,56 @@ harness wraps that method to count them (observer only).
 **Player bots** (`tools/playtest/bots.ts`) look at the world like a
 player: villages, their fields and field moisture, water and flow
 direction, flood memory, known land. They respect the tool unlocks
-(population peak), act from `--act-day` and look again each season, once
-per village (new villages get theirs later). Since the brush rework
-(DESIGN §4) their earthworks are `shapeLine` commands: the old trench /
-dike profiles shaped at once, with the brushes' rules, the earth moved
-counted in `Simulation.brush.moved.script` (for a later budget):
-- `irrigate`: a trench (2 wide, 1–3 m deep, as deep as gravity feed
-  needs) from the nearest shore whose water can reach them to the middle
-  of the driest quarter of a village's fields, with a dogleg around the
-  houses if needed (round 2: aimed at the driest quarter of the dry fields
-  *and fertile open land* within 17 cells, preferring an intake up to 70
-  cells away whose water stands near field level, never onto land below
-  the intake's water; else as before);
-- `dike`: dikes (1.5 m) 3 cells inside the water's edge on rays from the
-  village where the land is low (< 2.5 m above the water) or remembers
-  floods; looks again when new flood memory appears;
-- `weir`: once the weir is unlocked (15 villagers), a weir across the
-  river 12–40 cells upstream of the biggest village, crest 1 m above the
-  water, banks high enough on both sides;
-- `drain`: a ditch (0.8 m) from the wettest patch near a village (soil
-  saturation or field moisture ≥ 0.9, or puddles) down to lower water;
-- `vandal`: a canal from the shore with the most head straight into the
-  first village's store, and a dam across the river just below the intake;
-- `undo` (round 2): the vandal's works, and a year later a trench through
-  the dam down to the river bed and a dike across the canal by its intake,
-  as a player would undo them: does the village recover?
+(population peak), act from `--act-day` and look again every
+`--check-every` days. Since round 3 every bot has the **same earth
+budget** (`--budget`, default 6000 m³ dug plus raised over the run;
+`canal.ts earthOf` prices a plan before it is issued, the run records
+what `Simulation.brush.moved.script` actually counted); weirs (stone,
+built by the crew) and wheels do not count against it. Earthworks are
+`shapeLine` commands (the brushes' rules, at once); a dig may give
+absolute floor heights, so a canal is graded to a water level in one
+stroke. Canals are laid out by `canal.ts planCanal`: a Dijkstra over the
+land from the water's edge whose water surface falls 6 mm a cell and
+never stands above the ground beside it (no spills), that keeps off lower
+water (or it becomes the river's bypass), costs cut depth and fields
+crossed, and ends where it waters most dry land outside its own
+footprint for its cost.
+- `weircanal` (a): once the weir is unlocked, a stone weir (1.5–4 m) across
+  flowing water 8–45 cells from the village whose pool fills within 12
+  days and reaches no house, with a graded canal from the pool's shore onto
+  the dry land (fields and fertile open land the river does not keep
+  moist); only if the canal waters clearly more than the pool drowns;
+- `wheel` (b): a water wheel at one of `wheelSites()`, its trough drawn up
+  the bank (≤ 6 cells, the stroke that gives the best canal), and a canal
+  from its head, no longer than the wheel's water keeps wet (perDay/2.5
+  cells). The wheel unlocks at 50, which few valleys reach in four years,
+  so this bot builds it from the start: it measures the mechanic;
+- `dike` (c): once the land near a village remembers a flood, a dike
+  2.5–3.5 cells back from the river along the stretch in front of the low
+  fields and houses, its crest 0.4 m above the highest flooded ground
+  (1.5–2.5 m above the river), ends tied into higher ground; again when new
+  flood memory appears;
+- `drain` (d): up to three drains per village, from the wettest patches
+  (soil saturation or field moisture ≥ 0.9, or puddles) down to lower
+  water, floor 0.8 m under the patch graded to just under the outlet;
+- `vandal` (e): a canal from the shore with the most head straight into the
+  first village's store, and a dam across the river just below the intake
+  (no budget);
+- `undo` (e): the vandal's works, then 48 days later the dam trenched to
+  the river bed and the canal filled back to the ground it was dug into
+  (in 3-cell pieces), and on the next two looks a drain from what is still
+  wet by the village;
+- `good`: a sensible player combining (a), (c) and (d): drains and dikes
+  where needed from the first look (at most 20 % and 25 % of the budget),
+  the weir + canal once unlocked with the rest;
+- `irrigate`: round 2's bot (a trench from the nearest usable shore to the
+  driest land), kept for comparison.
+
+Dev tools: `tools/playtest/try-bot.ts` (a bot's first look at a cached
+game day and the response a few days on), `exp.ts` (jobs in-process with
+tunables overridden: `--set FARMING.yield=12`), `diag-map.ts` (ASCII map
+of a village after a bot's works), `diag-crops.ts` (fields sown, ripe,
+who does what), `table.ts` (the round tables below).
 
 **Agency and response latency.** The day a bot first acts, the game is
 forked (save → load; the state hashes are compared) and the untouched copy
@@ -417,3 +443,64 @@ those were cut short by container restarts and a heavily loaded machine
 Re-run on main with footbridges and walking-distance fields; a weir +
 canal bot; the dike runs' lower population; seed 7/8 floor; unlock pacing
 (weir 15 now comes at ~16–20 min).
+
+## Round 3 (tune3, October 2026)
+
+Bots redesigned on the direct terrain API with one earth budget (see
+"Player bots" above: `weircanal`, `wheel`, `dike`, `drain`, `vandal`,
+`undo`, `good`, plus `canal` and round 2's `irrigate`). Building and
+watching them uncovered several things that were not balance at all:
+
+### Bugs found by the bots
+- **Farmers fled from the footbridge over a player's canal** all day (the
+  flee check ignored bridges; also fixed independently on main by
+  `bridgefix`), and from **canal corners cut on diagonal steps** (A* let
+  people step diagonally past deep water; they rounded into it and ran).
+  Fields across the canal went unsown and the village starved: seed 3's
+  weir + canal village sowed 56 of 313 fields by mid-spring (baseline: all).
+  Now: no diagonal step past water deeper than wading depth, and people run
+  only from water clearly deeper than that (`FLEE_DEPTH` = 0.65 m). Seed 1's
+  hands-off village had 3542 flights in four years at a ford; now none.
+- **A canal from a weir's pool became the river's bypass** when it started
+  by the weir's end (the pool drained round the weir through it). The
+  planner keeps canals off water lower than their own.
+- **A mill at the weir's drop held the harvest.** Every sack went to the
+  mill and waited for the one miller, so the store looked empty for weeks
+  after the harvest and growth (which needs food for 40 days ahead) never
+  started: the good player's seed 3 village stood at 20 people for three
+  years. Farmers now take their sacks to the store while grain backs up
+  at the mill (`MILL.backlog` 72).
+- Canals dug through fields and the houses' ring cost more than they
+  watered: the planner counts the fields its footprint takes, values
+  the village's dry fields over open land, and keeps out of the ring the
+  houses grow into.
+
+### Seed 1 crash (review item 13: 96 % → 12 % in years 5–6, 256²)
+Re-run hands-off at 256² for seven years (main + the people fixes): the
+big freshets of years 3 and 4 flooded 151 and 288 land cells and took most
+floodplain fields (501 → 114 in the spring of year 4); the village could
+claim back only 10 cells a day, and land claimed after the sowing window
+stayed bare, so two weak harvests (with summer dry stress ~0.9) emptied
+the store: prosperity 24 % in the spring of year 5, recovered to 96 % by
+its end. Not a bug: drought and flood together. Made gentler: while a
+village has fewer than half the fields its farmers can work it claims 30
+cells a day (`FARMING.reclaimPerDay`). With that (and the other changes)
+the same run never fell below 75 %. The ideas for it are the flood idea
+(dike, top priority after a big freshet) and the dry-fields idea (dig a
+channel), both raised by the sim; surfacing them in the HUD is fixhud's.
+
+### Changes
+- **Recovery floor 8** (`ECONOMY.stayers`, was 4): families leave only
+  above it, and at or below it hunger kills nobody and births do not wait
+  for a full store. Seeds 7 and 8 (steep, dry) fell to 5 in their dry
+  second year; now 8–11 (hungry: prosperity 40–70 %). A better start site
+  was looked for (a farmland term in the meadow start): on seed 7 every
+  site near water is as steep, so it was dropped.
+- **Hungry villages sow more hardy crops** (`HARDY.hungryShare` 1 below
+  food security 0.5, else ¼ of the ordinary fields).
+- **Canal and ditch water wets 8 cells** (`CAPILLARY.canalReach`, was 4;
+  rivers 2.5): full growth within ~4.4 cells of a canal's water. With 4
+  a canal's own footprint (5 cells wide) took about as much land as it
+  watered.
+- **Founders bring 500 days of food** (`FOUNDING.startFood`, was 400): the
+  weir unlock (15) comes at day 27–35 (13–17 min at 1×).

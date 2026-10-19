@@ -43,6 +43,8 @@ export const MILL = {
   /** Grain (person-days) ground per visit of the miller, and how long it takes (steps). */
   grind: 24,
   grindSteps: 90,
+  /** Farmers take their sacks to the store instead while this much grain waits at the mill. */
+  backlog: 72,
 };
 
 const RHO = 1000;

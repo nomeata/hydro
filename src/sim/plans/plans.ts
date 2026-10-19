@@ -86,15 +86,16 @@ function current(world: PlanGrid, i: number): number {
 
 /**
  * Trench: the floor grades linearly from (terrain at start − depth) to
- * (terrain at end − depth); cells only ever get lower. Returns changed cells.
+ * (terrain at end − depth), or between the given absolute `floor` heights;
+ * cells only ever get lower. Returns changed cells.
  */
-export function planTrench(world: PlanGrid, points: readonly Pt[], width: number, depth: number): number[] {
+export function planTrench(world: PlanGrid, points: readonly Pt[], width: number, depth: number, floor?: readonly [number, number]): number[] {
   if (points.length === 0) return [];
   const half = width / 2;
   const hits = rasterisePath(world, points, half + BANK);
   const L = Math.max(pathLength(points), 1e-6);
-  const f0 = terrainAtPoint(world, points[0]!) - depth;
-  const f1 = terrainAtPoint(world, points[points.length - 1]!) - depth;
+  const f0 = floor ? floor[0] : terrainAtPoint(world, points[0]!) - depth;
+  const f1 = floor ? floor[1] : terrainAtPoint(world, points[points.length - 1]!) - depth;
   const changed: number[] = [];
   for (const [i, h] of hits) {
     const floor = f0 + (f1 - f0) * (h.along / L);

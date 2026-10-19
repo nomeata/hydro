@@ -55,29 +55,33 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
   await expect(readout).toHaveClass(/running/);
   await page.keyboard.press('Escape');
 
-  // A power line from the turbine to the village: its houses light up.
+  // The power tool has no pole mode: the villagers put the line up themselves.
+  await page.locator('button[data-tool=power]').click();
+  await expect(page.locator('.modes button')).toHaveCount(2);
+  await expect(page.locator('.modes button[data-mode=poles]')).toHaveCount(0);
+  await page.keyboard.press('Escape');
   const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
   const houses = await page.evaluate(() => (window as any).__hydro.renderer.buildingList.filter((b: any) => b.kind === 'house' && b.progress >= 1).length);
   expect(houses).toBeGreaterThan(0);
-  await page.evaluate(([cx, cy]) => (window as any).__hydro.renderer.camera.setState({ x: cx, y: cy, viewHeight: 50 }, true), [(t.x + startX) / 2, (t.y + startY) / 2]);
-  await settleFrames(page);
-  await page.locator('button[data-tool=power]').click();
-  await page.locator('.modes button[data-mode=poles]').click();
-  await expect(page.locator('.tools .hint')).toContainText('line of poles');
-  const from = await toScreen(page, t.x, t.y);
-  const to = await toScreen(page, startX, startY);
-  await page.mouse.move(from[0], from[1]);
-  await page.mouse.down();
-  for (let k = 1; k <= 12; k++) await page.mouse.move(from[0] + ((to[0] - from[0]) * k) / 12, from[1] + ((to[1] - from[1]) * k) / 12);
-  await page.mouse.up();
-  await expect.poll(async () => (await power(page))?.poles.length ?? 0, { timeout: 15_000 }).toBeGreaterThan(0);
-  await runDays(page, 1);
+  // A few poles a day, from the turbine to the village, until its houses light up.
+  for (let d = 0; d < 12 && ((await power(page)).lit.length ?? 0) < 2 * houses; d++) await runDays(page, 1);
   const st = await power(page);
-  expect(st.poles.every((p: any) => p.progress >= 1)).toBe(true);
+  expect(st.poles.filter((p: any) => p.progress >= 1).length).toBeGreaterThan(1);
   expect(st.wires.length).toBeGreaterThan(0);
   expect(st.lit.length).toBeGreaterThan(0);
+  // A pole stands near the village (the line came to it).
+  expect(st.poles.some((p: any) => Math.hypot(p.x - startX, p.y - startY) <= 10)).toBe(true);
+  await page.evaluate(([cx, cy]) => (window as any).__hydro.renderer.camera.setState({ x: cx, y: cy, viewHeight: 40 }, true), [(t.x + startX) / 2, (t.y + startY) / 2]);
   await settleFrames(page, 3);
   expect(await page.evaluate(() => (window as any).__hydro.renderer.power.litHouses)).toBeGreaterThan(0);
+  // A pole selected shows the line it is on, and cannot be removed (it is the villagers').
+  const pole = st.poles.find((p: any) => p.progress >= 1);
+  await page.evaluate(([cx, cy]) => (window as any).__hydro.renderer.camera.setState({ x: cx, y: cy, viewHeight: 14 }, true), [pole.x, pole.y]);
+  await settleFrames(page, 3);
+  const pp = await toScreen(page, pole.x, pole.y);
+  await page.mouse.click(pp[0], pp[1]);
+  await expect(page.locator('[data-testid=selection]')).toContainText('Power pole', { timeout: 15_000 });
+  await expect(page.locator('.sel-remove')).toBeHidden();
   expect(errors).toEqual([]);
 });
 
@@ -139,7 +143,9 @@ test('the electric pump: drawn from the river up the bank, it lifts water on the
   await page.mouse.move(p0[0], p0[1]);
   await page.mouse.down();
   for (let k = 1; k <= 8; k++) await page.mouse.move(p0[0] + ((p1[0] - p0[0]) * k) / 8, p0[1] + ((p1[1] - p0[1]) * k) / 8);
-  await expect(page.locator('.tools .hint')).toContainText('Lifts the water');
+  // The ghost pump shows; the hint stays the tool's own (no live text).
+  await expect.poll(() => page.evaluate(() => (window as any).__hydro.renderer.powerGhost.state?.pumps.length ?? 0)).toBe(1);
+  await expect(page.locator('.tools .hint')).toContainText('spare power');
   await page.mouse.up();
   await expect.poll(async () => (await power(page))?.pumps.length ?? 0, { timeout: 15_000 }).toBe(1);
   // Still the pump.

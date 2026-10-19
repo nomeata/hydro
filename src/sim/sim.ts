@@ -195,6 +195,7 @@ export class Simulation {
     this.power.allow = this.structures.allow;
     this.power.houses = () => this.people?.houses() ?? [];
     this.power.onVillageLight = (id, share) => this.people?.setLight(id, share);
+    this.power.villages = () => this.people?.settlements.map((s) => ({ id: s.state.id, x: Math.round(s.state.x), y: Math.round(s.state.y) })) ?? [];
     if (opts.people) {
       this.people = new PeopleSystem(world, seed, opts.people.startX, opts.people.startY);
       this.fog = true;
@@ -257,6 +258,7 @@ export class Simulation {
     if (!this.people) return;
     this.people.onEvent = (e, cell) => this.achievements.peopleEvent(e, cell, this.time.day, this);
     this.people.onGate = (gate, agent) => this.gatekeeper.arrived(gate, agent);
+    this.people.poles = { site: (s, day, blocked) => this.power.poleSite(s, day, blocked), work: (id) => this.power.workPole(id) };
   }
 
   /** Clear the history and count from now (after the worker's spin-up, or for old saves). */
@@ -296,14 +298,17 @@ export class Simulation {
   private groundMoved(before: number[][] | undefined): void {
     const p = this.people;
     if (p && before && p.bridges.disturbed(before, this.time.day)) this.fieldsDirty = true;
+    // Poles whose ground the brush moved fall; the villagers put them up again.
+    this.power.groundCheck(this.time.day);
   }
 
   /**
    * Whether the brushes must leave cell i alone: houses (and mills, wells,
    * stores, ruins), jetties, structures and their works in progress (the
-   * crew's plans), and land not yet revealed. Footbridges do not stop the
-   * brush: ground moved under one breaks it (Bridges.disturbed), and the
-   * villagers rebuild it if they still need it.
+   * crew's plans), and land not yet revealed. Footbridges and power poles
+   * do not stop the brush: ground moved under one breaks it
+   * (Bridges.disturbed, PowerGrid.groundCheck), and the villagers rebuild
+   * it if they still need it.
    */
   isFixed(i: number): boolean {
     const w = this.world;
@@ -327,7 +332,7 @@ export class Simulation {
   /**
    * Mark the cells structures stand on (CellFlag.Structure): weirs, gates'
    * passages, wheels and their heads, turbines and their penstock ends,
-   * pumps (inlet, house, outlet) and poles. Derived from the structure
+   * pumps (inlet, house, outlet); not the villagers' poles. Derived from the structure
    * lists, so it is redone after every command and on load.
    */
   syncStructureFlags(): void {
@@ -353,7 +358,6 @@ export class Simulation {
       mark(t.a);
       mark(t.b);
     }
-    for (const p of pw.poles) at(p.x, p.y);
     for (const p of pw.pumps) {
       at(p.x, p.y);
       at(p.hx, p.hy);
@@ -390,7 +394,8 @@ export class Simulation {
       this.power.dismantle(cells);
     } else if (kind === 'gate') changed = st.removeGate(id);
     else if (kind === 'wheel') st.removeWheel(id);
-    else this.power.remove(id);
+    // (Poles are the villagers': they stay.)
+    else if (kind !== 'pole') this.power.remove(id);
     if (changed?.length) {
       this.crew.enqueue(changed);
       this.planDirty = true;
@@ -534,7 +539,9 @@ export class Simulation {
     if (this.step % BUILD_EVERY === 0 && this.structures.pending) {
       this.structures.crewWork((PARAMS.liningPerDay * BUILD_EVERY) / STEPS_PER_DAY, PARAMS.builderCells);
     }
-    if (this.step % BUILD_EVERY === 0 && this.power.pending) this.power.crewWork((PARAMS.liningPerDay * BUILD_EVERY) / STEPS_PER_DAY);
+    if (this.step % BUILD_EVERY === 0 && this.power.pending) this.power.crewWork((PARAMS.liningPerDay * BUILD_EVERY) / STEPS_PER_DAY, this.time.day);
+    // Floods knock power poles down (checked with the houses and bridges).
+    if (this.step % 30 === 0 && this.power.poles.length) this.power.floods(this.time.day);
 
     this.step++;
     const today = timeAt(this.step).day;
@@ -545,6 +552,9 @@ export class Simulation {
         this.lookDirty = true;
       }
       this.power.daily();
+      // The villagers' grid: fallen poles, poles in the way, and the next lines.
+      this.power.groundCheck(today);
+      this.power.planGrid(today);
       this.clearTakenGround();
       this.recordHistory(today - 1);
       this.achievements.daily(this, today - 1);
@@ -596,7 +606,7 @@ export class Simulation {
         }
         break;
       case 'shapeLine':
-        if (this.brush.shapeLine(cmd.tool, cmd.points, cmd.width, cmd.amount ?? 1, --this.scriptStroke).length) {
+        if (this.brush.shapeLine(cmd.tool, cmd.points, cmd.width, cmd.amount ?? 1, --this.scriptStroke, cmd.floor).length) {
           this.lookDirty = true;
           this.achievements.sculpted(w, this.time.day);
           this.groundMoved(footings);
@@ -653,7 +663,7 @@ export class Simulation {
       case 'cancelPlan': {
         // The Remove brush: plans go; weirs, gates and wheels in reach, built or not, are taken
         // down as the selection's Remove does (the crew lowers a weir, plugs a gate's opening);
-        // turbines, poles and pumps too.
+        // turbines and pumps too (not the villagers' poles).
         const hit = this.structures.near(cmd.x, cmd.y, cmd.radius);
         // The crew's plans to take something down stay (the brush may still be moving over it).
         const keep = [...this.structures.restoringNow()].map((c) => [c, w.plan[c]!] as const);

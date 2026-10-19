@@ -198,7 +198,7 @@ Every step teaches the next one's physics without a word of UI:
    `H` the real head across it. A village mill within 3 cells of a new
    turbine is rebuilt as a little power house (the miller becomes the
    turbine keeper).
-4. **Power poles**: radius 12 cells; houses inside light up in the
+4. **Power poles** (the villagers' own, as built): radius 12 cells; houses inside light up in the
    evening (lit windows tint), +0.1 wellbeing target, +1 person per house
    (houseCapacity 5). Demand ~2 kW per house, peaking in winter evenings.
 5. **Electric pump** and **pumped storage**: a high basin filled by pumps
@@ -222,13 +222,42 @@ in winter). Supply short of demand dims and flickers the lights. A
 village's daily lit share gives up to +0.05 wellbeing (no capacity
 change). Energy is booked per network (J): produced = houses + pumps +
 unused. The tools share one palette button, **Power**, with its modes
-on the options line.
-**Poles**: a stroke places poles every 6 cells (beside a house or a
-bridge, never in water), a stroke starting or ending at a turbine or pole
-joins it; wires join consecutive poles (a skipped wet spot leaves a longer
-span). **Electric pump**: a stroke from water (inlet) to the outlet (≤ 24
-cells, ≤ 30 m up); its pump house (the first dry cell along the pipe) must
-be within 8 cells of a pole or turbine. Pumps take only the surplus of the
+(turbine, pump) on the options line.
+**Power lines are the villagers'** (no tool; `sim/power/lines.ts`,
+`PowerGrid.planGrid`). Once a turbine has made power, the villagers plan
+the grid themselves, a line or two a day (none while 14 poles wait):
+from the grid to each village (a pole beside its store) and each pump
+not yet on it, to stray stretches of line that reach houses, to every
+house no pole reaches yet, and between separate grids, nearest first, so
+the colony ends up with one grid. A line's route is an A* over the land:
+cheapest beside the trodden paths and desire paths, then along field
+edges; fields, houses, slopes and water cost more, and water farther than
+3.5 cells from dry land is closed (a span crosses a narrow stream; along a
+weir's crest, out from a turbine in mid-river). Its poles stand evenly
+(about 6 cells, spans ≤ 11), each on the best dry cell near its place
+(beside a path, at a field's edge, in a yard: never in a house, a field,
+on a bridge, a structure, a plan or a step of more than 1.5 m), with a
+penalty for turning, then pulled towards the line between their
+neighbours (straight runs, gentle turns); the end pole stands beside the
+house, the store or the pump. The nearest village's builders put the
+poles up (two visits each, after houses, the jetty and footbridges; a
+pole carried out as a log), a few a day; poles more than 56 cells from
+every village, or waiting 12 days, the spirit crew puts up. Wires show
+between standing poles only, so a line grows pole by pole. The grid
+adapts: a pole a new house, a plan or a steep cut takes moves aside
+(within 3 cells, its spans still reaching), one in a new field gets a
+new pole beside it first and then comes down (the lights stay on); a
+flood (1 m of water, or 0.5 m flowing faster than 0.6 m/s) or ground
+moved more than 0.3 m under it (a brush) knocks a pole down to a stump,
+and the builders put it up again once the water is gone (moved to dry
+ground after 4 wet days). A line that finds no way is tried again after
+6 days. The poles are not the player's to remove (the selection shows
+them without ×; the Remove brush passes them). Older saves keep the
+player's poles as part of the grid (the spirit crew finishes them).
+**Electric pump**: a stroke from water (inlet) to the outlet (≤ 24
+cells, ≤ 30 m up); its pump house (the first dry cell along the pipe)
+must be within 8 cells of a pole or turbine (the villagers run a line to
+it). Pumps take only the surplus of the
 free turbines after the houses (20 kW each, `Q = 0.7 P/(ρgH)`), so a pump
 filling a basin whose turbine is on the same network makes **pumped
 storage**: that turbine (its intake within 12 cells of the pump's outlet,
@@ -597,7 +626,6 @@ stays for weirs, gates and wheels). Digit keys shift accordingly.
 | 30 | **Sluice gate** | Seasonal reservoirs: villagers release in summer (§2); flood relief that opens itself |
 | 50 | **Water wheel** | Water *uphill* onto terraces and plateaus where no gravity canal reaches (P6); new villages on high land |
 | 100 | **Turbine** (M6) | Power from head × flow at a gate or weir; mills become power houses |
-| 150 | **Power pole** (M6) | Lit cottages, larger houses (higher cap) |
 | 250 | **Electric pump** (M6) | Any lift; pumped storage for evenings and winter |
 
 With §4.2 the 15 milestone comes unaided in the first year; 30 needs the

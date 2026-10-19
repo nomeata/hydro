@@ -235,7 +235,7 @@ describe('shaping the ground and what stands on it', () => {
     expect(sim.structures.lining.has(w.idx(35, 16))).toBe(false);
   });
 
-  it('leaves weirs, gates and poles standing: shaping never touches structures', async () => {
+  it('leaves weirs and gates standing: shaping never touches structures; a pole it digs under falls, to be put up again', async () => {
     const sim = new Simulation(channel(), 1);
     const w = sim.world;
     sim.command({ type: 'planWeir', points: [[32, 4], [32, 28]], height: 1.5 });
@@ -253,15 +253,17 @@ describe('shaping the ground and what stands on it', () => {
     g.command({ type: 'shapeLine', tool: 'raise', points: [[40, 6], [40, 26]], width: 2, amount: 3 });
     g.command({ type: 'placeGate', points: [[40, 16]], width: 1, height: 0 });
     expect(g.structures.gates.length).toBe(1);
-    g.command({ type: 'placePoles', points: [[44, 6], [44, 7]] });
+    g.command({ type: 'placePoles', points: [[44, 6], [44, 12]] });
+    g.power.crewWork(1);
     const pole = g.power.poles[0]!;
+    expect(pole.progress).toBe(1);
     g.command({ type: 'shapeLine', tool: 'dig', points: [[36, 16], [44, 16]], width: 2, amount: 0.5 });
     g.command({ type: 'shapeLine', tool: 'dig', points: [[pole.x - 2, pole.y], [pole.x + 2, pole.y]], width: 2, amount: 0.5 });
     expect(g.structures.gates.length).toBe(1);
-    expect(g.power.poles.some((p) => p.id === pole.id)).toBe(true);
+    expect(g.power.poles.some((p) => p.id === pole.id && p.progress < 1)).toBe(true);
   }, 120_000);
 
-  it('removing a gate plugs its opening; removing a pole drops its wires', async () => {
+  it('removing a gate plugs its opening; a pole is the villagers’ and stays', async () => {
     const sim = new Simulation(channel(), 1);
     const w = sim.world;
     sim.command({ type: 'shapeLine', tool: 'raise', points: [[40, 6], [40, 26]], width: 2, amount: 3 });
@@ -280,9 +282,7 @@ describe('shaping the ground and what stands on it', () => {
     const n = sim.power.poles.length;
     expect(n).toBeGreaterThan(1);
     sim.command({ type: 'removeStructure', kind: 'pole', id: sim.power.poles[0]!.id });
-    expect(sim.power.poles.length).toBe(n - 1);
-    const ids = new Set(sim.power.poles.map((p) => p.id));
-    for (const v of sim.power.wires) expect(ids.has(v)).toBe(true);
+    expect(sim.power.poles.length).toBe(n);
   }, 60_000);
 
   it('is deterministic', async () => {
@@ -328,6 +328,7 @@ describe('the Remove brush', () => {
         expect(sim.structures.gates[0]!.progress).toBe(1);
         expect(sim.structures.weirs[0]!.cells.every((c) => (w.flags[c]! & CellFlag.Lined) !== 0)).toBe(true);
       }
+      const poles = sim.power.poles.length;
       const weirTop = sim.structures.weirs[0]!.top;
       const gateTop = sim.structures.gates[0]!.top;
       // A stroke over each (the brush sends several points along it).
@@ -341,7 +342,8 @@ describe('the Remove brush', () => {
       expect(sim.structures.gates.length).toBe(0);
       expect(sim.structures.wheels.length).toBe(0);
       expect(sim.power.turbines.length).toBe(0);
-      expect(sim.power.poles.length).toBe(0);
+      // (Not the villagers' poles; a lone one without wires they take away themselves, daily.)
+      expect(sim.power.poles.length).toBe(poles);
       expect(sim.power.pumps.length).toBe(0);
       // The crew takes the built ones down: the weir back to its ground, the gate's opening plugged.
       await build(sim, 20);

@@ -10,14 +10,14 @@
  * The progression, ascending. Each step names the tool it unlocks, or none
  * for a milestone whose tool is not built yet: the bar and the chart show
  * those milestones already, and a new tool slots in by adding its id.
- * The power modes (turbine, poles, pump) share the Power palette button (ui/tools.ts).
+ * The power modes (turbine, pump) share the Power palette button (ui/tools.ts);
+ * the power lines are the villagers' own (sim/power/lines.ts).
  */
 export const PROGRESSION: readonly { population: number; tool?: string }[] = [
   { population: 15, tool: 'weir' },
   { population: 30, tool: 'gate' },
   { population: 50, tool: 'wheel' },
   { population: 100, tool: 'turbine' },
-  { population: 150, tool: 'poles' },
   { population: 250, tool: 'pump' },
 ];
 
