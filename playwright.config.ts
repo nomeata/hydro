@@ -9,6 +9,7 @@ const launchOptions = {
 };
 
 // HYDRO_PW_PORT: a preview port of one's own (parallel agents in one container).
+// A busy port fails loudly instead of silently testing another worktree's build (set HYDRO_PW_REUSE=1 to reuse a server on purpose).
 const port = Number(process.env.HYDRO_PW_PORT ?? 4173);
 
 export default defineConfig({
@@ -22,7 +23,7 @@ export default defineConfig({
   ...(process.env.CI ? { reporter: 'list' as const } : {}),
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.02, threshold: 0.2 } },
   use: { baseURL: `http://localhost:${port}/`, launchOptions },
-  webServer: { command: `npx vite preview --port ${port} --strictPort`, port, reuseExistingServer: true },
+  webServer: { command: `npx vite preview --port ${port} --strictPort`, port, reuseExistingServer: !!process.env.HYDRO_PW_REUSE },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 }, launchOptions } },
     { name: 'phone', use: { ...devices['Pixel 7'], launchOptions } },
