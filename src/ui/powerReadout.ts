@@ -102,7 +102,7 @@ export function powerReadout(
     return { power, turbines, lit, houses };
   };
   const housesText = (lit: number, houses: number) =>
-    houses === 0 ? 'No houses on its line yet: draw poles to the village.' : lit === houses ? `${houses} house${houses > 1 ? 's' : ''} lit.` : `${lit} of ${houses} houses lit.`;
+    houses === 0 ? 'No houses on its line yet: the villagers are putting up the poles.' : lit === houses ? `${houses} house${houses > 1 ? 's' : ''} lit.` : `${lit} of ${houses} houses lit.`;
 
   if (kind === 'turbine') {
     const t = info.turbines.find((o) => o.id === id);
@@ -134,7 +134,7 @@ export function powerReadout(
     if (!p) return null;
     if (p.progress < 1) return { running: false, building: p.progress, power: 0, lit: 0, houses: 0, text: `Being built: ${Math.round(p.progress * 100)} %.` };
     const n = net(find(`${p.x},${p.y}`));
-    if (n.turbines === 0) return { running: false, power: 0, lit: 0, houses: n.houses, text: 'Not joined to a turbine: draw the line from one.' };
+    if (n.turbines === 0) return { running: false, power: 0, lit: 0, houses: n.houses, text: 'Not joined to a turbine yet: the villagers are putting up the line.' };
     return {
       running: n.power > 0,
       power: n.power,
@@ -162,7 +162,7 @@ export function powerReadout(
     text: running
       ? `Lifting ${p.flow.toFixed(2)} m³/s on ${kw(p.power)} of spare power.`
       : !root || n.turbines === 0
-        ? 'Idle: not on a power line. Draw poles from a turbine to it.'
+        ? 'Idle: not on a power line yet. Once a turbine turns, the villagers put up poles to it.'
         : n.power <= 0
           ? 'Idle: its turbines make no power now.'
           : 'Idle: no spare power (the houses come first), or no water at its inlet.',

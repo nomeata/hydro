@@ -103,7 +103,7 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   lining only by houses, growth pauses when food is short, economy retuned
   so that water decides what is farmable
 - ☑ Unlocks without the Lining tool (weir 15, gate 30; milestones 50, 100,
-  150, 250 reserved for wheel, turbine, poles, pump); hints that say why
+  250 for wheel, turbine, pump; 150 dropped with the pole tool); hints that say why
 - ☑ Villager-operated gates (GAMEPLAY §2; `sim/structures/gatekeeper.ts`):
   summer release for dry fields, never while houses below are wet, flood
   relief by itself; a villager walks over and turns the wheel; no tap to
@@ -171,6 +171,15 @@ See GAMEPLAY.md §1.5 "as built"; code in `sim/power/`, `render/power/`.
 - ☑ Power poles (150): a stroke of poles from a turbine (6 cells apart,
   joining existing poles; never in water or houses), networks, sagging
   wires; card scene; Village Lights; power in the history chart
+  (superseded by the villagers' grid below)
+- ☑ Villagers' grid (owner's decision 2026-10-19; `sim/power/lines.ts`):
+  no pole tool or unlock (Power = turbine + pump); once a turbine makes
+  power the villagers plan lines to every village, pump and unlit house
+  and join separate grids (A* beside paths and field edges, even spans,
+  straightened, narrow streams spanned); the village builders put the
+  poles up, a few a day; floods and moved ground knock poles down and
+  they are put up again; poles step aside for new houses and fields;
+  saved (old saves keep the player's poles)
 - ☑ Electric pump (250): a stroke from the water to the outlet (24 cells,
   30 m), runs on spare power (houses first); pumped storage emerges: a
   turbine whose pool a pump on its network fills only covers the houses'
@@ -214,9 +223,10 @@ The interaction rework decided with the owner (DESIGN §4).
   (dug) for a while, the villagers' fields under the brush tinted (and a
   note when a stroke buried some)
 - ☑ Every tool stays selected (after placing, or a tap that placed
-  nothing) until Escape or Look; ghosts before placing: power lines (poles
-  and wires), pumps, a gate on hover, the weir's wall while drawn and while
-  built, a red wheel off its sites; bigger, pulsing wheel-site rings
+  nothing) until Escape or Look; ghosts before placing: pumps, a gate on
+  hover, the weir's wall while drawn and while
+  built, a red wheel off its sites (no live text with any preview: the
+  ghost says it); bigger, pulsing wheel-site rings
 - ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks); a
   gate drawn across a channel builds a wall with the gate
 - ☑ Cosmetic crew tamping fresh earth; old saves' earthwork plans finished

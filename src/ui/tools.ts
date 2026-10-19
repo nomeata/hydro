@@ -19,7 +19,7 @@ import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
 import { wheelSite, wheelSites, type WheelGrid, type WheelSite } from '../sim/structures/wheel';
-import { LINK_SPAN, POLE_SNAP, POLE_SPACING, polePositions, pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
+import { pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
 import { gateTapSite, type GateSite } from '../sim/structures/structures';
 import { toolName } from '../shared/progress';
 import { kw } from './powerReadout';
@@ -36,10 +36,11 @@ const TOUCH_DELAY = 90;
 
 /**
  * The power tools share one palette button (so the palette stays one row
- * on a phone); the options line picks the turbine, the power line or the
- * electric pump. Each unlocks on its own (src/shared/unlocks.ts).
+ * on a phone); the options line picks the turbine or the electric pump.
+ * Each unlocks on its own (src/shared/unlocks.ts). The power lines are the
+ * villagers' own (sim/power/lines.ts): no tool.
  */
-export type PowerMode = 'turbine' | 'poles' | 'pump';
+export type PowerMode = 'turbine' | 'pump';
 
 interface ModeDef {
   id: PowerMode;
@@ -51,12 +52,7 @@ const POWER_MODES: ModeDef[] = [
   {
     id: 'turbine',
     icon: ICONS.turbine,
-    hint: 'Light for the village: tap the crest of a weir or dam. The water falling through it turns a turbine, and the houses near it light up.',
-  },
-  {
-    id: 'poles',
-    icon: ICONS.pole,
-    hint: 'The village too far from the turbine? Draw a line of poles from it to the houses: every house near a pole gets light.',
+    hint: 'Light for the villages: tap the crest of a weir or dam. The water falling through it turns a turbine; once it turns, the villagers put up poles to bring the power home.',
   },
   {
     id: 'pump',
@@ -86,10 +82,8 @@ export interface ToolHost {
   /** The wheel tool's ghost wheel (good site or not), or none; and the good sites it marks on the map. */
   setWheelGhost?(site: { x: number; y: number; hx: number; hy: number } | null, ok: boolean): void;
   setWheelSites?(sites: readonly { x: number; y: number; hx: number; hy: number }[] | null): void;
-  /** The power tools' ghost: new poles and wires (x, y, x, y, … cells) of a line being drawn, or a pump; null hides it. */
-  setPowerGhost?(g: { poles: readonly Pt[]; wires: readonly number[]; pump?: PumpGhost } | null): void;
-  /** The grid's turbines and poles (finished or not), as [x, y]: a drawn line snaps to them. */
-  powerNodes?(): readonly Pt[];
+  /** The power tool's ghost pump, or none. */
+  setPowerGhost?(g: { pump: PumpGhost } | null): void;
   /** The weir tool's ghost wall as it will stand, or none. */
   setWeirGhost?(list: readonly StructureInfo[]): void;
   /** The gate tool's ghost gate, or none. */
@@ -665,14 +659,13 @@ export class ToolPalette {
         break;
       }
       case 'wheel': {
-        // Letting go on a bad site places nothing: the red ghost stays a moment, and the hint says why.
+        // Letting go on a bad site places nothing: the red ghost stays a moment (it says "not here" by itself).
         const site = this.wheelPreview(ends);
         if (site?.ok) {
           cmd = { type: 'placeWheel', points: ends };
           this.host.setWheelGhost?.(null, false);
         } else {
           this.showWheelGhost(site, ends);
-          if (site?.reason) reason = site.reason;
           this.holdWheelGhost(e.clientX, e.clientY);
         }
         break;
@@ -685,8 +678,6 @@ export class ToolPalette {
             cmd = { type: 'placeTurbine', points: [p] };
             reason = headText(site);
           } else if (site?.reason) reason = site.reason;
-        } else if (this.mode === 'poles') {
-          cmd = { type: 'placePoles', points };
         } else {
           const site = this.pumpPreview(ends);
           if (site?.ok) cmd = { type: 'placePump', points: ends };
@@ -857,57 +848,6 @@ export class ToolPalette {
   private pumpPreview(ends: Pt[]): PumpSite | null {
     const g = this.powerGrid();
     return g ? pumpSite(g, ends) : null;
-  }
-
-  /**
-   * The poles and wires a line drawn along `pts` would make (as the sim's
-   * PowerGrid.placePoles: snapping to the grid's nodes, skipping water,
-   * houses and bridges, the first and last pole hooking onto the grid nearby).
-   */
-  private poleLine(pts: Pt[]): { poles: Pt[]; wires: number[] } {
-    const m = this.host.mirror;
-    const W = m.width;
-    const depth = this.host.depth;
-    const nodes = [...(this.host.powerNodes?.() ?? [])];
-    const spot = (x: number, y: number): Pt | null => {
-      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= W || ny >= m.height) continue;
-        const i = ny * W + nx;
-        // (LandUse Building 5, Bridge 7.)
-        const lu = m.landuse[i]!;
-        if ((depth?.(i) ?? 0) >= 0.1 || lu === 5 || lu === 7 || !m.isRevealed(nx, ny)) continue;
-        return [nx, ny];
-      }
-      return null;
-    };
-    const poles: Pt[] = [];
-    const wires: number[] = [];
-    const wire = (a: Pt, b: Pt) => wires.push(a[0], a[1], b[0], b[1]);
-    let prev: Pt | null = null;
-    polePositions(pts).forEach(([x0, y0], k) => {
-      let at = nearestNode(nodes, x0, y0, POLE_SNAP);
-      if (!at) {
-        at = spot(x0, y0);
-        if (!at) return;
-        poles.push(at);
-        if (!prev && k === 0) {
-          const n = nearestNode(nodes, at[0], at[1], LINK_SPAN);
-          if (n) wire(at, n);
-        }
-        nodes.push(at);
-      }
-      if (prev && Math.hypot(prev[0] - at[0], prev[1] - at[1]) <= 2 * POLE_SPACING + 1) wire(prev, at);
-      prev = at;
-    });
-    if (prev && poles.length) {
-      const p: Pt = prev;
-      const linked = wires.some((v, k) => k % 2 === 0 && v === p[0] && wires[k + 1] === p[1]);
-      const n = nearestNode(nodes, p[0], p[1], LINK_SPAN, p);
-      if (!linked && n) wire(p, n);
-    }
-    return { poles, wires };
   }
 
   private onCancel(e: PointerEvent): void {
@@ -1090,25 +1030,13 @@ export class ToolPalette {
         const W = this.host.mirror.width;
         if (this.mode === 'turbine') {
           const site = this.turbinePreview(ends[1]!);
-          if (site) {
-            lining = [site.y * W + site.x, ...(site.a >= 0 ? [site.a] : []), ...(site.b >= 0 ? [site.b] : [])];
-            if (site.ok) this.setHint(headText(site), false);
-            else if (site.reason) this.setHint(site.reason, false);
-          }
-        } else if (this.mode === 'poles') {
-          // Ghost poles and wires, hanging on the grid where the line starts or ends at it.
-          const line = this.poleLine(pts);
-          lining = line.poles.map(([x, y]) => y * W + x);
-          this.host.setPowerGhost?.(line);
+          // (No live text: the cells show where it goes; letting go says what it gives, or why not.)
+          if (site) lining = [site.y * W + site.x, ...(site.a >= 0 ? [site.a] : []), ...(site.b >= 0 ? [site.b] : [])];
         } else {
           const site = this.pumpPreview(ends);
           if (site) {
             lining = [...rasterisePath(grid, [[site.x, site.y], [site.ox, site.oy]], 0.5).keys()];
-            if (site.ok) this.setHint(`Lifts the water ${Math.max(0, site.lift).toFixed(1)} m.`, false);
-            else if (site.reason) this.setHint(site.reason, false);
-            this.host.setPowerGhost?.(
-              site.ok ? { poles: [], wires: [], pump: { id: -1, x: site.x, y: site.y, hx: site.hx, hy: site.hy, ox: site.ox, oy: site.oy, progress: 1, flow: 0, power: 0 } } : null,
-            );
+            this.host.setPowerGhost?.(site.ok ? { pump: { id: -1, x: site.x, y: site.y, hx: site.hx, hy: site.hy, ox: site.ox, oy: site.oy, progress: 1, flow: 0, power: 0 } } : null);
           }
         }
       }
@@ -1125,21 +1053,6 @@ export class ToolPalette {
       this.host.setPreviewLining?.(lining);
     });
   }
-}
-
-/** Nearest of `nodes` to (x, y) within `max` cells. */
-function nearestNode(nodes: readonly Pt[], x: number, y: number, max: number, except?: Pt): Pt | null {
-  let best: Pt | null = null;
-  let bd = max;
-  for (const n of nodes) {
-    if (n === except) continue;
-    const d = Math.hypot(n[0] - x, n[1] - y);
-    if (d <= bd) {
-      bd = d;
-      best = n;
-    }
-  }
-  return best;
 }
 
 /** What a turbine site would give (the hint line). */

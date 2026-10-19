@@ -4,7 +4,7 @@ import { findWeir, openGame, runDays, settleFrames, toScreen, touchPath } from '
 /**
  * Selecting and editing structures in place (ui/selection.ts, DESIGN.md §4):
  * tap a weir in Look mode, drag its crest handle up and down, drag an end
- * out along its line, take it down with its ×; tap a pole and remove it.
+ * out along its line, take it down with its ×; tap a pole: it has no × (the villagers').
  * Mouse on the desktop project, real touch (CDP) on the phone project.
  */
 
@@ -143,7 +143,7 @@ test('a weir is selected with a tap, its crest handle dragged up and down, an en
   expect(errors).toEqual([]);
 });
 
-test('with the weir tool a tap on a weir selects it; a pole is selected and removed', async ({ page }, info) => {
+test('with the weir tool a tap on a weir selects it; a pole is selected, without a ×', async ({ page }, info) => {
   test.setTimeout(300_000);
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&size=128&cheat=1', './?test=1&seed=3');
@@ -169,17 +169,17 @@ test('with the weir tool a tap on a weir selects it; a pole is selected and remo
 
   // A pole on dry land beside the start.
   const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
-  await page.evaluate(([x, y]) => (window as any).__hydro.client.command({ type: 'placePoles', points: [[x + 3, y + 3]] }), [startX, startY]);
-  await expect.poll(async () => (await page.evaluate(() => (window as any).__hydro.renderer.power.state?.poles.length ?? 0))).toBe(1);
+  // (As the villagers' line would stand: two poles, put up by the crew.)
+  await page.evaluate(([x, y]) => (window as any).__hydro.client.command({ type: 'placePoles', points: [[x + 3, y + 3], [x + 9, y + 3]] }), [startX, startY]);
+  await runDays(page, 1);
+  await expect.poll(async () => (await page.evaluate(() => (window as any).__hydro.renderer.power.state?.poles.filter((p: any) => p.progress >= 1).length ?? 0))).toBeGreaterThan(0);
   const pole = await page.evaluate(() => (window as any).__hydro.renderer.power.state.poles[0]);
   await page.evaluate(([cx, cy]) => (window as any).__hydro.renderer.camera.setState({ x: cx, y: cy, viewHeight: 16 }, true), [pole.x, pole.y]);
   await settleFrames(page);
   await tap(page, phone, await toScreen(page, pole.x, pole.y));
   await expect(page.locator('[data-testid=selection]')).toContainText('Power pole');
   await expect(page.locator('[data-testid=weir-height]')).toBeHidden();
-  await press(page, phone, '.sel-remove');
-  await press(page, phone, '.sel-remove');
-  await expect.poll(async () => (await page.evaluate(() => (window as any).__hydro.renderer.power.state?.poles.length ?? 0))).toBe(0);
+  await expect(page.locator('.sel-remove')).toBeHidden();
   // A tap on empty ground closes nothing open and selects nothing.
   await tap(page, phone, await toScreen(page, pole.x + 4, pole.y + 4));
   await expect(page.locator('[data-testid=selection]')).toBeHidden();

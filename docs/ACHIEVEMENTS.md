@@ -49,7 +49,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | Gatekeeper | Villagers open a sluice gate to water their fields (GAMEPLAY §2.2 rule 3; not a gate held by the `toggleGate` command) |
 | Miller's Head | Villagers finish a mill whose head (the cell driving its wheel) is within 3 cells of the player's works (a weir's spill, a canal step) |
 | Uphill | A water wheel has lifted 100 m³ onto the bank in all |
-| Bright Windows | A house is on the power grid and gets power (a turbine within reach, or poles from one) |
+| Bright Windows | A house is on the power grid and gets power (a turbine within reach, or the villagers' poles from one) |
 | Village Lights | 20 houses on the power grid at once |
 | Night and Day | On one day, pumps used ≥ 0.02 kWh of spare power and storage turbines gave back ≥ 0.02 kWh (a game day is 300 hydraulic seconds) |
 | Safety Valve | A sluice gate opens as flood relief (rule 1) and its dike is not overtopped that day |
@@ -57,7 +57,7 @@ and the medals on the history chart in `src/ui/achievements.ts`,
 | New Ground | A field on land that was too dry to farm at the start, near the works |
 | Green Desert | ≥ 150 cells that were too dry at the start are now well watered (field moisture ≥ 0.35), near the works, two days in a row |
 | Forest Keeper | ≥ 40 cells of forest (vegetation ≥ 0.6) where there was none at the start, near the works, two days in a row |
-| Good Idea | An idea for this valley (sim/ideas.ts) goes away while the player's works are near its spot (a turbine or poles idea: always) |
+| Good Idea | An idea for this valley (sim/ideas.ts) goes away while the player's works are near its spot (a turbine idea: always) |
 | Well Trodden | A connected desire path (8-neighbours) of ≥ 30 cells |
 | **The people** | |
 | Founders | The first village |

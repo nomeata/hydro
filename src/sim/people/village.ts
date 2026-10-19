@@ -323,6 +323,14 @@ export interface PeopleState {
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
 export type PeopleEvent = 'harvest' | 'catch' | 'rebuilt' | 'well' | 'mill' | 'bridge';
 
+/** The power grid's poles, as the builders see them (power/grid.ts; set by the simulation). */
+export interface PoleWork {
+  /** The pole a builder of the village should put up next (its id and cell), or null. */
+  site(settlement: number, day: number, blocked: (i: number) => boolean): { id: number; cell: number } | null;
+  /** A builder's visit: returns true when the pole was just put up. */
+  work(id: number): boolean;
+}
+
 export interface PeopleHost {
   /** Called when a cell's terrain changed. */
   terrainChanged(i: number): void;
@@ -441,6 +449,8 @@ export class PeopleSystem {
    */
   onEvent: ((e: PeopleEvent, cell: number) => void) | null = null;
   private readonly onBridge = (i: number): boolean => this.world.landuse[i] === LandUse.Bridge;
+  /** The power grid's poles to put up (set by the simulation; not saved). */
+  poles: PoleWork | null = null;
 
   constructor(
     private readonly world: World,
@@ -1946,7 +1956,10 @@ export class PeopleSystem {
     want.set(Job.Miller, mill && mill.progress >= 1 && (mill.grain ?? 0) > 0 ? 1 : 0);
     // Stone work and the jetty need a builder or two (a small mason share, more when prosperous).
     const stoneWork = n >= 4 && (st.lineSites?.length ?? 0) > 0 && (st.lineBudget ?? 0) >= 1;
-    const jettyWork = (st.jetty !== undefined && st.jetty.progress < 1) || this.bridges.site(st.id, this.lastDay, (c) => this.blocked.has(c)) !== null;
+    const jettyWork =
+      (st.jetty !== undefined && st.jetty.progress < 1) ||
+      this.bridges.site(st.id, this.lastDay, (c) => this.blocked.has(c)) !== null ||
+      (this.poles?.site(st.id, this.lastDay, (c) => this.blocked.has(c)) ?? null) !== null;
     const masons = stoneWork || jettyWork ? Math.max(1, Math.round(n * (0.04 + 0.08 * Math.max(0, st.wellbeing)))) : 0;
     want.set(Job.Builder, Math.max(masons, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0));
     // Fishers: as many as the waters sustain (one landing ≈ CATCH a day), up to a quarter.
@@ -2259,6 +2272,7 @@ export class PeopleSystem {
         break;
       }
       case SiteKind.Jetty:
+      case SiteKind.Pole:
         a.timer = 60;
         a.anim = EntityAnim.Build;
         break;
@@ -2535,6 +2549,10 @@ export class PeopleSystem {
         a.carry = CarryKind.None;
         break;
       }
+      case SiteKind.Pole:
+        this.poles?.work(a.site);
+        a.carry = CarryKind.None;
+        break;
       case SiteKind.Jetty: {
         const j = s?.state.jetty;
         if (j && j.progress < 1) {
@@ -2599,6 +2617,15 @@ export class PeopleSystem {
       if (br && this.goTo(a, br.a, SiteKind.Bridge, time, br.id)) {
         a.carry = CarryKind.Log;
         return;
+      }
+      // Power poles: carry one out and put it up.
+      const pole = this.poles?.site(s.state.id, time.day, (c) => this.blocked.has(c));
+      if (pole) {
+        if (this.goTo(a, pole.cell, SiteKind.Pole, time, pole.id)) {
+          a.carry = CarryKind.Log;
+          return;
+        }
+        this.blocked.set(pole.cell, time.day + 3);
       }
       // Stone work: fetch a stone from the store, then lay it.
       if (a.carry === CarryKind.Stone) {

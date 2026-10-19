@@ -197,10 +197,6 @@ async function main(): Promise<void> {
     setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
     setWheelSites: (sites) => renderer.wheelPreview.setSites(sites),
     setPowerGhost: (g) => renderer.setPowerGhost(g),
-    powerNodes: () => {
-      const st = renderer.power.state;
-      return st ? [...st.turbines.map((t): [number, number] => [t.x, t.y]), ...st.poles.map((p): [number, number] => [p.x, p.y])] : [];
-    },
     setGateGhost: (g) => renderer.gatePreview.set(g, renderer.structures.structures),
     setWeirGhost: (list) => renderer.weirGhost.setStructures(list),
     setCellTint: (key, cells, fade) => renderer.cellTint.set(key, cells, fade),

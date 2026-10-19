@@ -101,7 +101,7 @@ export class GameRenderer {
   readonly brushCursor: BrushCursor;
   /** Turbines, poles, pumps and lit cottages (M6). */
   readonly power: PowerLayer;
-  /** The power tools' ghost: a line of poles with its wires, or a pump, while drawing. */
+  /** The power tool's ghost: a pump, while drawing (or moving one). */
   readonly powerGhost: PowerLayer;
   private readonly ghostMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, color: 0xd8f0ff, emissive: 0x203040 });
   /** The gate tool's hover ghost. */
@@ -428,21 +428,11 @@ export class GameRenderer {
     this.tex.preview.needsUpdate = true;
   }
 
-  /**
-   * The power tools' ghost (ui/tools.ts): new poles and the wires of a line
-   * being drawn (wires may end at the grid's own nodes), or a pump; null hides it.
-   */
-  setPowerGhost(g: { poles: readonly (readonly [number, number])[]; wires: readonly number[]; pump?: PowerInfo['pumps'][number] } | null, ok = true): void {
+  /** The power tool's ghost pump (ui/tools.ts, a moved pump: ui/selection.ts; red when its place does not work); null hides it. */
+  setPowerGhost(g: { pump: PowerInfo['pumps'][number] } | null, ok = true): void {
     this.ghostMat.color.set(ok ? 0xd8f0ff : 0xff4a3a);
     this.ghostMat.emissive.set(ok ? 0x203040 : 0x400800);
-    this.powerGhost.anchors = this.power.nodeTops;
-    this.powerGhost.setInfo({
-      turbines: [],
-      poles: (g?.poles ?? []).map(([x, y], k) => ({ id: -1 - k, x, y, progress: 1 })),
-      wires: [...(g?.wires ?? [])],
-      pumps: g?.pump ? [g.pump] : [],
-      lit: [],
-    });
+    this.powerGhost.setInfo({ turbines: [], poles: [], wires: [], pumps: g ? [g.pump] : [], lit: [] });
   }
 
   /** Optimistic lining overlay (cells to show as planned lining), or null to clear. */
