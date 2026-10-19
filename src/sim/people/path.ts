@@ -10,7 +10,15 @@ export const MAX_WADE = 0.4;
 /** Steepest slope (rise over run, both in metres) people will walk. */
 export const MAX_SLOPE = 0.9;
 /** Cost factor for stepping onto a trodden path (they are quicker, and people like them). */
-export const PATH_COST = 0.8;
+export const PATH_COST = 0.6;
+/**
+ * Trodden grass (traffic, not yet a path) is a little cheaper too, up to
+ * ×(1 − TROD_BONUS): routes drift onto the ways others already walk, so
+ * they converge into one track instead of a fan of near-parallel ones.
+ */
+export const TROD_BONUS = 0.25;
+/** Traffic at which the trodden-grass bonus is full (≈ desire.ts DESIRE.grow). */
+const TROD_FULL = 96;
 
 export interface PathOptions {
   /** Search window half-size in cells around the midpoint of start/goal. */
@@ -42,6 +50,10 @@ export function stepCost(world: World, i: number, j: number, dist: number, bridg
   let c = dist * (1 + 3 * rise * rise);
   if (!onBridge && dj > 0.05) c *= 1 + 6 * dj; // wading is slow
   else if (world.landuse[j] === LandUse.Path) c *= PATH_COST; // people keep to the trodden paths
+  else {
+    const t = world.traffic[j]!;
+    if (t > 0) c *= 1 - (TROD_BONUS * Math.min(t, TROD_FULL)) / TROD_FULL;
+  }
   return c;
 }
 

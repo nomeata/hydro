@@ -65,7 +65,7 @@ See docs/PEOPLE.md (phases §10).
 - ☑ M3-δ More life: living vegetation (daily growth and decline, forest
   spreads from its edges, feedback on infiltration and erosion, stationary
   over decades), woodcutters with a woodpile, herds (cows, sheep, pigs,
-  chicks) led to pasture by herders who bring home milk, desire paths;
+  chicks) led to pasture by herders who bring home milk, desire paths (☑ grown as connected one-cell ways, drawn as winding bands);
   achievements Cattle Country, Well Trodden, Forest Keeper
 - ☑ Welcome panels illustrated by live scenes from the real engine
   (staged scene world, scripted timelines, SVG fallback)
