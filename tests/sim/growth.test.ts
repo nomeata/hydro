@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DAYS_PER_SEASON, STEPS_PER_DAY } from '../../src/sim/constants';
 import { loadGame, saveGame } from '../../src/sim/persist';
 import { Task } from '../../src/sim/people/agents';
-import { CAMP, ECONOMY, campsFor, classifyGrowth, type GrowthFacts } from '../../src/sim/people/settlement';
+import { CAMP, ECONOMY, Settlement, campsFor, classifyGrowth, type GrowthFacts } from '../../src/sim/people/settlement';
 import { Simulation } from '../../src/sim/sim';
 import { LandUse, SoilType, World } from '../../src/sim/world';
 import { CAMP_ID } from '../../src/shared/protocol';
@@ -73,7 +73,36 @@ describe('growth limits', () => {
     expect(campsFor('room', 0.9, 0.6)).toBe(true);
     expect(campsFor('land', 0.9, 0.6)).toBe(true);
     expect(campsFor('land', 0.5, 0.6)).toBe(false);
-    for (const l of ['open', 'building', 'food', 'wellbeing'] as const) expect(campsFor(l, 0.9, 0.6)).toBe(false);
+    // A house going up: the next family waits at the edge for it (round 5: camps lead, houses follow).
+    expect(campsFor('building', 0.9, 0.6, 20)).toBe(true);
+    expect(campsFor('building', 0.9, 0.6, 6)).toBe(false);
+    for (const l of ['open', 'food', 'wellbeing'] as const) expect(campsFor(l, 0.9, 0.6)).toBe(false);
+  });
+
+  it('draws families while crops stand, on spare food or spare good land (round 5)', () => {
+    const s = new Settlement(0, 10, 10, 20, 0);
+    const doy = 10; // spring: the harvest (day 29) is 19 days off
+    const need = 20 * (s.daysToHarvest(doy) + 48 + 6);
+    s.state.food = 20 * 30; // lasts to the harvest, but not the growth horizon: no window
+    s.state.promiseBias = 1;
+    expect(s.growSecurity(doy)).toBeLessThan(ECONOMY.growFood);
+    expect(s.growth(doy)).toBe(0); // nothing stands in the fields
+    // The crops promise just enough: no spare food, and no spare land.
+    s.state.standing = need - s.state.food;
+    expect(s.ahead(doy)).toBeCloseTo(1);
+    expect(s.growth(doy)).toBe(0);
+    // ...with spare good land: families come.
+    s.state.spareLand = ECONOMY.spareFamily * ECONOMY.spareFamilies;
+    expect(s.growth(doy)).toBe(1);
+    s.state.spareLand = ECONOMY.spareFamily;
+    expect(s.growth(doy)).toBeCloseTo(1 / ECONOMY.spareFamilies);
+    // A poor harvest ahead: not even on spare land.
+    s.state.standing = 0.8 * need - s.state.food;
+    expect(s.growth(doy)).toBe(0);
+    // A rich one: spare food alone draws them.
+    delete s.state.spareLand;
+    s.state.standing = (ECONOMY.spareAhead + 0.2) * need - s.state.food;
+    expect(s.growth(doy)).toBeCloseTo(Math.min(1, (0.2 * need) / ECONOMY.spareFamily / ECONOMY.spareFamilies));
   });
 
   it('judges each village daily', () => {

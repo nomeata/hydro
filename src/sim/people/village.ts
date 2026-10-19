@@ -97,6 +97,9 @@ const TIRED_SPEED = 0.6;
  * Farming: fields a farmer looks after, and the food a ripe field cell gives
  * (person-days, × fertility). Exported so tools can tune them.
  */
+/** Good land counted as spare at most (cells, about three farmers' worth; round 5). */
+const SPARE_LAND_CELLS = 84;
+
 export const FARMING = {
   fieldsPerFarmer: 28,
   yield: 10,
@@ -1886,7 +1889,7 @@ export class PeopleSystem {
         this.endCamp(st, day, 0);
         return;
       }
-      const waiting = campsFor(limit, wellbeing, arriveAbove) || limit === 'building';
+      const waiting = campsFor(limit, wellbeing, arriveAbove, st.population) || limit === 'building';
       if (waiting && campers.length && day - camp.since < CAMP.stay && w.water[camp.cell]! < 0.05) return;
       // Nothing changes (or the village no longer draws them): they move on.
       for (const a of campers) {
@@ -1900,7 +1903,7 @@ export class PeopleSystem {
       this.endCamp(st, day, CAMP.again);
       return;
     }
-    if (!campsFor(limit, wellbeing, arriveAbove) || day < (st.campAgain ?? 0)) return;
+    if (!campsFor(limit, wellbeing, arriveAbove, st.population) || day < (st.campAgain ?? 0)) return;
     const cell = this.campSite(s);
     if (cell < 0) return;
     const n = this.rng.int(ECONOMY.familySize[0], Math.min(4, ECONOMY.familySize[1]) + 1);
@@ -2172,6 +2175,24 @@ export class PeopleSystem {
       for (let k = 0; k < n; k++) claim(marginal[k]![1], marginal[k]![2]);
     }
     this.goodLeft.set(st.id, good.length - nGood);
+    // The harvest the standing crops promise, and what the good land left would yield (round 5:
+    // year-round growth on spare food and land).
+    const left = Math.max(0, 2 * DAYS_PER_SEASON - doy);
+    let standing = 0;
+    if (growing)
+      for (const i of this.fieldsOf(s)) {
+        const kind = this.fieldCrop[i] as FieldCrop;
+        const c = w.crop[i]! || (canSow ? 8 : 0);
+        if (!c) continue;
+        const f = w.water[i]! > drownDepth(kind) ? 0 : kindGrowth(kind, this.fieldMoisture[i]!, w.water[i]!);
+        const ripe = Math.min(255, c + FARMING.growPerDay * f * left);
+        if (ripe >= FARMING.lateHarvest) standing += FARMING.yield * Math.max(0.2, w.fertility[i]!) * (ripe / 255) * kindYield(kind);
+      }
+    st.standing = standing;
+    let spare = 0;
+    for (let k = nGood; k < Math.min(good.length, nGood + SPARE_LAND_CELLS); k++)
+      spare += FARMING.yield * Math.max(0.2, w.fertility[good[k]![1]]!) * cropGrowth(this.fieldMoisture[good[k]![1]]!);
+    st.spareLand = spare;
     // Surplus: good land left over for want of hands; the best few plots are pegged out.
     const pegs = common + nGood >= want ? good.slice(nGood, nGood + PEGS.max).map((c) => c[1]) : [];
     const old = st.pegs ?? [];
@@ -2189,7 +2210,7 @@ export class PeopleSystem {
     const limit = classifyGrowth({
       wellbeing: st.wellbeing,
       arriveAbove: st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove,
-      fed: s.growSecurity(doy),
+      fed: s.growth(doy) > 0 ? ECONOMY.growFood : s.growSecurity(doy),
       freeHouses: s.freeHouses,
       building: this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress < 1),
       goodLeft: this.goodLeft.get(st.id) ?? 0,

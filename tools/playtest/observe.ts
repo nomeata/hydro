@@ -90,6 +90,8 @@ export interface DailySeries {
   prosperity: number[];
   villages: number[];
   houses: number[];
+  /** Villages with newcomers camping at the edge (round 5). */
+  camps: number[];
   fields: number[];
   foodSecurity: number[];
   /** Fraction of fields under dry stress (null outside the growing season). */
@@ -112,7 +114,7 @@ const FIELD_EVENT_CELLS = 4;
 
 export class Observer {
   readonly seasons: SeasonSample[] = [];
-  readonly daily: DailySeries = { population: [], prosperity: [], villages: [], houses: [], fields: [], foodSecurity: [], dryStress: [] };
+  readonly daily: DailySeries = { population: [], prosperity: [], villages: [], houses: [], camps: [], fields: [], foodSecurity: [], dryStress: [] };
   readonly events: GameEvent[] = [];
   /** First day the peak population reached each milestone. */
   readonly milestones: Record<number, number> = {};
@@ -209,6 +211,7 @@ export class Observer {
     this.daily.prosperity.push(Math.round(prosp * 10) / 10);
     this.daily.villages.push(vs.length);
     this.daily.houses.push(vs.reduce((n, s) => n + s.state.houses, 0));
+    this.daily.camps.push(vs.filter((s) => s.state.camp).length);
     this.daily.fields.push(fields);
     this.daily.foodSecurity.push(Math.round(fs * 100) / 100);
     this.daily.dryStress.push(growing && fields ? Math.round((dry / fields) * 1000) / 1000 : null);

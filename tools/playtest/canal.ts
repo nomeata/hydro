@@ -335,6 +335,11 @@ export function footprintOf(sim: Simulation, cmds: readonly Command[], min = 0.1
   return [...z.keys()].filter((i) => Math.abs(z.get(i)! - w.terrain(i)) > min);
 }
 
+/** The terrain a list of shapeLine commands would leave (changed cells only). */
+export function shapeAfter(sim: Simulation, cmds: readonly Command[]): Map<number, number> {
+  return shapeOf(sim, cmds).z;
+}
+
 function shapeOf(sim: Simulation, cmds: readonly Command[]): { moved: number; z: Map<number, number> } {
   const w = sim.world;
   const z = new Map<number, number>();

@@ -46,18 +46,24 @@ export const CLIMATE = {
    */
   secondYearMax: -0.35,
   /**
-   * Big freshets (rare spring floods that go over the floodplain): from the
-   * third year on, a year has one with chance `bigChance · exp(bigWet · a)`
+   * Big freshets (spring floods that go over the floodplain): from year
+   * `bigFrom` (0-based) on, a year has one with chance `bigChance · exp(bigWet · a)`
    * (clamped to `bigChanceRange`; return period ≈ 4 years, likelier in wet
-   * years), and its freshet is `bigFactor` (+ up to `bigSpread`) times the
-   * usual one, lasting `bigDays` days. Drawn from a hash of seed and year.
+   * years; at least `bigEarly` in the years before `bigEarlyUntil`, and one
+   * of them has one for sure, so the floodplain fields learn what a flood is
+   * early: round 5), and its freshet
+   * is `bigFactor` (+ up to `bigSpread`) times the usual one, lasting
+   * `bigDays` days. Drawn from a hash of seed and year.
    */
   bigChance: 0.25,
   bigWet: 1.5,
   bigChanceRange: [0.1, 0.6] as readonly number[],
-  bigFactor: 3,
+  bigFactor: 4.5,
   bigSpread: 1.5,
   bigDays: 12,
+  bigFrom: 1,
+  bigEarly: 0.5,
+  bigEarlyUntil: 3,
   /** Rain fronts per day × exp(frontsAnomaly · a). */
   frontsAnomaly: 0.8,
   /** Per-tile rain factor range (generation climate: wetness, rain shadow). */
@@ -98,10 +104,15 @@ function innovation(seed: number, year: number): number {
  * a pure function of the seed, the year and its anomaly `a`.
  */
 export function bigFreshet(seed: number, year: number, a: number): number {
-  if (year < 2) return 0;
+  if (year < CLIMATE.bigFrom) return 0;
   const r = new Rng((seed * 0x2545f491) ^ (year * 0x9e3779b1) ^ 0xf1d0);
   const [lo, hi] = CLIMATE.bigChanceRange;
-  const chance = clamp(CLIMATE.bigChance * Math.exp(CLIMATE.bigWet * a), lo!, hi!);
+  let chance = Math.max(clamp(CLIMATE.bigChance * Math.exp(CLIMATE.bigWet * a), lo!, hi!), year < CLIMATE.bigEarlyUntil ? CLIMATE.bigEarly : 0);
+  // The last early year has one if the first early year drew none (its draw was above bigEarly).
+  if (year === CLIMATE.bigEarlyUntil - 1 && year > CLIMATE.bigFrom) {
+    const first = new Rng((seed * 0x2545f491) ^ (CLIMATE.bigFrom * 0x9e3779b1) ^ 0xf1d0).next();
+    if (first >= CLIMATE.bigEarly) chance = 1;
+  }
   const u = r.next();
   return u < chance ? CLIMATE.bigFactor + CLIMATE.bigSpread * r.next() : 0;
 }

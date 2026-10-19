@@ -520,6 +520,15 @@ point.
   1/day).
 - New achievement **Dry Feet**: village land flooded last spring is not
   flooded this spring and the player's dike lies between it and the water.
+- *As built, round 5:* big freshets (4.5–6× an ordinary one, 12 days)
+  may come from the second year; every world has one in year 2 or 3
+  (`CLIMATE.bigFrom`, `bigEarly`, `bigEarlyUntil`), then about one in
+  four years. They reach the floodplain fields where a village farms the
+  low land by the river (seeds 2, 4 at 128²: 40–430 cells flooded in four
+  years, a house or two ruined and rebuilt); on dry-terrace starts the
+  fields lie above them. A dike only helps if it is closed: a bank along
+  the river is flanked over the low ground at its ends unless it is tied
+  into ground above its crest, or rings the fields.
 
 **P4 — Marsh to meadow.** On marsh-edge starts and lowland climates (§5),
 peat basins with groundwater at the surface (`moisture ≥ 0.9`: crops ×0.4,
@@ -569,7 +578,7 @@ by the player's reservoirs raising the water table.
 A village grows when four things hold at once (`Settlement.day`,
 `PEOPLE.md` §4): families **want** to come (wellbeing above 0.6, 0.45 in
 a village under 12), the store **lasts** (food for `max(days to the
-harvest, 40) + 6` days: `growFood`, `growHorizon`), a **house** is free
+harvest, 50) + 6` days: `growFood`, `growHorizon`), a **house** is free
 (one is built whenever none is free and wellbeing is above 0.5, if a
 dry, flat, unflooded site is left within 12 cells), and then chance
 (0.6 × (w − 0.6) per free house a day). Every day each village names the
@@ -582,11 +591,30 @@ village with `?stats=1` as `limit`):
 | `food` | the store won't last though good land is left: yields too poor for a surplus (dry or tired fields) or a lean season | the dry-fields idea in summer; sacks by the store run low | water for the fields, fish |
 | `wellbeing` | fed, but not attractive (water access, safety, housing) | mood props (no smoke, idle people) | a well, keeping floods off |
 | `room` | fed and attractive, a house is wanted but no site is left | **newcomers camp** at the edge; the idea "no room left for houses" | level dry ground beside the village (Even), keep a flood plain dry |
-| `building` / `open` | a house is going up / waits for a family | builders at work; a family walking in | — |
+| `building` / `open` | a house is going up / waits for a family | builders at work, a family camping for it (round 5); a family walking in | — |
+
+**Year-round growth (round 5).** Besides the store's window after the
+harvest, a village draws families while crops stand in the fields
+(spring and summer) when the store lasts to the harvest and store plus
+the harvest the standing crops promise (`SettlementState.standing`: each
+sown field's crop grown on at today's moisture to the end of summer,
+times a bias the village learns each year from how its promise came
+true, ~0.75) feed it to the harvest after next (`Settlement.ahead` ≥ 1),
+and there is a surplus: spare food (`ahead` above 1.1) or spare good land
+(good land within reach left unfarmed for want of hands, valued at what
+it would yield). The arrival rate scales with the families that surplus
+would feed (full from two). So water that saves a drying crop, or new
+good land, can draw families within the season instead of after the
+next harvest. The growth horizon is 50 days (was 40), so a village no
+longer fills up on a harvest it cannot carry to the next one. Newcomers
+also camp at the edge while their house goes up (`building`, in a
+village of 12 or more), so the lead-in is a tent and cart, then a
+house. When store and standing crops fall below 0.85 of that need, a
+family leaves now and then (`shrinkRate`) before hunger sets in.
 
 Why prosperity can read 90 % while the village stands still: prosperity
 is the wellbeing, whose food part only asks whether the store lasts **to
-the next harvest**; growth asks for 40 days ahead (most of the 48-day
+the next harvest**; growth asks for 50 days ahead (more than the 48-day
 year), so a village whose harvest just covers the year is content and
 does not grow (`food`). It grows again on a surplus: better yields, not
 more land (every farmer works 28 fields, so food per head rises only
