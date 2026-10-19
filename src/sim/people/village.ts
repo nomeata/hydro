@@ -2597,8 +2597,10 @@ export class PeopleSystem {
       (a.carry === CarryKind.Log && a.job === Job.Woodcutter);
     if (delivering) {
       // Grain goes to the mill while its wheel turns (not the miller's own flour, nor fish or milk).
+      // (Only while the miller keeps up: a backlog at the mill is food the village cannot count
+      // on, which held growth back for the whole harvest; round 3.)
       const mill = a.carry === CarryKind.Sack && a.job !== Job.Miller ? this.millOf(s.state.id) : null;
-      if (mill && mill.progress >= 1 && mill.running && this.goTo(a, w.idx(mill.x, mill.y), SiteKind.Mill, time, mill.id)) return;
+      if (mill && mill.progress >= 1 && mill.running && (mill.grain ?? 0) < MILL.backlog && this.goTo(a, w.idx(mill.x, mill.y), SiteKind.Mill, time, mill.id)) return;
       const store = this.buildings.find((b) => b.settlement === s.state.id && b.kind === 'store');
       if (store && this.goTo(a, w.idx(store.x, store.y), SiteKind.Deliver, time)) return;
     }
