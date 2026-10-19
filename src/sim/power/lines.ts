@@ -50,8 +50,8 @@ export const LINES = {
   reach: 56,
   /** Days a pole may wait for its village's builders before the spirit crew puts it up. */
   crewAfter: 12,
-  /** Progress per builder visit (three visits a pole). */
-  perVisit: 0.34,
+  /** Progress per builder visit (two visits a pole). */
+  perVisit: 0.5,
   /** A flood knocks a pole down: water this deep (m), or `wade` deep and flowing faster than `speed` (m/s). */
   floodDeep: 1.0,
   floodWade: 0.5,

@@ -85,6 +85,8 @@ export interface Pole {
   down?: number;
   /** Ground height (m) when it was put up: moved much, the pole falls. */
   ground?: number;
+  /** A standing pole (id) this one replaces once it stands (moved out of a new field without the lights going out). */
+  replaces?: number;
 }
 
 export interface Pump {
@@ -425,7 +427,7 @@ export class PowerGrid {
     }
     const w = this.world;
     let n = day === undefined ? Infinity : 1;
-    for (const p of this.poles) {
+    for (const p of [...this.poles]) {
       if (p.progress >= 1 || n <= 0) continue;
       if (day !== undefined && (!this.crewPole(p, day) || w.water[w.idx(p.x, p.y)]! >= LINES.dry)) continue;
       p.progress = Math.min(1, p.progress + amount * (day === undefined ? POLE_WORK : CREW_POLE_WORK));
@@ -445,6 +447,15 @@ export class PowerGrid {
     p.ground = this.world.terrain(this.world.idx(p.x, p.y));
     delete p.down;
     this.dirty = true;
+    // The pole it replaces comes down.
+    if (p.replaces !== undefined) {
+      const old = p.replaces;
+      delete p.replaces;
+      if (this.poles.some((o) => o.id === old)) {
+        this.poles = this.poles.filter((o) => o.id !== old);
+        this.dropWires(new Set([old]));
+      }
+    }
   }
 
   /** The pole a builder of village `settlement` should put up next (lowest id first), or null. */
@@ -547,9 +558,15 @@ export class PowerGrid {
         const since = p.down ?? (p.progress < 1 ? (p.since ?? -Infinity) : Infinity);
         move = day - since > LINES.wetDays;
       } else move = field || !Number.isFinite(poleCost(w, i, null, true));
-      if (!move) continue;
+      if (!move || this.poles.some((o) => o.replaces === p.id)) continue;
       const to = this.moveSpot(p);
-      if (to) {
+      if (to && field && p.progress >= 1) {
+        // Out of a new field: a new pole beside it first, then this one comes down (raised).
+        const id = this.nextId++;
+        this.poles.push({ id, x: to[0], y: to[1], progress: 0, settlement: this.ownerAt(to[0], to[1]), since: day, replaces: p.id });
+        for (const o of this.wiredTo(p.id)) this.link(id, o);
+        this.dirty = true;
+      } else if (to) {
         p.x = to[0];
         p.y = to[1];
         p.progress = 0;
@@ -567,13 +584,36 @@ export class PowerGrid {
     this.changed();
   }
 
+  /** The nodes wired to node `id`. */
+  private wiredTo(id: number): number[] {
+    const out: number[] = [];
+    for (let k = 0; k + 1 < this.wires.length; k += 2) {
+      if (this.wires[k] === id) out.push(this.wires[k + 1]!);
+      else if (this.wires[k + 1] === id) out.push(this.wires[k]!);
+    }
+    return out;
+  }
+
+  /** The village whose builders put up a pole at (x, y): the nearest within LINES.reach, else -1 (the spirit crew). */
+  private ownerAt(x: number, y: number): number {
+    let owner = -1;
+    let od: number = LINES.reach;
+    for (const v of this.villages()) {
+      const d = Math.hypot(v.x - x, v.y - y);
+      if (d <= od) {
+        od = d;
+        owner = v.id;
+      }
+    }
+    return owner;
+  }
+
   /** The best dry cell within LINES.moveReach for pole p, its spans still reaching its neighbours. */
   private moveSpot(p: Pole): [number, number] | null {
     const w = this.world;
     const nb: [number, number][] = [];
-    for (let k = 0; k + 1 < this.wires.length; k += 2) {
-      const o = this.wires[k] === p.id ? this.wires[k + 1]! : this.wires[k + 1] === p.id ? this.wires[k]! : -1;
-      const q = o >= 0 ? this.nodePos(o) : null;
+    for (const o of this.wiredTo(p.id)) {
+      const q = this.nodePos(o);
       if (q) nb.push(q);
     }
     const others = this.nodes().filter(([id]) => id !== p.id);
@@ -727,21 +767,11 @@ export class PowerGrid {
     const opts = { allow: this.allow, toNode: node !== null, others, endScore: score };
     const poles = placeAlong(w, path, opts) ?? placeAlong(w, path, { ...opts, fields: true });
     if (!poles || (!poles.length && !node)) return false;
-    const villages = this.villages();
     let prev = from.id;
     for (const [x, y] of poles) {
       // Built by the nearest village's builders, if it is near enough.
-      let owner = -1;
-      let od: number = LINES.reach;
-      for (const v of villages) {
-        const d = Math.hypot(v.x - x, v.y - y);
-        if (d <= od) {
-          od = d;
-          owner = v.id;
-        }
-      }
       const id = this.nextId++;
-      this.poles.push({ id, x, y, progress: 0, settlement: owner, since: day });
+      this.poles.push({ id, x, y, progress: 0, settlement: this.ownerAt(x, y), since: day });
       this.link(prev, id);
       prev = id;
     }
