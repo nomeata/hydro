@@ -125,8 +125,9 @@ land elsewhere.
 **Clearing snow before sowing** (`SNOW_CLEARING` in `people/village.ts`).
 A field cell due for sowing under more than 1.5 mm of snow water (thinner
 snow is patchy and sown straight into) is first shovelled clear: a work
-step like sowing (`SiteKind.ClearSnow`, the shovel swing
-`EntityAnim.Shovel`), then the cell is sown as usual. The snow is piled on
+step a little longer than sowing (`SiteKind.ClearSnow`, the shovel swing
+`EntityAnim.Shovel`) that clears a short strip, the cell and the next
+unsown field cell on either side, then the cells are sown as usual. The snow is piled on
 the nearest cell beyond the field (open land or pasture, dry, no structure)
 within 3 cells, a bank along the field's edge that melts later; deep
 inside a large field it is trodden in and soaks into the soil (any excess
