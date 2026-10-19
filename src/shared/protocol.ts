@@ -116,7 +116,7 @@ export interface WorldInfo {
  */
 export const LOOK_CHANNELS = 4;
 
-/** Bytes per cell in Snapshot.fields: LandUse, crop stage, crop stress, field crop (FieldCrop). */
+/** Bytes per cell in Snapshot.fields: LandUse, crop stage (footfall on path cells), crop stress, field crop (FieldCrop). */
 export const FIELD_BYTES = 4;
 /**
  * Fourth byte of Snapshot.fields (docs/PEOPLE.md §3.1, "hardy crops and
@@ -349,7 +349,7 @@ export interface Snapshot {
   buildings?: BuildingInfo[];
   /**
    * Land use, crop stage, crop stress and field crop per cell (FIELD_BYTES
-   * each: LandUse, crop 0..255, stress — see STRESS_WET, FieldCrop), when changed.
+   * each: LandUse, crop 0..255 (path cells: traffic 0..255), stress — see STRESS_WET, FieldCrop), when changed.
    */
   fields?: Uint8Array;
   /** Water structures (gates, weirs), when changed. */
