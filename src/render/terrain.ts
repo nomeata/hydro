@@ -212,9 +212,11 @@ const FRAGMENT_COLOUR = /* glsl */ `
         if (trod > 0.0) {
           float rut = fieldNoise(nuv * 4.3 + 9.1) * 0.65 + fieldNoise(nuv * 11.0) * 0.35;
           cover = max(cover, smoothstep(0.0, 0.1, snow) * 0.9) * (1.0 - trod * 0.4 * smoothstep(0.45, 0.8, rut));
-          // Brown wet earth in the ruts, grey-brown slush between, a few white clumps.
-          vec3 slush = mix(vec3(0.22, 0.155, 0.10), vec3(0.47, 0.42, 0.36), smoothstep(0.42, 0.62, rut));
-          slush = mix(slush, uSnowShade, smoothstep(0.78, 0.9, rut) * 0.6);
+          // Grey-brown trampled slush, wet brown earth showing in patches, pocked
+          // by countless feet (fine speckle), and a few white clumps left.
+          vec3 slush = mix(vec3(0.29, 0.20, 0.12), vec3(0.56, 0.51, 0.45), smoothstep(0.3, 0.5, rut));
+          slush *= mix(0.82, 1.06, fieldNoise(nuv * 23.0 + 3.7));
+          slush = mix(slush, uSnowShade, smoothstep(0.75, 0.9, rut) * 0.55);
           snowCol = mix(snowCol, slush, trod * mix(0.7, 0.92, pathP));
         }
         c = mix(c, snowCol, cover);
