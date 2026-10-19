@@ -614,6 +614,8 @@ export class DikeBot implements Bot {
   }
 }
 
+export const dikeWhy: Record<string, number> = {};
+
 /** The floodplain dike(s) for village s, or null if it needs none (no new flood memory over `seen` cells). */
 function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number): { commands: Command[]; targets: number[]; earth: number; note: string; memory: number } | null {
   const w = sim.world;
@@ -625,17 +627,24 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
   const surface = mean(river.map((i) => w.surface(i)));
   // The floodplain: village land (fields, open land, homes) the river flooded or that lies low.
   const remembered = around.filter((i) => !isWater(w, i) && w.floodMemory[i]! > 30);
+  dikeWhy.remembered = remembered.length;
   if (remembered.length <= seen + 8) return null;
+  // Wait until the flood has gone down: its full height is known then (round 5: a dike planned
+  // on the rising water was a metre too low).
+  if (around.filter((i) => w.floodMemory[i]! > 30 && w.water[i]! > 0.05).length > remembered.length * 0.05) return null;
   const top = remembered.length ? Math.max(...remembered.map((i) => w.terrain(i))) : surface;
   const crest = Math.min(surface + 2.5, Math.max(surface + 1.5, top + 0.4));
   const fields = new Set(fieldsOf(sim, s));
   const protect = around.filter((i) => !isWater(w, i) && w.terrain(i) < crest && (fields.has(i) || w.landuse[i] === LandUse.Building || w.landuse[i] === LandUse.Yard));
+  dikeWhy.protect = protect.length;
+  dikeWhy.crest = crest - surface;
   if (protect.length < 10) return null;
   // The line: a band of land cells some distance back from the river. Of a few bands, the one
   // whose footprint takes the fewest fields for the low land it protects (round 4: the banks
   // took the best fields by the river).
   let best: { commands: Command[]; pieces: number; runs: number; score: number; band: number; lost: number; leak: number } | null = null;
   const toWater = waterDistances(sim, around, 8);
+  const wet0 = floodFill(sim, x, y, R + 12, crest, new Map());
   // A line only in front of the low land is flanked: the flood runs round its ends over low
   // ground (round 5). So the line reaches farther along the river until the flood, filled
   // from the river over ground below the crest, no longer gets behind it.
@@ -647,11 +656,25 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
       const lost = [...foot].filter((i) => fields.has(i)).length;
       const wet = floodFill(sim, x, y, R + 12, crest, shapeAfter(sim, plan.commands));
       // Protected: the low land behind the line, not under the banks and out of the flood's reach.
-      const kept = protect.filter((i) => !foot.has(i) && !wet.has(i)).length;
+      const kept = protect.filter((i) => wet0.has(i) && !foot.has(i) && !wet.has(i)).length;
       const leak = protect.filter((i) => wet.has(i)).length;
-      const score = kept - 3 * lost;
+      const score = kept - DIKE_LOST * lost;
       if (!best || score > best.score) best = { ...plan, score, band: lo, lost, leak };
     }
+  for (const gap of DIKE_RING_GAPS)
+    for (const plan of ringDikes(sim, protect, toWater, crest, gap)) {
+      const foot = new Set(footprintOf(sim, plan.commands));
+      const lost = [...foot].filter((i) => fields.has(i)).length;
+      const wet = floodFill(sim, x, y, R + 12, crest, shapeAfter(sim, plan.commands));
+      const kept = protect.filter((i) => wet0.has(i) && !foot.has(i) && !wet.has(i)).length;
+      const leak = protect.filter((i) => wet.has(i)).length;
+      const score = kept - DIKE_LOST * lost;
+      dikeWhy[`ring${gap}`] = kept;
+      dikeWhy[`ringLost${gap}`] = lost;
+      if (!best || score > best.score) best = { ...plan, score, band: -gap, lost, leak };
+    }
+  dikeWhy.score = best?.score ?? NaN;
+  dikeWhy.leak = best?.leak ?? NaN;
   if (!best || best.score < 10) return null;
   const { commands, pieces } = best;
   if (!commands.length) return null;
@@ -671,7 +694,7 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
     commands: cmds,
     targets: protect,
     earth: e,
-    note: `${cmds.length} dike piece(s) of ${pieces} (${best.runs} run(s)) ${best.band}–${best.band + 1} cells from the river, ${best.leak} low cells still reached round the ends, crest ${(crest - surface).toFixed(1)} m above it, ${protect.length} low cells behind, ${best.lost} fields under the banks, ${Math.round(e)} m³`,
+    note: `${cmds.length} dike piece(s) of ${pieces} (${best.runs} run(s)) ${best.band < 0 ? `ring ${-best.band}+ cells from the water` : `${best.band}–${best.band + 1} cells from the river`}, ${best.leak} low cells still reached round the ends, crest ${(crest - surface).toFixed(1)} m above it, ${protect.length} low cells behind, ${best.lost} fields under the banks, ${Math.round(e)} m³`,
     memory: remembered.length,
   };
 }
@@ -708,6 +731,10 @@ const DIKE_BANDS: [number, number][] = [
 const DIKE_WIDTH = 1;
 /** How far along the river (cells from the protected land) a dike line may run. */
 const DIKE_REACH = [6, 10, 15];
+/** Least distance (cells) from the water of the land a ring dike encloses. */
+const DIKE_RING_GAPS = [2, 4];
+/** A field under a bank weighs this many saved low cells (it is lost every year, the flood only some). */
+const DIKE_LOST = 1.5;
 
 /**
  * Cells a flood at `crest` reaches from the river within `r` of (x, y): filled
@@ -738,10 +765,63 @@ function floodFill(sim: Simulation, x: number, y: number, r: number, crest: numb
   return wet;
 }
 
+/**
+ * Ring dikes (round 5): around each cluster of the low land to protect that
+ * lies at least `gap` cells from the water, a bank on the low ground just
+ * outside it, closed where the ground is above the crest: it cannot be
+ * flanked (the band lines often were, on a long floodplain).
+ */
+function ringDikes(sim: Simulation, protect: number[], toWater: Map<number, number>, crest: number, gap: number): { commands: Command[]; pieces: number; runs: number; cells: number }[] {
+  const w = sim.world;
+  const W = w.width;
+  const core = new Set(protect.filter((i) => (toWater.get(i) ?? Infinity) >= gap));
+  const nb = (i: number): number[] => {
+    const out: number[] = [];
+    const cx = i % W;
+    const cy = (i / W) | 0;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && w.inBounds(cx + dx, cy + dy)) out.push(w.idx(cx + dx, cy + dy));
+    return out;
+  };
+  const seen = new Set<number>();
+  const out: { commands: Command[]; pieces: number; runs: number; cells: number }[] = [];
+  for (const start of core) {
+    if (seen.has(start)) continue;
+    // A cluster: core cells within 2 steps of each other.
+    const comp: number[] = [];
+    const stack = [start];
+    seen.add(start);
+    while (stack.length) {
+      const i = stack.pop()!;
+      comp.push(i);
+      for (const j of nb(i))
+        for (const k of [j, ...nb(j)])
+          if (core.has(k) && !seen.has(k)) {
+            seen.add(k);
+            stack.push(k);
+          }
+    }
+    if (comp.length < 10) continue;
+    // Fill the cluster's small gaps (cells between core cells), then take its low rim.
+    const inside = new Set(comp);
+    for (const i of comp) for (const j of nb(i)) if (!inside.has(j) && nb(j).filter((k) => core.has(k)).length >= 4) inside.add(j);
+    const rim = new Set<number>();
+    for (const i of inside)
+      for (const j of nb(i)) {
+        if (inside.has(j) || rim.has(j)) continue;
+        if (isWater(w, j) || w.terrain(j) >= crest || w.landuse[j] === LandUse.Building) continue;
+        rim.add(j);
+      }
+    if (rim.size < 4) continue;
+    const plan = chainDike(sim, [...rim], crest, false);
+    if (plan) out.push({ ...plan, cells: comp.length });
+  }
+  return out;
+}
+
 /** The dike pieces along the band `lo`–`hi` cells from the river in front of `protect` (planDikes). */
 function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number>, protect: number[], crest: number, lo: number, hi: number, reach: number): { commands: Command[]; pieces: number; runs: number } | null {
   const w = sim.world;
-  const W = w.width;
   const near = new Map<number, number>();
   for (const i of around) {
     if (isWater(w, i) || w.terrain(i) >= crest) continue;
@@ -759,6 +839,13 @@ function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number
     return false;
   });
   if (line.length < 4) return null;
+  return chainDike(sim, line, crest, true);
+}
+
+/** Raise commands along the cells `line` (chained into polylines), to the crest; `tie`: tie run ends into high ground. */
+function chainDike(sim: Simulation, line: number[], crest: number, tie: boolean): { commands: Command[]; pieces: number; runs: number } | null {
+  const w = sim.world;
+  const W = w.width;
   // Chain the line cells into polylines (nearest neighbour walk), split into runs of ≤ 8 cells.
   const left = new Set(line);
   const runs: Pt[][] = [];
@@ -794,7 +881,8 @@ function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number
     }
   }
   // Tie the ends of each run into high ground (≥ crest) within 6 cells, away from the river.
-  const tie = (p: Pt, q: Pt): Pt | null => {
+  const tieEnd = (p: Pt, q: Pt): Pt | null => {
+    if (!tie) return null;
     const dx = p[0] - q[0];
     const dy = p[1] - q[1];
     const l = Math.hypot(dx, dy) || 1;
@@ -812,8 +900,8 @@ function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number
   let pieces = 0;
   for (const run of runs) {
     if (run.length < 2 && polyLength(run) < 3) continue;
-    const a = tie(run[0]!, run[1] ?? run[0]!);
-    const b = tie(run[run.length - 1]!, run[run.length - 2] ?? run[run.length - 1]!);
+    const a = tieEnd(run[0]!, run[1] ?? run[0]!);
+    const b = tieEnd(run[run.length - 1]!, run[run.length - 2] ?? run[run.length - 1]!);
     const full = [...(a ? [a] : []), ...run, ...(b ? [b] : [])];
     // Segments of ≤ 6 points, each raised to the absolute crest.
     for (let k = 0; k + 1 < full.length; k += 5) {
