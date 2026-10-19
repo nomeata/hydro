@@ -23,6 +23,12 @@ export const PARAMS = {
 
   /** Snow melt per °C above zero (m/day/°C). */
   meltPerDegreeDay: 0.004,
+  /**
+   * Trodden snow on desire paths (LandUse.Path) is packed, dirtied and
+   * thin: it melts as if this many °C warmer, and this many times faster.
+   */
+  pathMeltWarmth: 1.5,
+  pathMeltFactor: 2,
 
   /** Seasonal temperature at sea level: mean and amplitude (°C). */
   tempMean: 9,

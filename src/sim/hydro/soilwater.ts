@@ -122,7 +122,11 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
 
           // Snow melt.
           const sn = snow[i]!;
-          const melt = meltK * Math.max(0, cellTemp);
+          // Trodden snow on paths goes first (packed, dirty, thin).
+          const melt =
+            landuse[i] === LandUse.Path
+              ? meltK * PARAMS.pathMeltFactor * Math.max(0, cellTemp + PARAMS.pathMeltWarmth)
+              : meltK * Math.max(0, cellTemp);
           if (sn > 0 && melt > 0) {
             const m = Math.min(sn, melt);
             snow[i] = sn - m;

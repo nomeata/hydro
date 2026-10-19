@@ -205,6 +205,16 @@ const FRAGMENT_COLOUR = /* glsl */ `
         // ground shows first), less on steep slopes; white with a cool shade.
         cover = smoothstep(0.0, 0.18, snow - mix(0.12, 0.62, snowN) + 0.12) * (1.0 - 0.7 * smoothstep(0.9, 1.7, slope));
         vec3 snowCol = mix(uSnowShade, uSnow, smoothstep(0.35, 0.8, snowN + 0.3 * snow));
+        // Desire paths through the snow: trodden, thinner, grey-brown slush
+        // with darker wet ruts (the sim melts it faster too, soilwater.ts).
+        float pathP;
+        float trod = pathMask(vTerrWorld, pathP);
+        if (trod > 0.0) {
+          float rut = fieldNoise(nuv * 4.3 + 9.1) * 0.65 + fieldNoise(nuv * 11.0) * 0.35;
+          cover = max(cover, smoothstep(0.0, 0.1, snow) * 0.9) * (1.0 - trod * 0.4 * smoothstep(0.45, 0.8, rut));
+          vec3 slush = mix(vec3(0.24, 0.205, 0.17), vec3(0.50, 0.49, 0.48), smoothstep(0.3, 0.75, rut));
+          snowCol = mix(snowCol, slush, trod * mix(0.7, 0.92, pathP));
+        }
         c = mix(c, snowCol, cover);
         // Snow glows a little (it reads white, not grey, under the soft winter light).
         planGlow += snowCol * cover * 0.1;
@@ -309,7 +319,7 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
   };
   const withDefines = mat as unknown as { defines: Record<string, string> };
   withDefines.defines = {};
-  mat.customProgramCacheKey = () => `hydro-terrain-v8${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}`;
+  mat.customProgramCacheKey = () => `hydro-terrain-v9${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}`;
   return mat;
 }
 

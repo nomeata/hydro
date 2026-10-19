@@ -138,9 +138,11 @@ float pathAt(ivec2 c) {
   return abs(fieldAt(c).r - 4.0) < 0.5 ? 1.0 : 0.0;
 }
 
-// Desire paths: trodden earth, blended between cell centres with a noisy,
-// organic edge and a little grass still showing along the middle.
-vec3 pathColour(vec3 ground, vec3 world) {
+// How much of a desire path covers this point (0..1): blended between cell
+// centres with a noisy, organic edge. Also tramples the snow (terrain.ts).
+float pathMask(vec3 world, out float p) {
+  p = 0.0;
+  if (uFieldsOn < 0.5) return 0.0;
   vec2 q = world.xz - 0.5;
   ivec2 c = ivec2(floor(q));
   vec2 f = fract(q);
@@ -148,11 +150,18 @@ vec3 pathColour(vec3 ground, vec3 world) {
   float b = pathAt(c + ivec2(1, 0));
   float d = pathAt(c + ivec2(0, 1));
   float e = pathAt(c + ivec2(1, 1));
-  if (a + b + d + e < 0.5) return ground;
+  if (a + b + d + e < 0.5) return 0.0;
   f = f * f * (3.0 - 2.0 * f);
-  float p = mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
+  p = mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
   float n = fieldNoise(world.xz * 2.1 + 7.3) * 0.6 + fieldNoise(world.xz * 6.5) * 0.4;
-  float m = smoothstep(0.32, 0.62, p + (n - 0.5) * 0.45);
+  return smoothstep(0.32, 0.62, p + (n - 0.5) * 0.45);
+}
+
+// Desire paths: trodden earth with a little grass still showing along the middle.
+vec3 pathColour(vec3 ground, vec3 world) {
+  float p;
+  float m = pathMask(world, p);
+  if (m <= 0.0) return ground;
   vec3 earth = uPath * mix(0.9, 1.08, fieldNoise(world.xz * 4.7 + 1.9));
   // Tufts of grass survive where fewer feet go.
   float tuft = smoothstep(0.62, 0.8, fieldNoise(world.xz * 9.0 + 3.3)) * (1.0 - smoothstep(0.75, 1.0, p));
