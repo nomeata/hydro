@@ -577,6 +577,13 @@ the mean of the per-seed differences at year 4.
   year 4 (round 2: stuck at 3–4 for three years), with prosperity
   77–99 %.
 
+**256² check** (seeds 4 and 6, 3 years, population at year 3): seed 4
+baseline 66, good 70, wheel 59; seed 6 baseline 47, good 23, wheel 43 (the
+baseline founded a second village; the good player's did not). The 128²
+gains on the dry seeds do not carry over to the game's map size: with
+more land the baseline's second village comes sooner, and the founding
+effect above dominates.
+
 ### Open
 Founding after irrigation (the good player loses the land-limited
 founding on fertile seeds: founding could also count a village of 30
