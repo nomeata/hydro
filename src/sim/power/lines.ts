@@ -107,11 +107,13 @@ export function poleCost(w: World, i: number, allow: Allow, fields = false): num
   let path = false;
   let field = false;
   let wet = false;
+  let house = false;
   for (const [dx, dy] of N8) {
     const j = i + dy * W + dx;
     const u = w.landuse[j]!;
     if (u === LandUse.Path) path = true;
     else if (u === LandUse.Field || u === LandUse.Garden) field = true;
+    else if (u === LandUse.Building) house = true;
     if (w.water[j]! >= LINES.dry) wet = true;
   }
   // Beside a path best (on it is fine), along a field's edge, in a yard by the house.
@@ -119,6 +121,8 @@ export function poleCost(w: World, i: number, allow: Allow, fields = false): num
   else if (path) c -= 0.5;
   if (field && lu !== LandUse.Field && lu !== LandUse.Garden) c -= 0.3;
   if (lu === LandUse.Yard) c -= 0.1;
+  // Beside a house, not against its wall (the wires would cut through the roof).
+  if (house) c += 0.7;
   // Not right at the water's edge, nor where floods come.
   if (wet) c += 0.4;
   c += (1.5 * w.floodMemory[i]!) / 255;
