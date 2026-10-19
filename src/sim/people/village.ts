@@ -101,12 +101,14 @@ const TIRED_SPEED = 0.6;
  * Clearing snow before sowing (docs/PEOPLE.md §3.1): a field cell due for
  * sowing under more than `min` of snow (water equivalent, m; thinner snow is
  * patchy and sown straight into) is shovelled clear first, a work step of
- * `timer` people-ticks. The snow goes onto the nearest cell beyond the
+ * `timer` people-ticks that clears the cell and up to `strip` cells of the
+ * same field on either side along x (still to be sown), so clearing costs
+ * the farmers little time. The snow goes onto the nearest cell beyond the
  * field within `reach` cells (a bank along the field's edge that melts
  * later); deep inside a large field, where there is none, it is trodden in
  * and soaks into the soil. Either way no water is made or lost.
  */
-export const SNOW_CLEARING = { min: 0.0015, timer: 40, reach: 3 };
+export const SNOW_CLEARING = { min: 0.0015, timer: 50, reach: 3, strip: 1 };
 
 /** Ring offsets (dx, dy) by distance, nearest first, for `clearSnow`. */
 const CLEAR_RING: [number, number][] = (() => {
@@ -2541,9 +2543,19 @@ export class PeopleSystem {
       case SiteKind.Sow:
         if (w.landuse[a.site] === LandUse.Field && w.crop[a.site] === 0) w.crop[a.site] = 8;
         break;
-      case SiteKind.ClearSnow:
-        if (w.landuse[a.site] === LandUse.Field) clearSnow(w, a.site);
+      case SiteKind.ClearSnow: {
+        const i = a.site;
+        if (w.landuse[i] !== LandUse.Field) break;
+        clearSnow(w, i);
+        const x = i % w.width;
+        for (const d of [-1, 1])
+          for (let k = 1; k <= SNOW_CLEARING.strip; k++) {
+            const j = i + d * k;
+            if (x + d * k < 0 || x + d * k >= w.width || w.landuse[j] !== LandUse.Field || w.crop[j] !== 0 || this.reserved.has(j)) break;
+            clearSnow(w, j);
+          }
         break;
+      }
       case SiteKind.Tend:
         // Tending helps a little (weeding); growth itself comes from the land.
         if (w.landuse[a.site] === LandUse.Field && w.crop[a.site]! > 0) w.crop[a.site] = Math.min(255, w.crop[a.site]! + 1);
