@@ -58,6 +58,8 @@ export const CLIMATE = {
   bigFactor: 3,
   bigSpread: 1.5,
   bigDays: 12,
+  /** First year (0-based) that may have a big freshet. */
+  bigFrom: 2,
   /** Rain fronts per day × exp(frontsAnomaly · a). */
   frontsAnomaly: 0.8,
   /** Per-tile rain factor range (generation climate: wetness, rain shadow). */
@@ -98,7 +100,7 @@ function innovation(seed: number, year: number): number {
  * a pure function of the seed, the year and its anomaly `a`.
  */
 export function bigFreshet(seed: number, year: number, a: number): number {
-  if (year < 2) return 0;
+  if (year < CLIMATE.bigFrom) return 0;
   const r = new Rng((seed * 0x2545f491) ^ (year * 0x9e3779b1) ^ 0xf1d0);
   const [lo, hi] = CLIMATE.bigChanceRange;
   const chance = clamp(CLIMATE.bigChance * Math.exp(CLIMATE.bigWet * a), lo!, hi!);

@@ -97,6 +97,9 @@ const TIRED_SPEED = 0.6;
  * Farming: fields a farmer looks after, and the food a ripe field cell gives
  * (person-days, × fertility). Exported so tools can tune them.
  */
+/** Good land counted as spare at most (cells, about three farmers' worth; round 5). */
+const SPARE_LAND_CELLS = 84;
+
 export const FARMING = {
   fieldsPerFarmer: 28,
   yield: 10,
@@ -2172,6 +2175,17 @@ export class PeopleSystem {
       for (let k = 0; k < n; k++) claim(marginal[k]![1], marginal[k]![2]);
     }
     this.goodLeft.set(st.id, good.length - nGood);
+    // What the fields promise in a year, and what the good land left would add (round 5: growth
+    // on a surplus, year-round). Water standing on a field in spring is gone by sowing, so the
+    // promise counts the soil's moisture, not today's puddle.
+    const promiseOf = (i: number, kind: FieldCrop) =>
+      FARMING.yield * Math.max(0.2, w.fertility[i]!) * kindYield(kind) * (kind === FieldCrop.Paddy ? 1 : kindGrowth(kind, this.fieldMoisture[i]!, 0));
+    let promise = 0;
+    for (const i of this.fieldsOf(s)) promise += promiseOf(i, this.fieldCrop[i] as FieldCrop);
+    st.promise = promise;
+    let spare = 0;
+    for (let k = nGood; k < Math.min(good.length, nGood + SPARE_LAND_CELLS); k++) spare += promiseOf(good[k]![1], FieldCrop.Common);
+    st.spareLand = spare;
     // Surplus: good land left over for want of hands; the best few plots are pegged out.
     const pegs = common + nGood >= want ? good.slice(nGood, nGood + PEGS.max).map((c) => c[1]) : [];
     const old = st.pegs ?? [];
@@ -2189,7 +2203,7 @@ export class PeopleSystem {
     const limit = classifyGrowth({
       wellbeing: st.wellbeing,
       arriveAbove: st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove,
-      fed: s.growSecurity(doy),
+      fed: s.growth(doy) > 0 ? ECONOMY.growFood : s.growSecurity(doy),
       freeHouses: s.freeHouses,
       building: this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress < 1),
       goodLeft: this.goodLeft.get(st.id) ?? 0,
@@ -2507,7 +2521,7 @@ export class PeopleSystem {
       }
       case SiteKind.Deliver:
         if (s && a.carry === CarryKind.Log) s.state.wood = Math.min(ECONOMY.woodMax, (s.state.wood ?? 0) + 1);
-        else if (s && a.load > 0) s.bookFood(a.load);
+        else if (s && a.load > 0) s.bookFood(a.load, a.carry === CarryKind.Sack);
         a.load = 0;
         a.carry = CarryKind.None;
         break;

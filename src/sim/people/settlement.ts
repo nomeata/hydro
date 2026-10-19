@@ -62,6 +62,29 @@ export const ECONOMY = {
   growHorizon: 40,
   hamlet: 15,
   /**
+   * Year-round growth on spare land (round 5, GAMEPLAY §4.6): besides the
+   * store's window after the harvest, families come whenever the store
+   * comfortably lasts to the harvest (food security ≥ `spareStore`), the
+   * village fed itself last year (`outlook` ≥ `spareFed`, or no year logged
+   * yet) and good land within reach is left unfarmed for want of hands (what
+   * it would yield: `SettlementState.spareLand`). The arrival rate scales
+   * with the families that land would feed (`spareFamily` person-days a
+   * year each), full from `spareFamilies`. `spareGrowth` 0 turns it off.
+   */
+  spareGrowth: 1,
+  spareStore: 1.2,
+  spareFed: 0.95,
+  spareFamilies: 2,
+  spareFamily: 4 * 48,
+  /**
+   * ...and shrinks gently when the land no longer feeds it: while the store
+   * won't last to the harvest and last year's food was below this share of
+   * the need, a family leaves now and then (`shrinkRate` per household a
+   * day per unit of the shortfall) before hunger sets in.
+   */
+  shrinkBelow: 0.9,
+  shrinkRate: 0.05,
+  /**
    * The recovery floor (no failure; GAMEPLAY §4.2): families leave a village
    * only while more than this many people live there, and at or below it
    * hunger kills nobody and births do not wait for a full store (round 3:
@@ -161,6 +184,24 @@ export interface SettlementState {
   camp?: { cell: number; since: number };
   /** Day from which another family may camp (after one moved on). */
   campAgain?: number;
+  /**
+   * Food brought in since yesterday's day() and per day of the last year
+   * (index: day of year; round 5's year-round growth judges the surplus by
+   * it), and how many days of it are filled (absent in old saves: none).
+   */
+  booked?: number;
+  yieldLog?: number[];
+  /** The same for food that does not come from the fields (fish, milk). */
+  bookedOther?: number;
+  otherLog?: number[];
+  logDays?: number;
+  /**
+   * The food the village's fields promise in a year (person-days, from their
+   * soil and moisture today), and what the good land still unclaimed within
+   * reach would add (village.ts manageFields, daily).
+   */
+  promise?: number;
+  spareLand?: number;
 }
 
 /**
@@ -209,7 +250,7 @@ export const CAMP = {
 
 /** Limits under which newcomers camp at the edge: they want to come, but the village can't take them. */
 export function campsFor(limit: GrowthLimit | undefined, wellbeing: number, arriveAbove: number): boolean {
-  return (limit === 'room' || limit === 'land') && wellbeing > arriveAbove;
+  return (limit === 'room' || limit === 'land' || limit === 'building') && wellbeing > arriveAbove;
 }
 
 export type Mood = -1 | 0 | 1;
@@ -271,8 +312,10 @@ export class Settlement {
    * delivery never shrinks the stock: the founders' provisions are more than a
    * hamlet's store holds, and the first sack of fish used to throw them away).
    */
-  bookFood(amount: number): void {
+  bookFood(amount: number, fromFields = true): void {
     const s = this.state;
+    s.booked = (s.booked ?? 0) + amount;
+    if (!fromFields) s.bookedOther = (s.bookedOther ?? 0) + amount;
     s.food = Math.max(s.food, Math.min(this.storageCap, s.food + amount));
   }
 
@@ -299,10 +342,68 @@ export class Settlement {
     return this.foodSecurity(dayOfYear, this.state.population < ECONOMY.hamlet ? 0 : ECONOMY.growHorizon);
   }
 
+  /** Food brought in over the last year against a year's need (NaN until a year is logged). */
+  produced(): number {
+    const s = this.state;
+    if ((s.logDays ?? 0) < DAYS_PER_YEAR || s.population <= 0) return NaN;
+    let sum = 0;
+    for (const v of s.yieldLog!) sum += v;
+    return sum / (s.population * ECONOMY.consumption * DAYS_PER_YEAR);
+  }
+
+  /** What the fields promise in a year against a year's need (NaN before the first planning). */
+  promised(): number {
+    const s = this.state;
+    if (s.promise === undefined || s.population <= 0) return NaN;
+    return s.promise / (s.population * ECONOMY.consumption * DAYS_PER_YEAR);
+  }
+
+  /**
+   * How strongly the village draws families now, 0..1 (0: it cannot feed
+   * more): 1 in the store's window after the harvest (`growSecurity`), else,
+   * year-round, by the spare good land while the store comfortably lasts to
+   * the harvest and the village fed itself last year (round 5).
+   */
+  growth(dayOfYear: number): number {
+    const E = ECONOMY;
+    if (this.growSecurity(dayOfYear) >= E.growFood) return 1;
+    if (!E.spareGrowth || this.foodSecurity(dayOfYear) < E.spareStore) return 0;
+    const out = this.outlook();
+    if (out < E.spareFed) return 0;
+    return Math.min(1, (this.state.spareLand ?? 0) / E.spareFamily / E.spareFamilies);
+  }
+
+  /**
+   * The year ahead against a year's need: last year's harvest and catch (NaN
+   * until a year is logged). (The fields' promise, `promised`, swings with
+   * the season's moisture and is ~0.3 off on floodplains; round 5 tried it.)
+   */
+  outlook(): number {
+    return this.produced();
+  }
+
+  /** Last year's food that did not come from the fields (fish, milk) against a year's need. */
+  catchShare(): number {
+    const s = this.state;
+    if (!s.otherLog || s.population <= 0) return 0;
+    let sum = 0;
+    for (const v of s.otherLog) sum += v;
+    return sum / (s.population * ECONOMY.consumption * DAYS_PER_YEAR);
+  }
+
   /** Advance one game day. */
   day(dayOfYear: number, rng: Rng): DayEvents {
     const s = this.state;
     const ev: DayEvents = { arrived: 0, left: 0, born: 0, died: 0 };
+
+    // Last year's harvest and catch, day by day.
+    const log = (s.yieldLog ??= new Array<number>(DAYS_PER_YEAR).fill(0));
+    log[dayOfYear % DAYS_PER_YEAR] = s.booked ?? 0;
+    s.booked = 0;
+    const other = (s.otherLog ??= new Array<number>(DAYS_PER_YEAR).fill(0));
+    other[dayOfYear % DAYS_PER_YEAR] = s.bookedOther ?? 0;
+    s.bookedOther = 0;
+    s.logDays = Math.min(DAYS_PER_YEAR, (s.logDays ?? 0) + 1);
 
     // Eat and spoil.
     const need = s.population * ECONOMY.consumption;
@@ -329,7 +430,8 @@ export class Settlement {
 
     // Natural change (small, mostly cosmetic).
     const perDay = 1 / DAYS_PER_YEAR;
-    const fed = this.growSecurity(dayOfYear) >= ECONOMY.growFood;
+    const draw = this.growth(dayOfYear);
+    const fed = draw > 0;
     const floor = s.population <= ECONOMY.stayers;
     const births = fed || floor ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
     const deaths = s.population * (ECONOMY.deathRate + (starving && !floor ? ECONOMY.starvationDeathRate : 0)) * perDay;
@@ -345,7 +447,7 @@ export class Settlement {
     // Migration: the main lever, rate-limited by housing.
     const free = Math.max(0, this.freeHouses);
     const arriveAbove = s.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
-    const pArrive = fed ? ECONOMY.arrivalRate * Math.max(0, s.wellbeing - arriveAbove) * free : 0;
+    const pArrive = fed ? ECONOMY.arrivalRate * draw * Math.max(0, s.wellbeing - arriveAbove) * free : 0;
     // Families come as the village's pull adds up (expected arrivals a day), each when it passes a
     // threshold drawn around 1: the same rate as a daily chance, with far less luck in it
     // (round 4: two runs of one village differed by 17 arrivals in a season by chance alone).
@@ -361,7 +463,9 @@ export class Settlement {
       }
     }
     const households = Math.ceil(s.population / ECONOMY.houseCapacity);
-    const pLeave = ECONOMY.departureRate * Math.max(0, ECONOMY.leaveBelow - s.wellbeing) * households;
+    const out = this.outlook();
+    const short = !Number.isNaN(out) && this.foodSecurity(dayOfYear) < 1 ? Math.max(0, ECONOMY.shrinkBelow - out) : 0;
+    const pLeave = (ECONOMY.departureRate * Math.max(0, ECONOMY.leaveBelow - s.wellbeing) + ECONOMY.shrinkRate * short) * households;
     if (s.population > ECONOMY.stayers && rng.next() < pLeave) {
       const n = Math.min(s.population - ECONOMY.stayers, rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));
       s.population -= n;
