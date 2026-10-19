@@ -58,7 +58,7 @@ export const CLIMATE = {
   bigChance: 0.25,
   bigWet: 1.5,
   bigChanceRange: [0.1, 0.6] as readonly number[],
-  bigFactor: 3,
+  bigFactor: 4.5,
   bigSpread: 1.5,
   bigDays: 12,
   bigFrom: 1,
