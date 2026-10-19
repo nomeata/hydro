@@ -285,6 +285,7 @@ function weirPool(sim: Simulation, i: number, line: [Pt, Pt], crest: number): { 
   const seen = new Set<number>([up]);
   const stack = [up];
   const pool = new Set<number>();
+  const margin = new Set<number>();
   let fields = 0;
   let volume = 0;
   while (stack.length) {
@@ -295,7 +296,7 @@ function weirPool(sim: Simulation, i: number, line: [Pt, Pt], crest: number): { 
       pool.add(c);
       const lu = w.landuse[c];
       if (lu === LandUse.Building || (lu === LandUse.Yard && w.terrain(c) < crest + 0.2)) return null;
-      if (lu === LandUse.Field && w.terrain(c) < crest - 0.1) fields++;
+      if (lu === LandUse.Field) fields++;
     }
     const cx = cellX(w, c);
     const cy = cellY(w, c);
@@ -306,6 +307,8 @@ function weirPool(sim: Simulation, i: number, line: [Pt, Pt], crest: number): { 
       const j = w.idx(nx, ny);
       if (seen.has(j) || wall.has(j)) continue;
       seen.add(j);
+      // Fields on the pool's wet margin (up to 0.3 m above it) are lost too.
+      if (w.landuse[j] === LandUse.Field && w.terrain(j) >= crest + 0.05 && w.terrain(j) < crest + 0.3 && !margin.has(j)) margin.add(j);
       if (w.terrain(j) + 0 < crest + 0.05 || w.water[j]! > 0.05) {
         // Houses near the pool's edge: their ground must stay above it.
         if (w.landuse[j] === LandUse.Building && w.terrain(j) < crest + 0.3) return null;
@@ -313,7 +316,7 @@ function weirPool(sim: Simulation, i: number, line: [Pt, Pt], crest: number): { 
       }
     }
   }
-  return { pool, fields, volume };
+  return { pool, fields: fields + margin.size, volume };
 }
 
 /** Weir sites across the river upstream of village s, best first (a few crest heights each). */
@@ -349,7 +352,10 @@ function weirSites(sim: Simulation, s: Settlement): WeirSite[] {
       if (!line || !lineRevealed(sim, line[0], line[1]) || !lineClear(w, line[0], line[1], 1)) continue;
       const bed2 = lowestOn(w, line[0], line[1]);
       const c2 = bed2 + H;
-      const p = weirPool(sim, i, line, c2);
+      // The pool stands above the crest by the head of the water pouring over it (broad-crested
+      // weir, Q = 1.7 L h^1.5): on a big river that is what drowned the bank fields (round 4).
+      const head = Math.pow(q / (1.7 * Math.max(1, Math.hypot(line[1][0] - line[0][0], line[1][1] - line[0][1])) * CELL), 2 / 3);
+      const p = weirPool(sim, i, line, c2 + Math.min(1, head));
       if (!p) continue;
       const fillDays = p.volume / Math.max(1, perDay);
       if (fillDays > WEIR_FILL_DAYS) continue;

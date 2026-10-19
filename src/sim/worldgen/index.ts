@@ -180,7 +180,7 @@ export const TERRACE = {
   fieldRadius: 18,
   good: [170, 230] as readonly number[],
   dryFull: 200,
-  dryHeight: 6,
+  dryHeight: 2.5,
 };
 
 export interface StartInfo {

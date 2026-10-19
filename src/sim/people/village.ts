@@ -249,6 +249,13 @@ export const FOUNDING = {
   /** Minimum distance (cells) to every other settlement. */
   minSpacing: 26,
   /**
+   * ...or this, where at least `canalShare` of the block lies within the reach
+   * of the player's canals (docs/GAMEPLAY.md §4.2: new villages follow the
+   * player's canals; round 4).
+   */
+  canalSpacing: 16,
+  canalShare: 0.3,
+  /**
    * Block attractiveness (0..~1.15) needed, both now and at the end of last
    * summer (migrants judge land at its worst; docs/GAMEPLAY.md §4.3 P6).
    */
@@ -1303,14 +1310,17 @@ export class PeopleSystem {
         const c = cy * W + cx;
         // Known land, or right at its soft edge.
         if (w.revealed[c]! < REVEALED / 2) continue;
-        if (this.settlements.some((s) => Math.hypot(s.state.x - cx, s.state.y - cy) < FOUNDING.minSpacing)) continue;
+        const near = this.settlements.some((s) => Math.hypot(s.state.x - cx, s.state.y - cy) < FOUNDING.minSpacing);
+        if (near && this.settlements.some((s) => Math.hypot(s.state.x - cx, s.state.y - cy) < FOUNDING.canalSpacing)) continue;
         let sum = 0;
         let land = 0;
         let n = 0;
+        let canal = 0;
         for (let y = by * B; y < Math.min(w.height, by * B + B); y += 2)
           for (let x = bx * B; x < Math.min(W, bx * B + B); x += 2) {
             n++;
             const i = y * W + x;
+            if (this.canalDist[i]! <= CAPILLARY.canalReach) canal++;
             if (w.water[i]! > 0.05) continue;
             land++;
             if (w.floodMemory[i]! > 40 || w.landuse[i] !== LandUse.None) continue;
@@ -1322,6 +1332,8 @@ export class PeopleSystem {
             sum += w.fertility[i]! * wet * forest * (1 - sl * 2);
           }
         if (land < n * 0.6) continue;
+        // Closer to another village only on land the player's canals water (new villages follow them).
+        if (near && canal < n * FOUNDING.canalShare) continue;
         const d = this.waterDist[c]!;
         const nearWater = d >= 2 && d <= 14 ? 0.15 : d < 2 ? 0 : Math.max(0, 0.15 * (1 - (d - 14) / 16));
         out[by * bw + bx] = sum / n + nearWater;
