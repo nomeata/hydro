@@ -5,8 +5,9 @@ test('stats bar is visible and opens the history chart, which closes again', asy
   const errors = await openGame(page);
   const bar = page.locator('[data-testid=statsbar]');
   await expect(bar).toBeVisible();
-  // The population bar ends in the next tool to unlock (the Weir at 15).
-  await expect(bar.locator('.pop .goal')).toHaveAttribute('data-tool', 'weir');
+  // The population bar is just villagers; no tool icon on it.
+  await expect(bar.locator('.pop .ico')).toHaveCount(2);
+  await expect(bar.locator('.pop .ico svg')).toHaveCount(2);
   await runDays(page, 3);
   await bar.click();
   const panel = page.locator('[data-testid=history]');
@@ -31,5 +32,34 @@ test('stats bar is visible and opens the history chart, which closes again', asy
   await expect(panel).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test('the next locked tool shows its unlock progress on the palette and pulses at unlock', async ({ page }) => {
+  const errors = await openGame(page, '&size=64');
+  const weir = page.locator('.toolrow button[data-tool=weir]');
+  const gate = page.locator('.toolrow button[data-tool=gate]');
+  // Only the next tool (the Weir at 15) carries the ring; later ones are plainly locked.
+  await expect(weir).toHaveClass(/locked/);
+  await expect(weir).toHaveClass(/next/);
+  await expect(weir.locator('.ring')).toBeVisible();
+  await expect(weir.locator('.lock')).toBeVisible();
+  await expect(gate).toHaveClass(/locked/);
+  await expect(gate).not.toHaveClass(/next/);
+  await expect(gate.locator('.ring')).toBeHidden();
+  const progress = () => weir.evaluate((b) => Number((b as HTMLElement).style.getPropertyValue('--progress')));
+  await page.evaluate(() => (window as any).__hydro.tools.setPopulation(10));
+  // Log scale from 1 to 15: 10 villagers are most of the way.
+  expect(await progress()).toBeCloseTo(Math.log(10) / Math.log(15), 2);
+  // (Read the class right away: the pulse lasts only two seconds.)
+  const cls = await page.evaluate(() => {
+    (window as any).__hydro.tools.setPopulation(15);
+    return document.querySelector('.toolrow button[data-tool=weir]')!.className;
+  });
+  expect(cls).toContain('unlocked-now');
+  await expect(weir).not.toHaveClass(/locked/);
+  await expect(gate).toHaveClass(/next/);
+  await expect(page.locator('.toolrow button.next')).toHaveCount(1);
+  await expect(weir).not.toHaveClass(/unlocked-now/, { timeout: 4000 });
   expect(errors).toEqual([]);
 });
