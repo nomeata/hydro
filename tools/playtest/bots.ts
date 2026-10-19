@@ -409,7 +409,7 @@ function planWeirCanal(sim: Simulation, s: Settlement, earth: number): { site: W
     const canal = planCanal(sim, starts, targets, { village: { x: s.state.x, y: s.state.y, r: HOME_RING }, blocked: (i) => site.pool.has(i) || wallCells.has(i), maxEarth: earth });
     if (!canal) continue;
     weirWhy.canals++;
-    const score = worthOf(sim.world, canal.covered) - 1.5 * site.poolFields - canal.earth / 200;
+    const score = worthOf(sim.world, canal.covered) - 3 * site.poolFields - canal.earth / 200;
     if (!best || score > best.score) best = { site, canal, score };
   }
   // Only works that water clearly more than the pool drowns.
