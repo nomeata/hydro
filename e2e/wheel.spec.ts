@@ -138,9 +138,9 @@ test('a wheel drawn on dry land shows a red ghost and places nothing', async ({ 
   await expect.poll(() => page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.ghostState?.ok)).toBe(false);
   const hints = await recordTexts(page, '.tools .hint');
   await page.mouse.up();
-  await page.waitForTimeout(500);
-  // No message: the tool stays, ready for another try.
-  expect((await hints()).every((t: string) => t.includes('lifts the river'))).toBe(true);
+  // The red ghost stays a moment and the hint says why; the tool stays, ready for another try.
+  expect(await page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.ghostState?.ok)).toBe(false);
+  await expect.poll(hints).toContainEqual(expect.stringContaining('Start in the river'));
   await expect(page.locator('button[data-tool=wheel]')).toHaveAttribute('aria-pressed', 'true');
   expect(await page.evaluate(() => (window as any).__hydro.renderer.structures.structures.some((s: any) => s.kind === 'wheel'))).toBe(false);
 });

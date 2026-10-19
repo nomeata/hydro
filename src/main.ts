@@ -160,8 +160,21 @@ async function main(): Promise<void> {
   const selection = new Selection(uiRoot, {
     pick: (x, y) => renderer.pick(x, y),
     project: groundToClient,
+    projectAt: (x, y, h) => {
+      const v = tmp.set(x + 0.5, heightToY(h), y + 0.5).project(renderer.camera.camera);
+      if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) return null;
+      const r = canvas.getBoundingClientRect();
+      return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
+    },
+    setWeirGhost: (list) => renderer.weirGhost.setStructures(list),
+    setPowerGhost: (g, ok) => renderer.setPowerGhost(g, ok),
+    setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
+    depth: (i) => renderer.heights.depth[i] ?? 0,
+    speed: (i) => renderer.flow.speed(i),
     structures: () => renderer.structures.structures,
     power: () => renderer.power.state,
+    buildings: () => renderer.buildingInfos,
+    surface: (x, y) => renderer.heights.terrainAt(x, y) + renderer.heights.depthAt(x, y),
     mirror,
     setPreviewPlan: (cells) => renderer.setPreviewPlan(cells),
     setPreviewLining: (cells) => renderer.setPreviewLining(cells),
@@ -183,6 +196,14 @@ async function main(): Promise<void> {
     speed: (i) => renderer.flow.speed(i),
     setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
     setWheelSites: (sites) => renderer.wheelPreview.setSites(sites),
+    setPowerGhost: (g) => renderer.setPowerGhost(g),
+    powerNodes: () => {
+      const st = renderer.power.state;
+      return st ? [...st.turbines.map((t): [number, number] => [t.x, t.y]), ...st.poles.map((p): [number, number] => [p.x, p.y])] : [];
+    },
+    setGateGhost: (g) => renderer.gatePreview.set(g, renderer.structures.structures),
+    setWeirGhost: (list) => renderer.weirGhost.setStructures(list),
+    setCellTint: (key, cells, fade) => renderer.cellTint.set(key, cells, fade),
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),
     command: (cmd) => {
       client.command(cmd);
@@ -213,7 +234,6 @@ async function main(): Promise<void> {
     if (s.undoable !== undefined) tools.refreshUndo();
     if (s.structures || s.power) selection.refresh();
   });
-  tools.insertPanel(selection.panel);
 
   let last = performance.now();
   const loop = (now: number) => {

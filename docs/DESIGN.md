@@ -170,12 +170,19 @@ takes back the last strokes (the last 12, not across reloads).
 
 **Selecting and editing.** In Look mode a tap on a weir, gate, water
 wheel, turbine, pole or pump selects it (with the weir tool, a tap on a
-weir too): a ring or, for a weir, a dashed line with a handle at each end.
-A small panel above the palette names it and offers **Remove** (tap twice:
-it asks "Remove?" first); a weir also gets **− / +** for its crest
-(0.25 m steps, 0.5 m above the ground under it up to 4 m above the
-ground on its lower side) and its handles can
-be dragged out or in, with a live preview. Edits are plans: the crew takes
+weir too): a ring or, for a weir, a dashed line with a handle at each end;
+a tap elsewhere or Escape lets go. Everything is edited in place, with no
+panel: a small bubble over it names it and holds a **×** to take it down
+(tap twice: it asks "Remove?" first). A weir's end handles slide along its
+own line (lengthen or shorten, never turn it), and a handle on its crest
+is dragged up or down to raise or lower it (0.25 m steps, 0.5 m above the
+ground under it up to 4 m above the ground on its lower side); a ghost of
+the wall as it will stand follows live. A pump's outlet and a water
+wheel's trough end can be dragged to a new spot (within the pump's reach
+and lift, the wheel tool's rules; the ghost turns red where it would not
+work): the old one is taken down and the crew builds it anew. A turbine,
+pole or pump shows what it does now: a gauge, the houses it lights, a
+turbine's head and kW, or why it idles. Edits are plans: the crew takes
 the stone off what no longer belongs to the weir, lowers it back to the
 ground it was built on (saved per cell with the weir), builds the rest of
 the wall to its new crest and lines it again. A removed weir goes back to its ground (gates and

@@ -298,7 +298,7 @@ export class StructuresLayer {
   }
 
   setStructures(list: readonly StructureInfo[]): void {
-    this.list = list.map((s) => ({ ...s }));
+    this.list = alignGates(list.map((s) => ({ ...s })), list);
     for (const s of this.list) if (s.kind === 'gate' && !this.lift.has(s.id)) this.lift.set(s.id, s.lift ?? (s.open ? 1 : 0));
     this.layout();
   }
@@ -583,7 +583,13 @@ export class StructuresLayer {
     const laid = prog >= 0.999 ? blocks : Math.floor(blocks * prog);
     // Gates set into the wall: their opening stays open.
     const gates = this.list.filter((g) => g.kind === 'gate');
-    const inGate = (px: number, py: number) => gates.some((g) => Math.hypot(g.x - px, g.y - py) < g.width / 2 + 0.4);
+    // (Gates lie along the wall: alignGates. Measured along the line, and close across it.)
+    const inGate = (px: number, py: number) =>
+      gates.some((g) => {
+        const dx = g.x - px;
+        const dy = g.y - py;
+        return Math.abs(dx * c + dy * sn) < g.width / 2 + 0.25 && Math.abs(-dx * sn + dy * c) < 1;
+      });
     // A drowned weir (the water below it as high as its crest, as in a
     // flood) would vanish under the river: its coping stands a little proud
     // of the water, level along the wall, so it always reads as a line
@@ -840,4 +846,34 @@ export class StructuresLayer {
       }
     }
   }
+}
+
+/**
+ * A gate set into a weir lies along the weir's own line (also a diagonal
+ * one: the sim keeps a gate's cells on the grid, so its stored direction is
+ * along x or y), centred on that line and as wide as its cells span along
+ * it. Gates not in a weir (a tap on an earth bank) keep theirs.
+ */
+export function alignGates<T extends StructureInfo>(list: T[], weirs: readonly StructureInfo[]): T[] {
+  const ws = weirs.filter((w) => w.kind === 'weir' && w.x2 !== undefined && w.y2 !== undefined);
+  if (!ws.length) return list;
+  return list.map((g) => {
+    if (g.kind !== 'gate') return g;
+    let best: { d: number; x: number; y: number; rot: number; width: number } | null = null;
+    for (const w of ws) {
+      const dx = w.x2! - w.x;
+      const dy = w.y2! - w.y;
+      const l = Math.hypot(dx, dy);
+      if (l < 0.5) continue;
+      const ux = dx / l;
+      const uy = dy / l;
+      const t = Math.max(0, Math.min(l, (g.x - w.x) * ux + (g.y - w.y) * uy));
+      const px = w.x + ux * t;
+      const py = w.y + uy * t;
+      const d = Math.hypot(g.x - px, g.y - py);
+      if (d > 1.6 || (best && d >= best.d)) continue;
+      best = { d, x: px, y: py, rot: Math.atan2(uy, ux), width: g.width };
+    }
+    return best ? { ...g, x: best.x, y: best.y, rot: best.rot, width: best.width } : g;
+  });
 }
