@@ -211,18 +211,24 @@ const FRAGMENT_COLOUR = /* glsl */ `
         vec3 snowCol = mix(uSnowShade, uSnow, smoothstep(0.35, 0.8, snowN + 0.3 * snow));
         // Desire paths through the snow: trodden, thinner, grey-brown slush
         // with darker wet ruts (the sim melts it faster too, soilwater.ts).
-        if (trod > 0.0) {
+        // The snow thins gradually towards the way (a noisy fringe of
+        // trampled, greyish slush), not at a hard edge.
+        if (gPathHalf > 0.0 && gPathAcross < gPathHalf + 0.6) {
+          float fringeN = fieldNoise(nuv * 2.7 + 4.1) * 0.7 + fieldNoise(nuv * 7.9 + 1.3) * 0.3;
+          float tr = 1.0 - smoothstep(gPathHalf * 0.35, gPathHalf + 0.12 + 0.36 * fringeN, gPathAcross);
           float rut = fieldNoise(nuv * 4.3 + 9.1) * 0.65 + fieldNoise(nuv * 11.0) * 0.35;
-          cover = max(cover, smoothstep(0.0, 0.1, snow) * 0.9) * (1.0 - trod * 0.4 * smoothstep(0.45, 0.8, rut));
+          cover = mix(cover, max(cover, smoothstep(0.0, 0.1, snow) * 0.9), tr) * (1.0 - tr * 0.4 * smoothstep(0.45, 0.8, rut));
           // Grey-brown trampled slush, wet brown earth showing in patches, pocked
           // by countless feet (fine speckle), and a few white clumps left.
           vec3 slush = mix(vec3(0.29, 0.20, 0.12), vec3(0.56, 0.51, 0.45), smoothstep(0.3, 0.5, rut));
           slush *= mix(0.82, 1.06, fieldNoise(nuv * 23.0 + 3.7));
           slush = mix(slush, uSnowShade, smoothstep(0.75, 0.9, rut) * 0.55);
           // Two darker wet tracks along a well-trodden way.
-          float lane = abs(gPathAcross) / max(gPathHalf, 0.05);
+          float lane = gPathAcross / max(gPathHalf, 0.05);
           slush *= 1.0 - 0.3 * (1.0 - smoothstep(0.1, 0.25, abs(lane - 0.5))) * smoothstep(0.2, 0.8, gPathWear);
-          snowCol = mix(snowCol, slush, trod * mix(0.7, 0.92, pathP));
+          // The fringe: trodden snow, greyer towards the way.
+          slush = mix(mix(uSnowShade, vec3(0.6, 0.57, 0.53), 0.5), slush, smoothstep(0.35, 0.85, tr));
+          snowCol = mix(snowCol, slush, tr * mix(0.75, 0.92, pathP));
         }
         c = mix(c, snowCol, cover);
         // Snow glows a little (it reads white, not grey, under the soft winter light).

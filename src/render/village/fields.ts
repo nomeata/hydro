@@ -25,14 +25,82 @@ export function decodeStress(b: number): { dry: number; wet: number } {
   return { dry: b / (STRESS_WET - 1), wet: 0 };
 }
 
-/** Expand snapshot fields (FIELD_BYTES per cell) into RGBA texels. */
-export function fieldsToRgba(src: Uint8Array, dst: Uint8Array, n: number): void {
+/**
+ * Expand snapshot fields (FIELD_BYTES per cell) into RGBA texels. With the
+ * grid width, path cells (LandUse.Path) get their links instead of crop
+ * stress and crop kind (see pathLinks): B = the ring mask of the
+ * neighbours the way joins, A = those of them that are yards, houses or
+ * bridges (the way runs on into them).
+ */
+export function fieldsToRgba(src: Uint8Array, dst: Uint8Array, n: number, width = 0): void {
   for (let i = 0; i < n; i++) {
     dst[4 * i] = src[FIELD_BYTES * i]!;
     dst[4 * i + 1] = src[FIELD_BYTES * i + 1]!;
     dst[4 * i + 2] = src[FIELD_BYTES * i + 2]!;
     dst[4 * i + 3] = src[FIELD_BYTES * i + 3]!;
   }
+  if (width <= 0) return;
+  const height = Math.floor(n / width);
+  const lu = (x: number, y: number) => (x < 0 || y < 0 || x >= width || y >= height ? 0 : src[FIELD_BYTES * (y * width + x)]!);
+  for (let i = 0; i < n; i++) {
+    if (src[FIELD_BYTES * i] !== LU_PATH) continue;
+    const [links, ends, street] = pathLinks(lu, i % width, (i / width) | 0);
+    dst[4 * i + 2] = links;
+    dst[4 * i + 3] = ends;
+    // Ways between the houses are a little wider (the shader reads width from the footfall).
+    if (street) dst[4 * i + 1] = Math.max(dst[4 * i + 1]!, 150);
+  }
+}
+
+const LU_PATH = 4;
+const LU_YARD = 5;
+const LU_BUILDING = 6;
+const LU_BRIDGE = 7;
+/** Ring order of a cell's neighbours (E, NE, N, NW, W, SW, S, SE; N = +y), as in sim/people/desire.ts. */
+export const RING_X = [1, 1, 0, -1, -1, -1, 0, 1] as const;
+export const RING_Y = [0, 1, 1, 1, 0, -1, -1, -1] as const;
+
+/**
+ * The links of the path cell at (x, y), as ring masks: which neighbours the
+ * drawn way runs to, and which of those are ends (yard, house, bridge);
+ * plus whether it is a street (beside a yard or house). A path joins its
+ * path neighbours (a diagonal one only where neither cell at the corner is
+ * path), bridges, and, only where it ends (at most one path link), one yard
+ * or house: a way passing along the yards does not sprout rungs into them.
+ * `lu(x, y)` gives the land use of any cell (0 outside the grid).
+ */
+export function pathLinks(lu: (x: number, y: number) => number, x: number, y: number): [number, number, boolean] {
+  let links = 0;
+  let ends = 0;
+  let paths = 0;
+  let yard = -1;
+  let street = false;
+  for (let k = 0; k < 8; k++) {
+    const v = lu(x + RING_X[k]!, y + RING_Y[k]!);
+    if (v === LU_YARD || v === LU_BUILDING) street = true;
+    const diag = (k & 1) === 1;
+    // Diagonal: the two cells at the corner.
+    const blocked = diag && (lu(x + RING_X[k]!, y) === LU_PATH || lu(x, y + RING_Y[k]!) === LU_PATH);
+    if (v === LU_PATH) {
+      if (!blocked) {
+        links |= 1 << k;
+        paths++;
+      }
+    } else if (v === LU_BRIDGE) {
+      if (!diag || (lu(x + RING_X[k]!, y) !== LU_BRIDGE && lu(x, y + RING_Y[k]!) !== LU_BRIDGE)) {
+        links |= 1 << k;
+        ends |= 1 << k;
+      }
+    } else if ((v === LU_YARD || v === LU_BUILDING) && (yard < 0 || ((yard & 1) === 1 && !diag))) {
+      // One yard: an orthogonal one if any, else the first diagonal.
+      if (!diag || !blocked) yard = k;
+    }
+  }
+  if (yard >= 0 && paths <= 1 && ends === 0) {
+    links |= 1 << yard;
+    ends |= 1 << yard;
+  }
+  return [links, ends, street];
 }
 
 /** 32-bit integer hash of a patch block (identical in GLSL, see FIELDS_GLSL). */
@@ -134,43 +202,107 @@ vec2 stressAt(vec2 p) {
   return mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
 }
 
-// Desire paths are drawn as bands along the lines between the centres of
-// neighbouring path cells (a path cell joins its path neighbours, and the
-// yards, buildings and bridges beside it), so a path reads as a continuous
-// way, not a chain of squares. The lookup point is gently displaced by
-// low-frequency noise, so straight runs wind a little and the corners of the
-// cell grid round off; the edge is noisy, and the width grows with the
-// footfall (fields texture G = traffic on path cells) and between houses.
+// Desire paths are drawn as smooth bands through the centres of the path
+// cells: each path cell carries its links (fields texture B, A for the ends
+// among them: see pathLinks), and draws a curve from the middle of one link
+// to the middle of the other (a quadratic Bézier with the cell centre as its
+// control point: neighbouring cells' curves meet there with the same
+// tangent), spokes from the centre at a junction or a dead end (blended
+// with a smooth minimum, so junctions fill in), and a dot for a lone cell.
+// Only the 2 × 2 cells around a point can reach it. The lookup point is
+// gently displaced by low-frequency noise, so ways wind a little; the edge
+// is noisy, and the width grows with the footfall (G: traffic, raised
+// between the houses), blended across cells.
 // Cached per fragment: fieldColour and the snow (terrain.ts) both ask.
 bool gPathDone = false;
 float gPathM = 0.0;
 float gPathP = 0.0;
 /** Traffic 0..1 of the nearest stretch of path. */
 float gPathWear = 0.0;
-/** Signed distance (cells) across the nearest stretch, from its centre line. */
-float gPathAcross = 0.0;
-/** Half-width (cells) of the nearest stretch. */
+/** Distance (cells) from the centre line of the nearest stretch. */
+float gPathAcross = 9.0;
+/** Half-width (cells) of the nearest stretch (0: no path near). */
 float gPathHalf = 0.0;
 /** Soil moisture 0..1 under the fragment (set by the terrain shader before fieldColour): muddy paths. */
 float gMoist = 0.0;
 
-// 0: none, 1: path, 2: a way's end (building, yard, bridge). Traffic 0..1 in y.
-vec2 pathNode(ivec2 c) {
-  vec4 t = texelFetch(uFields, clamp(c, ivec2(0), ivec2(uGrid) - 1), 0) * 255.0;
-  int lu = int(t.r + 0.5);
-  if (lu == 4) return vec2(1.0, t.g / 255.0);
-  if (lu == 5 || lu == 6 || lu == 7) return vec2(2.0, 0.6);
-  return vec2(0.0);
+float pathDot2(vec2 v) { return dot(v, v); }
+
+// Distance from p to the quadratic Bézier A-B-C (Inigo Quilez's exact solution).
+float pathBezier(vec2 pos, vec2 A, vec2 B, vec2 C) {
+  vec2 a = B - A;
+  vec2 b = A - 2.0 * B + C;
+  vec2 c = a * 2.0;
+  vec2 d = A - pos;
+  float kk = 1.0 / dot(b, b);
+  float kx = kk * dot(a, b);
+  float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+  float kz = kk * dot(d, a);
+  float p = ky - kx * kx;
+  float p3 = p * p * p;
+  float q = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+  float h = q * q + 4.0 * p3;
+  float res;
+  if (h >= 0.0) {
+    h = sqrt(h);
+    vec2 x = (vec2(h, -h) - q) / 2.0;
+    vec2 uv = sign(x) * pow(abs(x), vec2(1.0 / 3.0));
+    float t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
+    res = pathDot2(d + (c + b * t) * t);
+  } else {
+    float z = sqrt(-p);
+    float v = acos(q / (p * z * 2.0)) / 3.0;
+    float m = cos(v);
+    float n = sin(v) * 1.732050808;
+    vec3 t = clamp(vec3(m + m, -n - m, n - m) * z - kx, 0.0, 1.0);
+    res = min(pathDot2(d + (c + b * t.x) * t.x), pathDot2(d + (c + b * t.y) * t.y));
+  }
+  return sqrt(res);
 }
 
-// Distance from p to segment a-b; across: signed offset, t: 0..1 along.
-float segDist(vec2 p, vec2 a, vec2 b, out float across) {
+// Distance from p to segment a-b.
+float pathSeg(vec2 p, vec2 a, vec2 b) {
   vec2 ab = b - a;
   vec2 ap = p - a;
   float t = clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0);
-  vec2 d = ap - ab * t;
-  across = (ab.x * ap.y - ab.y * ap.x) / length(ab);
-  return length(d);
+  return length(ap - ab * t);
+}
+
+// Polynomial smooth minimum (fills the inner corners of junctions).
+float pathSmin(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+vec2 pathRing(int k) {
+  return vec2(float(k == 0 || k == 1 || k == 7) - float(k == 3 || k == 4 || k == 5), float(k == 1 || k == 2 || k == 3) - float(k == 5 || k == 6 || k == 7));
+}
+
+// Distance from p (relative to the cell centre) to the way drawn in a path cell.
+float pathCellDist(vec2 p, int links, int ends) {
+  if (links == 0) return length(p);
+  int n = 0;
+  int k1 = -1;
+  int k2 = -1;
+  float best = 9.0;
+  for (int k = 0; k < 8; k++) {
+    if ((links & (1 << k)) == 0) continue;
+    n++;
+    if (k1 < 0) k1 = k; else k2 = k;
+    // Into a yard, house or bridge: on to just past the edge.
+    if ((ends & (1 << k)) != 0) best = min(best, pathSeg(p, pathRing(k) * 0.5, pathRing(k) * 0.62));
+  }
+  if (n == 2) {
+    vec2 a = pathRing(k1) * 0.5;
+    vec2 b = pathRing(k2) * 0.5;
+    // Straight on: a segment (the curve would be degenerate).
+    float d = (k2 - k1 == 4) ? pathSeg(p, a, b) : pathBezier(p, a, vec2(0.0), b);
+    return min(best, d);
+  }
+  float d = 9.0;
+  for (int k = 0; k < 8; k++)
+    if ((links & (1 << k)) != 0) d = pathSmin(d, pathSeg(p, vec2(0.0), pathRing(k) * 0.5), 0.14);
+  return min(best, d);
 }
 
 // How much of a desire path covers this point (0..1); p: 1 on the centre line, 0 at the edge.
@@ -182,59 +314,32 @@ float pathMask(vec3 world, out float p) {
   gPathDone = true;
   p = 0.0;
   if (uFieldsOn < 0.5) return 0.0;
-  vec2 wq = world.xz + (vec2(fieldNoise(world.xz * 0.31 + 11.0), fieldNoise(world.xz * 0.31 + 23.7)) - 0.5) * 0.6;
+  vec2 wq = world.xz + (vec2(fieldNoise(world.xz * 0.31 + 11.0), fieldNoise(world.xz * 0.31 + 23.7)) - 0.5) * 0.5;
+  // Cell (cx, cy) has its centre at q = (cx, cy).
   vec2 q = wq - 0.5;
-  ivec2 c = ivec2(floor(q + 0.5));
-  vec2 n[9];
-  bool any = false;
-  bool street = false;
-  for (int k = 0; k < 9; k++) {
-    n[k] = pathNode(c + ivec2(k % 3 - 1, k / 3 - 1));
-    any = any || n[k].x == 1.0;
-    street = street || n[k].x == 2.0;
-  }
-  if (!any) return 0.0;
-  vec2 o = vec2(c) - q;
+  ivec2 c0 = ivec2(floor(q));
+  vec2 f = q - vec2(c0);
   float best = 9.0;
-  float across = 0.0;
+  float wsum = 0.0;
   float wear = 0.0;
-  float ac;
-  // Ends of the ways inside the window: dots at path cells (a lone cell, a
-  // dead end, or a joint whose other half lies outside the window).
-  for (int k = 0; k < 9; k++) {
-    if (n[k].x != 1.0) continue;
-    vec2 a = o + vec2(float(k % 3 - 1), float(k / 3 - 1));
-    float d = length(a);
-    if (d < best) { best = d; across = d; wear = n[k].y; }
+  for (int k = 0; k < 4; k++) {
+    ivec2 o = ivec2(k & 1, k >> 1);
+    vec4 t = texelFetch(uFields, clamp(c0 + o, ivec2(0), ivec2(uGrid) - 1), 0) * 255.0;
+    if (int(t.r + 0.5) != 4) continue;
+    float d = pathCellDist(q - vec2(c0 + o), int(t.b + 0.5), int(t.a + 0.5));
+    best = pathSmin(best, d, 0.1);
+    // Bilinear weight of the cell: the width blends smoothly from cell to cell.
+    float bw = (o.x == 1 ? f.x : 1.0 - f.x) * (o.y == 1 ? f.y : 1.0 - f.y) + 1e-3;
+    wsum += bw;
+    wear += bw * t.g / 255.0;
   }
-  // Segments between neighbours in the window (at least one end a path cell;
-  // a diagonal only where no path cell at its corners already joins the two).
-  for (int k = 0; k < 9; k++) {
-    int kx = k % 3;
-    int ky = k / 3;
-    if (n[k].x == 0.0) continue;
-    for (int e = 0; e < 4; e++) {
-      ivec2 dd = e == 0 ? ivec2(1, 0) : e == 1 ? ivec2(0, 1) : e == 2 ? ivec2(1, 1) : ivec2(-1, 1);
-      int mx = kx + dd.x;
-      int my = ky + dd.y;
-      if (mx < 0 || mx > 2 || my > 2) continue;
-      vec2 m = n[my * 3 + mx];
-      if (m.x == 0.0 || (m.x == 2.0 && n[k].x == 2.0)) continue;
-      if (e >= 2 && (n[ky * 3 + mx].x == 1.0 || n[my * 3 + kx].x == 1.0)) continue;
-      vec2 a = o + vec2(float(kx - 1), float(ky - 1));
-      float d = segDist(vec2(0.0), a, a + vec2(dd), ac);
-      if (d < best) {
-        best = d;
-        across = ac;
-        wear = max(n[k].x == 1.0 ? n[k].y : 0.0, m.x == 1.0 ? m.y : 0.0);
-      }
-    }
-  }
+  if (wsum <= 0.0) return 0.0;
+  wear /= wsum;
   float edgeN = fieldNoise(world.xz * 1.9 + 7.3) * 0.75 + fieldNoise(world.xz * 4.3) * 0.25;
-  float half_ = (0.16 + 0.13 * smoothstep(0.25, 0.95, wear) + (street ? 0.07 : 0.0)) * (0.8 + 0.4 * edgeN);
+  float half_ = (0.17 + 0.15 * smoothstep(0.25, 0.95, wear)) * (0.8 + 0.4 * edgeN);
   float soft = 0.05 + 0.6 * length(fwidth(world.xz));
   gPathWear = wear;
-  gPathAcross = across;
+  gPathAcross = best;
   gPathHalf = half_;
   gPathP = clamp(1.0 - best / half_, 0.0, 1.0);
   gPathM = 1.0 - smoothstep(half_ - soft, half_ + soft, best);

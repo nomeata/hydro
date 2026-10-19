@@ -426,7 +426,7 @@ export class GameRenderer {
     }
     this.cues.setWind(s.climate.windDir, s.climate.windSpeed);
     if (s.fields) {
-      fieldsToRgba(s.fields, this.tex.fields.image.data as Uint8Array, n);
+      fieldsToRgba(s.fields, this.tex.fields.image.data as Uint8Array, n, this.info.width);
       this.tex.fields.needsUpdate = true;
       this.terrain.uniforms.uFieldsOn.value = 1;
       this.crops.setFields(s.fields);
