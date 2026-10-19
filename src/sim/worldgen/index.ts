@@ -170,6 +170,17 @@ export const TERRACE = {
   /** Floodplain cells needed, and for a full score. */
   plainMin: 60,
   plainFull: 120,
+  /**
+   * Land within the first village's field radius (docs/PLAYTEST.md round 4):
+   * a dry terrace has some land crops grow on now (`good`, preferred between
+   * the two bounds: enough for 15–30 people) and much fertile land that is
+   * too dry but lies low enough for the player's water (`dry`, at most
+   * `dryHeight` m above the water; a full score from `dryFull` cells).
+   */
+  fieldRadius: 18,
+  good: [120, 180] as readonly number[],
+  dryFull: 200,
+  dryHeight: 2.5,
 };
 
 export interface StartInfo {
@@ -180,6 +191,11 @@ export interface StartInfo {
   height: number;
   dist: number;
   plain: number;
+  /** Good and dry fertile land within the field radius, as worldgen judges it (TERRACE). */
+  good?: number;
+  dry?: number;
+  /** The terrace pass's score (internal). */
+  score?: number;
 }
 
 /** Distance (cells) to the nearest water and that water's surface height, per cell. */
@@ -240,7 +256,10 @@ export function chooseStart(world: World, slope: Float32Array, carve: CarveResul
     const cap = world.soil[i]! * SOIL_PROPS[world.soilType[i]!]!.porosity;
     moist[i] = cap > 0 ? world.ground[i]! / cap : 0;
   }
-  const pick = terracePass(world, slope, carve, z, dist, surf, moist, TERRACE) ?? terracePass(world, slope, carve, z, dist, surf, moist, TERRACE_RELAXED);
+  const strict = terracePass(world, slope, carve, z, dist, surf, moist, TERRACE);
+  // A dry terrace may also be a lower or farther bench (the relaxed pass), if that is drier.
+  const relaxed = !strict || !fertileStart(world.seed) ? terracePass(world, slope, carve, z, dist, surf, moist, TERRACE_RELAXED) : null;
+  const pick = strict && (!relaxed || strict.score! >= relaxed.score!) ? strict : relaxed;
   if (pick) return pick;
   const m = meadowStart(world, slope, carve, moist, z, dist, surf);
   const i = m.y * W + m.x;
@@ -252,11 +271,73 @@ export const TERRACE_RELAXED: typeof TERRACE = {
   ...TERRACE,
   minDist: 6,
   maxDist: 26,
-  minHeight: 1,
+  minHeight: 1.5,
   maxHeight: 12,
   plainHeight: 1.2,
   plainMin: 30,
 };
+
+/**
+ * Field moisture as the villagers judge it (people/village.ts: own saturation
+ * × 0.6, or capillary water 0.8·e^(−d/2.5)); crops grow at least half as well
+ * (`FARMING.minGrowth`) from 0.34.
+ */
+const GOOD_MOISTURE = 0.34;
+
+/** Good and dry fertile land within the field radius of (x, y) (see TERRACE). */
+function fieldLand(
+  world: World,
+  slope: Float32Array,
+  z: Float32Array,
+  dist: Float32Array,
+  surf: Float32Array,
+  moist: Float32Array,
+  x: number,
+  y: number,
+  T: typeof TERRACE,
+): { good: number; dry: number } {
+  const W = world.width;
+  const H = world.height;
+  const R = T.fieldRadius;
+  let good = 0;
+  let dry = 0;
+  for (let yy = Math.max(0, y - R); yy <= Math.min(H - 1, y + R); yy++)
+    for (let xx = Math.max(0, x - R); xx <= Math.min(W - 1, x + R); xx++) {
+      const r2 = (xx - x) ** 2 + (yy - y) ** 2;
+      if (r2 > R * R || r2 < 9) continue;
+      const j = yy * W + xx;
+      if (world.water[j]! > 0.05 || world.fertility[j]! < 0.5 || slope[j]! > 0.25) continue;
+      // On this side of the water (farmers walk; the far bank needs a bridge).
+      if (acrossWater(world, x, y, xx, yy)) continue;
+      const m = Math.max(0.6 * moist[j]!, 0.8 * Math.exp(-dist[j]! / 2.5));
+      if (m >= GOOD_MOISTURE) good++;
+      else if (z[j]! - surf[j]! <= T.dryHeight) dry++;
+    }
+  return { good, dry };
+}
+
+/** Whether the straight line from (x0, y0) to (x1, y1) crosses open water. */
+function acrossWater(world: World, x0: number, y0: number, x1: number, y1: number): boolean {
+  const n = Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)));
+  for (let k = 1; k < n; k++) {
+    const xx = Math.round(x0 + ((x1 - x0) * k) / n);
+    const yy = Math.round(y0 + ((y1 - y0) * k) / n);
+    if (world.water[yy * world.width + xx]! > 0.3) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether this world keeps the old fertile floodplain start (about one in
+ * four): most starts are dry terraces where the player's water matters from
+ * the first year (docs/PLAYTEST.md round 4).
+ */
+export function fertileStart(seed: number): boolean {
+  let h = (seed ^ 0x9e3779b9) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) % 4 === 0;
+}
 
 function terracePass(
   world: World,
@@ -268,6 +349,7 @@ function terracePass(
   moist: Float32Array,
   T: typeof TERRACE,
 ): StartInfo | null {
+  const fertile = fertileStart(world.seed);
   const W = world.width;
   const H = world.height;
   const margin = Math.max(16, Math.floor(W / 8));
@@ -319,10 +401,19 @@ function terracePass(
       const plainScore = Math.min(1, plain / T.plainFull) * Math.min(1, fert / plain);
       const good = h >= T.goodHeight[0]! && h <= T.goodHeight[1]! ? 1 : 0;
       const centre = Math.hypot(x - cx, y - cy) / (0.5 * W);
-      const score = 1.0 * flat + 0.8 * plainScore - 1.5 * m + 0.5 * good - 0.5 * centre * centre;
+      let score = 1.0 * flat - 1.5 * m + 0.5 * good - 0.5 * centre * centre;
+      const land = fieldLand(world, slope, z, dist, surf, moist, x, y, T);
+      if (fertile) score += 0.8 * plainScore;
+      else {
+        // A dry terrace: some farmland now, much more once the player brings water.
+        const [lo, hi] = T.good as [number, number];
+        const under = Math.max(0, (lo - land.good) / lo);
+        const over = Math.max(0, (land.good - hi) / hi);
+        score += 0.4 * plainScore + 1.2 * Math.min(1, land.dry / T.dryFull) - 3 * under - 2 * over;
+      }
       if (score > best) {
         best = score;
-        pick = { x, y, terrace: true, height: h, dist: d, plain };
+        pick = { x, y, terrace: true, height: h, dist: d, plain, good: land.good, dry: land.dry, score };
       }
     }
   return pick;

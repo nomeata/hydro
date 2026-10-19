@@ -325,6 +325,17 @@ export function simplify(ps: Pt[], tol: number): Pt[] {
  * (the sim's own profiles; fixed cells are left alone, as the sim does).
  */
 export function earthOf(sim: Simulation, cmds: readonly Command[]): number {
+  return shapeOf(sim, cmds).moved;
+}
+
+/** Cells a list of shapeLine commands would move by more than `min` m (their footprint). */
+export function footprintOf(sim: Simulation, cmds: readonly Command[], min = 0.1): number[] {
+  const { z } = shapeOf(sim, cmds);
+  const w = sim.world;
+  return [...z.keys()].filter((i) => Math.abs(z.get(i)! - w.terrain(i)) > min);
+}
+
+function shapeOf(sim: Simulation, cmds: readonly Command[]): { moved: number; z: Map<number, number> } {
   const w = sim.world;
   const z = new Map<number, number>();
   const terrain = (i: number) => z.get(i) ?? w.terrain(i);
@@ -345,5 +356,5 @@ export function earthOf(sim: Simulation, cmds: readonly Command[]): number {
       z.set(i, grid.plan[i]!);
     }
   }
-  return moved;
+  return { moved, z };
 }

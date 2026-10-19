@@ -23,6 +23,8 @@ export const ECONOMY = {
   houseCapacity: 4,
   /** Expected arriving families per day at w = 1 with one free house. */
   arrivalRate: 0.6,
+  /** A family arrives when the summed arrival chances pass a threshold drawn from this range. */
+  pullNeed: [0.6, 1.4] as readonly number[],
   /** Expected leaving families per day per household at w = 0. */
   departureRate: 0.05,
   /** Arrivals need w above this; departures happen below the second. */
@@ -58,6 +60,7 @@ export const ECONOMY = {
    * families it cannot feed through the winter).
    */
   growHorizon: 40,
+  hamlet: 15,
   /**
    * The recovery floor (no failure; GAMEPLAY §4.2): families leave a village
    * only while more than this many people live there, and at or below it
@@ -143,6 +146,11 @@ export interface SettlementState {
    * `classifyGrowth`; absent in old saves until the next day).
    */
   limit?: GrowthLimit;
+  /** Summed arrival chances since the last family came, and the sum the next one needs (Settlement.day). */
+  pull?: number;
+  pullNeed?: number;
+  /** Day from which `limit` has been one that stops growth (land, food, wellbeing, room); absent while growing. */
+  stalledSince?: number;
   /**
    * Newcomers camping at the village edge (docs/GAMEPLAY.md §4.6): a family
    * that would like to settle but finds no room (no site for a house) or no
@@ -258,10 +266,14 @@ export class Settlement {
     return s.houses - Math.ceil(s.population / ECONOMY.houseCapacity);
   }
 
-  /** Agents deliver food (person-days). Excess beyond storage is lost. */
+  /**
+   * Agents deliver food (person-days). Excess beyond storage is lost (but a
+   * delivery never shrinks the stock: the founders' provisions are more than a
+   * hamlet's store holds, and the first sack of fish used to throw them away).
+   */
   bookFood(amount: number): void {
     const s = this.state;
-    s.food = Math.min(this.storageCap, s.food + amount);
+    s.food = Math.max(s.food, Math.min(this.storageCap, s.food + amount));
   }
 
   /** Days until the next main harvest, given the day of year. */
@@ -275,6 +287,16 @@ export class Settlement {
     const s = this.state;
     if (s.population <= 0) return 1;
     return s.food / (s.population * ECONOMY.consumption * (Math.max(minDays, this.daysToHarvest(dayOfYear)) + 6));
+  }
+
+  /**
+   * Food security as growth judges it: over `growHorizon` days at least, but a
+   * hamlet (under `hamlet` people) grows on its store until the next harvest
+   * (the founders' provisions; round 4: dry starts otherwise stalled at 6–10
+   * people until their first good harvest).
+   */
+  growSecurity(dayOfYear: number): number {
+    return this.foodSecurity(dayOfYear, this.state.population < ECONOMY.hamlet ? 0 : ECONOMY.growHorizon);
   }
 
   /** Advance one game day. */
@@ -307,7 +329,7 @@ export class Settlement {
 
     // Natural change (small, mostly cosmetic).
     const perDay = 1 / DAYS_PER_YEAR;
-    const fed = this.foodSecurity(dayOfYear, ECONOMY.growHorizon) >= ECONOMY.growFood;
+    const fed = this.growSecurity(dayOfYear) >= ECONOMY.growFood;
     const floor = s.population <= ECONOMY.stayers;
     const births = fed || floor ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
     const deaths = s.population * (ECONOMY.deathRate + (starving && !floor ? ECONOMY.starvationDeathRate : 0)) * perDay;
@@ -324,10 +346,19 @@ export class Settlement {
     const free = Math.max(0, this.freeHouses);
     const arriveAbove = s.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
     const pArrive = fed ? ECONOMY.arrivalRate * Math.max(0, s.wellbeing - arriveAbove) * free : 0;
-    if (free > 0 && rng.next() < pArrive) {
-      const n = rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1);
-      s.population += n;
-      ev.arrived += n;
+    // Families come as the village's pull adds up (expected arrivals a day), each when it passes a
+    // threshold drawn around 1: the same rate as a daily chance, with far less luck in it
+    // (round 4: two runs of one village differed by 17 arrivals in a season by chance alone).
+    if (free > 0 && pArrive > 0) {
+      s.pull = (s.pull ?? 0) + pArrive;
+      s.pullNeed ??= ECONOMY.pullNeed[0] + (ECONOMY.pullNeed[1] - ECONOMY.pullNeed[0]) * rng.next();
+      if (s.pull >= s.pullNeed) {
+        s.pull -= s.pullNeed;
+        delete s.pullNeed;
+        const n = rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1);
+        s.population += n;
+        ev.arrived += n;
+      }
     }
     const households = Math.ceil(s.population / ECONOMY.houseCapacity);
     const pLeave = ECONOMY.departureRate * Math.max(0, ECONOMY.leaveBelow - s.wellbeing) * households;

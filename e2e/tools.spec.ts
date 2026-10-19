@@ -132,6 +132,8 @@ test('brushes: distinct cursors, the fields under them tinted, the stroke tinted
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&cheat=1');
   const R = (js: string) => page.evaluate((s) => new Function('h', `return ${s}`)((window as any).__hydro), js);
+  // A dry terrace start claims its first fields over the first days.
+  await runDays(page, 3);
   const field = await page.evaluate(() => {
     const h = (window as any).__hydro;
     const m = h.mirror;

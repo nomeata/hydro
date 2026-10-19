@@ -243,10 +243,18 @@ export const FOUNDING = {
   interval: DAYS_PER_YEAR,
   /** Total population of all villages that makes people look for new land. */
   minPopulation: 40,
-  /** A single village this big without free houses also sends people out. */
+  /** A single village this big that has stopped growing (`stalledDays` without growth) also sends people out. */
   crowdedPopulation: 30,
+  stalledDays: 12,
   /** Minimum distance (cells) to every other settlement. */
   minSpacing: 26,
+  /**
+   * ...or this, where at least `canalShare` of the block lies within the reach
+   * of the player's canals (docs/GAMEPLAY.md §4.2: new villages follow the
+   * player's canals; round 4).
+   */
+  canalSpacing: 16,
+  canalShare: 0.3,
   /**
    * Block attractiveness (0..~1.15) needed, both now and at the end of last
    * summer (migrants judge land at its worst; docs/GAMEPLAY.md §4.3 P6).
@@ -258,7 +266,7 @@ export const FOUNDING = {
   food: 300,
   /** The first village: its founders, and the food they bring (enough to last until the first harvest). */
   startPeople: 4,
-  startFood: 500,
+  startFood: 400,
 };
 export const ATTRACT_BLOCK = 8;
 /** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
@@ -847,7 +855,7 @@ export class PeopleSystem {
       this.herds.daily(s, this.herdHome(s), time.season === 3, !this.noAnimals);
       this.assignJobs(s, host);
       this.manageLand(s, time);
-      this.judgeGrowth(s, doy);
+      this.judgeGrowth(s, doy, time.day);
       this.tendCamp(s, time.day);
     }
     this.peakPopulation = Math.max(this.peakPopulation, this.population);
@@ -1275,10 +1283,11 @@ export class PeopleSystem {
   private wantsNewVillage(day: number): boolean {
     if (!this.settlements.length || day - this.lastFounding < FOUNDING.interval) return false;
     if (this.population >= FOUNDING.minPopulation) return true;
-    // Crowded: no free house, or newcomers turned away for want of room or land (a village
-    // held back by its land keeps one house free, so the free-house test alone never fired).
-    const full = (s: Settlement) => s.freeHouses <= 0 || s.state.limit === 'land' || s.state.limit === 'room';
-    return this.settlements.some((s) => s.state.population >= FOUNDING.crowdedPopulation && full(s));
+    // Crowded: a village of 30 that has stopped growing for any reason (no land, no room, too
+    // little food, not attractive) for a while sends people out, so a player who waters its
+    // land does not delay the second village (docs/PLAYTEST.md round 4).
+    const stalled = (s: Settlement) => s.state.stalledSince !== undefined && day - s.state.stalledSince >= FOUNDING.stalledDays;
+    return this.settlements.some((s) => s.state.population >= FOUNDING.crowdedPopulation && stalled(s));
   }
 
   /**
@@ -1301,14 +1310,17 @@ export class PeopleSystem {
         const c = cy * W + cx;
         // Known land, or right at its soft edge.
         if (w.revealed[c]! < REVEALED / 2) continue;
-        if (this.settlements.some((s) => Math.hypot(s.state.x - cx, s.state.y - cy) < FOUNDING.minSpacing)) continue;
+        const near = this.settlements.some((s) => Math.hypot(s.state.x - cx, s.state.y - cy) < FOUNDING.minSpacing);
+        if (near && this.settlements.some((s) => Math.hypot(s.state.x - cx, s.state.y - cy) < FOUNDING.canalSpacing)) continue;
         let sum = 0;
         let land = 0;
         let n = 0;
+        let canal = 0;
         for (let y = by * B; y < Math.min(w.height, by * B + B); y += 2)
           for (let x = bx * B; x < Math.min(W, bx * B + B); x += 2) {
             n++;
             const i = y * W + x;
+            if (this.canalDist[i]! <= CAPILLARY.canalReach) canal++;
             if (w.water[i]! > 0.05) continue;
             land++;
             if (w.floodMemory[i]! > 40 || w.landuse[i] !== LandUse.None) continue;
@@ -1320,6 +1332,8 @@ export class PeopleSystem {
             sum += w.fertility[i]! * wet * forest * (1 - sl * 2);
           }
         if (land < n * 0.6) continue;
+        // Closer to another village only on land the player's canals water (new villages follow them).
+        if (near && canal < n * FOUNDING.canalShare) continue;
         const d = this.waterDist[c]!;
         const nearWater = d >= 2 && d <= 14 ? 0.15 : d < 2 ? 0 : Math.max(0, 0.15 * (1 - (d - 14) / 16));
         out[by * bw + bx] = sum / n + nearWater;
@@ -2150,7 +2164,7 @@ export class PeopleSystem {
     }
     // Shortage: good land used up, more hands than fields and not food enough to grow.
     const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
-    const needFood = s.foodSecurity(doy, ECONOMY.growHorizon) < ECONOMY.growFood;
+    const needFood = s.growSecurity(doy) < ECONOMY.growFood;
     if (time.season !== 3 && nGood >= good.length && total < want && needFood) {
       const share = s.foodSecurity(doy) < HARDY.hungryBelow ? HARDY.hungryShare : HARDY.share;
       const cap = Math.floor(HARDY.base + share * (common + nGood)) - (total - common - nGood);
@@ -2170,16 +2184,20 @@ export class PeopleSystem {
   }
 
   /** Daily, after the planning: what holds the village's growth back (settlement.ts classifyGrowth). */
-  private judgeGrowth(s: Settlement, doy: number): void {
+  private judgeGrowth(s: Settlement, doy: number, day: number): void {
     const st = s.state;
-    st.limit = classifyGrowth({
+    const limit = classifyGrowth({
       wellbeing: st.wellbeing,
       arriveAbove: st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove,
-      fed: s.foodSecurity(doy, ECONOMY.growHorizon),
+      fed: s.growSecurity(doy),
       freeHouses: s.freeHouses,
       building: this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress < 1),
       goodLeft: this.goodLeft.get(st.id) ?? 0,
     });
+    st.limit = limit;
+    // Since when the village has stood still (for founding: a village held back for any reason sends people out).
+    if (limit === 'open' || limit === 'building') delete st.stalledSince;
+    else st.stalledSince ??= day;
   }
 
   /** Shallow, still standing water a paddy could be laid out in (otherwise as buildable for a field). */

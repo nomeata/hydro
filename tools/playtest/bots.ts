@@ -23,7 +23,7 @@ import { rasterisePath, type PlanGrid } from '../../src/sim/plans/plans';
 import { WEIR_MAX_HEIGHT } from '../../src/sim/structures/structures';
 import { wheelSite, wheelSites, type WheelGrid } from '../../src/sim/structures/wheel';
 import { LandUse } from '../../src/sim/world';
-import { canalCommand, earthOf, planCanal, worthOf, type CanalPlan, type CanalStart } from './canal';
+import { canalCommand, earthOf, footprintOf, planCanal, worthOf, type CanalPlan, type CanalStart } from './canal';
 import {
   cellsAround,
   cellX,
@@ -285,6 +285,7 @@ function weirPool(sim: Simulation, i: number, line: [Pt, Pt], crest: number): { 
   const seen = new Set<number>([up]);
   const stack = [up];
   const pool = new Set<number>();
+  const margin = new Set<number>();
   let fields = 0;
   let volume = 0;
   while (stack.length) {
@@ -295,7 +296,7 @@ function weirPool(sim: Simulation, i: number, line: [Pt, Pt], crest: number): { 
       pool.add(c);
       const lu = w.landuse[c];
       if (lu === LandUse.Building || (lu === LandUse.Yard && w.terrain(c) < crest + 0.2)) return null;
-      if (lu === LandUse.Field && w.terrain(c) < crest - 0.1) fields++;
+      if (lu === LandUse.Field) fields++;
     }
     const cx = cellX(w, c);
     const cy = cellY(w, c);
@@ -306,6 +307,8 @@ function weirPool(sim: Simulation, i: number, line: [Pt, Pt], crest: number): { 
       const j = w.idx(nx, ny);
       if (seen.has(j) || wall.has(j)) continue;
       seen.add(j);
+      // Fields on the pool's wet margin (up to 0.3 m above it) are lost too.
+      if (w.landuse[j] === LandUse.Field && w.terrain(j) >= crest + 0.05 && w.terrain(j) < crest + 0.3 && !margin.has(j)) margin.add(j);
       if (w.terrain(j) + 0 < crest + 0.05 || w.water[j]! > 0.05) {
         // Houses near the pool's edge: their ground must stay above it.
         if (w.landuse[j] === LandUse.Building && w.terrain(j) < crest + 0.3) return null;
@@ -313,7 +316,7 @@ function weirPool(sim: Simulation, i: number, line: [Pt, Pt], crest: number): { 
       }
     }
   }
-  return { pool, fields, volume };
+  return { pool, fields: fields + margin.size, volume };
 }
 
 /** Weir sites across the river upstream of village s, best first (a few crest heights each). */
@@ -349,7 +352,10 @@ function weirSites(sim: Simulation, s: Settlement): WeirSite[] {
       if (!line || !lineRevealed(sim, line[0], line[1]) || !lineClear(w, line[0], line[1], 1)) continue;
       const bed2 = lowestOn(w, line[0], line[1]);
       const c2 = bed2 + H;
-      const p = weirPool(sim, i, line, c2);
+      // The pool stands above the crest by the head of the water pouring over it (broad-crested
+      // weir, Q = 1.7 L h^1.5): on a big river that is what drowned the bank fields (round 4).
+      const head = Math.pow(q / (1.7 * Math.max(1, Math.hypot(line[1][0] - line[0][0], line[1][1] - line[0][1])) * CELL), 2 / 3);
+      const p = weirPool(sim, i, line, c2 + Math.min(1, head));
       if (!p) continue;
       const fillDays = p.volume / Math.max(1, perDay);
       if (fillDays > WEIR_FILL_DAYS) continue;
@@ -403,7 +409,7 @@ function planWeirCanal(sim: Simulation, s: Settlement, earth: number): { site: W
     const canal = planCanal(sim, starts, targets, { village: { x: s.state.x, y: s.state.y, r: HOME_RING }, blocked: (i) => site.pool.has(i) || wallCells.has(i), maxEarth: earth });
     if (!canal) continue;
     weirWhy.canals++;
-    const score = worthOf(sim.world, canal.covered) - 1.5 * site.poolFields - canal.earth / 200;
+    const score = worthOf(sim.world, canal.covered) - 3 * site.poolFields - canal.earth / 200;
     if (!best || score > best.score) best = { site, canal, score };
   }
   // Only works that water clearly more than the pool drowns.
@@ -625,21 +631,85 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
   const fields = new Set(fieldsOf(sim, s));
   const protect = around.filter((i) => !isWater(w, i) && w.terrain(i) < crest && (fields.has(i) || w.landuse[i] === LandUse.Building || w.landuse[i] === LandUse.Yard));
   if (protect.length < 10) return null;
-  // Dike line: land cells 2–3 cells from the river (by the chamfer distance to river water), on the protected side.
+  // The line: a band of land cells some distance back from the river. Of a few bands, the one
+  // whose footprint takes the fewest fields for the low land it protects (round 4: the banks
+  // took the best fields by the river).
+  let best: { commands: Command[]; pieces: number; runs: number; score: number; band: number; lost: number } | null = null;
+  const toWater = waterDistances(sim, around, 8);
+  for (const [lo, hi] of DIKE_BANDS) {
+    const plan = dikeLine(sim, around, toWater, protect, crest, lo, hi);
+    if (!plan) continue;
+    const foot = new Set(footprintOf(sim, plan.commands));
+    const lost = [...foot].filter((i) => fields.has(i)).length;
+    // Protected: the low land behind the line (farther from the water), not under the banks.
+    const kept = protect.filter((i) => !foot.has(i) && (toWater.get(i) ?? Infinity) >= hi).length;
+    const score = kept - 3 * lost;
+    if (!best || score > best.score) best = { ...plan, score, band: lo, lost };
+  }
+  if (!best || best.score < 10) return null;
+  const { commands, pieces } = best;
+  if (!commands.length) return null;
+  let cmds = commands;
+  let e = earthOf(sim, cmds);
+  // Over budget: keep the pieces nearest the village.
+  if (e > earth) {
+    const d = (c: Command) => (c.type === 'shapeLine' ? Math.min(...c.points.map((p) => Math.hypot(p[0] - x, p[1] - y))) : 0);
+    cmds = [...commands].sort((p, q) => d(p) - d(q));
+    while (cmds.length && e > earth) {
+      cmds.pop();
+      e = earthOf(sim, cmds);
+    }
+    if (!cmds.length) return null;
+  }
+  return {
+    commands: cmds,
+    targets: protect,
+    earth: e,
+    note: `${cmds.length} dike piece(s) of ${pieces} (${best.runs} run(s)) ${best.band}–${best.band + 1} cells from the river, crest ${(crest - surface).toFixed(1)} m above it, ${protect.length} low cells behind, ${best.lost} fields under the banks, ${Math.round(e)} m³`,
+    memory: remembered.length,
+  };
+}
+
+/** Distance (cells) from each of `cells` to the nearest open water within `r` (absent: farther). */
+function waterDistances(sim: Simulation, cells: number[], r: number): Map<number, number> {
+  const w = sim.world;
+  const out = new Map<number, number>();
+  for (const i of cells) {
+    if (isWater(w, i)) {
+      out.set(i, 0);
+      continue;
+    }
+    let d = Infinity;
+    const cx = cellX(w, i);
+    const cy = cellY(w, i);
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (!w.inBounds(cx + dx, cy + dy)) continue;
+        if (isWater(w, w.idx(cx + dx, cy + dy))) d = Math.min(d, Math.hypot(dx, dy));
+      }
+    if (d <= r) out.set(i, d);
+  }
+  return out;
+}
+
+/** Distance bands (cells from the river water) tried for a dike line, and the crest width (cells). */
+const DIKE_BANDS: [number, number][] = [
+  [2.5, 3.5],
+  [3.5, 4.5],
+  [4.5, 5.5],
+  [5.5, 6.5],
+];
+const DIKE_WIDTH = 1;
+
+/** The dike pieces along the band `lo`–`hi` cells from the river in front of `protect` (planDikes). */
+function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number>, protect: number[], crest: number, lo: number, hi: number): { commands: Command[]; pieces: number; runs: number } | null {
+  const w = sim.world;
   const W = w.width;
   const near = new Map<number, number>();
   for (const i of around) {
     if (isWater(w, i) || w.terrain(i) >= crest) continue;
-    let d = Infinity;
-    const cx = cellX(w, i);
-    const cy = cellY(w, i);
-    for (let dy = -4; dy <= 4; dy++)
-      for (let dx = -4; dx <= 4; dx++) {
-        if (!w.inBounds(cx + dx, cy + dy)) continue;
-        const j = w.idx(cx + dx, cy + dy);
-        if (isWater(w, j)) d = Math.min(d, Math.hypot(dx, dy));
-      }
-    if (d >= 2.5 && d < 3.5) near.set(i, d);
+    const d = toWater.get(i) ?? Infinity;
+    if (d >= lo && d < hi) near.set(i, d);
   }
   // Only the stretch in front of the protected land: within 6 cells of it.
   const prot = new Set(protect);
@@ -715,30 +785,12 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
       const lo = lowestOn(w, seg[0]!, seg[seg.length - 1]!);
       const lowest = Math.min(lo, ...seg.map((p) => w.terrain(w.idx(Math.round(p[0]), Math.round(p[1])))));
       if (crest - lowest < 0.2) continue;
-      commands.push(...shape('raise', seg, 2, crest - lowest));
+      commands.push(...shape('raise', seg, DIKE_WIDTH, crest - lowest));
       pieces++;
     }
   }
   if (!commands.length) return null;
-  let cmds = commands;
-  let e = earthOf(sim, cmds);
-  // Over budget: keep the pieces nearest the village.
-  if (e > earth) {
-    const d = (c: Command) => (c.type === 'shapeLine' ? Math.min(...c.points.map((p) => Math.hypot(p[0] - x, p[1] - y))) : 0);
-    cmds = [...commands].sort((p, q) => d(p) - d(q));
-    while (cmds.length && e > earth) {
-      cmds.pop();
-      e = earthOf(sim, cmds);
-    }
-    if (!cmds.length) return null;
-  }
-  return {
-    commands: cmds,
-    targets: protect,
-    earth: e,
-    note: `${cmds.length} dike piece(s) of ${pieces} (${runs.length} run(s)), crest ${(crest - surface).toFixed(1)} m above the river, ${protect.length} low cells behind, ${Math.round(e)} m³`,
-    memory: remembered.length,
-  };
+  return { commands, pieces, runs: runs.length };
 }
 
 // ---------------------------------------------------------------------------
