@@ -64,6 +64,10 @@ test('pausing freezes every animation (people, animals, smoke, water, wheels)', 
   await page.waitForFunction(() => (window as any).__hydro.renderer.clock.gameSpeed === 0, null, { timeout: 180_000 });
   // Flecks renew for a few seconds after a camera move (render/flow.ts).
   await page.waitForTimeout(3500);
+  // Compare the game view itself: the HTML HUD over it (whose text and
+  // borders CI's software compositor re-rasters a few levels differently
+  // from frame to frame) is not part of what pausing freezes.
+  await page.evaluate(() => ((document.getElementById('ui') as HTMLElement).style.visibility = 'hidden'));
   await settleFrames(page, 5);
   const a = await shot(page);
   await page.waitForTimeout(1000);
