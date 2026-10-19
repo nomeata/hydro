@@ -50,6 +50,74 @@ export function fieldsToRgba(src: Uint8Array, dst: Uint8Array, n: number, width 
     // Ways between the houses are a little wider (the shader reads width from the footfall).
     if (street) dst[4 * i + 1] = Math.max(dst[4 * i + 1]!, 150);
   }
+  joinYards(src, dst, n, width);
+}
+
+/**
+ * A way that passes a cluster of yards without running into it (pathLinks
+ * draws no rungs) still joins it once: the most trodden of its cells beside
+ * the cluster gets a spur into the nearest yard.
+ */
+function joinYards(src: Uint8Array, dst: Uint8Array, n: number, width: number): void {
+  const height = Math.floor(n / width);
+  const at = (i: number) => src[FIELD_BYTES * i]!;
+  const isYard = (v: number) => v === LU_YARD || v === LU_BUILDING;
+  // Label the 8-connected pieces of path and the clusters of yards.
+  const label = new Int32Array(n).fill(-1);
+  let next = 0;
+  const stack: number[] = [];
+  for (let s = 0; s < n; s++) {
+    const v = at(s);
+    if (label[s]! >= 0 || (v !== LU_PATH && !isYard(v))) continue;
+    const yard = isYard(v);
+    label[s] = next;
+    stack.push(s);
+    while (stack.length) {
+      const i = stack.pop()!;
+      const x = i % width;
+      const y = (i / width) | 0;
+      for (let k = 0; k < 8; k++) {
+        const nx = x + RING_X[k]!;
+        const ny = y + RING_Y[k]!;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const j = ny * width + nx;
+        if (label[j]! >= 0 || (yard ? !isYard(at(j)) : at(j) !== LU_PATH)) continue;
+        label[j] = next;
+        stack.push(j);
+      }
+    }
+    next++;
+  }
+  // Per (piece, cluster): joined already, or the best cell and its yard direction.
+  const best = new Map<number, { cell: number; k: number; t: number }>();
+  const joined = new Set<number>();
+  for (let i = 0; i < n; i++) {
+    if (at(i) !== LU_PATH) continue;
+    const x = i % width;
+    const y = (i / width) | 0;
+    const links = dst[4 * i + 2]!;
+    const t = src[FIELD_BYTES * i + 1]!;
+    for (let k = 0; k < 8; k++) {
+      const nx = x + RING_X[k]!;
+      const ny = y + RING_Y[k]!;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const j = ny * width + nx;
+      if (!isYard(at(j))) continue;
+      const key = label[i]! * next + label[j]!;
+      if (links & (1 << k)) {
+        joined.add(key);
+        continue;
+      }
+      const b = best.get(key);
+      // The most trodden cell; an orthogonal step into the yard over a diagonal one.
+      if (!b || t > b.t || (t === b.t && b.cell === i && (b.k & 1) === 1 && (k & 1) === 0)) best.set(key, { cell: i, k, t });
+    }
+  }
+  for (const [key, b] of best) {
+    if (joined.has(key)) continue;
+    dst[4 * b.cell + 2] = dst[4 * b.cell + 2]! | (1 << b.k);
+    dst[4 * b.cell + 3] = dst[4 * b.cell + 3]! | (1 << b.k);
+  }
 }
 
 const LU_PATH = 4;
