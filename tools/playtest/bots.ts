@@ -23,7 +23,7 @@ import { rasterisePath, type PlanGrid } from '../../src/sim/plans/plans';
 import { WEIR_MAX_HEIGHT } from '../../src/sim/structures/structures';
 import { wheelSite, wheelSites, type WheelGrid } from '../../src/sim/structures/wheel';
 import { LandUse } from '../../src/sim/world';
-import { canalCommand, earthOf, planCanal, type CanalPlan, type CanalStart } from './canal';
+import { canalCommand, earthOf, planCanal, worthOf, type CanalPlan, type CanalStart } from './canal';
 import {
   cellsAround,
   cellX,
@@ -403,11 +403,11 @@ function planWeirCanal(sim: Simulation, s: Settlement, earth: number): { site: W
     const canal = planCanal(sim, starts, targets, { village: { x: s.state.x, y: s.state.y, r: HOME_RING }, blocked: (i) => site.pool.has(i) || wallCells.has(i), maxEarth: earth });
     if (!canal) continue;
     weirWhy.canals++;
-    const score = canal.covered.length - 1.5 * site.poolFields - canal.earth / 200;
+    const score = worthOf(sim.world, canal.covered) - 1.5 * site.poolFields - canal.earth / 200;
     if (!best || score > best.score) best = { site, canal, score };
   }
   // Only works that water clearly more than the pool drowns.
-  return best && best.score >= 15 ? best : null;
+  return best && best.score >= 10 ? best : null;
 }
 
 /**
@@ -476,7 +476,7 @@ function planRiverCanal(sim: Simulation, s: Settlement, earth: number): CanalPla
     }
   }
   const canal = planCanal(sim, starts, targets, { village: { x: s.state.x, y: s.state.y, r: HOME_RING }, maxEarth: earth }, 20);
-  return canal && canal.covered.length >= 25 ? canal : null;
+  return canal && worthOf(w, canal.covered) >= 15 ? canal : null;
 }
 
 /** A contour canal from the river (no weir) for each village, where one waters enough dry land. */

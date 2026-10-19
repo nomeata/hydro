@@ -214,7 +214,10 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
     const path: number[] = [];
     for (let i = end; i >= 0; i = prev[i]!) path.push(i);
     const { covered: cov, lost } = coverage(w, path, targets);
-    const score = cov.size - lost - 0.35 * cost[end]!;
+    // The village's own dry fields count most: its farmers work them now (new land waits for hands).
+    let worth = 0;
+    for (const j of cov) worth += w.landuse[j] === LandUse.Field ? 1 : OPEN_LAND;
+    const score = worth - lost - 0.35 * cost[end]!;
     if (cov.size >= minCovered && (!best || score > best.score)) best = { end, covered: [...cov], score };
   }
   if (!best) return null;
@@ -278,6 +281,16 @@ export function coverage(w: Simulation['world'], path: readonly number[], target
   }
   return { covered, lost };
 }
+
+/** Worth of the cells a canal waters (dry fields 1, open land OPEN_LAND). */
+export function worthOf(w: Simulation['world'], cells: Iterable<number>): number {
+  let n = 0;
+  for (const j of cells) n += w.landuse[j] === LandUse.Field ? 1 : OPEN_LAND;
+  return n;
+}
+
+/** Worth of watering open land, against a dry field the farmers already work. */
+const OPEN_LAND = 0.35;
 
 /** Cells either side of a canal's path that its floor and banks clear (width 2: 1 + bank 1.5). */
 const FOOTPRINT = 2;
