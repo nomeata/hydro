@@ -228,9 +228,10 @@ describe('power grid', () => {
     const lit = sim.power.info().lit;
     expect(lit[1]!).toBeLessThan(1);
     expect(lit[1]!).toBeGreaterThan(0);
-    // A pole removed: the line is cut, the houses go dark.
+    // A pole knocked down by a flood: the line is cut, the houses go dark.
     const far = sim.power.poles[sim.power.poles.length - 1]!;
-    sim.command({ type: 'cancelPlan', x: far.x, y: far.y, radius: 1 });
+    sim.world.water[sim.world.idx(far.x, far.y)] = 1.5;
+    sim.power.floods(sim.time.day);
     sim.run(2);
     expect(sim.power.stats().houses).toBeLessThan(80);
   });
