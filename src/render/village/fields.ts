@@ -440,14 +440,17 @@ float fieldSnow(vec3 world, float snow, float cover, inout vec3 snowCol) {
   float along = (alongX ? world.x : world.z) * 6.0 + 1.7 * floor(t);
   float bits = smoothstep(0.35, 0.65, fieldNoise(vec2(along, floor(t) * 3.7)));
   float near = smoothstep(1.0 - 0.45 * poke, 1.02 - 0.45 * poke, row) * mix(0.55, 1.0, bits);
-  float gap = mix(0.3 * poke, near, aa) * inside;
+  // A few clods and stalks stick out of even deep snow, on the ridge tops.
+  float speck = smoothstep(0.7, 0.9, row) * smoothstep(0.72, 0.8, fieldNoise(vec2(along * 1.9, floor(t) * 5.3 + 2.0)));
+  near = max(near, speck);
+  float gap = mix(0.1 + 0.3 * poke, near, aa) * inside;
   vec3 show = sown
     ? mix(vec3(0.36, 0.56, 0.2), vec3(0.62, 0.52, 0.22), smoothstep(0.75, 1.0, g))
     : mix(vec3(0.33, 0.24, 0.15), uCropRipe * 0.72, 0.5 * bits);
   // Snow ribbed by the furrows (blue shade in the furrows), slightly greyer
   // on fields than on meadows, and drifts with a shaded seam at the edge.
   float rib = mix(1.0 - row, 0.5, 1.0 - aa);
-  snowCol *= mix(1.0, mix(0.93, 0.8, rib), inside);
+  snowCol *= mix(1.0, mix(0.78, mix(0.93, 0.8, rib), aa), inside);
   float de = 9.0;
   if (!isField(c + ivec2(-1, 0))) de = min(de, f.x);
   if (!isField(c + ivec2(1, 0))) de = min(de, 1.0 - f.x);
