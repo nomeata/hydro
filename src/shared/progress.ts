@@ -61,11 +61,10 @@ export function milestoneSpan(population: number): { prev: number; next: number;
   return { prev, next, nextTools: [] };
 }
 
-/** Bar fill 0..1 on a log scale from the previous milestone to the next. */
+/** Bar fill 0..1, linear from 0 to the next milestone. */
 export function milestoneFraction(population: number): number {
-  const { prev, next } = milestoneSpan(population);
-  if (population <= prev) return 0;
-  return Math.min(1, Math.log(population / prev) / Math.log(next / prev));
+  if (population <= 0) return 0;
+  return Math.min(1, population / milestoneSpan(population).next);
 }
 
 /** Prosperity in % (population-weighted mean wellbeing), or null without villagers. */

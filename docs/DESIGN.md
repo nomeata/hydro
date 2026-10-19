@@ -245,14 +245,14 @@ The player asked for "more direct endorphin hits". Decisions:
   droughts), because they are part of the landscape's life, not blame.
 - **Two headline stats** in a small **stats bar** next to the speed controls
   (on phones a second row below them):
-  - **Population**: the total number of villagers. Its bar fills on a log
-    scale from the last milestone to the next (the progression in
+  - **Population**: the total number of villagers. Its bar fills linearly
+    from 0 to the next milestone (the progression in
     `src/shared/unlocks.ts`: 15, 30, 50, 100, 150, 250; beyond, doublings).
     Reaching a milestone gives a small sparkle and a note of what unlocked.
     The bar itself is just villagers (no tool icon: one read as "the icon
     for a large population"); the next tool's progress shows on the tool
     palette instead: the next locked tool's button gets a ring round its
-    edge filling (log scale from the previous unlock) towards its threshold,
+    edge filling (linear from 0, like the bar) towards its threshold,
     padlock kept, and a short golden pulse at unlock. Progress follows the
     highest population reached (unlocks are kept).
   - **Prosperity**: the population-weighted mean of the settlements'

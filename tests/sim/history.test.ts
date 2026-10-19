@@ -63,11 +63,11 @@ describe('prosperity and milestones', () => {
     expect(milestoneFraction(0)).toBe(0);
     expect(milestoneSpan(first)).toMatchObject({ prev: first, next: ms[1]!, nextTools: ['gate'] });
     expect(milestoneSpan(30)).toMatchObject({ prev: 30, next: 50, nextTools: ['wheel'] });
-    expect(milestoneFraction(first)).toBe(0);
+    expect(milestoneFraction(first)).toBeCloseTo(first / ms[1]!);
     expect(milestoneSpan(lastM)).toMatchObject({ prev: lastM, next: lastM * 2, nextTools: [] });
     expect(milestoneSpan(lastM * 3)).toMatchObject({ prev: lastM * 2, next: lastM * 4 });
-    // Log scale: the geometric midpoint is half full.
-    expect(milestoneFraction(Math.sqrt(lastM * lastM * 2))).toBeCloseTo(0.5);
+    // Linear from 0: 1.5 × the last milestone is three quarters of the way to its double.
+    expect(milestoneFraction(lastM * 1.5)).toBeCloseTo(0.75);
     expect(milestonesBetween(0, lastM * 2).map((m) => m.population)).toEqual([...ms, lastM * 2]);
     expect(milestonesBetween(first, first)).toEqual([]);
   });

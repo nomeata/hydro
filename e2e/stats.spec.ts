@@ -52,8 +52,8 @@ test('the next locked tool shows its unlock progress on the palette and pulses a
   await expect(gate.locator('.ring')).toBeHidden();
   const progress = () => weir.evaluate((b) => Number((b as HTMLElement).style.getPropertyValue('--progress')));
   await page.evaluate(() => (window as any).__hydro.tools.setPopulation(10));
-  // Log scale from 1 to 15: 10 villagers are most of the way.
-  expect(await progress()).toBeCloseTo(Math.log(10) / Math.log(15), 2);
+  // Linear from 0 to 15: 10 villagers are two thirds of the way.
+  expect(await progress()).toBeCloseTo(10 / 15, 2);
   // (Read the class right away: the pulse lasts only two seconds.)
   const cls = await page.evaluate(() => {
     (window as any).__hydro.tools.setPopulation(15);

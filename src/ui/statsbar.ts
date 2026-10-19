@@ -1,7 +1,7 @@
 /**
  * Stats bar (top right): the two headline stats, population and
- * prosperity, as small chunky bars. The population bar fills on a log scale
- * from the last tool-unlock milestone to the next and sparkles when a new
+ * prosperity, as small chunky bars. The population bar fills linearly
+ * from 0 to the next tool-unlock milestone and sparkles when a new
  * one is reached (the next tool's own progress shows on its palette button,
  * ui/tools.ts). Tapping the bar opens the history chart.
  */
@@ -14,7 +14,8 @@
  */
 export function populationGoal(population: number, peak: number): { prev: number; next: number; tools: string[]; fraction: number } {
   const { prev, next, nextTools } = milestoneSpan(Math.max(population, peak));
-  const fraction = population <= prev ? 0 : Math.min(1, Math.log(population / prev) / Math.log(next / prev));
+  // Linear from 0 to the goal (not from the last milestone), like the palette's unlock ring.
+  const fraction = population <= 0 ? 0 : Math.min(1, population / next);
   return { prev, next, tools: nextTools.filter((t) => !isUnlocked(t, peak)), fraction };
 }
 import type { SimStats } from '../shared/protocol';

@@ -17,7 +17,7 @@ import type { Sculptor } from '../client/sculptor';
 import type { BrushTool } from '../shared/protocol';
 import type { WorldMirror } from '../client/mirror';
 import { ICONS } from './icons';
-import { PROGRESSION, isUnlocked, unlockPopulation } from '../shared/unlocks';
+import { isUnlocked, unlockPopulation } from '../shared/unlocks';
 import { wheelSite, wheelSites, type WheelGrid, type WheelSite } from '../sim/structures/wheel';
 import { pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
 import { gateTapSite, type GateSite } from '../sim/structures/structures';
@@ -1124,9 +1124,8 @@ function hotkey(k: number): string | null {
 }
 
 /**
- * The next locked tool (lowest unlock population) and its progress 0..1: a
- * log scale from the milestone before it (the last tool unlocked, or 1) to its
- * own, like the population bar, so early villagers count as much as late ones.
+ * The next locked tool (lowest unlock population) and its progress 0..1:
+ * linear from 0 villagers to its unlock population, like the population bar.
  */
 export function unlockProgress(
   tools: readonly { id: string; need: number; locked: boolean }[],
@@ -1135,8 +1134,6 @@ export function unlockProgress(
   let best: { id: string; need: number } | null = null;
   for (const t of tools) if (t.locked && t.need > 0 && (!best || t.need < best.need)) best = t;
   if (!best) return null;
-  let prev = 1;
-  for (const m of PROGRESSION) if (m.population < best.need && m.population <= population) prev = Math.max(prev, m.population);
-  const fraction = population <= prev ? 0 : Math.min(1, Math.log(population / prev) / Math.log(best.need / prev));
+  const fraction = population <= 0 ? 0 : Math.min(1, population / best.need);
   return { id: best.id, fraction };
 }

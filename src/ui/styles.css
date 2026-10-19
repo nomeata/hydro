@@ -132,7 +132,7 @@ html, body {
 .toolrow button.locked .lock { display: block; position: absolute; right: 3px; top: 3px; width: 16px; height: 16px; }
 .toolrow button.locked .lock svg { width: 16px; height: 16px; }
 /* The next tool to unlock: a ring round its edge fills as the villages grow
-   (--progress 0..1, log scale; ui/tools.ts unlockProgress). */
+   (--progress 0..1, linear from 0; ui/tools.ts unlockProgress). */
 .toolrow button .ring { display: none; }
 .toolrow button.locked.next .ring {
   display: block; position: absolute; inset: 1px; padding: 3px; border-radius: 10px; pointer-events: none;
