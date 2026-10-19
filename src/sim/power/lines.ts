@@ -34,8 +34,9 @@ export const LINES = {
   dry: 0.05,
   /** Steepest step to a neighbour (m) for a pole. */
   maxRise: 1.5,
-  /** Margin (cells) of a route's search window around its ends, and the largest window. */
+  /** Margin (cells) of a route's search window around its ends (wider ones tried when there is no way), and the largest window. */
   margin: 20,
+  margins: [20, 48, 90],
   maxCells: 260 * 260,
   /** The last pole of a line to a house, the store or a pump stands within this many cells of it. */
   endNear: 2.3,
@@ -45,7 +46,7 @@ export const LINES = {
   /** Longest line (straight, cells) the villagers take on. */
   maxLine: 160,
   /** Days before a line that could not be routed is tried again. */
-  retryDays: 20,
+  retryDays: 6,
   /** A village builds the poles within this distance (cells) of its centre; beyond, the spirit crew does. */
   reach: 56,
   /** Days a pole may wait for its village's builders before the spirit crew puts it up. */
@@ -128,13 +129,13 @@ export function poleCost(w: World, i: number, allow: Allow, fields = false): num
  * The cells a line from `from` to `to` (cell indices) follows, both
  * included, or null when there is no way (or the window would be too big).
  */
-export function routeLine(w: World, from: number, to: number, allow: Allow): number[] | null {
+export function routeLine(w: World, from: number, to: number, allow: Allow, margin: number = LINES.margin): number[] | null {
   const W = w.width;
   const fx = from % W;
   const fy = (from / W) | 0;
   const tx = to % W;
   const ty = (to / W) | 0;
-  const M = LINES.margin;
+  const M = margin;
   const x0 = Math.max(1, Math.min(fx, tx) - M);
   const x1 = Math.min(W - 2, Math.max(fx, tx) + M);
   const y0 = Math.max(1, Math.min(fy, ty) - M);
@@ -184,7 +185,11 @@ export function routeLine(w: World, from: number, to: number, allow: Allow): num
       const i = (y0 + ly) * W + x0 + lx;
       let c: number;
       if (i !== from && i !== to && allow && !allow(i)) c = Infinity;
-      else if (w.water[i]! >= LINES.dry) c = wd[k]! > LINES.halfSpan ? Infinity : 2.5;
+      else if (w.water[i]! >= LINES.dry) {
+        // Narrow water only; but along a weir's crest, and out from a turbine in mid-river, as far as a span reaches.
+        const near = Math.hypot(x0 + lx - fx, y0 + ly - fy) <= LINES.span - 1 || Math.hypot(x0 + lx - tx, y0 + ly - ty) <= LINES.span - 1;
+        c = wd[k]! <= LINES.halfSpan || (near && (w.flags[i]! & CellFlag.Structure) !== 0) ? 2.5 : near ? 4 : Infinity;
+      }
       else {
         const lu = w.landuse[i]!;
         if (lu === LandUse.Building) c = 6;

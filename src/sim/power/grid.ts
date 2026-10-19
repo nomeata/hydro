@@ -761,7 +761,8 @@ export class PowerGrid {
     score?: (x: number, y: number) => number,
   ): boolean {
     const w = this.world;
-    const path = routeLine(w, w.idx(from.x, from.y), w.idx(to[0], to[1]), this.allow);
+    let path: number[] | null = null;
+    for (const m of LINES.margins) if ((path = routeLine(w, w.idx(from.x, from.y), w.idx(to[0], to[1]), this.allow, m))) break;
     if (!path) return false;
     const others = nodes.map((n): [number, number] => [n.x, n.y]);
     const opts = { allow: this.allow, toNode: node !== null, others, endScore: score };
