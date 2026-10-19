@@ -423,12 +423,12 @@ export class ToolPalette {
 
   /** A short celebratory pulse on a tool button that just unlocked. */
   private pulse(b: HTMLElement): void {
-    b.classList.remove('unlocked-now');
+    b.classList.remove('unlock-pulse');
     void b.offsetWidth; // restart the animation
-    b.classList.add('unlocked-now');
+    b.classList.add('unlock-pulse');
     const done = (e: AnimationEvent): void => {
       if (e.target !== b) return;
-      b.classList.remove('unlocked-now');
+      b.classList.remove('unlock-pulse');
       b.removeEventListener('animationend', done);
     };
     b.addEventListener('animationend', done);

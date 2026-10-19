@@ -56,10 +56,10 @@ test('the next locked tool shows its unlock progress on the palette and pulses a
     (window as any).__hydro.tools.setPopulation(15);
     return document.querySelector('.tools .toolrow button[data-tool=weir]')!.className;
   });
-  expect(cls).toContain('unlocked-now');
-  await expect(weir).not.toHaveClass(/locked/);
+  expect(cls).toContain('unlock-pulse');
+  await expect(weir).not.toHaveClass(/\blocked\b/);
   await expect(gate).toHaveClass(/next/);
   await expect(page.locator('.tools .toolrow button.next')).toHaveCount(1);
-  await expect(weir).not.toHaveClass(/unlocked-now/, { timeout: 8000 });
+  await expect(weir).not.toHaveClass(/unlock-pulse/, { timeout: 8000 });
   expect(errors).toEqual([]);
 });
