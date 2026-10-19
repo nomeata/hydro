@@ -3,6 +3,7 @@
  * (the exported parameter objects are mutable), population per season.
  *
  *   npx tsx tools/playtest/exp.ts --seeds 7,8 --days 96 --bot baseline --set FARMING.yield=12,ECONOMY.stayers=6
+ *   npx tsx tools/playtest/exp.ts --seeds 2,4 --days 192 --bot baseline,dike --floods
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { DAYS_PER_YEAR } from '../../src/sim/constants';
@@ -10,6 +11,7 @@ import { PARAMS } from '../../src/sim/params';
 import { ECONOMY } from '../../src/sim/people/settlement';
 import { CAPILLARY, CROP_MOISTURE, FARMING, FOUNDING, HARDY } from '../../src/sim/people/village';
 import { DITCH } from '../../src/sim/people/ditches';
+import { CLIMATE } from '../../src/sim/climate/climate';
 import { runJob } from './run';
 import { makeBot } from './bots';
 
@@ -18,7 +20,9 @@ const opt = (k: string, d: string): string => {
   const i = args.indexOf(`--${k}`);
   return i >= 0 ? args[i + 1]! : d;
 };
-const tables: Record<string, Record<string, unknown>> = { PARAMS, ECONOMY, CAPILLARY, CROP_MOISTURE, FARMING, FOUNDING, HARDY, DITCH };
+const tables: Record<string, Record<string, unknown>> = { PARAMS, ECONOMY, CAPILLARY, CROP_MOISTURE, FARMING, FOUNDING, HARDY, DITCH, CLIMATE };
+// --floods: a big freshet every spring from the third year (to judge dikes).
+if (args.includes('--floods')) (CLIMATE as { bigChanceRange: readonly number[] }).bigChanceRange = [1, 1];
 for (const kv of opt('set', '').split(',').filter(Boolean)) {
   const [k, v] = kv.split('=') as [string, string];
   const [t, f] = k.split('.') as [string, string];

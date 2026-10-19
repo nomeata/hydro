@@ -23,7 +23,7 @@ import { rasterisePath, type PlanGrid } from '../../src/sim/plans/plans';
 import { WEIR_MAX_HEIGHT } from '../../src/sim/structures/structures';
 import { wheelSite, wheelSites, type WheelGrid } from '../../src/sim/structures/wheel';
 import { LandUse } from '../../src/sim/world';
-import { canalCommand, earthOf, planCanal, worthOf, type CanalPlan, type CanalStart } from './canal';
+import { canalCommand, earthOf, footprintOf, planCanal, worthOf, type CanalPlan, type CanalStart } from './canal';
 import {
   cellsAround,
   cellX,
@@ -625,21 +625,85 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
   const fields = new Set(fieldsOf(sim, s));
   const protect = around.filter((i) => !isWater(w, i) && w.terrain(i) < crest && (fields.has(i) || w.landuse[i] === LandUse.Building || w.landuse[i] === LandUse.Yard));
   if (protect.length < 10) return null;
-  // Dike line: land cells 2–3 cells from the river (by the chamfer distance to river water), on the protected side.
+  // The line: a band of land cells some distance back from the river. Of a few bands, the one
+  // whose footprint takes the fewest fields for the low land it protects (round 4: the banks
+  // took the best fields by the river).
+  let best: { commands: Command[]; pieces: number; runs: number; score: number; band: number; lost: number } | null = null;
+  const toWater = waterDistances(sim, around, 8);
+  for (const [lo, hi] of DIKE_BANDS) {
+    const plan = dikeLine(sim, around, toWater, protect, crest, lo, hi);
+    if (!plan) continue;
+    const foot = new Set(footprintOf(sim, plan.commands));
+    const lost = [...foot].filter((i) => fields.has(i)).length;
+    // Protected: the low land behind the line (farther from the water), not under the banks.
+    const kept = protect.filter((i) => !foot.has(i) && (toWater.get(i) ?? Infinity) >= hi).length;
+    const score = kept - 3 * lost;
+    if (!best || score > best.score) best = { ...plan, score, band: lo, lost };
+  }
+  if (!best || best.score < 10) return null;
+  const { commands, pieces } = best;
+  if (!commands.length) return null;
+  let cmds = commands;
+  let e = earthOf(sim, cmds);
+  // Over budget: keep the pieces nearest the village.
+  if (e > earth) {
+    const d = (c: Command) => (c.type === 'shapeLine' ? Math.min(...c.points.map((p) => Math.hypot(p[0] - x, p[1] - y))) : 0);
+    cmds = [...commands].sort((p, q) => d(p) - d(q));
+    while (cmds.length && e > earth) {
+      cmds.pop();
+      e = earthOf(sim, cmds);
+    }
+    if (!cmds.length) return null;
+  }
+  return {
+    commands: cmds,
+    targets: protect,
+    earth: e,
+    note: `${cmds.length} dike piece(s) of ${pieces} (${best.runs} run(s)) ${best.band}–${best.band + 1} cells from the river, crest ${(crest - surface).toFixed(1)} m above it, ${protect.length} low cells behind, ${best.lost} fields under the banks, ${Math.round(e)} m³`,
+    memory: remembered.length,
+  };
+}
+
+/** Distance (cells) from each of `cells` to the nearest open water within `r` (absent: farther). */
+function waterDistances(sim: Simulation, cells: number[], r: number): Map<number, number> {
+  const w = sim.world;
+  const out = new Map<number, number>();
+  for (const i of cells) {
+    if (isWater(w, i)) {
+      out.set(i, 0);
+      continue;
+    }
+    let d = Infinity;
+    const cx = cellX(w, i);
+    const cy = cellY(w, i);
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (!w.inBounds(cx + dx, cy + dy)) continue;
+        if (isWater(w, w.idx(cx + dx, cy + dy))) d = Math.min(d, Math.hypot(dx, dy));
+      }
+    if (d <= r) out.set(i, d);
+  }
+  return out;
+}
+
+/** Distance bands (cells from the river water) tried for a dike line, and the crest width (cells). */
+const DIKE_BANDS: [number, number][] = [
+  [2.5, 3.5],
+  [3.5, 4.5],
+  [4.5, 5.5],
+  [5.5, 6.5],
+];
+const DIKE_WIDTH = 1;
+
+/** The dike pieces along the band `lo`–`hi` cells from the river in front of `protect` (planDikes). */
+function dikeLine(sim: Simulation, around: number[], toWater: Map<number, number>, protect: number[], crest: number, lo: number, hi: number): { commands: Command[]; pieces: number; runs: number } | null {
+  const w = sim.world;
   const W = w.width;
   const near = new Map<number, number>();
   for (const i of around) {
     if (isWater(w, i) || w.terrain(i) >= crest) continue;
-    let d = Infinity;
-    const cx = cellX(w, i);
-    const cy = cellY(w, i);
-    for (let dy = -4; dy <= 4; dy++)
-      for (let dx = -4; dx <= 4; dx++) {
-        if (!w.inBounds(cx + dx, cy + dy)) continue;
-        const j = w.idx(cx + dx, cy + dy);
-        if (isWater(w, j)) d = Math.min(d, Math.hypot(dx, dy));
-      }
-    if (d >= 2.5 && d < 3.5) near.set(i, d);
+    const d = toWater.get(i) ?? Infinity;
+    if (d >= lo && d < hi) near.set(i, d);
   }
   // Only the stretch in front of the protected land: within 6 cells of it.
   const prot = new Set(protect);
@@ -715,30 +779,12 @@ function planDikes(sim: Simulation, s: Settlement, earth: number, seen: number):
       const lo = lowestOn(w, seg[0]!, seg[seg.length - 1]!);
       const lowest = Math.min(lo, ...seg.map((p) => w.terrain(w.idx(Math.round(p[0]), Math.round(p[1])))));
       if (crest - lowest < 0.2) continue;
-      commands.push(...shape('raise', seg, 2, crest - lowest));
+      commands.push(...shape('raise', seg, DIKE_WIDTH, crest - lowest));
       pieces++;
     }
   }
   if (!commands.length) return null;
-  let cmds = commands;
-  let e = earthOf(sim, cmds);
-  // Over budget: keep the pieces nearest the village.
-  if (e > earth) {
-    const d = (c: Command) => (c.type === 'shapeLine' ? Math.min(...c.points.map((p) => Math.hypot(p[0] - x, p[1] - y))) : 0);
-    cmds = [...commands].sort((p, q) => d(p) - d(q));
-    while (cmds.length && e > earth) {
-      cmds.pop();
-      e = earthOf(sim, cmds);
-    }
-    if (!cmds.length) return null;
-  }
-  return {
-    commands: cmds,
-    targets: protect,
-    earth: e,
-    note: `${cmds.length} dike piece(s) of ${pieces} (${runs.length} run(s)), crest ${(crest - surface).toFixed(1)} m above the river, ${protect.length} low cells behind, ${Math.round(e)} m³`,
-    memory: remembered.length,
-  };
+  return { commands, pieces, runs: runs.length };
 }
 
 // ---------------------------------------------------------------------------

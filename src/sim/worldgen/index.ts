@@ -178,7 +178,7 @@ export const TERRACE = {
    * `dryHeight` m above the water; a full score from `dryFull` cells).
    */
   fieldRadius: 18,
-  good: [70, 170] as readonly number[],
+  good: [150, 240] as readonly number[],
   dryFull: 200,
   dryHeight: 6,
 };
