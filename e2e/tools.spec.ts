@@ -6,7 +6,7 @@ import { findWeir, openGame, runDays, settleFrames, toScreen } from './helpers';
  * until Escape or Look), and show what they would make before it is made:
  * the gate's hover ghost, a red wheel off its sites (no live text);
  * the brushes keep the fields they go over (no warning text), tint the ground a stroke raised
- * or dug, and flash an undone stroke (ui/tools.ts).
+ * or dug (ui/tools.ts).
  */
 
 const pressed = (page: Page, sel: string) => expect(page.locator(sel)).toHaveAttribute('aria-pressed', 'true');
@@ -127,7 +127,7 @@ test('tools stay selected; weirs, gates and wheels show their ghosts first', asy
   expect(errors).toEqual([]);
 });
 
-test('brushes: distinct cursors, the fields under them kept, the stroke tinted, an undo flashes', async ({ page }, info) => {
+test('brushes: distinct cursors, the fields under them kept, the stroke tinted', async ({ page }, info) => {
   test.setTimeout(400_000);
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&cheat=1');
@@ -167,10 +167,6 @@ test('brushes: distinct cursors, the fields under them kept, the stroke tinted, 
   await expect.poll(() => R(`h.mirror.landuse[${field!.y} * h.mirror.width + ${field!.x}]`), { timeout: 30_000 }).toBe(1);
   await expect(page.locator('.tools .hint')).not.toContainText('crop there is lost');
   await pressed(page, 'button[data-tool=raise]');
-  // Undo: the stroke's ground flashes as it goes back.
-  await pick(page, phone, '[data-testid=undo]');
-  await expect.poll(() => R('h.renderer.cellTint.count("undo")'), { timeout: 60_000 }).toBeGreaterThan(0);
-  await expect(page.locator('.tools .hint')).toContainText('Undone');
   // Dig's cursor is its own.
   await pick(page, phone, 'button[data-tool=dig]');
   if (!phone) {

@@ -48,7 +48,7 @@ async function caughtUp(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-test('the Dig brush digs at once while held, stays selected, and Undo brings the ground back', async ({ page }, info) => {
+test('the Dig brush digs at once while held, stays selected, and the sim agrees with the prediction', async ({ page }, info) => {
   test.skip(info.project.name === 'phone', 'touch has its own test');
   const errors = await openGame(page);
   const s = await dryspot(page);
@@ -71,26 +71,18 @@ test('the Dig brush digs at once while held, stays selected, and Undo brings the
   const z1 = await height(page, s.x, s.y);
   expect(z1).toBeLessThan(z0 - 0.3);
   await expect(page.locator('[data-tool=dig]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('[data-testid=undo]')).toBeEnabled();
-  // Ctrl+Z.
-  await page.keyboard.press('Control+z');
-  await page.waitForFunction(([x, y, z]) => {
-    const h = (window as any).__hydro;
-    return Math.abs(h.mirror.terrainH[y! * h.mirror.width + x!] - z!) < 0.01;
-  }, [s.x, s.y, z0]);
-  // The button: raise, then undo with a click.
+  // The prediction ran the same stamp as the sim.
+  expect(Math.abs(z1 - predicted)).toBeLessThan(0.1);
+  // Raise elsewhere: a mound.
   await page.click('[data-tool=raise]');
-  await page.mouse.move(px, py);
+  const [rx, ry] = await toScreen(page, s.x + 3, s.y + 3);
+  await page.mouse.move(rx, ry);
   await page.mouse.down();
   await page.waitForTimeout(800);
   await page.mouse.up();
   await caughtUp(page);
-  expect(await height(page, s.x, s.y)).toBeGreaterThan(z0 + 0.15);
-  await page.click('[data-testid=undo]');
-  await page.waitForFunction(([x, y, z]) => {
-    const h = (window as any).__hydro;
-    return Math.abs(h.mirror.terrainH[y! * h.mirror.width + x!] - z!) < 0.01;
-  }, [s.x, s.y, z0]);
+  expect(await height(page, s.x + 3, s.y + 3)).toBeGreaterThan(z0 + 0.15);
+  await expect(page.locator('[data-testid=undo]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -126,11 +118,5 @@ test('touch: one finger brushes, two fingers pan and zoom without brushing', asy
   await cdp.detach();
   await caughtUp(page);
   expect(await height(page, s.x, s.y)).toBeLessThan(z0 - 0.2);
-  // Undo on the phone: the button.
-  await page.locator('[data-testid=undo]').tap();
-  await page.waitForFunction(([x, y, z]) => {
-    const h = (window as any).__hydro;
-    return Math.abs(h.mirror.terrainH[y! * h.mirror.width + x!] - z!) < 0.01;
-  }, [s.x, s.y, z0]);
   expect(errors).toEqual([]);
 });

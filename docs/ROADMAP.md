@@ -217,7 +217,12 @@ The interaction rework decided with the owner (DESIGN §4).
   houses, jetties and structures masked smoothly; fields cleared;
   footbridges not masked: ground moved > 0.1 m at their banks or piles
   breaks them (rebuilt by the villagers as after a flood)
-- ☑ Undo of the last strokes (button, Ctrl/Cmd+Z), the undone ground flashing
+- ☒ Undo of the last strokes: removed (owner decision 2026-10-20: it does
+  not fit the game; earthworks are for keeps)
+- ☑ Stamp brushes (2026-10-20): Raise and Dig press a flattened sphere into
+  (up from under) the ground at a steady rate, the slopes around relaxing
+  to loose earth's angle of repose; round bowls, mounds and channels, no
+  single-cell spikes; sizes 2, 3, 4.5 cells
 - ☑ Brushes read apart (review 2026-10-18): own cursor shapes (Raise arrows
   up, Dig dashed with arrows down, Even a flat ring at its level), contour
   lines under the brush, the stroke's ground tinted warm (raised) or cool
