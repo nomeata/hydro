@@ -148,7 +148,7 @@ describe('simulation on the active land', () => {
     sim.run(STEPS_PER_DAY + 200);
     const L = sim.ledger;
     const d = (k: keyof typeof L) => (L[k] ?? 0) - (L0[k] ?? 0);
-    const expected = before + d('rain') + d('snowfall') + d('inflow') - d('outflow') - d('evaporation') - d('seepage') + d('earthworks');
+    const expected = before + d('rain') + d('snowfall') + d('inflow') - d('outflow') - d('evaporation') - d('seepage') + d('earthworks') + d('frozenSnow');
     expect(Math.abs(totalStored(w) - expected) / Math.max(1, d('inflow'))).toBeLessThan(1e-3);
     // The river still comes in from the fog: it has not drained away.
     expect(d('inflow')).toBeGreaterThan(1000);

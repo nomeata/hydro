@@ -10,7 +10,7 @@ import { Climate, tileRainMap, type ClimateRunState } from './climate/climate';
 import { CELL_AREA, DT, STEPS_PER_DAY, TILE } from './constants';
 import { GroundwaterScratch, groundwaterStep } from './hydro/groundwater';
 import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
-import { newLedger, snowCoverByte, soilWaterStep, type Ledger } from './hydro/soilwater';
+import { FrozenSnow, newLedger, snowCoverByte, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { ErosionScratch, defaultGeoParams, erosionStep, overtopStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
 import { TalusScratch, talusStep } from './hydro/talus';
 import { PARAMS } from './params';
@@ -170,6 +170,8 @@ export class Simulation {
    * `fog` (recomputed at day boundaries and on load), so it is not saved.
    */
   readonly active: ActiveSet;
+  /** Scratch for the snowpack on frozen land (soilwater.ts). */
+  private readonly frozenSnow = new FrozenSnow();
   /** The fog setting the active set was last derived for. */
   private maskFog: boolean | null = null;
   /** Simulate every tile regardless of the fog (the worker's spin-up). */
@@ -452,6 +454,7 @@ export class Simulation {
           steps: SOILWATER_EVERY,
           inflowScale: this.climate.inflowFactor(t),
           active: act,
+          frozen: this.frozenSnow,
         },
         this.ledger,
       );
