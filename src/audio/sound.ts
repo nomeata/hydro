@@ -142,9 +142,14 @@ export class SoundSystem implements SoundSink {
     this.main.director.onSnapshot(s, this.main.view(), performance.now() / 1000);
   }
 
-  /** The sculpting crew at work at (x, y) (cells). */
+  /** The crew at work on a weir site at (x, y) (cells). */
   crewWork(x: number, y: number): void {
     if (this.main) this.main.director.crewAt(x, y, performance.now() / 1000);
+  }
+
+  /** The earth brush (Raise/Dig/Even) at work at (x, y) (cells): a soft earth sound. */
+  brush(x: number, y: number): void {
+    if (this.main) this.main.director.brushAt(x, y, performance.now() / 1000);
   }
 
   splash(x: number, y: number): void {

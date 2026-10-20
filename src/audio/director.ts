@@ -46,6 +46,8 @@ export class SoundDirector {
   private spill = 0;
   private crew: SpotSource[] = [];
   private crewUntil = -Infinity;
+  private brush: SpotSource[] = [];
+  private brushUntil = -Infinity;
   private readonly sched: SpotScheduler;
   private readonly pending: SpotEvent[] = [];
   private readonly width: number;
@@ -94,10 +96,16 @@ export class SoundDirector {
     }
   }
 
-  /** The cosmetic crew tamps sculpted ground at (x, y) (render/crowd/sculptCrew.ts): spade sounds there for a while. */
+  /** The cosmetic crew works at a weir site at (x, y) (render/crowd/siteCrew.ts): spade sounds there for a while. */
   crewAt(x: number, y: number, now: number): void {
     this.crew = [{ kind: 'dig', x: Math.round(x), y: Math.round(y), weight: 0.5 }];
     this.crewUntil = now + 5;
+  }
+
+  /** The earth brush is applied at (x, y): an occasional soft spade crunch while it is (about one every 1.5–2 s at speed 1). */
+  brushAt(x: number, y: number, now: number): void {
+    this.brush = [{ kind: 'dig', x: Math.round(x), y: Math.round(y), weight: 2 }];
+    this.brushUntil = now + 0.5;
   }
 
   /** A fish jumped (renderer): splash if near enough. */
@@ -117,6 +125,7 @@ export class SoundDirector {
     const sources = entitySources(this.entities);
     structureSources(this.structures, this.buildings, sources);
     if (now < this.crewUntil) sources.push(...this.crew);
+    if (now < this.brushUntil) sources.push(...this.brush);
     const s = this.summary;
     const spots = this.sched.tick(dt, view, sources, this.speed, { birds: layers.birds, frogs: layers.frogs, frogPan: s.panStill });
     spots.push(...this.pending.splice(0));

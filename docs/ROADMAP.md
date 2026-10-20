@@ -230,7 +230,7 @@ The interaction rework decided with the owner (DESIGN §4).
   ghost says it); bigger, pulsing wheel-site rings
 - ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks); a
   gate drawn across a channel builds a wall with the gate
-- ☑ Cosmetic crew tamping fresh earth; old saves' earthwork plans finished
+- ☑ Old saves' earthwork plans finished
   on load; bots, scenes and tests shape lines with `shapeLine` (earth moved
   counted for a later budget)
 
@@ -239,7 +239,7 @@ See docs/SOUND.md.
 - ☑ Ambience mixed from the view (river, lake, rapids/weir spill, rain,
   wind, birds by season, crickets, frogs, turbine hum), procedural Web Audio
 - ☑ Spot sounds near the camera centre, panned and rate-limited (hammer,
-  axe, spade, crew digging, cows, sheep, chicks, wheels and mills, fish
+  axe, spade, crew digging, earth brush, cows, sheep, chicks, wheels and mills, fish
   splashes); UI clicks, achievement chime, milestone fanfare
 - ☑ Mute and volume in the menu (persisted), first-gesture start, silent
   when hidden; the welcome scenes have their own ambience

@@ -28,7 +28,8 @@ now" decision is reversed.)
   at most 5× a second while the snapshot's pooled buffers are at hand,
   and produces one `MixFrame` (layer gains, pans, spot events) per tick.
   The crew digging is heard where plans are in view while the terrain
-  changes.
+  changes, and at weir sites where the cosmetic workers stand; the earth
+  brush gives an occasional soft spade crunch while it is applied.
 - **`audio/engine.ts`** — the Web Audio graph on any `BaseAudioContext`
   (real time in the game, `OfflineAudioContext` for review). Every change
   is scheduled with `setTargetAtTime` ramps (τ 0.7 s for layers) and every
@@ -76,7 +77,7 @@ at most 2×, and stay capped.
 ### Spot sounds
 Sources: people building (hammer, 1–3 mallet taps), chopping (axe), working
 (spade); cows, sheep, chicks; turning water wheels and mills (creak); the
-crew digging under plans; fish jumps (splash, from `FishJumps.onSplash`);
+crew digging under plans and at weir sites; the earth brush; fish jumps (splash, from `FishJumps.onSplash`);
 birds (3–6.5 s slices of a recorded birdsong bed, faded in and out);
 frogs (synthesised croaks).
 

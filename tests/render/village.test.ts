@@ -5,7 +5,7 @@ import type { StaticModel } from '../../src/render/objects/loader';
 import { scatter, snowCap, VegetationLayer, VegKind } from '../../src/render/objects/vegetation';
 import { SNOW_ATTRIBUTE } from '../../src/render/objects/snowCap';
 import { weirSites } from '../../src/render/worldLayers';
-import { SculptCrew } from '../../src/render/crowd/sculptCrew';
+import { SiteCrew } from '../../src/render/crowd/siteCrew';
 import type { HeightSampler } from '../../src/render/coords';
 import { LandUse, SoilType } from '../../src/sim/world';
 import { FIELD_BYTES } from '../../src/shared/protocol';
@@ -319,7 +319,7 @@ describe('weir building sites', () => {
     }
     expect(Math.min(...sites.map(([, y]) => Math.abs(y - 7.5)))).toBeLessThan(0.6);
     expect(weirSites({ heights, structures: { structures: [{ ...weir, progress: 1 }] } } as never)).toEqual([]);
-    const crew = new SculptCrew(undefined, (x, y) => heights.depthAt(x, y) < 0.05);
+    const crew = new SiteCrew(undefined, (x, y) => heights.depthAt(x, y) < 0.05);
     for (let k = 0; k < 60 * 30; k++) {
       for (const [x, y] of sites) crew.site(x, y);
       crew.advance(1 / 60);

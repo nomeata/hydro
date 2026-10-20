@@ -161,9 +161,10 @@ takes back the last strokes (the last 12, not across reloads).
   the villagers put it up again. Fields, gardens,
   pastures, paths and yards under the brush go back to plain land, and
   the villagers' stone lining comes off.
-- *The crew is cosmetic for earth:* a few workers walk up to freshly
-  sculpted ground and tamp it with their spades for a while, then leave
-  (`render/crowd/sculptCrew.ts`; no effect on the sim).
+- *No crew for earth:* the brush moves the ground by itself, with a soft
+  spade crunch now and then while it is applied. (A few cosmetic workers
+  do gather on the banks of a weir being built:
+  `render/crowd/siteCrew.ts`, no effect on the sim.)
 - Bots, scenes and tests shape whole lines at once with the `shapeLine`
   command (the old trench / dike / level profiles, with the same rules);
   the earth moved by brushes and by scripts is counted
