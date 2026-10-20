@@ -85,6 +85,9 @@ ${FOG_GLSL}
 const VARYINGS = /* glsl */ `
 centroid varying vec3 vTerrWorld;
 varying float vSkirt;
+#ifdef TERRAIN_SMOOTH
+varying vec3 vTerrN;
+#endif
 `;
 
 const VERTEX_DISPLACE = /* glsl */ `
@@ -103,6 +106,17 @@ const VERTEX_DISPLACE = /* glsl */ `
     #ifdef TERRAIN_VARYINGS
       vTerrWorld = world;
       vSkirt = gridSkirt ? 1.0 : 0.0;
+      #ifdef TERRAIN_SMOOTH
+      {
+        // Smooth shading: the vertex normal from the heights around (central differences).
+        ivec2 gm = ivec2(uGrid) - 1;
+        float hE = texelFetch(uTerrain, min(gridCell + ivec2(1, 0), gm), 0).r;
+        float hW = texelFetch(uTerrain, max(gridCell - ivec2(1, 0), ivec2(0)), 0).r;
+        float hN = texelFetch(uTerrain, min(gridCell + ivec2(0, 1), gm), 0).r;
+        float hS = texelFetch(uTerrain, max(gridCell - ivec2(0, 1), ivec2(0)), 0).r;
+        vTerrN = vec3((hW - hE) * 0.5 * uHeightScale, 1.0, (hS - hN) * 0.5 * uHeightScale);
+      }
+      #endif
     #endif
   }
 `;
@@ -110,6 +124,8 @@ const VERTEX_DISPLACE = /* glsl */ `
 const FRAGMENT_PARS = /* glsl */ `
 ${FOG_FRAGMENT_GLSL}
 float fogVis = 1.0;
+/** The shading normal (world space) chosen by the colour code; y = 0 keeps three's flat normal. */
+vec3 gTerrN = vec3(0.0);
 uniform sampler2D uLook;
 uniform highp sampler2D uPlan;
 uniform highp sampler2D uPreview;
@@ -183,8 +199,24 @@ const FRAGMENT_COLOUR = /* glsl */ `
       vec4 l0 = lookAt(c0);
       vec4 l1 = lookAt(c1);
       vec4 l2 = lookAt(c2);
-      vec3 base = (soilBase(l0) + soilBase(l1) + soilBase(l2)) / 3.0;
-      vec4 l = (l0 + l1 + l2) / 3.0;
+      // The fourth cell around (the one this triangle does not touch).
+      vec4 l3;
+      #ifdef TERRAIN_SMOOTH
+        // Smooth: soil, moisture and vegetation blend bilinearly over the four
+        // cells around, slightly eased (no diagonal crease, no grid).
+        // The hard edges (fields, paths, yards, lining, water) are drawn from
+        // their own textures below and stay crisp.
+        l3 = lookAt(lower ? qi + ivec2(1, 1) : qi);
+        vec4 la = lower ? l0 : l3;
+        vec4 ld = lower ? l3 : l0;
+        vec2 fb = mix(f, f * f * (3.0 - 2.0 * f), 0.5);
+        vec4 wq = vec4((1.0 - fb.x) * (1.0 - fb.y), fb.x * (1.0 - fb.y), (1.0 - fb.x) * fb.y, fb.x * fb.y);
+        vec3 base = soilBase(la) * wq.x + soilBase(l1) * wq.y + soilBase(l2) * wq.z + soilBase(ld) * wq.w;
+        vec4 l = la * wq.x + l1 * wq.y + l2 * wq.z + ld * wq.w;
+      #else
+        vec3 base = (soilBase(l0) + soilBase(l1) + soilBase(l2)) / 3.0;
+        vec4 l = (l0 + l1 + l2) / 3.0;
+      #endif
       float moist = l.g;
       float veg = l.b;
       // Vegetation: yellowish when dry, lush when moist, dark forest when dense.
@@ -198,6 +230,18 @@ const FRAGMENT_COLOUR = /* glsl */ `
       c *= mix(1.0, 0.68, moist * mix(1.0, 0.45, veg));
       // Steep slopes show rock / bare earth.
       vec3 wn = normalize(cross(dFdx(vTerrWorld), dFdy(vTerrWorld)));
+      #ifdef TERRAIN_SMOOTH
+        // Smooth normals, but creases stay: where the facet bends far from the
+        // smooth normal (cliffs, dike crowns, cut banks) the facet wins; elsewhere
+        // a hint of it remains.
+        {
+          vec3 nf = wn.y < 0.0 ? -wn : wn;
+          vec3 ns = normalize(vTerrN);
+          float k = smoothstep(0.82, 0.96, dot(nf, ns)) * 0.85;
+          wn = normalize(mix(nf, ns, k));
+          gTerrN = wn;
+        }
+      #endif
       float ny = abs(wn.y);
       float slope = sqrt(max(1.0 - ny * ny, 0.0)) / max(ny, 0.05);
       vec3 cliff = mix(vec3(0.30, 0.18, 0.09), uSoil[0], smoothstep(1.0, 1.8, slope));
@@ -208,7 +252,10 @@ const FRAGMENT_COLOUR = /* glsl */ `
       if (uSnowAny > 0.5) {
         // Snow is smooth across cells: bilinear over the four cells around (the
         // fourth is the one this triangle does not touch), eased so no grid shows.
-        float s3 = lookAt(lower ? qi + ivec2(1, 1) : qi).a;
+        #ifndef TERRAIN_SMOOTH
+          l3 = lookAt(lower ? qi + ivec2(1, 1) : qi);
+        #endif
+        float s3 = l3.a;
         float s00 = lower ? l0.a : s3;
         float s11 = lower ? s3 : l0.a;
         vec2 fe = f * f * (3.0 - 2.0 * f);
@@ -254,10 +301,17 @@ const FRAGMENT_COLOUR = /* glsl */ `
       // Stone lining (cobbles), and planned lining.
       vec4 ln = liningColour(c, cell);
       c = mix(c, ln.rgb, ln.a);
-      // Per-triangle variation.
-      float n = tHash(q * 2.0 + (lower ? 0.0 : 1.0) + 0.5);
-      c *= mix(0.9 + 0.16 * n, 0.98 + 0.03 * n, cover);
-      c.g *= 0.98 + 0.04 * tHash(q + 17.0);
+      #ifdef TERRAIN_SMOOTH
+        // Gentle, smooth variation (value noise over the cells).
+        float n = fieldNoise(vTerrWorld.xz * 0.8 + 3.1) * 0.7 + fieldNoise(vTerrWorld.xz * 0.27 + 11.7) * 0.3;
+        c *= mix(0.9 + 0.16 * n, 0.98 + 0.03 * n, cover);
+        c.g *= 0.98 + 0.04 * fieldNoise(vTerrWorld.xz * 0.5 + 17.0);
+      #else
+        // Per-triangle variation.
+        float n = tHash(q * 2.0 + (lower ? 0.0 : 1.0) + 0.5);
+        c *= mix(0.9 + 0.16 * n, 0.98 + 0.03 * n, cover);
+        c.g *= 0.98 + 0.04 * tHash(q + 17.0);
+      #endif
       groundCol = c;
 
       // Contour lines (every 0.5 m, every 2.5 m stronger) while an earth brush
@@ -347,7 +401,12 @@ export function createTerrainUniforms(
   };
 }
 
-export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMaterial {
+/**
+ * The terrain material. `smooth` (URL flag ?smooth=1, an experiment): smooth
+ * normals with a hint of facets and bilinear ground colours across cells,
+ * instead of the flat-shaded, per-triangle look.
+ */
+export function createTerrainMaterial(u: TerrainUniforms, smooth = false): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, side: THREE.DoubleSide });
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, u);
@@ -357,6 +416,10 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${COMMON_GLSL}\n${VARYINGS}\n${FRAGMENT_PARS}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAGMENT_COLOUR}`)
+      .replace(
+        '#include <normal_fragment_begin>',
+        '#include <normal_fragment_begin>\n#ifdef TERRAIN_SMOOTH\n  if (gTerrN.y > 0.0) { normal = normalize(mat3(viewMatrix) * gTerrN); nonPerturbedNormal = normal; }\n#endif',
+      )
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += planGlow;')
       .replace(
         '#include <colorspace_fragment>',
@@ -364,8 +427,9 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
       );
   };
   const withDefines = mat as unknown as { defines: Record<string, string> };
-  withDefines.defines = {};
-  mat.customProgramCacheKey = () => `hydro-terrain-v9${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}`;
+  withDefines.defines = smooth ? { TERRAIN_SMOOTH: '' } : {};
+  mat.customProgramCacheKey = () =>
+    `hydro-terrain-v9${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}${smooth ? '-smooth' : ''}`;
   return mat;
 }
 
@@ -398,9 +462,15 @@ export class TerrainLayer {
   readonly depthMaterial: THREE.MeshDepthMaterial;
   readonly meshes: THREE.Mesh[] = [];
 
-  constructor(geometry: THREE.BufferGeometry, readonly uniforms: TerrainUniforms, width: number, height: number) {
+  constructor(
+    geometry: THREE.BufferGeometry,
+    readonly uniforms: TerrainUniforms,
+    width: number,
+    height: number,
+    smooth = false,
+  ) {
     this.group.name = 'terrain';
-    this.material = createTerrainMaterial(uniforms);
+    this.material = createTerrainMaterial(uniforms, smooth);
     this.depthMaterial = createTerrainDepthMaterial(uniforms);
     for (const [ox, oy] of chunkOrigins(width, height)) {
       const m = new THREE.Mesh(geometry, this.material);
