@@ -35,8 +35,8 @@ export const ECONOMY = {
    * part is 0 at `plentyLo` and full at `plentyHi` ("plenty for everyone
    * and then some").
    */
-  plentyLo: 0.75,
-  plentyHi: 1.5,
+  plentyLo: 0.6,
+  plentyHi: 1.4,
   /** Below this plenty families leave (`leaveRate` per household and day per unit of the shortfall). */
   enough: 1,
   leaveRate: 0.3,
@@ -50,23 +50,24 @@ export const ECONOMY = {
   comfortBase: 0.85,
   comfort: [0.4, 0.35, 0.25] as readonly number[],
   /**
-   * Arrivals: families a day = arrivalRate × (1 + population / arrivalScale)
+   * Arrivals: families a day = arrivalRate × (arrivalBase + population / arrivalScale)
    * × (reputation − arriveAbove) / (1 − arriveAbove): word spreads further
    * from a bigger village. A family comes when the summed rate passes a
    * threshold drawn from `pullNeed`; with no free house it camps at the
    * edge until one is built.
    */
   arrivalRate: 0.3,
+  arrivalBase: 0.4,
   arrivalScale: 20,
   pullNeed: [0.6, 1.4] as readonly number[],
-  arriveAbove: 0.55,
+  arriveAbove: 0.6,
   /**
    * A village smaller than this takes migrants at a lower reputation
    * (`arriveSmall`): a trickle that refills a village after a setback
    * (PEOPLE.md §4, recovery floor).
    */
   smallVillage: 12,
-  arriveSmall: 0.4,
+  arriveSmall: 0.45,
   /** Each ruin by the village (not rebuilt, not yet gone) costs this much reputation, at most `ruinMax`. */
   ruinPenalty: 0.04,
   ruinMax: 0.2,
@@ -416,7 +417,7 @@ export class Settlement {
     // around 1 (round 4: far less luck than a daily coin toss); with no free house the next family
     // waits (camps at the edge, village.ts) until one is built.
     const draw = Math.max(0, (this.reputation - this.arriveAbove) / (1 - this.arriveAbove));
-    const pArrive = short === 0 ? E.arrivalRate * (1 + s.population / E.arrivalScale) * draw : 0;
+    const pArrive = short === 0 ? E.arrivalRate * (E.arrivalBase + s.population / E.arrivalScale) * draw : 0;
     s.pullNeed ??= E.pullNeed[0]! + (E.pullNeed[1]! - E.pullNeed[0]!) * rng.next();
     s.pull = Math.min(s.pullNeed, (s.pull ?? 0) + pArrive);
     if (pArrive === 0) s.pull *= 0.9; // they hear of hard times
