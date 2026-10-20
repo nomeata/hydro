@@ -81,7 +81,7 @@ async function main(): Promise<void> {
   if (params.has('new')) history.replaceState(null, '', location.pathname);
   const mirror = new WorldMirror(data);
 
-  const renderer = new GameRenderer(canvas, data, { followSimTime: true });
+  const renderer = new GameRenderer(canvas, data, { followSimTime: true, smoothTerrain: params.get('smooth') === '1' });
   renderer.camera.focus(data.info.startX, data.info.startY);
   const cameraInput = attachCameraInput(canvas, renderer.camera);
 
