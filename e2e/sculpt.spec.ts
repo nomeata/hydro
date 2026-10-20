@@ -73,7 +73,8 @@ test('the Dig brush digs at once while held, stays selected, and the sim agrees 
   await expect(page.locator('[data-tool=dig]')).toHaveAttribute('aria-pressed', 'true');
   // The prediction ran the same stamp as the sim.
   expect(Math.abs(z1 - predicted)).toBeLessThan(0.1);
-  // Raise elsewhere: a mound.
+  // Raise beside it: the ground comes up.
+  const zr = await height(page, s.x + 3, s.y + 3);
   await page.click('[data-tool=raise]');
   const [rx, ry] = await toScreen(page, s.x + 3, s.y + 3);
   await page.mouse.move(rx, ry);
@@ -81,7 +82,7 @@ test('the Dig brush digs at once while held, stays selected, and the sim agrees 
   await page.waitForTimeout(800);
   await page.mouse.up();
   await caughtUp(page);
-  expect(await height(page, s.x + 3, s.y + 3)).toBeGreaterThan(z0 + 0.15);
+  expect(await height(page, s.x + 3, s.y + 3)).toBeGreaterThan(zr + 0.15);
   await expect(page.locator('[data-testid=undo]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
