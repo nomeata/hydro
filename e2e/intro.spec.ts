@@ -82,10 +82,17 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   ).toBe(true);
   // The live scene, not the drawing (which shows only when the scenes cannot run).
   await expectLive(page, '.intro .intro-art', fallbacks);
-  // The live frames fade in over the drawing (a handful of colours); on CI's
-  // software GL the first rendered frames can take a long while.
+  // The scene keeps drawing (the scene's own frame count, not pixels: on CI's
+  // software GL a frame can take seconds, and a screenshot of a canvas that
+  // is still drawing waits for several of them).
+  const framesShown = () => page.evaluate(() => (window as any).__hydro.intro.scenes?.framesShown as number);
+  const f0 = await framesShown();
+  await expect.poll(framesShown, { timeout: 90_000, intervals: [500, 1000, 2000] }).toBeGreaterThan(f0 + 1);
+  // What it drew is a landscape, not a blank canvas over the drawing (a
+  // handful of colours): one screenshot with the scene held still.
+  await page.evaluate(() => ((window as any).__hydro.IntroScenes.freeze = true));
   try {
-    await expect.poll(() => colourCount(page, '.intro-live'), { timeout: 90_000, intervals: [1000, 2000, 3000] }).toBeGreaterThan(20);
+    expect(await colourCount(page, '.intro-live')).toBeGreaterThan(20);
   } catch (e) {
     // Diagnose CI-only failures: keep a screenshot and the scene's state.
     await page.screenshot({ path: test.info().outputPath('intro-live.png') }).catch(() => {});
@@ -95,10 +102,12 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
         canvases: document.querySelectorAll('canvas').length,
         live: document.querySelectorAll('.intro-live').length,
         workers: (window as any).__hydro.SimClient.live,
+        frames: (window as any).__hydro.intro.scenes?.framesShown,
       }))
       .catch((err) => String(err));
     throw new Error(`${String(e)}\nstate: ${JSON.stringify(state)}\nconsole errors: ${JSON.stringify(errors)}`);
   }
+  await page.evaluate(() => ((window as any).__hydro.IntroScenes.freeze = false));
 
   const t0 = await page.evaluate(() => {
     const m = (window as any).__hydro.intro.scenes.mirror;
