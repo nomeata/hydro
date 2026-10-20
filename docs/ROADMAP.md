@@ -221,8 +221,9 @@ The interaction rework decided with the owner (DESIGN §4).
 - ☑ Brushes read apart (review 2026-10-18): own cursor shapes (Raise arrows
   up, Dig dashed with arrows down, Even a flat ring at its level), contour
   lines under the brush, the stroke's ground tinted warm (raised) or cool
-  (dug) for a while, the villagers' fields under the brush tinted (and a
-  note when a stroke buried some)
+  (dug) for a while
+- ☑ Fields survive gentle brushing and `shapeLine`; lost only where the
+  ground gets too steep to farm (faint red tint near the limit, no note)
 - ☑ Every tool stays selected (after placing, or a tap that placed
   nothing) until Escape or Look; ghosts before placing: pumps, a gate on
   hover, the weir's wall while drawn and while

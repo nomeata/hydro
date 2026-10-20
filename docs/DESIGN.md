@@ -158,9 +158,16 @@ takes back the last strokes (the last 12, not across reloads).
   turbine, pump) or the crew's work on them: the brush fades out
   over two cells around them (`Snapshot.fixed`). Footbridges and power
   poles are not in the way: ground moved under one knocks it down, and
-  the villagers put it up again. Fields, gardens,
-  pastures, paths and yards under the brush go back to plain land, and
-  the villagers' stone lining comes off.
+  the villagers put it up again. Paths and yards under the brush go back
+  to plain land, and the villagers' stone lining comes off.
+- *Fields survive gentle work:* fields, gardens and pastures raised,
+  lowered or evened keep growing. A cell is lost only where the ground
+  becomes too steep to farm (a rise of more than 1.5 m to a neighbour
+  per 5 m cell, `brushwork.ts FIELD_MAX_SLOPE` = 0.3, just above the
+  0.25 below which villagers plant), checked after every brush sample
+  and `shapeLine`, or later when it goes under water (PEOPLE.md). There
+  is no loss note; under the brush, field cells close to that limit get
+  a faint red tint.
 - *No crew for earth:* the brush moves the ground by itself, with a soft
   spade crunch now and then while it is applied. (A few cosmetic workers
   do gather on the banks of a weir being built:

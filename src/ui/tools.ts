@@ -13,6 +13,8 @@
 import type { Command, Pt, StructureInfo } from '../shared/protocol';
 import { planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
 import { BRUSH_DEFAULT_SIZE, BRUSH_SIZES } from '../sim/plans/sculpt';
+import { FIELD_MAX_SLOPE } from '../sim/plans/brushwork';
+import { CELL } from '../sim/constants';
 import type { Sculptor } from '../client/sculptor';
 import type { BrushTool } from '../shared/protocol';
 import type { WorldMirror } from '../client/mirror';
@@ -124,7 +126,7 @@ export interface PumpGhost {
   power: number;
 }
 
-/** Tints: fields a brush would bury, ground a stroke raised and dug, an undo's flash. */
+/** Tints: fields under a brush that are close to too steep to farm, ground a stroke raised and dug, an undo's flash. */
 const TINT = { field: 0xff4a2a, raised: 0xffa040, dug: 0x3f8fff, undo: 0xffffff };
 
 interface ToolDef {
@@ -963,7 +965,11 @@ export class ToolPalette {
     this.tintStroke();
   }
 
-  /** The brush's ring (or none), with the villagers' fields under it tinted: the brush would bury their crop. */
+  /**
+   * The brush's ring (or none), with the villagers' fields under it that are
+   * close to too steep to farm faintly tinted: steeper, and they are lost
+   * (brushwork.ts FIELD_MAX_SLOPE).
+   */
   private cursor(c: { x: number; y: number; r: number; tool: BrushTool; active: boolean } | null): void {
     this.host.setBrushCursor?.(c);
     if (!this.host.setCellTint) return;
@@ -981,7 +987,16 @@ export class ToolPalette {
         const i = y * W + x;
         // (LandUse Field, Garden, Pasture.)
         const lu = m.landuse[i]!;
-        if (lu >= 1 && lu <= 3 && m.isRevealed(x, y)) out.push({ i, c: TINT.field, a: c.active ? 0.55 : 0.4 });
+        if (lu < 1 || lu > 3 || !m.isRevealed(x, y)) continue;
+        const h = m.terrainH;
+        const z = h[i]!;
+        let rise = 0;
+        if (x > 0) rise = Math.max(rise, Math.abs(h[i - 1]! - z));
+        if (x < W - 1) rise = Math.max(rise, Math.abs(h[i + 1]! - z));
+        if (y > 0) rise = Math.max(rise, Math.abs(h[i - W]! - z));
+        if (y < m.height - 1) rise = Math.max(rise, Math.abs(h[i + W]! - z));
+        const near = rise / CELL / FIELD_MAX_SLOPE;
+        if (near > 0.7) out.push({ i, c: TINT.field, a: Math.min(0.35, (near - 0.7) * 1.2) * (c.active ? 1 : 0.7) });
       }
     this.host.setCellTint('fields', out);
   }
@@ -1010,8 +1025,7 @@ export class ToolPalette {
     if (!b) return;
     if (b.touch || cancelled) this.cursor(null);
     this.tintStroke(2500);
-    if (sc?.touchedField && !cancelled) this.flashHint('The brush went over the villagers’ fields: the crop there is lost. Undo brings the ground back.');
-    else if (sc?.touchedFixed && !cancelled) this.flashHint('The brushes go round houses, bridges and structures: those stay as they are.');
+    if (sc?.touchedFixed && !cancelled) this.flashHint('The brushes go round houses, bridges and structures: those stay as they are.');
     this.refreshUndo();
   }
 
