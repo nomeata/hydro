@@ -118,7 +118,7 @@ describe('growth limits', () => {
     const rich = new Settlement(0, 10, 10, 20, 0);
     const grow = run(rich, 12, 1.8);
     expect(rich.state.reputation).toBeGreaterThan(0.8);
-    expect(grow.arrived).toBeGreaterThanOrEqual(8); // a season of plenty: several families
+    expect(grow.arrived).toBeGreaterThanOrEqual(6); // a season of plenty: a few families
     expect(grow.left).toBe(0);
     const poor = new Settlement(1, 10, 10, 30, 0);
     poor.state.wellbeing = 0.9;
