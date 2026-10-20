@@ -286,7 +286,7 @@ winter, dairy, a quick garden crop) flatten the yearly sawtooth.
 - **Spoilage:** 0.4 %/day.
 - **Arrivals follow reputation** (word of a good village spreads, the
   further the bigger it is): families a day =
-  `0.3 · (0.4 + P/20) · (rep − 0.6)/(1 − 0.6)` while the village is fed
+  `0.25 · (1 + P/20) · (rep − 0.6)/(1 − 0.6)` while the village is fed
   (plenty ≥ 1; a village under 12 from reputation 0.45). They come as the
   daily rate adds up (`pull`, a threshold drawn around 1); with no free
   house the family **camps** at the edge until one is built (houses go up
@@ -310,7 +310,8 @@ winter, dairy, a quick garden crop) flatten the yearly sawtooth.
   doing well, or found a new one at the best site (at most one new village
   a year), instead of leaving the valley; a crowded (30+), prosperous
   (reputation ≥ 0.65) village now and then sends a young family out to seek
-  its luck. They take a share of the store (40 days a head at most) and
+  its luck. They take food from the store to last them to the next harvest and a
+  season (at most twice their share, half the store) and
   walk there with an ox and a loaded handcart (`carts`, EntityKind.Cart),
   which stands unloaded by the new store for a season.
 - **Ruins** of flooded houses that are not rebuilt grow over, become a

@@ -344,8 +344,6 @@ export const FOUNDING = {
   crowdedPopulation: 30,
   adventure: 0.65,
   adventureChance: 0.2,
-  /** Days of food per head the founders take from their old village's store. */
-  carryDays: 40,
   /** A small village (under ECONOMY.smallVillage) this close takes in leaving families instead. */
   joinDistance: 70,
   /**
@@ -1645,8 +1643,10 @@ export class PeopleSystem {
         target = s;
       }
     }
+    // They take food to last them to the next harvest (and a season), as far as the store can spare it.
     const pop = from.state.population + (left ? n : 0);
-    const food = Math.min(from.state.food * (n / Math.max(1, pop)), n * FOUNDING.carryDays);
+    const want = n * (from.daysToHarvest(doy) + DAYS_PER_SEASON);
+    const food = Math.min(want, from.state.food * Math.min(0.5, (2 * n) / Math.max(1, pop)));
     if (!target) {
       if (day - this.lastFounding < FOUNDING.interval) return false;
       const site = this.foundingSite();

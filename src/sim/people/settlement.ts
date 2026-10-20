@@ -57,8 +57,8 @@ export const ECONOMY = {
    * threshold drawn from `pullNeed`; with no free house it camps at the
    * edge until one is built.
    */
-  arrivalRate: 0.3,
-  arrivalBase: 0.4,
+  arrivalRate: 0.25,
+  arrivalBase: 1,
   arrivalScale: 20,
   pullNeed: [0.6, 1.4] as readonly number[],
   arriveAbove: 0.6,
