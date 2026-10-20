@@ -813,7 +813,7 @@ export class Simulation {
     else this.resetHistory();
     if (st.achievements) this.achievements.setState(st.achievements, this.world);
     else this.achievements.catchUp(this, Math.max(0, this.time.day - 1));
-    this.ideas.setState(st.ideas);
+    this.ideas.setState(st.ideas, (id) => this.achievements.hasEarned(id));
     this.lookDirty = true;
     this.planDirty = true;
   }

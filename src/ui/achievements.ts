@@ -74,7 +74,16 @@ export class AchievementsUi {
   /** The ideas to show: the sim's first MAX_IDEAS for unlocked tools. */
   visibleIdeas(): IdeaInfo[] {
     const ok = this.opts?.unlocked ?? (() => true);
-    return this.ideas.filter((i) => ok(i.tool)).slice(0, MAX_IDEAS);
+    // No "Towards …" for an achievement already earned (the sim drops it too, a day later at most).
+    const got = new Set(this.earned.map((e) => e.id));
+    return this.ideas
+      .filter((i) => ok(i.tool))
+      .slice(0, MAX_IDEAS)
+      .map((i) => {
+        if (!i.achievement || !got.has(i.achievement)) return i;
+        const { achievement: _, ...rest } = i;
+        return rest;
+      });
   }
 
   /** New ideas from the sim (or call without to re-check after an unlock). */

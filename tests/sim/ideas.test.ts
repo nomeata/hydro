@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DAYS_PER_SEASON } from '../../src/sim/constants';
-import { IDEAS, villageLabel } from '../../src/sim/ideas';
+import { IDEAS, IDEA_ACHIEVEMENTS, villageLabel } from '../../src/sim/ideas';
 import { Simulation } from '../../src/sim/sim';
 import { CellFlag, LandUse, SoilType, World } from '../../src/sim/world';
 
@@ -183,6 +183,40 @@ describe('ideas for this valley', () => {
     again.setState(sim.getState());
     expect(again.ideas.list()).toEqual(sim.ideas.list());
     expect(again.ideas.dirty).toBe(true);
+  });
+
+  it('points towards an achievement only until it is earned (every link, and after a load)', () => {
+    expect(Object.values(IDEA_ACHIEVEMENTS)).toContain('weathered');
+    const flooded = () => {
+      const sim = village();
+      for (let x = 22; x <= 33; x++) sim.world.floodMemory[sim.world.idx(x, 40)] = 250;
+      look(sim, AUTUMN);
+      expect(sim.ideas.list()[0]).toMatchObject({ id: 'flood:0', achievement: 'weathered' });
+      return sim;
+    };
+    // Earned while the idea is shown: gone by the next day (no look that day), and the list is sent again.
+    const sim = flooded();
+    const saved = sim.getState();
+    sim.ideas.take();
+    sim.achievements.earn('weathered', AUTUMN + 2);
+    sim.ideas.daily(sim, AUTUMN + 3);
+    expect(sim.ideas.dirty).toBe(true);
+    const [idea] = sim.ideas.list();
+    expect(idea).toMatchObject({ id: 'flood:0', kind: 'flood' });
+    expect(idea!.achievement).toBeUndefined();
+    // Later looks do not bring it back.
+    look(sim, AUTUMN + 4);
+    expect(sim.ideas.list()[0]!.achievement).toBeUndefined();
+    // Every idea↔achievement link: none points towards one already earned.
+    for (const id of Object.values(IDEA_ACHIEVEMENTS)) sim.achievements.earn(id!, AUTUMN + 6);
+    look(sim, AUTUMN + 8);
+    for (const i of sim.ideas.list()) expect(i.achievement).toBeUndefined();
+    // An older save whose idea still carries the link, with the achievement earned.
+    const again = village();
+    expect(saved.ideas!.entries[0]!.info.achievement).toBe('weathered');
+    saved.achievements!.earned.push({ id: 'weathered', day: AUTUMN + 2 });
+    again.setState(saved);
+    expect(again.ideas.list()[0]!.achievement).toBeUndefined();
   });
 
   it('calls villages without names', () => {

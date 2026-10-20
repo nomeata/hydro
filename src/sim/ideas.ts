@@ -89,7 +89,8 @@ const KEEP: Readonly<Record<IdeaKind, number>> = { flood: 2, dry: 2, marsh: 3, m
 /** An idea's spot moves only when the problem moved at least this far (cells): fewer updates. */
 const MOVE = 3;
 
-const ACHIEVEMENT: Partial<Record<IdeaKind, string>> = { flood: 'weathered', mill: 'millersHead', turbine: 'brightWindows', poles: 'villageLights' };
+/** The achievement an idea leads towards (shown as "Towards …" only until it is earned). */
+export const IDEA_ACHIEVEMENTS: Partial<Record<IdeaKind, string>> = { flood: 'weathered', mill: 'millersHead', turbine: 'brightWindows', poles: 'villageLights' };
 
 interface Entry {
   info: IdeaInfo;
@@ -151,6 +152,20 @@ export class Ideas {
   /** At the end of `day`: look again every IDEAS_EVERY days. */
   daily(h: IdeasHost, day: number): void {
     if (day % IDEAS_EVERY === 0) this.look(h, day);
+    else this.forgetEarned((id) => h.achievements.hasEarned(id));
+  }
+
+  /**
+   * An idea points towards an achievement only while it is still to be
+   * earned: drop the link from every idea whose achievement is earned (each
+   * day, and after a load, for older saves whose ideas still carry it).
+   */
+  forgetEarned(earned: (id: string) => boolean): void {
+    for (const e of this.entries.values()) {
+      if (!e.info.achievement || !earned(e.info.achievement)) continue;
+      delete e.info.achievement;
+      if (e.shown) this.dirty = true;
+    }
   }
 
   /** Look at the world now and update the ideas (exported for tests: call twice to show). */
@@ -174,8 +189,8 @@ export class Ideas {
         f.r = e.info.r;
       }
       const info: IdeaInfo = { id, kind: f.kind, tool: TOOL[f.kind], text: ideaText(h, f), x: f.x, y: f.y, r: f.r };
-      const ach = ACHIEVEMENT[f.kind];
-      if (ach) info.achievement = ach;
+      const ach = IDEA_ACHIEVEMENTS[f.kind];
+      if (ach && !h.achievements.hasEarned(ach)) info.achievement = ach;
       if (!e) {
         e = { info, village: f.village, hits: 0, misses: 0, shown: false, p: 0 };
         this.entries.set(id, e);
@@ -211,15 +226,18 @@ export class Ideas {
       const byWorks = k === 'turbine' || k === 'poles' || h.achievements.near(h.world.idx(e.info.x, e.info.y));
       if (byWorks) h.achievements.earn('goodIdea', day);
     }
+    this.forgetEarned((a) => h.achievements.hasEarned(a));
   }
 
   getState(): IdeasState {
     return { entries: [...this.entries.values()].map((e) => ({ ...e, info: { ...e.info } })) };
   }
 
-  setState(st: IdeasState | undefined): void {
+  /** Load (with the world's achievements, already loaded: links to earned ones are dropped). */
+  setState(st: IdeasState | undefined, earned?: (id: string) => boolean): void {
     this.entries.clear();
     for (const e of st?.entries ?? []) this.entries.set(e.info.id, { ...e, info: { ...e.info } });
+    if (earned) this.forgetEarned(earned);
     this.dirty = true;
   }
 }
