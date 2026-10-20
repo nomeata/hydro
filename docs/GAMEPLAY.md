@@ -877,3 +877,12 @@ near the start) as a 25 % variant: two regimes, one of them flashier.
       3, 6, 8), little on brook and fertile seeds (bot means +15–23 %).
       Growth stays rate-limited (a few weeks after each harvest), so food
       beyond enough does not speed it; floods rarely reach terrace fields.
+16. ☑ **Playtest round 6** (docs/PLAYTEST.md, "Round 6"; §4.6). *As built
+    (October 2026):* prosperity is plenty now (store and standing crop per
+    head against the need; 50 % = just enough, 100 % = 1.4×), reputation
+    (prosperity over weeks, less ruins) draws families and children, a
+    shortfall sends families away within days; leaving families found or
+    join villages, travelling with an ox cart; ruins vanish after two
+    years. Measured: hands-off year 3 in 15–40 on 8 of 16 seeds, weir at
+    day 8–28 on 12; the wheel bot +35 % (4 of 8 seeds ≥ +30 %), good and
+    weir + canal +14 %.
