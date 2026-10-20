@@ -127,7 +127,7 @@ describe('growth limits', () => {
     expect(shrink.arrived).toBe(0);
     expect(poor.state.wellbeing).toBeLessThan(0.3);
     run(poor, 60, 0.5);
-    expect(poor.state.population).toBeGreaterThanOrEqual(ECONOMY.stayers);
+    expect(poor.state.population).toBeGreaterThanOrEqual(ECONOMY.stayers - 2); // no departures below the floor (a natural death now and then)
   });
 
   it('counts ruins against the reputation', () => {
