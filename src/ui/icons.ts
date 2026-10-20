@@ -29,10 +29,6 @@ export const ICONS = {
   even: svg(
     '<path d="M3 22c3-5 6-6 8-3" fill="none" stroke="#b98a52" stroke-width="2" stroke-dasharray="2 2.5" stroke-linecap="round"/><path d="M3 22h26v5H3z" fill="#c49a62" stroke="#6b4a2b" stroke-width="2" stroke-linejoin="round"/><path d="M12 16h16l-1 4H13z" fill="#9aa3ad" stroke="#4b5560" stroke-width="1.6" stroke-linejoin="round"/><path d="M20 16V9c0-2 2-3 4-3" fill="none" stroke="#8d6438" stroke-width="2.6" stroke-linecap="round"/><path d="M5 10c2-2 4-2 6 0" stroke="#7fbf5a" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
   ),
-  /** Undo: a curved arrow back. */
-  undo: svg(
-    '<path d="M9 13h12a6 6 0 0 1 0 12h-7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M13 7l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>',
-  ),
   line: svg(
     '<path d="M3 12l4 13h18l4-13" fill="none" stroke="#6b4a2b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><g fill="#b9b4aa" stroke="#5f5a52" stroke-width="1.5"><rect x="5" y="17" width="7" height="5" rx="2"/><rect x="13" y="20" width="7" height="5" rx="2"/><rect x="20" y="17" width="7" height="5" rx="2"/><rect x="9" y="11" width="6" height="5" rx="2"/><rect x="17" y="11" width="6" height="5" rx="2"/></g><path d="M12 6c2-2 6-2 8 0" stroke="#59b3e6" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
   ),

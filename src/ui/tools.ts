@@ -92,7 +92,7 @@ export interface ToolHost {
   setWeirGhost?(list: readonly StructureInfo[]): void;
   /** The gate tool's ghost gate, or none. */
   setGateGhost?(g: { x: number; y: number; rot: number; width: number; top: number; sill: number } | null): void;
-  /** Tinted cells (fields under a brush, a stroke's raised and dug ground, an undo's flash), per channel; null clears. */
+  /** Tinted cells (fields under a brush, a stroke's raised and dug ground) per channel; null clears. */
   setCellTint?(key: string, cells: readonly { i: number; c: number; a: number }[] | null, fadeMs?: number): void;
   /** Whether single-pointer drags pan the camera. */
   setCameraPrimaryPointer(enabled: boolean): void;
@@ -128,8 +128,8 @@ export interface PumpGhost {
   power: number;
 }
 
-/** Tints: fields under a brush that are close to too steep to farm, ground a stroke raised and dug, an undo's flash. */
-const TINT = { field: 0xff4a2a, raised: 0xffa040, dug: 0x3f8fff, undo: 0xffffff };
+/** Tints: fields under a brush that are close to too steep to farm, ground a stroke raised and dug. */
+const TINT = { field: 0xff4a2a, raised: 0xffa040, dug: 0x3f8fff };
 
 interface ToolDef {
   id: ToolId;
@@ -221,10 +221,9 @@ export class ToolPalette {
   private readonly amountOut: HTMLOutputElement;
   private readonly amountLabel: HTMLElement;
   private readonly amountInput: HTMLInputElement;
-  /** The brushes' options line: sizes and Undo. */
+  /** The brushes' options line: their sizes. */
   private readonly brushRow: HTMLElement;
   private readonly sizeButtons: HTMLButtonElement[] = [];
-  private readonly undoButton: HTMLButtonElement;
   /** Index into BRUSH_SIZES. */
   brushSize = BRUSH_DEFAULT_SIZE;
   /** The stroke being brushed: pointer, where it is on screen, the last ground point and time. */
@@ -300,13 +299,6 @@ export class ToolPalette {
       this.sizeButtons.push(b);
       this.brushRow.append(b);
     });
-    this.undoButton = document.createElement('button');
-    this.undoButton.className = 'undo';
-    this.undoButton.dataset.testid = 'undo';
-    this.undoButton.innerHTML = `${ICONS.undo}<span>Undo</span>`;
-    this.undoButton.title = 'Undo the last stroke (Ctrl+Z)';
-    this.undoButton.addEventListener('click', () => this.undo());
-    this.brushRow.append(this.undoButton);
     this.options.prepend(this.brushRow);
     this.sizeOut = this.options.querySelector('output[data-k=size]')!;
     this.amountOut = this.options.querySelector('output[data-k=amount]')!;
@@ -365,26 +357,6 @@ export class ToolPalette {
   /** The brush radius (cells). */
   get brushRadius(): number {
     return BRUSH_SIZES[this.brushSize]!;
-  }
-
-  /** Undo the last sculpt stroke. */
-  undo(): void {
-    const sc = this.host.sculptor;
-    if (!sc) return;
-    if (this.brush) this.endBrush();
-    const had = sc.undoable > 0;
-    const cells = sc.undo();
-    this.refreshUndo();
-    if (!had) return;
-    // The undone stroke flashes as its ground goes back.
-    this.host.setCellTint?.('stroke', null);
-    if (cells?.size) this.host.setCellTint?.('undo', [...cells.keys()].map((i) => ({ i, c: TINT.undo, a: 0.6 })), 1400);
-    this.flashHint('Undone: the ground is back as it was.');
-  }
-
-  /** Enable Undo when there is a stroke to undo (after each snapshot). */
-  refreshUndo(): void {
-    this.undoButton.disabled = (this.host.sculptor?.undoable ?? 0) <= 0;
   }
 
   /** Put a panel (the selection's) into the tools' column, above the palette. */
@@ -452,18 +424,13 @@ export class ToolPalette {
     b.addEventListener('animationend', done);
   }
 
-  /** Keyboard: digits 1…9, 0 pick the tools in palette order; Escape returns to Look; Ctrl/Cmd+Z undoes the last stroke. */
+  /** Keyboard: digits 1…9, 0 pick the tools in palette order; Escape returns to Look. */
   private onKey(e: KeyboardEvent): void {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     // Not while a dialog (welcome panels, history, menu) covers the game.
     if (document.querySelector('dialog[open]')) return;
     for (const d of document.querySelectorAll('[role=dialog]')) if (!d.closest('[hidden]')) return;
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
-      e.preventDefault();
-      this.undo();
-      return;
-    }
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === 'Escape') {
       this.select('look');
@@ -551,7 +518,6 @@ export class ToolPalette {
     this.host.setContours?.(brush);
     this.host.setGateGhost?.(null);
     this.host.setPowerGhost?.(null);
-    this.refreshUndo();
     this.sizeInput.closest('label')!.hidden = !st || !!st.noWidth;
     this.amountInput.closest('label')!.hidden = st?.amount === undefined;
     if (id === 'power') {
@@ -1029,7 +995,6 @@ export class ToolPalette {
     if (b.touch || cancelled) this.cursor(null);
     this.tintStroke(2500);
     if (sc?.touchedFixed && !cancelled) this.flashHint('The brushes go round houses, bridges and structures: those stay as they are.');
-    this.refreshUndo();
   }
 
   private hoverRaf = 0;

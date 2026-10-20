@@ -211,8 +211,8 @@ state). It raises infiltration and lowers erosion pickup. See PEOPLE.md
 - **Brushes** (Raise, Dig, Even; DESIGN §4): the `sculpt` command carries
   brush samples (x, y, hold time) of one stroke; the sim applies them at
   once, even while paused (`plans/brushwork.ts` on the pure kernel
-  `plans/sculpt.ts`), keeps the last strokes' original ground for
-  `undoSculpt`, marks the earth loose (and Fill / Canal), clears fields and
+  `plans/sculpt.ts`), keeps the current stroke's original ground (the
+  stamp's reference, and its slopes' limit), marks the earth loose (and Fill / Canal), clears fields and
   leaves fixed cells alone (`Simulation.isFixed`, sent as
   `Snapshot.fixed`). The client applies the same kernel to its
   `WorldMirror` and the renderer's terrain rows at once

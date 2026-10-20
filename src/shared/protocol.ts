@@ -338,8 +338,6 @@ export interface Snapshot {
   plan?: Float32Array;
   /** The last sculpt command (its `seq`) applied before this snapshot. */
   sculptSeq?: number;
-  /** Sculpt strokes that can be undone. */
-  undoable?: number;
   /**
    * Cells the brushes leave alone (1): houses, mills, wells, stores, ruins,
    * footbridges, structures and their works in progress. When changed.
@@ -385,20 +383,18 @@ export type BrushTool = 'raise' | 'dig' | 'even';
 export type Command =
   /**
    * Sculpting brushes (sim/plans/sculpt.ts): samples of stroke `stroke`
-   * (a new id starts a new stroke for undo), flat [x, y, dt, …] — the brush
+   * (a new id starts a new stroke), flat [x, y, dt, …] — the brush
    * of `radius` cells held at (x, y) for dt real seconds. Applied at once,
    * also while paused. `seq` (increasing) is echoed in Snapshot.sculptSeq so
    * the client's prediction knows when the sim has caught up.
    */
   | { type: 'sculpt'; tool: BrushTool; radius: number; stroke: number; seq?: number; samples: number[] }
-  /** Undo the last sculpt stroke (or shaped line). */
-  | { type: 'undoSculpt' }
   /**
    * A whole line shaped at once (scripted strokes: tests, scenes): dig grades
    * a floor evenly from `amount` below the ground at the start to `amount`
    * below it at the end; raise heaps a level bank `amount` above the lowest
    * ground on the line; even flattens to the height at the start. `width`
-   * in cells; banks slope over 1.5 cells. Applied at once, one undo stroke.
+   * in cells; banks slope over 1.5 cells. Applied at once.
    * `floor` (dig only): the floor's absolute height (m) at the start and the
    * end instead, for a canal graded to a water level (playtest bots).
    */

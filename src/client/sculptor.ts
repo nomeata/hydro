@@ -8,7 +8,7 @@
  * snapshot brings (`reconcile`). The sim's terrain is always the final word.
  */
 import type { BrushTool, Command, Snapshot } from '../shared/protocol';
-import { brushSample, type SculptGrid } from '../sim/plans/sculpt';
+import { brushSample, newStamp, type SculptGrid } from '../sim/plans/sculpt';
 import type { WorldMirror } from './mirror';
 
 interface Batch {
@@ -28,13 +28,12 @@ export class Sculptor {
   private y0 = Infinity;
   private y1 = -Infinity;
   private readonly grid: SculptGrid;
-  /** Strokes the sim can undo (from snapshots). */
-  undoable = 0;
+  /** The current stroke's stamp (as the sim's: plans/sculpt.ts). */
+  private stamp = newStamp();
   /** The current stroke touched (came near) cells the brush leaves alone. */
   touchedFixed = false;
-  /** Height change per cell of the current stroke (m), and of the last strokes (for undo's flash). */
+  /** Height change per cell of the current stroke (m). */
   strokeDz = new Map<number, number>();
-  private history: Map<number, number>[] = [];
 
   constructor(
     private readonly mirror: WorldMirror,
@@ -47,10 +46,13 @@ export class Sculptor {
       height: mirror.height,
       terrain: (i) => mirror.terrainH[i]!,
       fixed: (i) => mirror.isFixed(i),
+      // The ground before the stroke: the mirror's, less what this stroke did to it.
+      orig: (i) => mirror.terrainH[i]! - (this.strokeDz.get(i) ?? 0),
+      wet: (i) => mirror.wet[i] === 1,
     };
   }
 
-  /** Start a new stroke (one undo step). */
+  /** Start a new stroke (its own stamp). */
   begin(tool: BrushTool, radius: number): void {
     this.flush();
     this.tool = tool;
@@ -58,8 +60,7 @@ export class Sculptor {
     this.strokeId++;
     this.touchedFixed = false;
     this.strokeDz = new Map();
-    this.history.push(this.strokeDz);
-    if (this.history.length > 40) this.history.shift();
+    this.stamp = newStamp();
   }
 
   /** The brush held at (x, y) (cells) for dt seconds: change the mirror now, send with the next flush. */
@@ -68,12 +69,24 @@ export class Sculptor {
     const W = m.width;
     const r = this.radius;
     const t = m.terrainH;
-    brushSample(this.grid, this.tool, x, y, r, dt, (i, dz) => {
+    const changed: number[] = [];
+    const dzs: number[] = [];
+    brushSample(this.grid, this.tool, x, y, r, dt, this.stamp, (i, dz) => {
+      changed.push(i);
+      dzs.push(dz);
+    });
+    // (Applied after the kernel: it reads the stroke's ground before this sample.)
+    for (let k = 0; k < changed.length; k++) {
+      const i = changed[k]!;
+      const dz = dzs[k]!;
       t[i] = t[i]! + dz;
       this.strokeDz.set(i, (this.strokeDz.get(i) ?? 0) + dz);
       this.batch.cells.push(i);
       this.batch.dz.push(dz);
-    });
+      const cy = (i / W) | 0;
+      if (cy < this.y0) this.y0 = cy;
+      if (cy > this.y1) this.y1 = cy;
+    }
     if (!this.touchedFixed) {
       for (let cy = Math.max(0, Math.floor(y - r)); cy <= Math.min(m.height - 1, Math.ceil(y + r)) && !this.touchedFixed; cy++)
         for (let cx = Math.max(0, Math.floor(x - r)); cx <= Math.min(W - 1, Math.ceil(x + r)); cx++)
@@ -110,24 +123,11 @@ export class Sculptor {
     this.y1 = -Infinity;
   }
 
-  /** Undo the last stroke (the sim's terrain comes back with the next snapshot); returns the cells it had changed (m), if known. */
-  undo(): Map<number, number> | null {
-    this.flush();
-    this.send({ type: 'undoSculpt' });
-    this.undoable = Math.max(0, this.undoable - 1);
-    // (Strokes that changed nothing are not on the sim's undo list.)
-    let h = this.history.pop();
-    while (h && h.size === 0) h = this.history.pop();
-    if (h === this.strokeDz) this.strokeDz = new Map();
-    return h ?? null;
-  }
-
   /**
    * Call with each snapshot before the mirror and renderer see it: drop what
    * the sim has applied, and lay what it has not over the snapshot's rows.
    */
   reconcile(s: Snapshot): void {
-    if (s.undoable !== undefined) this.undoable = s.undoable;
     const ack = s.sculptSeq ?? 0;
     if (this.pending.length) this.pending = this.pending.filter((b) => b.seq > ack);
     const tr = s.terrain;

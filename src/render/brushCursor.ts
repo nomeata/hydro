@@ -1,16 +1,20 @@
 /**
  * The sculpting brush's cursor (ui/tools.ts): a ring draped over the ground
- * (or the water) under the pointer, its radius the brush's, with a softer
- * inner ring where the brush works hardest. Each brush has its own colour
- * and shape, so they never look alike: Raise is gold, with little arrows
- * standing up round the ring; Dig is blue, a dashed ring with arrows
- * pointing down; Even is pale green, with a flat ring at the level it
- * evens towards (the mean of the ground under it). Contour lines (every
- * CONTOUR m) inside and around the ring show the shape of the ground as it
- * changes. Drawn on top of everything.
+ * (or the water) under the pointer, its radius the brush's. Each brush has
+ * its own colour and shape, so they never look alike: Raise is gold, with
+ * little arrows standing up round the ring; Dig is blue, a dashed ring with
+ * arrows pointing down; Even is pale green, with a softer inner ring and a
+ * flat ring at the level it evens towards (the mean of the ground under it).
+ * Raise and Dig also show their stamp (plans/sculpt.ts): two faint dashed
+ * arcs across the ring, the flattened sphere's section as it would stand
+ * pressed in (or pushed up) by its full cap height. Contour lines (every
+ * CONTOUR m) inside and around the ring, out to where the loose earth
+ * slumps, show the shape of the ground as it changes. Drawn on top of
+ * everything.
  */
 import * as THREE from 'three';
 import type { BrushTool } from '../shared/protocol';
+import { capHeight } from '../sim/plans/sculpt';
 import { heightToY, type HeightSampler } from './coords';
 
 const N = 64;
@@ -21,12 +25,15 @@ const CONTOUR = 0.25;
 const ARROWS = 8;
 /** Height of an arrow (three.js units, at the default exaggeration about a metre). */
 const ARROW = 0.55;
+/** Segments per stamp arc (every other one drawn: dashed). */
+const ARC = 24;
 
 export class BrushCursor {
   private readonly outer: THREE.LineSegments;
   private readonly inner: THREE.LineLoop;
   private readonly marks: THREE.LineSegments;
   private readonly level: THREE.LineLoop;
+  private readonly stamp: THREE.LineSegments;
   private readonly contours: THREE.LineSegments;
   private readonly group = new THREE.Group();
   private state: { x: number; y: number; r: number; tool: BrushTool; active: boolean } | null = null;
@@ -54,8 +61,9 @@ export class BrushCursor {
     this.inner = setup(new THREE.LineLoop(geo(N), mat(0.45)));
     this.marks = setup(new THREE.LineSegments(geo(ARROWS * 6), mat(0.95)));
     this.level = setup(new THREE.LineLoop(geo(N), mat(0.8)));
+    this.stamp = setup(new THREE.LineSegments(geo(ARC * 2), mat(0.4)));
     this.contours = setup(new THREE.LineSegments(geo(0, 4), mat(1, true)), 19);
-    this.group.add(this.contours, this.outer, this.inner, this.marks, this.level);
+    this.group.add(this.contours, this.outer, this.inner, this.marks, this.level, this.stamp);
     this.group.visible = false;
     scene.add(this.group);
   }
@@ -72,9 +80,11 @@ export class BrushCursor {
     this.group.visible = !!c;
     if (c) {
       const col = BRUSH_COLORS[c.tool];
-      for (const l of [this.outer, this.inner, this.marks, this.level]) (l.material as THREE.LineBasicMaterial).color.setHex(col);
+      for (const l of [this.outer, this.inner, this.marks, this.level, this.stamp]) (l.material as THREE.LineBasicMaterial).color.setHex(col);
       (this.outer.material as THREE.LineBasicMaterial).opacity = c.active ? 1 : 0.75;
       this.level.visible = c.tool === 'even';
+      this.inner.visible = c.tool === 'even';
+      this.stamp.visible = c.tool !== 'even';
       this.update();
     }
   }
@@ -84,9 +94,11 @@ export class BrushCursor {
     const c = this.state;
     if (!c) return;
     this.ring(c.x, c.y, c.r, c.tool === 'dig');
-    this.drape(this.inner, c.x, c.y, c.r * 0.45);
     this.arrows(c);
-    if (c.tool === 'even') this.flat(c.x, c.y, c.r * 0.8);
+    if (c.tool === 'even') {
+      this.drape(this.inner, c.x, c.y, c.r * 0.45);
+      this.flat(c.x, c.y, c.r * 0.8);
+    } else this.arcs(c);
     this.contour(c);
   }
 
@@ -151,6 +163,28 @@ export class BrushCursor {
     pos.needsUpdate = true;
   }
 
+  /** Raise and Dig: the stamp's section along both axes, pressed by its full cap height from the ground at the centre. */
+  private arcs(c: { x: number; y: number; r: number; tool: BrushTool }): void {
+    const pos = this.stamp.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const a = pos.array as Float32Array;
+    const h = this.heights;
+    const g = h.terrainAt(Math.max(0, Math.min(h.width - 1, c.x)), Math.max(0, Math.min(h.height - 1, c.y)));
+    const cap = capHeight(c.r) * (c.tool === 'dig' ? -1 : 1);
+    let n = 0;
+    for (const [ux, uy] of [
+      [1, 0],
+      [0, 1],
+    ] as const)
+      for (let k = 0; k < ARC; k += 2)
+        for (const j of [k, k + 1]) {
+          const t = (j / ARC) * 2 - 1;
+          a.set([c.x + ux * t * c.r + 0.5, heightToY(g + cap * Math.sqrt(Math.max(0, 1 - t * t))) + 0.04, c.y + uy * t * c.r + 0.5], n * 3);
+          n++;
+        }
+    this.stamp.geometry.setDrawRange(0, n);
+    pos.needsUpdate = true;
+  }
+
   /** Raise: arrows standing up round the ring; Dig: arrows pointing down; Even: little level ticks. */
   private arrows(c: { x: number; y: number; r: number; tool: BrushTool }): void {
     const pos = this.marks.geometry.getAttribute('position') as THREE.BufferAttribute;
@@ -190,10 +224,10 @@ export class BrushCursor {
     pos.needsUpdate = true;
   }
 
-  /** Contour lines (marching squares on the ground) within 1.5 radii, fading out at the edge. */
+  /** Contour lines (marching squares on the ground) within 1.5 radii (and at least 4 cells beyond the ring, where the earth slumps), fading out at the edge. */
   private contour(c: { x: number; y: number; r: number; tool: BrushTool; active: boolean }): void {
     const h = this.heights;
-    const R = c.r * 1.5;
+    const R = Math.max(c.r * 1.5, c.r + 4);
     const step = 0.5;
     const n = Math.ceil((2 * R) / step) + 1;
     const x0 = c.x - R;

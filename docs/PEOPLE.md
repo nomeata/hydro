@@ -399,7 +399,7 @@ year; gardens give green within about one season.
   `broken`); after 4 days, with the water below the deck again, the
   villagers rebuild it, higher (above the flood, at most 1.2 m above the
   banks). The player's brushes do not go round a footbridge: ground
-  moved more than 0.1 m (strokes summed, undo counts back) at either bank
+  moved more than 0.1 m (strokes summed) at either bank
   or under the deck breaks it the same way (`Bridges.disturbed`), to be
   rebuilt on the new ground. Nobody flees the deep water under a deck or
   fills a bucket from it (else walkers turned back a cell or two onto the

@@ -44,10 +44,13 @@ Each scenario sets up a handcrafted or seeded world, issues *player commands*
 through the same command API the UI uses, fast-forwards game days and asserts
 outcomes. For example:
 - dig a trench from a river into a dry basin ⇒ the basin holds water after N days;
-- sculpting (`tests/sim/sculpt.test.ts`): the brush kernel (rate × hold
-  time, falloff, fixed cells masked smoothly, Even levels), immediate
-  changes with no time passing, water conservation under the brush,
-  houses/bridges/structures untouched and fields cleared, undo, determinism
+- sculpting (`tests/sim/sculpt.test.ts`): the stamp (a held Dig converges
+  to a round bowl whatever the ground, deeper than its cap it widens into
+  a funnel at the repose slope, Raise heaps a sand-pile mound, the small
+  brush makes no single-cell spikes, a drag cuts a channel of steady
+  depth, natural banks kept, fixed cells masked smoothly, Even levels),
+  immediate changes with no time passing, water conservation under the
+  brush, houses/bridges/structures untouched and fields cleared, determinism
   and save/resume, old saves' earthwork plans finished on load;
 - build a dike across a valley ⇒ a reservoir forms upstream, outflow drops;
 - an unlined trench in sand slumps over time; a lined one doesn't;
@@ -83,10 +86,10 @@ unlocks), for trying late tools by hand or in a test.
 - **Interaction tests:** drive real input events:
   - mouse: select the Dig brush, hold and drag on the canvas (paused) ⇒
     the mirror's and the sim's terrain drop along the path at once, the
-    tool stays selected; Undo (button and Ctrl+Z) brings the ground back
+    tool stays selected, the sim agrees with the prediction
     (`e2e/sculpt.spec.ts`); a structure tool's stroke places a plan;
     every tool stays selected, and its ghost (pump, weir wall, gate,
-    red wheel, with no live text) shows first; brushes tint fields and strokes, Undo flashes
+    red wheel, with no live text) shows first; brushes tint fields and strokes
     (`e2e/tools.spec.ts`); a weir is edited in place by its handles
     (`e2e/weiredit.spec.ts`);
   - touch (phone profile): one finger brushes, a second finger turns the

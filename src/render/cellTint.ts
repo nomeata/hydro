@@ -2,7 +2,7 @@
  * Tinted cells draped over the ground, for the brushes (ui/tools.ts): the
  * villagers' fields a brush would bury (warm red, before the stroke), the
  * ground a stroke raised or dug (warm for raised, cool for dug, fading a
- * few seconds after), and the flash of a stroke undone. Several named
+ * few seconds after). Several named
  * channels, each a list of cells with a colour and an opacity, optionally
  * fading out over a time; rebuilt into one small mesh when they change and
  * while something fades.

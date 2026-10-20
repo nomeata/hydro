@@ -121,8 +121,8 @@ The ground is sculpted with three **brushes**; structures are placed as
 
 | Tool | Effect | Unlock |
 |---|---|---|
-| Raise | Brush: heaps up earth under the brush while held (bank, dam, pond wall). Loose earth: water pouring over it scours it, and an overtopped bank notches and breaches | start |
-| Dig | Brush: digs the ground under the brush while held (canal, ditch, basin). A rough channel grades itself once water runs in it | start |
+| Raise | Brush: pushes a round mound up under the brush while held, its sides slumping to loose earth's slope (bank, dam, pond wall). Loose earth: water pouring over it scours it, and an overtopped bank notches and breaches | start |
+| Dig | Brush: presses a round bowl into the ground while held, widening into a funnel as it goes deeper (canal, ditch, basin). A rough channel grades itself once water runs in it | start |
 | Even | Brush: pulls the ground under the brush towards its mean height (terraces, flat sites, rounding off); repeated strokes level | start |
 | Weir | Drawn as a line across a river: a stone wall on the ground as it is (no earthworks), its crest at most 4 m above the ground on its lower side, with a stone apron at its foot. Built to be overtopped: holds the pool at the crest and spills the surplus safely; the place for mills and turbines | 15 villagers |
 | Sluice gate | Tap a weir or a bank (or draw across a channel for a stone wall with a gate): a lined passage with a gate leaf; closed it holds the reservoir, open it drains to the sill. Worked by the villagers (GAMEPLAY.md §2): released in summer to water their fields, opened before the water spills over; with no village near it opens by itself as flood relief | 30 villagers |
@@ -131,23 +131,49 @@ The ground is sculpted with three **brushes**; structures are placed as
 | Electric pump, pumped storage | Draw from water to an outlet: lifts water on spare power; a turbine below a pumped basin generates when the houses want more | 250 |
 
 **The brushes** (decision; `sim/plans/sculpt.ts`, `brushwork.ts`,
-`ui/tools.ts`, `client/sculptor.ts`). While the pointer is held, the
-ground under the brush changes continuously and at once: rate × hold time
-(Raise and Dig 1.2 m/s at the centre, `BRUSH.rate`; Even closes
-1 − e^(−3 t) of the gap to the brush's weighted mean), with a soft round
-falloff ((1 − (d/r)²)²). Three sizes (radius 1.5, 2.5, 4 cells: about 15,
-25, 40 m across). Holding still digs a pit; a quick accidental swipe does
-little (a pass at 30 cells/s moves ~0.1 m). The brushes stay selected; on
-touch the brush bites only after 90 ms, so a second finger still pans and
-zooms. They work while paused too: the sim applies every stroke sample at
-once. The client applies the same kernel to its mirror for instant feel,
-and the sim's terrain is the final word (`Snapshot.sculptSeq`). A ring on
-the ground shows the brush, with contour lines every 0.25 m under it;
-while an earth brush is selected, faint contour lines (every 0.5 m, every
-2.5 m stronger) cover the whole map, on the river and lake beds too (veiled
-by the water's depth), fading out when zoomed far (`terrain.ts
-uContours`): the map looks different while a brush is still on. **Undo** (the button by the sizes, Ctrl/Cmd+Z)
-takes back the last strokes (the last 12, not across reloads).
+`ui/tools.ts`, `client/sculptor.ts`). Raise and Dig are a **stamp**: a
+flattened sphere as wide as the brush (its cap `BRUSH.flatten` = 0.2 m per
+m of radius deep, which looks like a sphere flattened to 0.4 with the
+map's 2× vertical exaggeration) that is pressed into the ground (Dig) or
+pushed up from under it (Raise). It first sits where its inner part
+(0.3 of its radius, under the pointer) would touch the ground as it was
+before the stroke (so on a slope it bites where it is held; the ground
+never moves faster than the stamp, so where its flank cuts into a
+hillside nothing pops), and while held it moves on at a
+steady 1.2 m/s (`BRUSH.rate`): the ground becomes min(ground, the stamp's
+lower surface) for Dig, max(ground, its upper surface) for Raise. Each
+cell takes the stamp averaged over its square (4 × 4 points of the exact
+ellipsoid), so even a shallow press of the small brush is a rounded
+dimple over several cells, never one cell sunk. Pressed long enough, the
+result is a round bowl (or dome) whatever the ground was like. How far it
+is pressed is rate × the time the stroke has spent around the spot (each
+earlier sample weighted 1 − d/r by its distance), so a dragged stroke
+cuts a round-bottomed channel of steady depth, rate × radius / (2 speed)
+(a quick swipe at 30 cells/s ~0.06 m; slow and it is a full channel),
+scrubbing back and forth digs deeper, and strokes overlapping along a
+line make one smooth channel. *No cliffs:* after
+every step the slopes around the stamp (up to 8 cells beyond it) relax to
+loose earth's angle of repose (loose loam as the talus sees it: 0.24 dry,
+0.18 under water), the earth sliding down and conserved: a deeper dig
+becomes a funnel that widens, a growing mound broadens like a sand pile.
+Slopes that were steeper before the stroke (a natural bank) keep their
+steepness; only what the stroke steepened relaxes. There is no earth
+economy: Raise creates earth, Dig removes it. Even closes 1 − e^(−3 t) of
+the gap to the brush's weighted mean ((1 − (d/r)²)²), so repeated strokes
+level. Three sizes (radius 2, 3, 4.5 cells: about 20, 30, 45 m across).
+The brushes stay selected; on touch the brush bites only after 90 ms, so
+a second finger still pans and zooms. They work while paused too: the sim
+applies every stroke sample at once. The client applies the same kernel
+to its mirror for instant feel (with the stroke's ground before it and
+the snapshot's wet cells), and the sim's terrain is the final word
+(`Snapshot.sculptSeq`). A ring on the ground shows the stamp's size, with
+two faint dashed arcs across it: the stamp's section as a full press
+would leave it; contour lines every 0.25 m under it and out to where the
+earth slumps; while an earth brush is selected, faint contour lines
+(every 0.5 m, every 2.5 m stronger) cover the whole map, on the river and
+lake beds too (veiled by the water's depth), fading out when zoomed far
+(`terrain.ts uContours`): the map looks different while a brush is still
+on. There is no undo (owner decision): earthworks are for keeps.
 
 - *Water is conserved:* the brush never touches the water depth, so ground
   raised under water lifts its water (which then runs off), digging lowers
@@ -240,8 +266,7 @@ facing open water become quays (lake fronts). Elsewhere the player's works
 live with natural erosion. (The sim keeps a `planLining` command for scenes
 and tests.)
 On a keyboard, the digit keys 1…9, 0 pick the tools in palette order
-(1 Look, 2 Raise, 3 Dig, 4 Even, 5 Weir, …), Escape goes back to Look and
-Ctrl/Cmd+Z undoes the last stroke.
+(1 Look, 2 Raise, 3 Dig, 4 Even, 5 Weir, …), and Escape goes back to Look.
 On phones the hint is one line (tap it for the rest, ⓘ for the tool's
 card) and the options a slim strip (brush sizes as dots), so a held tool
 covers little of the view; the top bar is a fixed grid, so a longer date
@@ -300,8 +325,7 @@ The player asked for "more direct endorphin hits". Decisions:
 ## 6. Presentation
 - Structure tools apply once and then return to the Look tool, so stray
   touches never place unintended plans. The brushes stay selected: their
-  effect grows with hold time, so a stray swipe does little, and Undo
-  takes it back.
+  effect grows with hold time, so a stray swipe does little.
 - Flow direction of water must be readable at a glance (drifting foam,
   flow-aligned ripples). Plans stay visible under water.
 - 3D, WebGL, orthographic camera at an isometric-like angle; freely rotatable
