@@ -9,8 +9,9 @@
  *   a fixed overflow crest made of terrain, so the flow model spills water
  *   over it naturally. The crew builds it. The record is kept for rendering.
  * - A **sluice gate** is the one structure that is not just terrain: the
- *   builders dig a passage through the dike down to the gate's sill and line
- *   it; the gate itself is a thin wall on the passage's middle row of cells
+ *   builders dig a passage through the dike (a raised bank or a weir; a
+ *   gate drawn across a channel brings its own earth dam) down to the
+ *   gate's sill and line it; the gate itself is a thin wall on the passage's middle row of cells
  *   (see `Walls` in hydro/inertial.ts). Closed, water passes only above its
  *   top; open, the passage is free down to the sill. While being built, a
  *   closed gate's wall rises from the ground it was placed on to its top, so
@@ -25,7 +26,7 @@
 import type { Pt, StructureInfo } from '../../shared/protocol';
 import { LINING_DONE, LINING_QUAY } from '../../shared/protocol';
 import type { Walls } from '../hydro/inertial';
-import { WEIR_CREST, WEIR_MAX_WALL, clearGround, keepsPlan, rasterisePath, weirCrest, weirShape } from '../plans/plans';
+import { GATE_DAM_WIDTH, WEIR_CREST, WEIR_MAX_WALL, clearGround, keepsPlan, planBank, rasterisePath, weirCrest, weirShape } from '../plans/plans';
 import { CELL_AREA, DT } from '../constants';
 import { CellFlag, type World } from '../world';
 import { WHEEL_MIN_SPEED, wheelLift, wheelSite } from './wheel';
@@ -603,14 +604,16 @@ export class Structures {
         }
       }
       if (!Number.isFinite(low)) return null;
-      // The sill is the lowest ground on the line, e.g. a canal's floor; a
-      // stone wall (a weir) goes across with its crest `height` above it,
-      // and the gate sits in the wall there.
+      // The sill is the lowest ground on the line, e.g. a canal's floor; an
+      // earth dam goes across with its crest `height` above it (not over a
+      // house), and the gate sits in it there. Water must not pour over the
+      // loose earth: the gate opens by itself before it would.
       sill = low;
-      const wall = this.layWeir(null, a, b, low + height);
-      if (!wall) return null;
-      changed.push(...wall);
-      top = this.weirs[this.weirs.length - 1]!.top;
+      top = low + Math.max(MIN_GATE_HEAD, height);
+      for (const i of planBank(w, [a, b], GATE_DAM_WIDTH, top)) {
+        if (keepsPlan(w.landuse[i]!)) changed.push(i);
+        else w.plan[i] = NaN;
+      }
     }
     if (!(top - sill >= MIN_GATE_HEAD)) return null;
 

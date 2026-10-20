@@ -14,8 +14,8 @@
  * the power lines are the villagers' own (sim/power/lines.ts).
  */
 export const PROGRESSION: readonly { population: number; tool?: string }[] = [
-  { population: 15, tool: 'weir' },
-  { population: 30, tool: 'gate' },
+  { population: 15, tool: 'gate' },
+  { population: 30, tool: 'weir' },
   { population: 50, tool: 'wheel' },
   { population: 100, tool: 'turbine' },
   { population: 250, tool: 'pump' },

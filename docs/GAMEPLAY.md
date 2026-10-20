@@ -324,7 +324,9 @@ by itself. `toggleGate` holds a gate by hand (tests, scenes).*
   and the dike was not overtopped that day.
 - Tool hint: "Tap a dike or weir to put a sluice gate in it. Villagers
   open it to water their fields in summer; it opens by itself before the
-  water spills over."
+  water spills over." *(As built since the gate unlocks before the weir:
+  "Tap a raised bank (or a weir) to put a sluice gate in it, or draw
+  across a channel for an earth dam with a gate…".)*
 
 ---
 
@@ -657,8 +659,10 @@ stays for weirs, gates and wheels). Digit keys shift accordingly.
 | start | Raise (was Dike) | Freshet off the floodplain (P3), ponds and small reservoirs |
 | start | Even (was Level) | Terraces on slopes, deep basins (less evaporation), a flat site for a village |
 | start | Remove | — |
-| 15 | **Weir** | Keep the river's pool through low water (P1); raise the river so a short intake works; calm water for fish; a head for a mill (§1.2) |
-| 30 | **Sluice gate** | Seasonal reservoirs: villagers release in summer (§2); flood relief that opens itself |
+| 15 | **Sluice gate** | Hold water back behind a raised bank (or an earth dam drawn with the gate) and let the villagers release it to dry fields in summer (§2); flood relief that opens itself |
+| 30 | **Weir** | A stone wall water spills over safely: keep the river's pool through low water (P1); raise the river so a short intake works; calm water for fish; the drop for a mill (§1.2) and later turbines |
+
+*(Swapped in October 2026, owner's decision: the gate comes first, since with the brushes the player's own raised bank is its natural host; the weir follows at 30.)*
 | 50 | **Water wheel** | Water *uphill* onto terraces and plateaus where no gravity canal reaches (P6); new villages on high land |
 | 100 | **Turbine** (M6) | Power from head × flow at a gate or weir; mills become power houses |
 | 250 | **Electric pump** (M6) | Any lift; pumped storage for evenings and winter |
