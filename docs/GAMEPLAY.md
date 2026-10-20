@@ -614,7 +614,8 @@ settlement.ts; shown per village with `?stats=1` as `limit`):
 | `building` / `open` | a house is going up / waits for a family | builders at work, a family camping for it; a family walking in | — |
 
 **Spreading out (round 6).** Families leaving a village of 20 or more in
-hard times (a hungry winter, a flood) settle elsewhere in the valley if
+hard times (a hungry winter, a flood; or flooded out of their house in a
+crowded village) settle elsewhere in the valley if
 they can: they join a small village nearby that is doing well, or found a
 new one at the best site (attractive now and at the end of last summer,
 including land the player's canals water; at most one a year); otherwise

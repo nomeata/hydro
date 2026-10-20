@@ -306,7 +306,8 @@ winter, dairy, a quick garden crop) flatten the yearly sawtooth.
 - **What holds growth back** is named daily per village (`limit`:
   land, food, wellbeing, room, building, open; GAMEPLAY §4.6).
 - **Leaving families settle the valley** (round 6): families leaving a
-  village of 20 or more in hard times join a small village nearby that is
+  village of 20 or more in hard times (and a family whose house a flood
+  ruined in a crowded village) join a small village nearby that is
   doing well, or found a new one at the best site (at most one new village
   a year), instead of leaving the valley; a crowded (30+), prosperous
   (reputation ≥ 0.65) village now and then sends a young family out to seek

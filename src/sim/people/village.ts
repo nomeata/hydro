@@ -1824,7 +1824,17 @@ export class PeopleSystem {
       if (w.water[w.idx(b.x, b.y)]! > 0.4) {
         if (b.progress >= 1) {
           const s = this.settlements[b.settlement];
-          if (s) s.state.houses = Math.max(0, s.state.houses - 1);
+          if (s) {
+            const st = s.state;
+            st.houses = Math.max(0, st.houses - 1);
+            // Flooded out of a crowded village, the family moves on: to a new village if a site
+            // is good enough (or a small one nearby), else out of the valley (round 6).
+            if (st.population > st.houses * ECONOMY.houseCapacity && st.population > ECONOMY.stayers) {
+              const n = Math.min(st.population - ECONOMY.stayers, this.rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));
+              st.population -= n;
+              this.emigrate(s, n, day, true);
+            }
+          }
         }
         b.kind = 'ruin';
         b.progress = 0;
