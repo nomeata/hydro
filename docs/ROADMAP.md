@@ -199,7 +199,7 @@ See GAMEPLAY.md §1.5 "as built"; code in `sim/power/`, `render/power/`.
 ## M7 — Endless world ◐
 Proposal and staged plan: docs/ENDLESS.md.
 - ◐ Step 1: ☑ simulate only revealed land + margin (frozen halo, dry-tile
-  sleeping) inside the fixed map (ENDLESS.md §12); ☐ 512² desktop default
+  sleeping, snow on frozen land) inside the fixed map (ENDLESS.md §12); ☐ 512² desktop default
   (proposed, needs the device tier logic and a cheaper spin-up)
 - ☐ Step 1b: catchment inflow model for rivers entering from the fog
 - ☐ Step 2: tiled world growing up to a fixed extent, consistent block

@@ -149,13 +149,17 @@ const FRAGMENT_COLOUR = /* glsl */ `
   {
     vec3 groundCol;
     if (vSkirt > 0.001) {
-      // Diorama side wall: layered earth / stone strata.
+      // Diorama side wall: layered earth / stone strata, warm brown like
+      // the land's soil, darkening downwards; its foot dissolves into the
+      // sky below (no hard-edged grey slab under the land from afar).
       float band = floor(vTerrWorld.y * 0.9);
       float hb = tHash(vec2(band, 3.7));
       vec3 dirt = vec3(0.36, 0.24, 0.15);
-      vec3 stone = mix(vec3(0.42, 0.38, 0.34), vec3(0.5, 0.45, 0.4), hb);
+      vec3 stone = mix(vec3(0.40, 0.32, 0.25), vec3(0.47, 0.38, 0.29), hb);
       float topSoil = 1.0 - smoothstep(0.02, 0.12, vSkirt);
       groundCol = mix(stone, dirt, max(topSoil, step(0.7, hb) * 0.6));
+      groundCol *= mix(1.0, 0.72, smoothstep(0.1, 0.8, vSkirt));
+      fogVis = 1.0 - smoothstep(0.3, 0.95, vSkirt);
     } else {
       vec2 cell = vTerrWorld.xz - 0.5;
       vec2 q = floor(cell);
@@ -264,8 +268,8 @@ const FRAGMENT_COLOUR = /* glsl */ `
       float rv = revealAt(fc);
       if (rv < 0.999) {
         float n = fogNoise(fc * 0.18) * 0.6 + fogNoise(fc * 0.55 + 4.7) * 0.4;
-        fogVis = smoothstep(0.25, 0.85, rv + (n - 0.5) * 0.35);
-        if (vSkirt > 0.001) fogVis = 0.0;
+        // The side wall fades with the land along its top edge.
+        fogVis *= smoothstep(0.25, 0.85, rv + (n - 0.5) * 0.35);
         if (fogVis <= 0.002) discard;
         planGlow *= fogVis;
       }
