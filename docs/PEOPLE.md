@@ -77,8 +77,8 @@ in `manageFields`, a village first claims good land (as above) up to its
 farmers' 28 fields each; hardy fields never stand in its way, and bare
 hardy fields are given up when good land is claimed beyond the hands.
 - **Shortage → hardy crops.** When no good land is left within reach, the
-  village has more hands than fields and not food enough to grow (food
-  security over the growth horizon below `ECONOMY.growFood`), farmers sow
+  village has more hands than fields and not food enough to grow (plenty
+  below `ECONOMY.enough` + 0.2; round 6), farmers sow
   marginal land too, at most 2 cells a day and at most 2 + ¼ × its
   ordinary fields (gentle): **millet** on dry land (grows from moisture
   0.1, fully from 0.3; 40 % of an ordinary harvest) and small **rice
@@ -259,15 +259,23 @@ Effects:
 - **Storage cap:** 1.5 × annual need, shown as a granary that fills up.
 - **Wellbeing** `w`, 0..1.
 
-**Food security is measured against the season, not the raw stock:**
-`S = F / (P · (daysToNextHarvest + 6))`. Wellbeing multiplies food in
-(playtest round 2): target `(0.1 + 0.9·min(1, S)) · (0.6 + 0.4·comfort)`,
-comfort = 0.4·housing + 0.35·water access + 0.25·safety (plus the warm
-hearth, the mill and lit houses), smoothed with τ ≈ 6 days. A hungry
-village therefore falls well below 0.4 (before: never below 0.45, so
-nobody ever left). Several food
-sources on different schedules (fish all year except winter, dairy, a quick
-garden crop in summer and autumn) flatten the yearly sawtooth.
+**Prosperity is plenty now (playtest round 6).** People judge a village by
+how good it looks *now*, not by forecasts: the granary and the fields.
+`plenty = (store + crops) / (P · days · spoil)` (`Settlement.plenty`), where
+`crops` is what the sown fields hold at their current stage (each field
+yield × fertility × stage/255; village.ts `manageFields`), `days` the days
+to the next harvest plus, for the share of next year's food already standing
+(the crops' mean stage in spring, the calendar from summer on, so a stunted
+crop shows at once), a year; `spoil` counts what spoils while it waits.
+1 = just enough. Prosperity (`wellbeing`) follows
+`foodPart · (0.85 + 0.15·comfort)` (+ warm hearth, mill, lit houses) with
+τ = 3 days, where `foodPart` rises from 0 at plenty 0.6 to 1 at 1.4 ("plenty
+for everyone and then some"; 0 while starving above the floor) and comfort =
+0.4·housing + 0.35·water access + 0.25·safety is a small term.
+**Reputation** is prosperity smoothed over a few weeks (τ = 5 days; a game
+day is about a calendar week), less 0.04 per ruin by the village (at most
+0.2). Several food sources on different schedules (fish all year except
+winter, dairy, a quick garden crop) flatten the yearly sawtooth.
 
 **Stability rules:**
 - Diminishing returns are built in: people farm the best cells first, so
@@ -276,29 +284,39 @@ garden crop in summer and autumn) flatten the yearly sawtooth.
   a hunger → slow work → hunger death spiral. Wellbeing only sets build
   speed, migration and props.
 - **Spoilage:** 0.4 %/day.
-- **Growth rate:** effective net growth r ≤ 0.5 per game year, counting
-  migration. A discrete yearly map converges for r < 1.
-- **Migration is the main lever, rate-limited by housing:**
-  - families arrive with probability ∝ `max(0, w − 0.6) × freeHouses`;
-  - families leave with probability 0.05 × households × `max(0, 0.4 − w)`
-    a day, but the last four people stay (`ECONOMY.stayers`: no failure);
-  - births and deaths are small, about ±5 %/yr, and children are cosmetic;
-  - families stop arriving and births pause while the store would not
-    feed everyone for `max(daysToNextHarvest, 40) + 6` days
-    (`ECONOMY.growFood`, `growHorizon`): without the 40-day horizon the
-    store of a harvest just brought in looked like plenty a few days before
-    the harvest day, families poured in and starved through the spring.
-    So a village grows on a surplus and levels off fed, and shrinks by
-    departures when hunger comes (a dry year, a flood).
+- **Arrivals follow reputation** (word of a good village spreads, the
+  further the bigger it is): families a day =
+  `0.3 · (0.4 + P/20) · (rep − 0.6)/(1 − 0.6)` while the village is fed
+  (plenty ≥ 1; a village under 12 from reputation 0.45). They come as the
+  daily rate adds up (`pull`, a threshold drawn around 1); with no free
+  house the family **camps** at the edge until one is built (houses go up
+  promptly, several at once in a bigger village, on a field next to the
+  village if no open ground is left). In hard times the campers move on.
+- **Births follow prosperity:** 2 %/yr plus up to 16 %/yr as prosperity
+  rises from 0.5 to 1, none while food is short (except at the floor);
+  deaths 3.5 %/yr (more while starving above the floor).
+- **Departures follow the shortfall:** families leave at
+  `0.3 · households · (1 − plenty)` a day while plenty is below 1 (all of it
+  while starving), summed like arrivals (`push`). So a bad harvest or a
+  flood empties houses within days and the village tracks what its land
+  feeds, with a visible overshoot after good years and a correction after
+  bad ones ("stationary, not static").
+- **Recovery floor:** families leave only while more than eight people live
+  there (`ECONOMY.stayers`), and at or below it hunger kills nobody.
 - **What holds growth back** is named daily per village (`limit`:
-  land, food, wellbeing, room, building, open; GAMEPLAY §4.6). When
-  families would come but there is no room for a house or no good land,
-  a family camps at the edge (tent, cart, fire) for up to 24 days and
-  moves in when a house is free.
-- **Recovery floor:** a village under 12 people (`ECONOMY.smallVillage`)
-  takes migrants above w 0.45 (`arriveSmall`) and builds a house for them
-  above 0.4 (`houseSmall`), so a village refills after a setback once its
-  land feeds it again.
+  land, food, wellbeing, room, building, open; GAMEPLAY §4.6).
+- **Leaving families settle the valley** (round 6): families leaving a
+  village of 20 or more in hard times join a small village nearby that is
+  doing well, or found a new one at the best site (at most one new village
+  a year), instead of leaving the valley; a crowded (30+), prosperous
+  (reputation ≥ 0.65) village now and then sends a young family out to seek
+  its luck. They take a share of the store (40 days a head at most) and
+  walk there with an ox and a loaded handcart (`carts`, EntityKind.Cart),
+  which stands unloaded by the new store for a season.
+- **Ruins** of flooded houses that are not rebuilt grow over, become a
+  grassy mound after a year and a half and are gone after two years (the
+  cell is free again); until then each costs its village reputation and a
+  founding site attractiveness.
 
 **Job quotas:** once a day the settlement computes target worker counts per
 job from marginal returns (value of the best unworked site minus travel
@@ -320,17 +338,17 @@ switches it back on for experiments).
 The first family arrives within 1–2 game days of a new game, at the start
 point: on most worlds a dry terrace 2–6 m above the river with a fertile,
 flood-prone floodplain below it (worldgen `chooseStart`, GAMEPLAY §4.3 P2;
-the old river meadow is the fallback). Further
-villages (code: `FOUNDING` in `village.ts`): once all villages together
-have ≥ 40 people, or one village has ≥ 30 people and no free house (or
-is held back by its land or by room for houses: `limit`), and at
-most once per game year, the best block scoring ≥ 0.6 (0..~1.15:
-fertility × wetness × flatness, averaged, plus 0.15 near water) both now
-and at the end of last summer (a survey kept from day 22: migrants judge
-land at its worst, so river margins that dry out in the low water of late
-summer don't qualify) gets a migrant family of 3–5. They walk in with their bundles from the nearest
-edge of the fog and found a village there (store + houses, as the first).
-Typical natural land scores 0.4–0.55, good river meadows 0.7–0.85, so on
+the old river meadow is the fallback). Further villages (code: `FOUNDING`
+in `village.ts`) are founded mostly by the valley's own people (above:
+leaving families, adventurers from crowded villages), at most one a year,
+at the best block scoring ≥ 0.6 (0..~1.15: fertility × wetness ×
+flatness, averaged, plus 0.15 near water, less 0.08 per ruin) both now and
+at the end of last summer (a survey kept from day 22: migrants judge land
+at its worst, so river margins that dry out in the low water of late
+summer don't qualify). Strangers from beyond the known land come too, but
+rarely: once all villages together have ≥ 40 people, at most every year and
+a half, a family of 3–5 walks in from the nearest edge of the fog with its
+cart. Typical natural land scores 0.4–0.55, good river meadows 0.7–0.85, so on
 many maps the player attracts new villages by irrigating a dry plain.
 
 Each village runs on its own: land (fields) belongs to the nearest village,
@@ -555,8 +573,12 @@ and behaviour.
   sim agents, saved with the others, but cosmetic: no job, no food, not
   counted in the population (`syncPopulation` and job quotas skip them).
 - **Migration:** families walk in from the fog edge with bundles and walk out
-  again. Abandoned houses become ruins that stay for years: the visible
-  memory of a setback.
+  again. ☑ A founding party (round 6) travels as a little caravan: the
+  family with bundles, an ox (a crowd cow) and a loaded handcart behind it
+  (`render/crowd/carts.ts`: bed, sacks under a red cloth, two spoked
+  wheels turning with the ground it covers on the game clock); unloaded,
+  the cart stands by the new store for a season. Ruins stay for up to two
+  years: the visible memory of a setback.
 - ☑ **Flood ruins** (`ruinDesign` in `render/village/houses.ts`): a
   house's own walls, wrecked: leaning out, broken off, one fallen flat; the
   roof caved in and lying askew inside; broken rafters, boards, roof shards
@@ -564,7 +586,8 @@ and behaviour.
   plinth, everything drained of colour and stained brown below the flood
   line. No scaffolding or stacked planks, so it never reads as a building
   site. Weeds grow over it: tufts after a season, shrubs and flowers after
-  a year (`BuildingInfo.weeds`, from `Building.ruinedDay`).
+  a year, a low grassy mound with a few stones after a year and a half,
+  gone after two (`BuildingInfo.weeds` 0–3, from `Building.ruinedDay`).
 - **Building:** the crowd at a plan grows with wellbeing.
 - ☑ **Wood:** a woodpile behind the store grows with the logs (three
   sizes); cows, sheep, pigs and chicks show a village's herd.

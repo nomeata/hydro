@@ -575,59 +575,55 @@ by the player's reservoirs raising the water table.
 
 ### 4.6 The growth loop and its cues
 
-A village grows when four things hold at once (`Settlement.day`,
-`PEOPLE.md` §4): families **want** to come (wellbeing above 0.6, 0.45 in
-a village under 12), the store **lasts** (food for `max(days to the
-harvest, 50) + 6` days: `growFood`, `growHorizon`), a **house** is free
-(one is built whenever none is free and wellbeing is above 0.5, if a
-dry, flat, unflooded site is left within 12 cells), and then chance
-(0.6 × (w − 0.6) per free house a day). Every day each village names the
-first condition that fails (`classifyGrowth`, settlement.ts; shown per
-village with `?stats=1` as `limit`):
+**Round 6: people, not forecasts.** Prosperity means plenty for everyone
+and then some; people respond to a village's reputation (how good it has
+looked lately), not to careful forecasts (`Settlement.day`, PEOPLE.md §4):
+
+- **Prosperity** (the stats bar, the history chart) is the food in the
+  store and standing in the fields *now* per head, against the need to the
+  next harvest (and the year after, for the crop already grown): 0 % at
+  0.6 of what is needed, 50 % at just enough, 100 % at 1.4× (a small
+  comfort term: housing, a well, safety). It moves within days.
+- **Reputation** is prosperity over the last few weeks, less a little per
+  ruin. Above 60 % (45 % in a village under 12) **families come**, the
+  faster the higher the reputation and the bigger the village (a
+  prosperous village of 30 draws a family every few days), while the
+  village is fed. Without a free house they **camp** at the edge and a
+  house goes up at once. A prosperous village **has more children**.
+- **Hard times**: when food per head falls short (a bad harvest, a flood,
+  a dry summer that stunts the standing crop) prosperity drops within days
+  and **families leave** in proportion to the shortfall, down to the floor
+  of eight. So population tracks what the land feeds, overshooting after
+  good years and correcting after bad ones, and the player's works show
+  quickly: more watered land → bigger crop in the fields → prosperity →
+  reputation → newcomers within the season.
+
+So the stats bar reads directly: **high prosperity → growing, falling →
+people leaving**; about half (just enough) is a village at the limit of its
+land.
+
+Every day each village names what holds it back (`classifyGrowth`,
+settlement.ts; shown per village with `?stats=1` as `limit`):
 
 | limit | meaning | what the player sees | what helps |
 |---|---|---|---|
-| `land` | the store won't last and the good land within walking reach is used up | hardy crops (millet, paddies) at the edge, no pegged plots; **newcomers camp** at the edge; the idea "the good land … is all farmed" rings the dry ground water would make good | a canal to that ground, a footbridge, draining a marsh |
-| `food` | the store won't last though good land is left: yields too poor for a surplus (dry or tired fields) or a lean season | the dry-fields idea in summer; sacks by the store run low | water for the fields, fish |
-| `wellbeing` | fed, but not attractive (water access, safety, housing) | mood props (no smoke, idle people) | a well, keeping floods off |
-| `room` | fed and attractive, a house is wanted but no site is left | **newcomers camp** at the edge; the idea "no room left for houses" | level dry ground beside the village (Even), keep a flood plain dry |
-| `building` / `open` | a house is going up / waits for a family | builders at work, a family camping for it (round 5); a family walking in | — |
+| `land` | food is short (or too little for a good reputation) and the good land within walking reach is used up | hardy crops (millet, paddies) at the edge, no pegged plots, families leaving; the idea "the good land … is all farmed" rings the dry ground water would make good | a canal to that ground, a footbridge, draining a marsh |
+| `food` | food is short though good land is left: poor yields (dry or drowned fields), a lean season | the dry-fields idea in summer; pale crops, sacks by the store run low | water for the fields, fish |
+| `wellbeing` | fed, but the reputation is low (ruins by the village, no well, floods) | ruins, mood props | rebuilding (ruins vanish after two years), a well, keeping floods off |
+| `room` | families come, a house is wanted but no site is left | **newcomers camp** at the edge; the idea "no room left for houses" | level dry ground beside the village (Even), keep a flood plain dry |
+| `building` / `open` | a house is going up / waits for a family | builders at work, a family camping for it; a family walking in | — |
 
-**Year-round growth (round 5).** Besides the store's window after the
-harvest, a village draws families while crops stand in the fields
-(spring and summer) when the store lasts to the harvest and store plus
-the harvest the standing crops promise (`SettlementState.standing`: each
-sown field's crop grown on at today's moisture to the end of summer,
-times a bias the village learns each year from how its promise came
-true, ~0.75) feed it to the harvest after next (`Settlement.ahead` ≥ 1),
-and there is a surplus: spare food (`ahead` above 1.1) or spare good land
-(good land within reach left unfarmed for want of hands, valued at what
-it would yield). The arrival rate scales with the families that surplus
-would feed (full from two). So water that saves a drying crop, or new
-good land, can draw families within the season instead of after the
-next harvest. The growth horizon is 50 days (was 40), so a village no
-longer fills up on a harvest it cannot carry to the next one. Newcomers
-also camp at the edge while their house goes up (`building`, in a
-village of 12 or more), so the lead-in is a tent and cart, then a
-house. When store and standing crops fall below 0.85 of that need, a
-family leaves now and then (`shrinkRate`) before hunger sets in.
-
-Why prosperity can read 90 % while the village stands still: prosperity
-is the wellbeing, whose food part only asks whether the store lasts **to
-the next harvest**; growth asks for 50 days ahead (more than the 48-day
-year), so a village whose harvest just covers the year is content and
-does not grow (`food`). It grows again on a surplus: better yields, not
-more land (every farmer works 28 fields, so food per head rises only
-with yield per field), until the good land runs out (`land`).
-
-**Sending people out.** A village of 30 or more that has not grown for 12
-days, whatever holds it back, sends a family to found a new village (if a
-block scores ≥ 0.6 now and at the end of last summer, at most one a year),
-as does a valley total of 40. So watering a village's land does not delay
-the second village: a fed village keeps growing, a stalled one sends
-people out. A hamlet under 15 grows on its store until the harvest (the
-founders' provisions), and families arrive as the daily chances add up
-(`pull`), not by a daily coin toss.
+**Spreading out (round 6).** Families leaving a village of 20 or more in
+hard times (a hungry winter, a flood) settle elsewhere in the valley if
+they can: they join a small village nearby that is doing well, or found a
+new one at the best site (attractive now and at the end of last summer,
+including land the player's canals water; at most one a year); otherwise
+they leave the valley. A crowded (30+), prosperous village now and then
+sends a young family out to seek its luck. Either way the party walks to
+the new site with an ox and a loaded handcart, which stands by the new
+store for a season. Strangers from beyond the fog found a village only
+rarely (a valley of 40+, at most every year and a half). So setbacks seed
+new villages and prosperity spreads the colony.
 
 **Houses and fields.** Houses go on open ground within 12 cells when
 there is some (`planHouses`); fields are claimed from 3 cells out,
@@ -637,15 +633,16 @@ real villages build on their farmland), so a village is never stalled for
 room by its own fields.
 
 **Camping newcomers** (`tendCamp`, village.ts; `CAMP` in settlement.ts):
-when the limit is `room` or `land` and families would come, one family
-(2–4) walks in from beyond the edge and camps 9–17 cells from the centre
-with a small tent, a loaded cart and a fire ring (BuildingInfo kind
-`camp`; the family are agents sitting by it, not villagers). They wait
-while a house goes up, move in (an arrival) the day one is free, and
-move on with their bundles after 24 days if nothing changes, or at once
-when the village stops drawing people; the next family tries 12 days
-later. So "they would come if there were room or land" is in the world,
-without words; the Ideas list says where.
+when a family is ready to come but no house is free (or the limit is
+`room` or `land` while the reputation draws people), one family (2–4)
+walks in from beyond the edge and camps 9–17 cells from the centre with a
+small tent, a loaded cart and a fire ring (BuildingInfo kind `camp`; the
+family are agents sitting by it, not villagers). They wait while a house
+goes up, move in (an arrival) the day one is free, and move on with their
+bundles after 24 days if nothing changes, or at once when the village is
+no longer fed; the next family tries 12 days later. So "they would come
+if there were room or land" is in the world, without words; the Ideas
+list says where.
 
 ### 4.5 Revised unlock progression (lining is no longer a player tool)
 
