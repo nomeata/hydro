@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HELP, planHelp, struggling } from '../../src/sim/help';
+import { HELP_PLAN } from '../../src/sim/ideas';
 import { Simulation } from '../../src/sim/sim';
 import { SoilType, World } from '../../src/sim/world';
 import { loadGame, saveGame } from '../../src/sim/persist';
@@ -56,6 +57,9 @@ function village(fall: number, shelf: number, reputation = 0.2): Simulation {
   return sim;
 }
 
+/** The first look that plans help, once a village struggles from day 0. */
+const FIRST = Math.ceil(HELP.days / HELP_PLAN) * HELP_PLAN;
+
 const ids = (sim: Simulation) => sim.ideas.list().map((i) => i.id);
 
 /** Look on `days` (from the first day the village is seen struggling). */
@@ -100,9 +104,9 @@ describe('help for a struggling village', () => {
     expect(plan.stream).toBe(true);
 
     // Not at once: only once the village has struggled for HELP.days.
-    looks(sim, [0, 2, 4]);
+    looks(sim, [0, 2, 4, 6]);
     expect(ids(sim)).not.toContain('help:0');
-    looks(sim, [HELP.days, HELP.days + 2]);
+    looks(sim, [FIRST, FIRST + 2]);
     const idea = sim.ideas.list().find((i) => i.id === 'help:0')!;
     expect(idea.tool).toBe('dig');
     expect(idea.text).toMatch(/^The village is struggling: .*Dig a channel to them from the stream above/);
@@ -113,20 +117,20 @@ describe('help for a struggling village', () => {
 
     // Prosperity recovers: it goes.
     s.state.reputation = 0.7;
-    looks(sim, [HELP.days + 4, HELP.days + 6, HELP.days + 8]);
+    looks(sim, [FIRST + 4, FIRST + 6, FIRST + 8]);
     expect(ids(sim)).not.toContain('help:0');
   });
 
   it('suggests nothing it could not do: no water above the dry fields, no floods, no wet ground', () => {
     const sim = village(0.01, 3);
     expect(planHelp(sim, sim.people!.settlements[0]!)).toBeNull();
-    looks(sim, [0, HELP.days, HELP.days + 2]);
+    looks(sim, [0, FIRST, FIRST + 2]);
     expect(ids(sim)).not.toContain('help:0');
   });
 
   it('suggests nothing for a village doing well', () => {
     const sim = village(0.2, 1.5, 0.7);
-    looks(sim, [0, HELP.days, HELP.days + 2]);
+    looks(sim, [0, FIRST, FIRST + 2]);
     expect(ids(sim)).not.toContain('help:0');
   });
 
@@ -138,7 +142,7 @@ describe('help for a struggling village', () => {
     expect(plan.what).toBe('bank');
     expect(plan.tool).toBe('raise');
     expect(Math.abs(plan.at[1] - 37)).toBeLessThanOrEqual(1);
-    looks(sim, [0, HELP.days, HELP.days + 2]);
+    looks(sim, [0, FIRST, FIRST + 2]);
     const idea = sim.ideas.list().find((i) => i.id === 'help:0')!;
     expect(idea.tool).toBe('raise');
     expect(idea.text).toContain('Raise a bank');
@@ -176,7 +180,7 @@ describe('help for a struggling village', () => {
     const sim = village(0.2, 1.5);
     looks(sim, [0, 2]);
     const { sim: back } = await loadGame(await saveGame(sim));
-    looks(back, [HELP.days, HELP.days + 2]);
+    looks(back, [FIRST, FIRST + 2]);
     expect(ids(back)).toContain('help:0');
   });
 });

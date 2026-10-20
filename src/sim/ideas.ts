@@ -36,6 +36,8 @@ export interface IdeasHost extends HelpHost {
 
 /** Days between two looks. */
 export const IDEAS_EVERY = 2;
+/** Days between two plans for a struggling village (help.ts); a multiple of IDEAS_EVERY. */
+export const HELP_PLAN = 3 * IDEAS_EVERY;
 
 export const IDEAS = {
   /** Dry fields: at least this many field cells, and this share of a village's fields, too dry to grow well in summer. */
@@ -283,6 +285,12 @@ export class Ideas {
       }
       if (!this.low.has(id)) this.low.set(id, day);
       if (day - this.low.get(id)! < HELP.days) return;
+      // Planning walks the land (a canal search): only every HELP_PLAN days; in between the idea holds.
+      const e = this.entries.get(`help:${k}`);
+      if (day % HELP_PLAN !== 0) {
+        if (e?.help) out.push({ kind: 'help', village: k, x: e.info.x, y: e.info.y, r: e.info.r, weight: 0, tool: e.info.tool, help: e.help });
+        return;
+      }
       const plan = planHelp(h, s);
       if (!plan) return;
       this.plans.set(`help:${k}`, plan);
