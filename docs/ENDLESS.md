@@ -220,6 +220,13 @@ spin-up (§5.4). The halo is a **Dirichlet stage boundary**:
   The exchange is small (hourly, conductivity-limited).
 - The existing map-edge `Outlet` and `inflow` cells keep working where
   the active area reaches the map edge.
+- **Snow:** the halo's snowpack is not frozen. Every cell outside the
+  active set still gets snowfall below freezing and degree-day melt by its
+  own height (the same rules as active land), so a winter has no edge at
+  the active set and newly activated land is already white. The meltwater
+  leaves; the net is booked apart as `frozenSnow` (not as precipitation,
+  so the climate's winter total is unchanged). Tiles without snow that
+  are too warm or dry are skipped.
 
 Why not mark the active edge as `Outlet` cells? Critical-flow drains
 would empty rivers that should pass through, and they would pin the bed.
