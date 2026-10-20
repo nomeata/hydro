@@ -18,13 +18,15 @@ function simulate(years: number, opts: { landScale?: number; disasterYear?: numb
   for (let day = 0; day < years * DAYS_PER_YEAR; day++) {
     const doy = day % DAYS_PER_YEAR;
     const pop = s.state.population;
-    if (doy === s.state.harvestDay) {
-      const farmers = Math.floor(pop * 0.6);
-      const cells = farmers * 6;
-      let food = 0;
-      for (let k = 0; k < cells; k++) food += 30 * Math.exp(-k / L);
-      s.bookFood(food);
-    }
+    const farmers = Math.floor(pop * 0.6);
+    const cells = farmers * 6;
+    let harvest = 0;
+    for (let k = 0; k < cells; k++) harvest += 30 * Math.exp(-k / L);
+    // The crop stands in the fields from spring, ripening towards the harvest (round 6: plenty counts it).
+    const ripe = doy < s.state.harvestDay ? Math.min(1, (doy + 1) / (s.state.harvestDay - 4)) : 0;
+    s.state.crops = harvest * ripe;
+    s.state.ripe = ripe;
+    if (doy === s.state.harvestDay) s.bookFood(harvest);
     if (doy < 36) s.bookFood(pop * 0.15); // fish/dairy outside winter
     if (s.wantsHouse() && ++houseTimer >= 4) {
       s.state.houses++;
@@ -52,7 +54,7 @@ describe('settlement economy', () => {
       const pop = simulate(40, { seed });
       const late = pop.slice(20);
       expect(mean(late)).toBeGreaterThan(30);
-      expect(cv(late)).toBeLessThan(0.16); // round 5: growth horizon 50 (0.153 on seed 1)
+      expect(cv(late)).toBeLessThan(0.16);
     }
   });
 
