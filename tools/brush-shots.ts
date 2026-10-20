@@ -53,8 +53,9 @@ for (const [device, opts] of [
       const depth: Float32Array = h.renderer.heights.depth;
       const W = m.width;
       const { startX, startY } = h.data.info;
-      for (let r = 8; r < 60; r++)
-        for (let k = 0; k < 24; k++) {
+      // Up the map first (open meadow on the default seed, no trees in the way).
+      for (let r = 10; r < 60; r++)
+        for (let k = 18; k < 42; k++) {
           const x = Math.round(startX + Math.cos((k / 24) * Math.PI * 2) * r);
           const y = Math.round(startY + Math.sin((k / 24) * Math.PI * 2) * r);
           let ok = true;
@@ -72,7 +73,7 @@ for (const [device, opts] of [
       ({ x, y }) => {
         const h = (window as any).__hydro;
         h.renderer.camera.focus(x, y);
-        h.renderer.camera.setState({ viewHeight: 16 }, true);
+        h.renderer.camera.setState({ viewHeight: 13 }, true);
       },
       { x: cx, y: spot.y },
     );
