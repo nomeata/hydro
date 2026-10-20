@@ -63,6 +63,8 @@ export interface GameRendererOptions {
   antialias?: boolean;
   /** Follow the snapshot's time of day / season for lighting (default false: fixed afternoon). */
   followSimTime?: boolean;
+  /** Smooth terrain shading and blended ground colours (terrain.ts; URL flag ?smooth=1, default off). */
+  smoothTerrain?: boolean;
 }
 
 /** Called every frame with the wall-clock step and the game clock (see gameClock.ts). */
@@ -214,7 +216,7 @@ export class GameRenderer {
     const fronts = createFrontUniforms();
     const tu = createTerrainUniforms(this.tex, W, H, fronts, this.fog.uniforms);
     tu.uPlanOn.value = anyPlan ? 1 : 0;
-    this.terrain = new TerrainLayer(this.geometry, tu, W, H);
+    this.terrain = new TerrainLayer(this.geometry, tu, W, H, opts.smoothTerrain ?? false);
     this.terrain.setCastShadow(this.shadows);
     this.scene.add(this.terrain.group);
     const wu = createWaterUniforms(
