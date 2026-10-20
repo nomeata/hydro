@@ -36,8 +36,7 @@ for (let d = 0; d < until; d++) {
     const doy = t.season * DAYS_PER_SEASON + t.dayOfSeason;
     const row = villages(sim).map((s) => {
       const st = s.state;
-      const need = st.population * DAYS_PER_YEAR;
-      return `#${st.id} p${st.population} h${st.houses} w${st.wellbeing.toFixed(2)} ahead ${s.ahead(doy).toFixed(2)} g ${s.growth(doy).toFixed(2)} spare ${((st.spareLand ?? 0) / Math.max(1, need)).toFixed(2)} fs ${s.foodSecurity(doy).toFixed(2)} gs ${s.growSecurity(doy).toFixed(2)} ${st.limit}${st.camp ? ' camp' : ''}`;
+      return `#${st.id} p${st.population} h${st.houses} w${st.wellbeing.toFixed(2)} plenty ${s.plenty(doy).toFixed(2)} rep ${s.reputation.toFixed(2)} crops ${(st.crops ?? 0).toFixed(0)} fs ${s.foodSecurity(doy).toFixed(2)} pull ${(st.pull ?? 0).toFixed(2)} ${st.limit}${st.camp ? ' camp' : ''}`;
     });
     console.log(`d${d + 1} y${Math.floor((d + 1) / DAYS_PER_YEAR) + 1}s${t.season} ${row.join(' | ')}`);
   }

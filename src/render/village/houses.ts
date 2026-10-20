@@ -554,8 +554,9 @@ function h01(a: number, b: number): number {
  * spread around the plinth, walls leaning out, broken off or fallen flat,
  * the roof caved in and lying askew inside, broken beams poking up, boards,
  * roof shards and stones strewn about, the barrel tipped over; no
- * scaffolding, no stakes, nothing stacked. With `weeds` (0..2, the ruin's
- * age) grass, then bushes and flowers grow over it.
+ * scaffolding, no stakes, nothing stacked. With `weeds` (0..3, the ruin's
+ * age) grass, then bushes and flowers grow over it, and at last it is a low
+ * grassy mound (before it is gone: people/village.ts RUIN_GONE).
  */
 export function ruinDesign(variant: number, weeds = 0): Design {
   const v = variant % HOUSE_DESIGNS.length;
@@ -564,6 +565,20 @@ export function ruinDesign(variant: number, weeds = 0): Design {
   const hx = sh.nx / 2;
   const hz = sh.nz / 2;
   const ALLS = F | W | R | D;
+  if (weeds >= 3) {
+    // Its last months: the walls have collapsed into a low grassy mound with a few stones showing.
+    const mound: Part[] = [
+      { m: 'rubble', x: 0, y: -0.12, z: 0, s: [sh.nx * 0.8, 0.22, sh.nz * 0.8], stages: ALLS, fresh: true },
+      { m: 'rubble', x: hx * 0.5, y: -0.02, z: -hz * 0.3, s: [0.3, 0.12, 0.24], stages: ALLS },
+      { m: 'rubble', x: -hx * 0.4, y: -0.02, z: hz * 0.4, s: [0.24, 0.1, 0.2], stages: ALLS },
+    ];
+    for (let k = 0; k < 9; k++) {
+      const a = h01(v + 71, k) * Math.PI * 2;
+      const r = 0.2 + 0.8 * h01(v + 73, k);
+      mound.push({ m: k % 4 === 0 ? 'shrub' : k % 4 === 3 ? 'bloom' : 'weed', x: Math.cos(a) * hx * r, y: 0.04, z: Math.sin(a) * hz * r, rot: k % 4, s: [0.3, 0.28, 0.3], stages: ALLS, fresh: true });
+    }
+    return { name: `ruin-${d.name}-3`, scale: d.scale, vscale: d.vscale, parts: mound };
+  }
   const parts: Part[] = [
     // Mud left by the flood, wider downstream-ish, and the cracked plinth.
     { m: 'mud', x: 0.12, y: -0.03, z: -0.05, s: [sh.nx + 1.0, 0.07, sh.nz + 0.8], stages: ALLS },

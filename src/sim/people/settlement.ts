@@ -17,88 +17,72 @@ export const ECONOMY = {
   spoilage: 0.004,
   /** Storage capacity in years of need. */
   storageYears: 1.5,
-  /** Smoothing time of wellbeing (days). */
-  wellbeingTau: 6,
+  /**
+   * Prosperity (`wellbeing`) follows the day's plenty quickly (τ days), and
+   * the village's reputation follows prosperity over a few weeks
+   * (`reputationTau` game days: a game day is about a calendar week).
+   * Newcomers judge by reputation, i.e. by how good the village has looked
+   * lately, not by forecasts (docs/PLAYTEST.md round 6).
+   */
+  wellbeingTau: 3,
+  reputationTau: 5,
   /** People per house. */
   houseCapacity: 4,
-  /** Expected arriving families per day at w = 1 with one free house. */
-  arrivalRate: 0.6,
-  /** A family arrives when the summed arrival chances pass a threshold drawn from this range. */
-  pullNeed: [0.6, 1.4] as readonly number[],
-  /** Expected leaving families per day per household at w = 0. */
-  departureRate: 0.05,
-  /** Arrivals need w above this; departures happen below the second. */
-  arriveAbove: 0.6,
-  leaveBelow: 0.4,
   /**
-   * A village smaller than this takes migrants at a lower wellbeing
-   * (`arriveSmall`) and builds a house for them at `houseSmall`: a trickle
-   * that refills a village after a setback (PEOPLE.md §4, recovery floor).
+   * Plenty (`Settlement.plenty`): food in the store and in the fields now,
+   * against the need until the next harvest (and the year after it, for the
+   * share of the crop already grown). 1 = just enough. Prosperity's food
+   * part is 0 at `plentyLo` and full at `plentyHi` ("plenty for everyone
+   * and then some").
    */
-  smallVillage: 12,
-  arriveSmall: 0.45,
-  houseSmall: 0.4,
+  plentyLo: 0.75,
+  plentyHi: 1.5,
+  /** Below this plenty families leave (`leaveRate` per household and day per unit of the shortfall). */
+  enough: 1,
+  leaveRate: 0.3,
+  /** Days of the growing season over which the fields' crop comes to count as next year's food. */
+  growDays: 2 * DAYS_PER_SEASON - 1,
   /**
-   * Wellbeing multiplies food in (docs/PLAYTEST.md round 2): target =
-   * (foodFloor + (1 − foodFloor)·min(1, food security)) · (comfortBase + (1 −
-   * comfortBase)·comfort), comfort = housing, water access and safety
-   * weighted by `comfort`. So a hungry village falls below `leaveBelow`
-   * and families leave until the land feeds the rest.
+   * Prosperity = food part × (comfortBase + (1 − comfortBase) × comfort):
+   * comfort (housing, water access, safety, weighted by `comfort`) is a
+   * small term, as are the warm hearth, the mill and lit houses.
    */
-  foodFloor: 0.1,
-  comfortBase: 0.6,
+  comfortBase: 0.85,
   comfort: [0.4, 0.35, 0.25] as readonly number[],
   /**
-   * Families stop arriving and births pause while food security is below
-   * this, so a village levels off fed rather than hungry (GAMEPLAY §4.1).
+   * Arrivals: families a day = arrivalRate × (1 + population / arrivalScale)
+   * × (reputation − arriveAbove) / (1 − arriveAbove): word spreads further
+   * from a bigger village. A family comes when the summed rate passes a
+   * threshold drawn from `pullNeed`; with no free house it camps at the
+   * edge until one is built.
    */
-  growFood: 1,
+  arrivalRate: 0.3,
+  arrivalScale: 20,
+  pullNeed: [0.6, 1.4] as readonly number[],
+  arriveAbove: 0.55,
   /**
-   * ...counting the need for at least this many days ahead (so the store
-   * of a harvest just brought in does not look like plenty a few days
-   * before the harvest day, and the village does not fill up with
-   * families it cannot feed through the winter).
+   * A village smaller than this takes migrants at a lower reputation
+   * (`arriveSmall`): a trickle that refills a village after a setback
+   * (PEOPLE.md §4, recovery floor).
    */
-  growHorizon: 50,
-  hamlet: 15,
-  /**
-   * Year-round growth (round 5, GAMEPLAY §4.6): besides the store's window
-   * after the harvest, while crops stand in the fields families come when
-   * the store and the harvest the fields promise (`SettlementState.standing`)
-   * would feed the village to the harvest after next with `spareAhead` to
-   * spare (spoilage eats ~10 % of a year's store): spare food; or, while that
-   * food just lasts, when good land within reach is left unfarmed for want of
-   * hands (spare land: what it would yield, `spareLand`). The arrival rate
-   * scales with the families the spare food and land would feed
-   * (`spareFamily` person-days a year each), full from `spareFamilies`. So
-   * water that saves a dry crop, or new fields, show within the season.
-   * `spareGrowth` 0 turns it off.
-   */
-  spareGrowth: 1,
-  spareAhead: 1.1,
-  spareStore: 1,
-  spareFamilies: 2,
-  spareFamily: 4 * 48,
-  /**
-   * ...and shrinks gently when the land no longer feeds it: while store and
-   * standing crops fall below `shrinkBelow` of the need to the harvest
-   * after next, a family leaves now and then (`shrinkRate` per household a
-   * day per unit of the shortfall) before hunger sets in.
-   */
-  /** The first guess at how a promise comes true (round 5: spring moisture promises ~1.3× the harvest), and its range. */
-  promiseBias: 0.75,
-  promiseBiasRange: [0.4, 1.5] as readonly number[],
-  shrinkBelow: 0.85,
-  shrinkRate: 0.05,
+  smallVillage: 12,
+  arriveSmall: 0.4,
+  /** Each ruin by the village (not rebuilt, not yet gone) costs this much reputation, at most `ruinMax`. */
+  ruinPenalty: 0.04,
+  ruinMax: 0.2,
   /**
    * The recovery floor (no failure; GAMEPLAY §4.2): families leave a village
    * only while more than this many people live there, and at or below it
-   * hunger kills nobody and births do not wait for a full store (round 3:
-   * the steep valleys' villages starved down to four in their dry second year).
+   * hunger kills nobody.
    */
   stayers: 8,
-  /** Natural births/deaths per person per year (small, roughly balanced). */
-  birthRate: 0.04,
+  /**
+   * Births per person per year: `birthRate`, plus up to `birthBoost` as
+   * prosperity rises from 0.5 to 1 (a prosperous village has more children);
+   * deaths per person per year.
+   */
+  birthRate: 0.02,
+  birthBoost: 0.16,
   deathRate: 0.035,
   /** Extra deaths per person per year when starving. */
   starvationDeathRate: 0.3,
@@ -191,41 +175,41 @@ export interface SettlementState {
   /** Day from which another family may camp (after one moved on). */
   campAgain?: number;
   /**
-   * The harvest the standing crops promise (person-days; 0 outside the
-   * growing seasons), and what the good land still unclaimed within reach
-   * would yield in a year (village.ts manageFields, daily).
+   * Round 6 (docs/PLAYTEST.md): the food in the fields now (person-days: each
+   * sown field at its crop's current stage; village.ts manageFields, daily),
+   * the day's plenty (`Settlement.plenty`), the reputation (prosperity
+   * smoothed over weeks; newcomers judge by it), the ruins by the village
+   * (each costs reputation), and the summed departure pressure since the last
+   * family left. All absent in old saves.
    */
-  standing?: number;
-  spareLand?: number;
-  /**
-   * How the standing crops' promise came true: last harvests against what the
-   * crops promised through the growing days (EMA), and this year's sums for it.
-   */
-  promiseBias?: number;
-  promisedSum?: number;
-  promisedDays?: number;
-  harvested?: number;
+  crops?: number;
+  plenty?: number;
+  reputation?: number;
+  ruins?: number;
+  push?: number;
 }
 
 /**
  * Why a village is not growing (docs/GAMEPLAY.md §4.6), most binding first:
- * - `land`: the store won't last until the next harvest and the good land
- *   within walking reach is used up (hardy crops, no pegs);
- * - `food`: the store won't last, though good land is left (poor yields:
- *   dry or tired fields, or a lean season);
- * - `wellbeing`: fed, but not attractive enough for newcomers (water, safety, housing);
- * - `room`: fed and attractive, a house is wanted but there is no site for it;
+ * - `land`: food is short (plenty below enough, or too little for a good
+ *   reputation) and the good land within walking reach is used up (hardy
+ *   crops, no pegs);
+ * - `food`: food is short though good land is left (poor yields: dry or
+ *   tired fields, a flood, a lean season);
+ * - `wellbeing`: fed, but the reputation is too low for newcomers (ruins,
+ *   no well, floods);
+ * - `room`: families would come, a house is wanted but there is no site for it;
  * - `building`: a house is going up (growing);
  * - `open`: a free house waits for newcomers (growing).
  */
 export type GrowthLimit = 'land' | 'food' | 'wellbeing' | 'room' | 'building' | 'open';
 
 export interface GrowthFacts {
-  wellbeing: number;
-  /** Wellbeing above which families arrive (arriveAbove, or arriveSmall for a small village). */
+  reputation: number;
+  /** Reputation above which families arrive (arriveAbove, or arriveSmall for a small village). */
   arriveAbove: number;
-  /** Food security over the growth horizon (≥ growFood: the store lasts). */
-  fed: number;
+  /** Today's plenty (`Settlement.plenty`). */
+  plenty: number;
   freeHouses: number;
   /** A house is being built (or a ruin rebuilt). */
   building: boolean;
@@ -234,11 +218,17 @@ export interface GrowthFacts {
 }
 
 export function classifyGrowth(f: GrowthFacts): GrowthLimit {
-  if (f.fed < ECONOMY.growFood) return f.goodLeft > 0 ? 'food' : 'land';
-  if (f.wellbeing <= f.arriveAbove) return 'wellbeing';
+  const hungry = f.plenty < ECONOMY.enough || (f.reputation <= f.arriveAbove && foodPart(f.plenty) <= f.arriveAbove + 0.05);
+  if (hungry) return f.goodLeft > 0 ? 'food' : 'land';
+  if (f.reputation <= f.arriveAbove) return 'wellbeing';
   if (f.freeHouses > 0) return 'open';
   if (f.building) return 'building';
   return 'room';
+}
+
+/** Prosperity's food part for a plenty: 0 at `plentyLo`, 1 from `plentyHi`. */
+export function foodPart(plenty: number): number {
+  return Math.max(0, Math.min(1, (plenty - ECONOMY.plentyLo) / (ECONOMY.plentyHi - ECONOMY.plentyLo)));
 }
 
 /** Camping newcomers (docs/GAMEPLAY.md §4.6). */
@@ -252,11 +242,11 @@ export const CAMP = {
 };
 
 /** Limits under which newcomers camp at the edge: they want to come, but the village can't take them. */
-export function campsFor(limit: GrowthLimit | undefined, wellbeing: number, arriveAbove: number, population = Infinity): boolean {
+export function campsFor(limit: GrowthLimit | undefined, reputation: number, arriveAbove: number, population = Infinity): boolean {
   // While a house goes up the next family waits for it at the edge (round 5), once the village is
   // past its first few houses (a hamlet's founders build for themselves).
   const building = limit === 'building' && population >= ECONOMY.smallVillage;
-  return (limit === 'room' || limit === 'land' || building) && wellbeing > arriveAbove;
+  return (limit === 'room' || limit === 'land' || building) && reputation > arriveAbove;
 }
 
 export type Mood = -1 | 0 | 1;
@@ -320,7 +310,6 @@ export class Settlement {
    */
   bookFood(amount: number): void {
     const s = this.state;
-    s.harvested = (s.harvested ?? 0) + amount;
     s.food = Math.max(s.food, Math.min(this.storageCap, s.food + amount));
   }
 
@@ -338,92 +327,79 @@ export class Settlement {
   }
 
   /**
-   * Food security as growth judges it: over `growHorizon` days at least, but a
-   * hamlet (under `hamlet` people) grows on its store until the next harvest
-   * (the founders' provisions; round 4: dry starts otherwise stalled at 6–10
-   * people until their first good harvest).
+   * Plenty now (round 6): the store plus the crops standing in the fields at
+   * their current stage, against the need until the next harvest plus, for
+   * the share of the growing season gone by, the year after it. 1 = just
+   * enough; a stunted or drowned crop shows at once, a forecast never enters.
    */
-  growSecurity(dayOfYear: number): number {
-    return this.foodSecurity(dayOfYear, this.state.population < ECONOMY.hamlet ? 0 : ECONOMY.growHorizon);
+  plenty(dayOfYear: number): number {
+    const s = this.state;
+    if (s.population <= 0) return ECONOMY.plentyHi;
+    const g = dayOfYear <= s.harvestDay ? Math.min(1, dayOfYear / ECONOMY.growDays) : 0;
+    const days = Math.max(DAYS_PER_SEASON, this.daysToHarvest(dayOfYear) + g * DAYS_PER_YEAR);
+    return (s.food + (s.crops ?? 0)) / (s.population * ECONOMY.consumption * days);
   }
 
-  /**
-   * Store and standing crops against the need to the harvest after next (NaN
-   * outside the growing seasons, when nothing stands in the fields).
-   */
-  ahead(dayOfYear: number): number {
-    const s = this.state;
-    if (!s.standing || s.population <= 0) return NaN;
-    return (s.food + s.standing * (s.promiseBias ?? ECONOMY.promiseBias)) / (s.population * ECONOMY.consumption * (this.daysToHarvest(dayOfYear) + DAYS_PER_YEAR + 6));
+  /** Reputation (absent in old saves: the wellbeing). */
+  get reputation(): number {
+    return this.state.reputation ?? this.state.wellbeing;
   }
 
-  /**
-   * How strongly the village draws families now, 0..1 (0: it cannot feed
-   * more): 1 in the store's window after the harvest (`growSecurity`), else,
-   * while crops stand, by the spare food and good land (round 5).
-   */
-  growth(dayOfYear: number): number {
-    const E = ECONOMY;
+  /** Reputation above which families come. */
+  get arriveAbove(): number {
+    return this.state.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
+  }
+
+  /** A family is ready to come and waits for a house (it camps at the edge meanwhile). */
+  get ready(): boolean {
     const s = this.state;
-    if (this.growSecurity(dayOfYear) >= E.growFood) return 1;
-    const a = this.ahead(dayOfYear);
-    if (!E.spareGrowth || !(a >= 1) || this.foodSecurity(dayOfYear) < E.spareStore) return 0;
-    const need = s.population * E.consumption * (this.daysToHarvest(dayOfYear) + DAYS_PER_YEAR + 6);
-    const foodFam = (Math.max(0, a - E.spareAhead) * need) / E.spareFamily;
-    const landFam = (s.spareLand ?? 0) / E.spareFamily;
-    return Math.min(1, (foodFam + landFam) / E.spareFamilies);
+    return s.pullNeed !== undefined && (s.pull ?? 0) >= s.pullNeed;
+  }
+
+  /** A waiting family moved in (village.ts tendCamp): its pull is used up. */
+  movedIn(): void {
+    const s = this.state;
+    if (s.pullNeed !== undefined) s.pull = Math.max(0, (s.pull ?? 0) - s.pullNeed);
+    delete s.pullNeed;
   }
 
   /** Advance one game day. */
   day(dayOfYear: number, rng: Rng): DayEvents {
     const s = this.state;
+    const E = ECONOMY;
     const ev: DayEvents = { arrived: 0, left: 0, born: 0, died: 0 };
 
-    // Learn how the crops' promise comes true: the food brought in from the end of spring
-    // (harvest and catch) against the promise over the growing days.
-    if (dayOfYear === DAYS_PER_SEASON - 1) s.harvested = 0;
-    if (dayOfYear < 2 * DAYS_PER_SEASON && s.standing) {
-      s.promisedSum = (s.promisedSum ?? 0) + s.standing;
-      s.promisedDays = (s.promisedDays ?? 0) + 1;
-    }
-    if (dayOfYear === DAYS_PER_YEAR - 1 && (s.promisedDays ?? 0) > 4) {
-      const [lo, hi] = ECONOMY.promiseBiasRange;
-      const bias = Math.max(lo!, Math.min(hi!, (s.harvested ?? 0) / (s.promisedSum! / s.promisedDays!)));
-      s.promiseBias = 0.5 * (s.promiseBias ?? ECONOMY.promiseBias) + 0.5 * bias;
-      s.promisedSum = 0;
-      s.promisedDays = 0;
-    }
-
     // Eat and spoil.
-    const need = s.population * ECONOMY.consumption;
+    const need = s.population * E.consumption;
     const starving = s.food < need;
     s.food = Math.max(0, s.food - need);
-    s.food *= 1 - ECONOMY.spoilage;
+    s.food *= 1 - E.spoilage;
     s.hungryDays = starving && s.population > 0 ? s.hungryDays + 1 : 0;
 
-    // Wellbeing (never feeds back into production; see PEOPLE.md §4).
-    const housing = s.population === 0 ? 1 : Math.min(1, (s.houses * ECONOMY.houseCapacity) / s.population);
+    // Prosperity (never feeds back into production; see PEOPLE.md §4): plenty now, a little comfort.
+    const plenty = this.plenty(dayOfYear);
+    s.plenty = plenty;
+    const housing = s.population === 0 ? 1 : Math.min(1, (s.houses * E.houseCapacity) / s.population);
     // Firewood: burnt over the year, most in winter, when a warm hearth cheers people up a little.
     const winter = Math.floor(dayOfYear / DAYS_PER_SEASON) === 3;
-    const warm = winter && (s.wood ?? 0) >= 1 ? ECONOMY.warmWinter : 0;
-    if (s.wood !== undefined) s.wood = Math.max(0, s.wood - (winter ? ECONOMY.woodBurnWinter : ECONOMY.woodBurn));
-    const E = ECONOMY;
-    const fed01 = Math.min(1, this.foodSecurity(dayOfYear));
+    const warm = winter && (s.wood ?? 0) >= 1 ? E.warmWinter : 0;
+    if (s.wood !== undefined) s.wood = Math.max(0, s.wood - (winter ? E.woodBurnWinter : E.woodBurn));
     const comfort = E.comfort[0]! * housing + E.comfort[1]! * s.waterAccess + E.comfort[2]! * s.safety;
-    const target = Math.min(
-      1,
-      (E.foodFloor + (1 - E.foodFloor) * fed01) * (E.comfortBase + (1 - E.comfortBase) * comfort) + warm + (s.milling ? MILL.wellbeing : 0) + POWER.wellbeing * (s.light ?? 0),
-    );
-    s.wellbeing += (target - s.wellbeing) / ECONOMY.wellbeingTau;
+    const food = starving && s.population > E.stayers ? 0 : foodPart(plenty);
+    const target = Math.min(1, food * (E.comfortBase + (1 - E.comfortBase) * comfort) + warm + (s.milling ? MILL.wellbeing : 0) + POWER.wellbeing * (s.light ?? 0));
+    s.wellbeing += (target - s.wellbeing) / E.wellbeingTau;
     s.mood = nextMood(s.mood ?? 0, s.wellbeing);
+    // Reputation: how good the village has looked lately, less its ruins.
+    const ruins = Math.min(E.ruinMax, (s.ruins ?? 0) * E.ruinPenalty);
+    const rep = s.reputation ?? s.wellbeing;
+    s.reputation = rep + (Math.max(0, s.wellbeing - ruins) - rep) / E.reputationTau;
 
-    // Natural change (small, mostly cosmetic).
+    // Natural change: more children in good times.
     const perDay = 1 / DAYS_PER_YEAR;
-    const draw = this.growth(dayOfYear);
-    const fed = draw > 0;
-    const floor = s.population <= ECONOMY.stayers;
-    const births = fed || floor ? s.population * ECONOMY.birthRate * perDay * (s.wellbeing > 0.5 ? 1 : 0.3) : 0;
-    const deaths = s.population * (ECONOMY.deathRate + (starving && !floor ? ECONOMY.starvationDeathRate : 0)) * perDay;
+    const floor = s.population <= E.stayers;
+    const short = Math.max(0, 1 - plenty / E.enough);
+    const births = short === 0 || floor ? s.population * (E.birthRate + E.birthBoost * Math.max(0, (s.wellbeing - 0.5) / 0.5)) * perDay : 0;
+    const deaths = s.population * (E.deathRate + (starving && !floor ? E.starvationDeathRate : 0)) * perDay;
     if (rng.next() < births) {
       s.population++;
       ev.born++;
@@ -433,30 +409,30 @@ export class Settlement {
       ev.died++;
     }
 
-    // Migration: the main lever, rate-limited by housing.
-    const free = Math.max(0, this.freeHouses);
-    const arriveAbove = s.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
-    const pArrive = fed ? ECONOMY.arrivalRate * draw * Math.max(0, s.wellbeing - arriveAbove) * free : 0;
-    // Families come as the village's pull adds up (expected arrivals a day), each when it passes a
-    // threshold drawn around 1: the same rate as a daily chance, with far less luck in it
-    // (round 4: two runs of one village differed by 17 arrivals in a season by chance alone).
-    if (free > 0 && pArrive > 0) {
-      s.pull = (s.pull ?? 0) + pArrive;
-      s.pullNeed ??= ECONOMY.pullNeed[0] + (ECONOMY.pullNeed[1] - ECONOMY.pullNeed[0]) * rng.next();
-      if (s.pull >= s.pullNeed) {
-        s.pull -= s.pullNeed;
-        delete s.pullNeed;
-        const n = rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1);
-        s.population += n;
-        ev.arrived += n;
-      }
+    // Arrivals: word of a good village spreads (reputation above the threshold), the more so the
+    // bigger it is. Families come as the pull adds up, each when it passes a threshold drawn
+    // around 1 (round 4: far less luck than a daily coin toss); with no free house the next family
+    // waits (camps at the edge, village.ts) until one is built.
+    const draw = Math.max(0, (this.reputation - this.arriveAbove) / (1 - this.arriveAbove));
+    const pArrive = short === 0 ? E.arrivalRate * (1 + s.population / E.arrivalScale) * draw : 0;
+    s.pullNeed ??= E.pullNeed[0]! + (E.pullNeed[1]! - E.pullNeed[0]!) * rng.next();
+    s.pull = Math.min(s.pullNeed, (s.pull ?? 0) + pArrive);
+    if (pArrive === 0) s.pull *= 0.9; // they hear of hard times
+    if (this.ready && this.freeHouses > 0 && !s.camp) {
+      const n = rng.int(E.familySize[0], E.familySize[1] + 1);
+      s.population += n;
+      ev.arrived += n;
+      this.movedIn();
     }
-    const households = Math.ceil(s.population / ECONOMY.houseCapacity);
-    const a = this.ahead(dayOfYear);
-    const short = a < ECONOMY.shrinkBelow ? ECONOMY.shrinkBelow - a : 0;
-    const pLeave = (ECONOMY.departureRate * Math.max(0, ECONOMY.leaveBelow - s.wellbeing) + ECONOMY.shrinkRate * short) * households;
-    if (s.population > ECONOMY.stayers && rng.next() < pLeave) {
-      const n = Math.min(s.population - ECONOMY.stayers, rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));
+
+    // Departures: families leave as the food falls short (a bad harvest, a flood), so the village
+    // tracks what its land feeds; at or below the floor everybody stays.
+    const households = Math.ceil(s.population / E.houseCapacity);
+    const pLeave = E.leaveRate * (starving ? 1 : short) * households;
+    s.push = pLeave > 0 ? (s.push ?? 0) + pLeave : 0;
+    if (s.push >= 1 && s.population > E.stayers) {
+      s.push -= 1;
+      const n = Math.min(s.population - E.stayers, rng.int(E.familySize[0], E.familySize[1] + 1));
       s.population -= n;
       ev.left += n;
     }
@@ -464,8 +440,7 @@ export class Settlement {
   }
 
   /** Whether the settlement wants another house built. */
-  wantsHouse(): boolean {
-    const small = this.state.population < ECONOMY.smallVillage;
-    return this.freeHouses < 1 && this.state.wellbeing > (small ? ECONOMY.houseSmall : 0.5);
+  wantsHouse(building = 0): boolean {
+    return this.freeHouses + building < 1 + (this.ready ? 1 : 0) && (this.ready || this.reputation > this.arriveAbove);
   }
 }

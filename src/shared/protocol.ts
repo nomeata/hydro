@@ -237,7 +237,7 @@ export interface BuildingInfo {
   spin?: number;
   /** Mills: grain waiting to be ground (sacks shown by the door, 0..3). */
   sacks?: number;
-  /** Ruins: how overgrown, 0 (fresh mud) .. 2 (a year or more). */
+  /** Ruins: how overgrown, 0 (fresh mud) .. 2 (a year or more), 3 a grassy mound (its last half year). */
   weeds?: number;
 }
 
