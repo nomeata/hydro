@@ -11,7 +11,7 @@
  * not by the player.
  */
 import type { Command, Pt, StructureInfo } from '../shared/protocol';
-import { planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
+import { GATE_DAM_WIDTH, planBank, planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
 import { BRUSH_DEFAULT_SIZE, BRUSH_SIZES } from '../sim/plans/sculpt';
 import { FIELD_MAX_SLOPE } from '../sim/plans/brushwork';
 import { CELL } from '../sim/constants';
@@ -160,16 +160,16 @@ const TOOLS: ToolDef[] = [
   },
   // No lining tool: villagers line the banks near their homes (planLining stays a command for scenes and tests).
   {
+    id: 'gate',
+    label: toolName('gate'),
+    icon: ICONS.gate,
+    hint: 'Tap a raised bank (or a weir) to put a sluice gate in it, or draw across a channel for an earth dam with a gate. The water waits behind it; villagers open it to water their fields in summer, and it opens by itself before the water spills over.',
+  },
+  {
     id: 'weir',
     label: toolName('weir'),
     icon: ICONS.weir,
     hint: 'Draw across a river: a stone wall (up to 4 m) that the water may flow over. It holds the pool at its crest all summer and spills the rest safely, where a mill can use the fall. Tap a weir to change it.',
-  },
-  {
-    id: 'gate',
-    label: toolName('gate'),
-    icon: ICONS.gate,
-    hint: 'Tap a weir or a bank to put a sluice gate in it, or draw across a channel for a wall with a gate. Villagers open it to water their fields in summer; it opens by itself before the water spills over.',
   },
   {
     id: 'wheel',
@@ -1042,10 +1042,10 @@ export class ToolPalette {
         this.host.setWeirGhost?.(weir ? [weir] : []);
       } else if (this.tool === 'gate') {
         if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
-          // Drawn across a channel: a stone wall with the gate at its lowest point.
+          // Drawn across a channel: an earth dam with the gate at its lowest point.
           this.showGateGhost(null);
           const low = weirLowest(grid, ends[0]!, ends[1]!);
-          if (Number.isFinite(low)) lining = planWeirPreview(grid, ends[0]!, ends[1]!, low + amount);
+          if (Number.isFinite(low)) planBank(grid, [ends[0]!, ends[1]!], GATE_DAM_WIDTH, low + amount);
         } else this.showGateGhost(this.gatePreview(ends[0]!));
       } else if (this.tool === 'wheel') {
         // The ghost wheel and its trough, pointing where the water goes: as built when the site is good, red when not.

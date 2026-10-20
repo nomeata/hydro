@@ -40,29 +40,29 @@ test('stats bar is visible and opens the history chart, which closes again', asy
 
 test('the next locked tool shows its unlock progress on the palette and pulses at unlock', async ({ page }) => {
   const errors = await openGame(page, '&size=64');
-  const weir = page.locator('.tools .toolrow button[data-tool=weir]');
   const gate = page.locator('.tools .toolrow button[data-tool=gate]');
-  // Only the next tool (the Weir at 15) carries the ring; later ones are plainly locked.
-  await expect(weir).toHaveClass(/locked/);
-  await expect(weir).toHaveClass(/next/);
-  await expect(weir.locator('.ring')).toBeVisible();
-  await expect(weir.locator('.lock')).toBeVisible();
+  const weir = page.locator('.tools .toolrow button[data-tool=weir]');
+  // Only the next tool (the Gate at 15) carries the ring; later ones are plainly locked.
   await expect(gate).toHaveClass(/locked/);
-  await expect(gate).not.toHaveClass(/next/);
-  await expect(gate.locator('.ring')).toBeHidden();
-  const progress = () => weir.evaluate((b) => Number((b as HTMLElement).style.getPropertyValue('--progress')));
+  await expect(gate).toHaveClass(/next/);
+  await expect(gate.locator('.ring')).toBeVisible();
+  await expect(gate.locator('.lock')).toBeVisible();
+  await expect(weir).toHaveClass(/locked/);
+  await expect(weir).not.toHaveClass(/next/);
+  await expect(weir.locator('.ring')).toBeHidden();
+  const progress = () => gate.evaluate((b) => Number((b as HTMLElement).style.getPropertyValue('--progress')));
   await page.evaluate(() => (window as any).__hydro.tools.setPopulation(10));
   // Linear from 0 to 15: 10 villagers are two thirds of the way.
   expect(await progress()).toBeCloseTo(10 / 15, 2);
   // (Read the class right away: the pulse lasts only two seconds.)
   const cls = await page.evaluate(() => {
     (window as any).__hydro.tools.setPopulation(15);
-    return document.querySelector('.tools .toolrow button[data-tool=weir]')!.className;
+    return document.querySelector('.tools .toolrow button[data-tool=gate]')!.className;
   });
   expect(cls).toContain('unlock-pulse');
-  await expect(weir).not.toHaveClass(/\blocked\b/);
-  await expect(gate).toHaveClass(/next/);
+  await expect(gate).not.toHaveClass(/\blocked\b/);
+  await expect(weir).toHaveClass(/next/);
   await expect(page.locator('.tools .toolrow button.next')).toHaveCount(1);
-  await expect(weir).not.toHaveClass(/unlock-pulse/, { timeout: 8000 });
+  await expect(gate).not.toHaveClass(/unlock-pulse/, { timeout: 8000 });
   expect(errors).toEqual([]);
 });

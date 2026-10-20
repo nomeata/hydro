@@ -17,13 +17,13 @@ interface CardDef {
 
 /** Tools with a card (the starting tools are the welcome panels' "You shape the water"). */
 export const TOOL_CARDS: Readonly<Record<string, CardDef>> = {
-  weir: {
-    scene: 'weir',
-    text: 'Heaped earth must never be overtopped: water pouring over it cuts through. A weir is built for it: a stone wall, up to 4 m high, that holds the pool at its crest all summer and spills the rest safely, a fall for a mill. Tap a weir later to move its ends or change its crest.',
-  },
   gate: {
     scene: 'gate',
-    text: 'When the fields below run dry, a villager opens the gate; in autumn it closes so the reservoir refills. Before a flood spills over, it opens by itself.',
+    text: 'Hold water back behind a bank, and let the villagers release it to their dry fields: tap a raised bank to set a sluice gate in it, or draw across a channel for an earth dam with a gate. In autumn it closes so the pond refills; before a flood spills over, it opens by itself.',
+  },
+  weir: {
+    scene: 'weir',
+    text: 'Heaped earth must never be overtopped: water pouring over it cuts through. A weir is a stone wall that water can spill over safely: across a river it raises the water for your canals, and its drop turns mills and, later, turbines. Up to 4 m high; tap a weir later to move its ends or change its crest.',
   },
   turbine: {
     scene: 'turbine',

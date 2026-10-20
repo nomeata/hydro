@@ -112,13 +112,13 @@ describe('weir vs dike', () => {
     expect(c.structures.weirs[0]!.top).toBeCloseTo(foot + 4, 5);
   });
 
-  it('a gate drawn across a channel builds a stone wall with the gate at its lowest point', async () => {
+  it('a gate drawn across a channel builds an earth dam (no weir needed) with the gate at its lowest point', async () => {
     const sim = new Simulation(channel(), 1);
     sim.command({ type: 'placeGate', points: [[30, 10], [30, 22]], width: 1, height: 2 });
-    expect(sim.structures.weirs.length).toBe(1);
+    expect(sim.structures.weirs.length).toBe(0);
     expect(sim.structures.gates.length).toBe(1);
     const g = sim.structures.gates[0]!;
-    expect(g.top).toBeCloseTo(sim.structures.weirs[0]!.top, 5);
+    expect(g.top - g.sill).toBeCloseTo(2, 5);
     await build(sim, 15);
     expect(ground(sim.world, 30, 12)).toBeCloseTo(g.top, 1);
   }, 60_000);
