@@ -569,7 +569,7 @@ export interface AchievementsUpdate {
 // ---------------------------------------------------------------------------
 // Ideas for this valley (docs/GAMEPLAY.md §3.3; sim/ideas.ts).
 
-export type IdeaKind = 'dry' | 'flood' | 'marsh' | 'mill' | 'turbine' | 'poles' | 'land' | 'room';
+export type IdeaKind = 'dry' | 'flood' | 'marsh' | 'mill' | 'turbine' | 'poles' | 'land' | 'room' | 'help';
 
 /** A gentle suggestion from the world's current problems, shown in the Achievements card. */
 export interface IdeaInfo {
