@@ -1,9 +1,7 @@
 /**
- * The crew at freshly sculpted ground (DESIGN.md §4): a few little workers
- * walk up to where the player has been brushing and pat and tamp the earth
- * with their spades for a while, then wander off. They also gather on the
- * banks at a weir that is being built (`site`), working from the dry
- * ground beside the water. Purely cosmetic: they live
+ * The crew at a weir that is being built: a few little workers gather on
+ * the banks (`site`), working from the dry ground beside the water, and
+ * wander off once it is done. Purely cosmetic: they live
  * on the main thread, are merged into the entity frames like the welcome
  * scenes' animals (render/worldLayers.ts), and change nothing in the sim.
  */
@@ -11,7 +9,7 @@ import { CarryKind, EntityAnim, EntityKind, type EntityFrame } from '../../share
 
 /** At most this many workers at once. */
 const MAX_CREW = 3;
-/** How long a sculpted spot keeps them interested (s), and how long they stay after the last stroke. */
+/** How long a site spot keeps them interested (s), and how long they stay after the last stroke. */
 const SPOT_LIFE = 40;
 /** Walking speed (cells per second). */
 const SPEED = 1.6;
@@ -40,13 +38,13 @@ interface Worker {
   goneAt: number;
 }
 
-export class SculptCrew {
+export class SiteCrew {
   private spots: Spot[] = [];
   private crew: Worker[] = [];
   private now = 0;
   private nextId = 1;
   private seed = 0x5c1b7;
-  /** Called when a worker starts tamping at (x, y) (sound). */
+  /** Called when a worker starts working at (x, y) (sound). */
   onWork: ((x: number, y: number) => void) | null = null;
 
   constructor(
@@ -65,8 +63,8 @@ export class SculptCrew {
     return this.seed / 4294967296;
   }
 
-  /** The player sculpted around (x, y) (cells), with a brush of radius r. */
-  note(x: number, y: number, r: number): void {
+  /** Work going on around (x, y) (cells), within radius r. */
+  private note(x: number, y: number, r: number): void {
     const near = this.spots.find((s) => Math.hypot(s.x - x, s.y - y) < MERGE);
     if (near) near.t = this.now;
     else this.spots.push({ x, y, t: this.now });
@@ -85,13 +83,13 @@ export class SculptCrew {
 
   /**
    * A building site at (x, y) (a weir's end on the bank): keeps workers
-   * coming while it is called, like brushing there would.
+   * coming while it is called.
    */
   site(x: number, y: number): void {
     this.note(x, y, 1.5);
   }
 
-  /** A sculpted spot near (x, y) to go to, a little off its centre (on dry ground when there is some). */
+  /** A site spot near (x, y) to go to, a little off its centre (on dry ground when there is some). */
   private pick(x: number, y: number): { x: number; y: number } {
     const fresh = this.spots.filter((s) => this.now - s.t < SPOT_LIFE);
     let s = fresh[Math.floor(this.rand() * fresh.length)] ?? { x, y };
@@ -117,7 +115,7 @@ export class SculptCrew {
     const lastStroke = this.spots.reduce((m, s) => Math.max(m, s.t), -Infinity);
     for (const w of this.crew) {
       if (!w.leaving && this.now - lastStroke > SPOT_LIFE * 0.6) {
-        // Nothing new to tamp: off they go.
+        // Nothing left to work on: off they go.
         w.leaving = true;
         const a = this.rand() * Math.PI * 2;
         w.goal = { x: w.x + Math.cos(a) * 8, y: w.y + Math.sin(a) * 8 };

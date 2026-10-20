@@ -8,13 +8,15 @@
  * once water runs in it. Heaped earth (ground above the original ground) is
  * CellFlag.Fill: water pouring over its edge scours it (overtopStep), so an
  * overtopped bank breaches. Ground dug 0.3 m below the original is
- * CellFlag.Canal (villagers line those near home). Fields, gardens,
- * pastures, paths and yards under the brush go back to plain land, the
+ * CellFlag.Canal (villagers line those near home). Fields, gardens and
+ * pastures survive gentle work: one is lost only where the ground becomes
+ * too steep to farm (FIELD_MAX_SLOPE), or later as usual when it goes under
+ * water. Paths and yards under the brush go back to plain land, the
  * villagers' stone lining comes off, and plants are buried or dug out.
  * Water depth is not touched, so water is conserved exactly.
  */
 import type { BrushTool, Pt } from '../../shared/protocol';
-import { CELL_AREA } from '../constants';
+import { CELL, CELL_AREA } from '../constants';
 import { CellFlag, LandUse, SOIL_PROPS, SoilType, type World } from '../world';
 import { clearGround, planDike, planLevel, planTrench, type PlanGrid } from './plans';
 import { brushSample, type SculptGrid } from './sculpt';
@@ -42,6 +44,12 @@ const CLEAR_AT = 0.05;
 const CANAL_DEPTH = 0.3;
 /** Height above the original ground that makes a cell a heaped bank (m). */
 const FILL_HEIGHT = 0.05;
+/**
+ * Steepest rise to a neighbour (m per 5 m cell, over 5: as Village.slope)
+ * a field, garden or pasture survives the brush on; villagers plant below
+ * 0.25, so ground they would farm is kept.
+ */
+export const FIELD_MAX_SLOPE = 0.3;
 /** Plants lost per metre of earth moved on a cell (vegetation 0..1). */
 const VEG_PER_M = 1.5;
 
@@ -70,6 +78,8 @@ export class Brushwork {
   readonly moved = { brush: 0, script: 0 };
   private scripted = false;
   private strokes: StrokeDiff[] = [];
+  /** Cells changed since the last field check. */
+  private touched = new Set<number>();
   private readonly grid: SculptGrid;
 
   constructor(
@@ -123,6 +133,7 @@ export class Brushwork {
       y1 = Math.max(y1, Math.min(this.world.height - 1, Math.ceil(y + r)));
       brushSample(this.grid, tool, x, y, r, dt, (i, dz) => this.change(s, i, dz));
     }
+    this.checkFields();
     if (s.orig.size === 0 && this.strokes[this.strokes.length - 1] === s) this.strokes.pop();
     return y1 >= y0 ? { y0, y1 } : null;
   }
@@ -157,6 +168,7 @@ export class Brushwork {
       done.push(i);
     }
     this.scripted = false;
+    this.checkFields();
     if (s.orig.size === 0 && this.strokes[this.strokes.length - 1] === s) this.strokes.pop();
     return done;
   }
@@ -220,10 +232,30 @@ export class Brushwork {
     if (before < CLEAR_AT && moved >= CLEAR_AT) {
       const lined = (w.flags[i]! & CellFlag.Lined) !== 0;
       if (lined) w.flags[i]! &= ~CellFlag.Lined;
-      const lu = w.landuse[i]!;
-      if (clearGround(w, i) || lined || lu !== LandUse.None) this.host.cleared(i, lined);
+      // Fields, gardens and pastures stay unless it gets too steep (checkFields).
+      const cleared = !farmed(w.landuse[i]!) && clearGround(w, i);
+      if (cleared || lined) this.host.cleared(i, lined);
     }
+    this.touched.add(i);
     this.host.changed(i);
+  }
+
+  /** Fields, gardens and pastures on or next to changed cells that are now too steep to farm go back to plain land. */
+  private checkFields(): void {
+    if (!this.touched.size) return;
+    const w = this.world;
+    const W = w.width;
+    const seen = new Set<number>();
+    for (const i of this.touched) {
+      const x = i % W;
+      const y = (i / W) | 0;
+      for (const j of [i, x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < w.height - 1 ? i + W : -1]) {
+        if (j < 0 || seen.has(j)) continue;
+        seen.add(j);
+        if (farmed(w.landuse[j]!) && cellSlope(w, j) > FIELD_MAX_SLOPE && clearGround(w, j)) this.host.cleared(j, false);
+      }
+    }
+    this.touched.clear();
   }
 
   /** Groundwater above the soil's new capacity comes out onto the surface (conserved). */
@@ -235,4 +267,22 @@ export class Brushwork {
       w.ground[i] = cap;
     }
   }
+}
+
+function farmed(lu: number): boolean {
+  return lu === LandUse.Field || lu === LandUse.Garden || lu === LandUse.Pasture;
+}
+
+/** Steepest rise from cell i to a neighbour (m per 5 m, over 5; as Village.slope). */
+export function cellSlope(w: World, i: number): number {
+  const W = w.width;
+  const x = i % W;
+  const y = (i / W) | 0;
+  const h = w.terrain(i);
+  let m = 0;
+  if (x > 0) m = Math.max(m, Math.abs(w.terrain(i - 1) - h));
+  if (x < W - 1) m = Math.max(m, Math.abs(w.terrain(i + 1) - h));
+  if (y > 0) m = Math.max(m, Math.abs(w.terrain(i - W) - h));
+  if (y < w.height - 1) m = Math.max(m, Math.abs(w.terrain(i + W) - h));
+  return m / CELL;
 }

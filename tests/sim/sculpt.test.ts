@@ -113,7 +113,7 @@ describe('sculpting in the sim', () => {
     expect(totalWater(w)).toBeCloseTo(before + L.rain + L.inflow - L.outflow - L.evaporation - L.seepage, 0);
   });
 
-  it('goes round houses, jetties and structures, and clears fields under it', () => {
+  it('goes round houses, jetties and structures; fields under it survive gentle work', () => {
     const w = meadow();
     const sim = new Simulation(w, 1);
     const house = w.idx(12, 12);
@@ -131,8 +131,29 @@ describe('sculpting in the sim', () => {
     sim.command(hold('dig', 12, 12, 1.5, 4));
     expect([house, bridge, struct].map((i) => w.terrain(i))).toEqual(z);
     expect(w.terrain(field)).toBeLessThan(z[0]! - 0.2);
-    expect(w.landuse[field]).toBe(LandUse.None);
+    expect(w.landuse[field]).toBe(LandUse.Field);
+    expect(w.crop[field]).toBe(100);
     expect(w.terrain(w.idx(12, 9))).toBeLessThan(z[0]! - 0.1);
+  });
+
+  it('loses a field only where the ground gets too steep to farm, by brush or scripted line', () => {
+    const w = meadow();
+    const sim = new Simulation(w, 1);
+    const gentle = [w.idx(6, 6), w.idx(7, 6)];
+    const steep = [w.idx(20, 8), w.idx(20, 7)];
+    for (const i of [...gentle, ...steep]) {
+      w.landuse[i] = LandUse.Field;
+      w.crop[i] = 50;
+    }
+    // A gentle raise over two fields: they keep growing.
+    sim.command(hold('raise', 6.5, 6, 0.6, 4));
+    expect(w.terrain(gentle[0]!)).toBeGreaterThan(10.05);
+    for (const i of gentle) expect(w.landuse[i]).toBe(LandUse.Field);
+    // A deep trench (3 m) dug along y = 10: the field on its lip (2 m above the next cell) is too steep, the one behind it stays.
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[14, 10], [26, 10]], width: 1, amount: 3 });
+    expect(w.terrain(w.idx(20, 9))).toBeLessThan(8.5);
+    expect(w.landuse[steep[0]!]).toBe(LandUse.None);
+    expect(w.landuse[steep[1]!]).toBe(LandUse.Field);
   });
 
   it('undoes the last strokes, one at a time', () => {

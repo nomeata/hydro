@@ -142,7 +142,11 @@ touch the brush bites only after 90 ms, so a second finger still pans and
 zooms. They work while paused too: the sim applies every stroke sample at
 once. The client applies the same kernel to its mirror for instant feel,
 and the sim's terrain is the final word (`Snapshot.sculptSeq`). A ring on
-the ground shows the brush. **Undo** (the button by the sizes, Ctrl/Cmd+Z)
+the ground shows the brush, with contour lines every 0.25 m under it;
+while an earth brush is selected, faint contour lines (every 0.5 m, every
+2.5 m stronger) cover the whole map, on the river and lake beds too (veiled
+by the water's depth), fading out when zoomed far (`terrain.ts
+uContours`): the map looks different while a brush is still on. **Undo** (the button by the sizes, Ctrl/Cmd+Z)
 takes back the last strokes (the last 12, not across reloads).
 
 - *Water is conserved:* the brush never touches the water depth, so ground
@@ -158,12 +162,20 @@ takes back the last strokes (the last 12, not across reloads).
   turbine, pump) or the crew's work on them: the brush fades out
   over two cells around them (`Snapshot.fixed`). Footbridges and power
   poles are not in the way: ground moved under one knocks it down, and
-  the villagers put it up again. Fields, gardens,
-  pastures, paths and yards under the brush go back to plain land, and
-  the villagers' stone lining comes off.
-- *The crew is cosmetic for earth:* a few workers walk up to freshly
-  sculpted ground and tamp it with their spades for a while, then leave
-  (`render/crowd/sculptCrew.ts`; no effect on the sim).
+  the villagers put it up again. Paths and yards under the brush go back
+  to plain land, and the villagers' stone lining comes off.
+- *Fields survive gentle work:* fields, gardens and pastures raised,
+  lowered or evened keep growing. A cell is lost only where the ground
+  becomes too steep to farm (a rise of more than 1.5 m to a neighbour
+  per 5 m cell, `brushwork.ts FIELD_MAX_SLOPE` = 0.3, just above the
+  0.25 below which villagers plant), checked after every brush sample
+  and `shapeLine`, or later when it goes under water (PEOPLE.md). There
+  is no loss note; under the brush, field cells close to that limit get
+  a faint red tint.
+- *No crew for earth:* the brush moves the ground by itself, with a soft
+  spade crunch now and then while it is applied. (A few cosmetic workers
+  do gather on the banks of a weir being built:
+  `render/crowd/siteCrew.ts`, no effect on the sim.)
 - Bots, scenes and tests shape whole lines at once with the `shapeLine`
   command (the old trench / dike / level profiles, with the same rules);
   the earth moved by brushes and by scripts is counted

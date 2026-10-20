@@ -8,7 +8,7 @@ import { CrowdLayer } from './crowd/crowd';
 import { FakeCrowd, type FakeCrowdOptions } from './crowd/fakeCrowd';
 import { FishJumps } from './fishJumps';
 import { FootprintLayer } from './footprints';
-import { SculptCrew } from './crowd/sculptCrew';
+import { SiteCrew } from './crowd/siteCrew';
 import { VegetationLayer } from './objects/vegetation';
 import type { GameRenderer, InitialData } from './renderer';
 
@@ -21,8 +21,8 @@ export class WorldLayers {
   readonly fishJumps: FishJumps;
   /** Footprints in the snow behind walking people and animals. */
   readonly footprints: FootprintLayer;
-  /** The cosmetic crew tamping freshly sculpted ground (crowd/sculptCrew.ts), merged into the entities. */
-  readonly sculptCrew: SculptCrew;
+  /** The cosmetic crew at unfinished weirs (crowd/siteCrew.ts), merged into the entities. */
+  readonly siteCrew: SiteCrew;
   /** Grazing animals merged into the entities; created on the first snapshot. */
   fakeCrowd: FakeCrowd | null = null;
   private animals: AnimalOptions | null;
@@ -51,15 +51,15 @@ export class WorldLayers {
     this.footprints = new FootprintLayer(renderer.heights, renderer.lookTexture, () => renderer.groundBytes());
     renderer.scene.add(this.footprints.mesh);
     this.fishJumps.known = (x, y) => !renderer.fog.enabled || renderer.fog.at(x, y) >= 200;
-    this.sculptCrew = new SculptCrew(
+    this.siteCrew = new SiteCrew(
       (x, y) => !renderer.fog.enabled || renderer.fog.known(x, y),
       (x, y) => renderer.heights.depthAt(x, y) < 0.05,
     );
     // All of it is game activity, on the game clock (frozen while paused; render/gameClock.ts).
     this.unlisten = renderer.addFrameListener((_dt, clock) => {
       this.fakeCrowd?.advance(clock.playDt);
-      if (clock.playDt > 0) for (const [x, y] of this.sites) this.sculptCrew.site(x, y);
-      this.sculptCrew.advance(clock.playDt);
+      if (clock.playDt > 0) for (const [x, y] of this.sites) this.siteCrew.site(x, y);
+      this.siteCrew.advance(clock.playDt);
       this.crowd.update(clock.playDt, clock.playMs, clock.animDt);
       this.footprints.snowfall = renderer.snowfall;
       this.footprints.update(clock.playDt, clock.gameSpeed, this.crowd.tracks.tracks.values());
@@ -86,7 +86,7 @@ export class WorldLayers {
     if (this.animals) this.fakeCrowd ??= new FakeCrowd(r.heights, { seed: this.seed, look: this.look, people: 0, ...this.animals });
     const animals = this.fakeCrowd?.frame();
     let entities = animals ? mergeFrames(s.entities, animals) : (s.entities ?? EMPTY);
-    if (this.sculptCrew.count) entities = mergeFrames(entities, this.sculptCrew.frame());
+    if (this.siteCrew.count) entities = mergeFrames(entities, this.siteCrew.frame());
     this.crowd.setFrame(hideInFog(entities, r), r.clock.playMs);
     if (s.structures || s.terrain) this.crowd.setDecks(r.structures.decks());
     if (s.structures || s.terrain || this.sites.length) this.sites = weirSites(r);

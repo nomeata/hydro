@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     cameraView(renderer.camera.getCurrentState(), canvas.clientWidth, canvas.clientHeight),
   );
   layers.fishJumps.onSplash = (x, y) => sound.splash(x, y);
-  layers.sculptCrew.onWork = (x, y) => sound.crewWork(x, y);
+  layers.siteCrew.onWork = (x, y) => sound.crewWork(x, y);
   // The brushes: instant on the mirror and the renderer, sent to the sim every frame (client/sculptor.ts).
   const sculptor = new Sculptor(
     mirror,
@@ -207,7 +207,8 @@ async function main(): Promise<void> {
     },
     sculptor,
     setBrushCursor: (c) => renderer.brushCursor.set(c),
-    brushed: (x, y, r) => layers.sculptCrew.note(x, y, r),
+    setContours: (on) => renderer.setContours(on),
+    brushed: (x, y) => sound.brush(x, y),
   });
 
   client.onSnapshot((s) => {
@@ -302,7 +303,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, sculptor, sculptCrew: layers.sculptCrew, data, autosave, crowd: layers.crowd, footprints: layers.footprints, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, sculptor, siteCrew: layers.siteCrew, data, autosave, crowd: layers.crowd, footprints: layers.footprints, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
   }
   document.getElementById('loading')?.classList.add('done');
 }

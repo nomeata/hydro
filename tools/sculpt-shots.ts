@@ -102,7 +102,7 @@ const info = await page.evaluate(({ rx, ry, ux, uy, W }) => {
     const i = Math.round(ry + uy * k) * W + Math.round(rx + ux * k);
     out.push(`${k}: z=${h.mirror.terrainH[i].toFixed(2)} d=${d[i].toFixed(2)}`);
   }
-  return { out, crew: h.sculptCrew.count, undo: h.sculptor.undoable };
+  return { out, undo: h.sculptor.undoable };
 }, site);
 console.log(info);
 await browser.close();

@@ -32,8 +32,6 @@ export class Sculptor {
   undoable = 0;
   /** The current stroke touched (came near) cells the brush leaves alone. */
   touchedFixed = false;
-  /** The current stroke changed the ground of a field, garden or pasture (the crop there is lost). */
-  touchedField = false;
   /** Height change per cell of the current stroke (m), and of the last strokes (for undo's flash). */
   strokeDz = new Map<number, number>();
   private history: Map<number, number>[] = [];
@@ -59,7 +57,6 @@ export class Sculptor {
     this.radius = radius;
     this.strokeId++;
     this.touchedFixed = false;
-    this.touchedField = false;
     this.strokeDz = new Map();
     this.history.push(this.strokeDz);
     if (this.history.length > 40) this.history.shift();
@@ -71,12 +68,9 @@ export class Sculptor {
     const W = m.width;
     const r = this.radius;
     const t = m.terrainH;
-    const lu = m.landuse;
     brushSample(this.grid, this.tool, x, y, r, dt, (i, dz) => {
       t[i] = t[i]! + dz;
       this.strokeDz.set(i, (this.strokeDz.get(i) ?? 0) + dz);
-      // (LandUse Field, Garden, Pasture.)
-      if (!this.touchedField && lu[i]! >= 1 && lu[i]! <= 3 && Math.abs(dz) > 1e-4) this.touchedField = true;
       this.batch.cells.push(i);
       this.batch.dz.push(dz);
     });

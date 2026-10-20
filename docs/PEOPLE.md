@@ -120,7 +120,8 @@ Too wet is bad too: saturation above 0.9 slows crops to 0.4; standing
 water over 5 cm slows them to 0.4 as well (a spilling canal, a wet spring),
 and water over 15 cm drowns them (`CROP_MOISTURE.drown`). Fields that stand
 in water when they should be sown are given up, and the village claims dry
-land elsewhere.
+land elsewhere. The player's earth brushes leave fields alone unless they
+make the ground too steep to farm (DESIGN.md §4, `FIELD_MAX_SLOPE`).
 
 **Clearing snow before sowing** (`SNOW_CLEARING` in `people/village.ts`).
 A field cell due for sowing under more than 1.5 mm of snow water (thinner

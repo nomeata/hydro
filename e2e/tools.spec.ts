@@ -5,7 +5,7 @@ import { findWeir, openGame, runDays, settleFrames, toScreen } from './helpers';
  * Tools stay selected (after a placement or a tap that placed nothing,
  * until Escape or Look), and show what they would make before it is made:
  * the gate's hover ghost, a red wheel off its sites (no live text);
- * the brushes tint the fields they would bury, the ground a stroke raised
+ * the brushes keep the fields they go over (no warning text), tint the ground a stroke raised
  * or dug, and flash an undone stroke (ui/tools.ts).
  */
 
@@ -127,7 +127,7 @@ test('tools stay selected; weirs, gates and wheels show their ghosts first', asy
   expect(errors).toEqual([]);
 });
 
-test('brushes: distinct cursors, the fields under them tinted, the stroke tinted, an undo flashes', async ({ page }, info) => {
+test('brushes: distinct cursors, the fields under them kept, the stroke tinted, an undo flashes', async ({ page }, info) => {
   test.setTimeout(400_000);
   const phone = info.project.name === 'phone';
   const errors = await openGame(page, '&cheat=1');
@@ -152,17 +152,20 @@ test('brushes: distinct cursors, the fields under them tinted, the stroke tinted
   await page.evaluate(([x, y]) => (window as any).__hydro.renderer.camera.setState({ x, y, viewHeight: 24 }, true), [field!.x, field!.y]);
   await settleFrames(page, 3);
   const at = await toScreen(page, field!.x, field!.y);
+  expect(await R('h.renderer.contours')).toBe(false);
   await pick(page, phone, 'button[data-tool=raise]');
+  // An earth brush shows contour lines over the whole map.
+  expect(await R('h.renderer.contours')).toBe(true);
   // Held over the field (a touch shows the ring once the brush bites).
   const release = await stroke(page, phone, [at, [at[0] + 2, at[1]], [at[0] + 4, at[1]]], true);
   await page.waitForTimeout(500);
   await expect.poll(() => R('h.renderer.brushCursor.shown?.tool'), { timeout: 60_000 }).toBe('raise');
-  expect(await R('h.renderer.cellTint.count("fields")')).toBeGreaterThan(0);
   expect(await R('h.renderer.brushCursor.shown.contours')).toBeGreaterThan(0);
   await expect.poll(() => R('h.renderer.cellTint.count("stroke")'), { timeout: 60_000 }).toBeGreaterThan(0);
   await release();
-  // It says the crop there is lost.
-  await expect(page.locator('.tools .hint')).toContainText('fields', { timeout: 30_000 });
+  // A gentle raise keeps the field (no loss note).
+  await expect.poll(() => R(`h.mirror.landuse[${field!.y} * h.mirror.width + ${field!.x}]`), { timeout: 30_000 }).toBe(1);
+  await expect(page.locator('.tools .hint')).not.toContainText('crop there is lost');
   await pressed(page, 'button[data-tool=raise]');
   // Undo: the stroke's ground flashes as it goes back.
   await pick(page, phone, '[data-testid=undo]');

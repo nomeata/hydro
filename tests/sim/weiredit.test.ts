@@ -205,16 +205,20 @@ describe('editing a weir', () => {
 });
 
 describe('shaping the ground and what stands on it', () => {
-  it('a canal dug through a field turns it back to plain land at once', () => {
+  it('a shallow canal through a field keeps it; the sides of a deep one, too steep to farm, go back to plain land at once', () => {
     const sim = new Simulation(channel(), 1);
     const w = sim.world;
     for (let x = 10; x <= 20; x++) {
       w.landuse[w.idx(x, 6)] = LandUse.Field;
       w.crop[w.idx(x, 6)] = 120;
     }
-    sim.command({ type: 'shapeLine', tool: 'dig', points: [[15, 3], [15, 9]], width: 2, amount: 1 });
-    expect(w.landuse[w.idx(15, 6)]).toBe(LandUse.None);
-    expect(w.crop[w.idx(15, 6)]).toBe(0);
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[15, 3], [15, 9]], width: 2, amount: 0.5 });
+    expect(w.landuse[w.idx(15, 6)]).toBe(LandUse.Field);
+    expect(w.crop[w.idx(15, 6)]).toBe(120);
+    sim.command({ type: 'shapeLine', tool: 'dig', points: [[15, 3], [15, 9]], width: 2, amount: 2.5 });
+    // Its steep sides are lost; its flat floor only once water stands on it (the villagers' rules).
+    for (const x of [13, 14, 16, 17]) expect(w.landuse[w.idx(x, 6)]).toBe(LandUse.None);
+    expect(w.crop[w.idx(14, 6)]).toBe(0);
     expect(w.landuse[w.idx(10, 6)]).toBe(LandUse.Field);
   });
 

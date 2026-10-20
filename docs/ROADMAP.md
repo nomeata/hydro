@@ -221,8 +221,11 @@ The interaction rework decided with the owner (DESIGN §4).
 - ☑ Brushes read apart (review 2026-10-18): own cursor shapes (Raise arrows
   up, Dig dashed with arrows down, Even a flat ring at its level), contour
   lines under the brush, the stroke's ground tinted warm (raised) or cool
-  (dug) for a while, the villagers' fields under the brush tinted (and a
-  note when a stroke buried some)
+  (dug) for a while
+- ☑ Map-wide faint contour lines (0.5 m, 2.5 m stronger) while an earth
+  brush is selected, on beds under water too
+- ☑ Fields survive gentle brushing and `shapeLine`; lost only where the
+  ground gets too steep to farm (faint red tint near the limit, no note)
 - ☑ Every tool stays selected (after placing, or a tap that placed
   nothing) until Escape or Look; ghosts before placing: pumps, a gate on
   hover, the weir's wall while drawn and while
@@ -230,7 +233,7 @@ The interaction rework decided with the owner (DESIGN §4).
   ghost says it); bigger, pulsing wheel-site rings
 - ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks); a
   gate drawn across a channel builds a wall with the gate
-- ☑ Cosmetic crew tamping fresh earth; old saves' earthwork plans finished
+- ☑ Old saves' earthwork plans finished
   on load; bots, scenes and tests shape lines with `shapeLine` (earth moved
   counted for a later budget)
 
@@ -239,7 +242,7 @@ See docs/SOUND.md.
 - ☑ Ambience mixed from the view (river, lake, rapids/weir spill, rain,
   wind, birds by season, crickets, frogs, turbine hum), procedural Web Audio
 - ☑ Spot sounds near the camera centre, panned and rate-limited (hammer,
-  axe, spade, crew digging, cows, sheep, chicks, wheels and mills, fish
+  axe, spade, crew digging, earth brush, cows, sheep, chicks, wheels and mills, fish
   splashes); UI clicks, achievement chime, milestone fanfare
 - ☑ Mute and volume in the menu (persisted), first-gesture start, silent
   when hidden; the welcome scenes have their own ambience
