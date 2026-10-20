@@ -8,9 +8,11 @@
  * steady rate (`BRUSH.rate`): the ground becomes min(ground, stamp's lower
  * surface) for Dig, max(ground, upper surface) for Raise, evaluated with
  * the exact ellipsoid at every cell centre, so the result is a round bowl
- * (or dome) whatever the ground was like. How far it is pressed (`depth`)
- * fades as the brush moves (over one radius of travel), so a channel's
- * depth goes with the time spent on it, not the stroke's length. After
+ * (or dome) whatever the ground was like. How far it is pressed is rate ×
+ * the time the stroke has spent around the spot (each earlier sample
+ * counting less the farther it was, nothing beyond a radius: `pressTime`),
+ * so a channel's depth goes with the time spent on it, not the stroke's
+ * length, and scrubbing back and forth digs deeper. After
  * every step the slopes around the stamp relax to the angle of repose of
  * loose earth (dry, or wet under water), conserving the earth: a deeper
  * dig becomes a widening funnel and a growing mound a sand pile, never a
@@ -100,16 +102,28 @@ export interface SculptGrid {
   wet?(i: number): boolean;
 }
 
-/** A stroke's stamp: how far it is pressed in (m) and where it was last. */
+/** A stroke's stamp: where it was held and how long (flat [x, y, dt, …]). */
 export interface Stamp {
-  depth: number;
-  x: number;
-  y: number;
-  started: boolean;
+  held: number[];
 }
 
 export function newStamp(): Stamp {
-  return { depth: 0, x: 0, y: 0, started: false };
+  return { held: [] };
+}
+
+/**
+ * The time (s) the stroke has pressed at (x, y): its samples' hold times,
+ * each weighted 1 − d/r by its distance d from here (a pass at speed v
+ * adds r / v; a held spot adds all of it).
+ */
+export function pressTime(stamp: Stamp, x: number, y: number, r: number): number {
+  const h = stamp.held;
+  let t = 0;
+  for (let k = 0; k < h.length; k += 3) {
+    const d = Math.hypot(h[k]! - x, h[k + 1]! - y);
+    if (d < r) t += h[k + 2]! * (1 - d / r);
+  }
+  return t;
 }
 
 /** Even's weight at distance d from the centre of a brush of radius r: a soft dome. */
@@ -191,12 +205,13 @@ export function brushSample(
     }
   const start = Float64Array.from(z);
 
-  // Press on: the depth fades with the distance moved, and grows with the time held.
-  if (stamp.started) stamp.depth *= Math.exp(-Math.hypot(x - stamp.x, y - stamp.y) / r);
-  stamp.started = true;
-  stamp.x = x;
-  stamp.y = y;
-  stamp.depth += BRUSH.rate * t;
+  // Press on: rate × the time held around here.
+  const h = stamp.held;
+  const last = h.length - 3;
+  // (Held still: one sample stands for the time, so a long press stays cheap.)
+  if (last >= 0 && h[last] === x && h[last + 1] === y) h[last + 2]! += t;
+  else h.push(x, y, t);
+  const depth = BRUSH.rate * pressTime(stamp, x, y, r);
 
   // The stamp: where it first touches the ground as it was before the stroke, pressed on by `depth`.
   // Each cell sees the stamp averaged over its square (SUB × SUB points), so
@@ -235,7 +250,7 @@ export function brushSample(
       masks.push(m);
     }
   if (!cells.length || !Number.isFinite(contact)) return;
-  const level = dig ? contact - stamp.depth : contact + stamp.depth;
+  const level = dig ? contact - depth : contact + depth;
   // Box of the cells changed so far (region coordinates).
   let bx0 = bw;
   let bx1 = -1;
@@ -430,10 +445,10 @@ export function strokeSamples(points: readonly Pt[], speed: number, step = 1 / 3
 
 /**
  * How far the stamp is pressed in (m) on a steady pass at `speed` cells/s
- * with a brush of radius r: the depth grows at `rate` and fades over one
- * radius of travel, so it settles at rate × r / speed (a quick swipe digs
- * a shallow groove, a slow pass a full round channel).
+ * with a brush of radius r: rate × the press time behind the brush as it
+ * passes, r / (2 speed) (a quick swipe digs a shallow groove, a slow pass a
+ * full round channel; going back over it adds r / speed more).
  */
 export function passDepth(r: number, speed: number): number {
-  return (BRUSH.rate * r) / speed;
+  return (BRUSH.rate * r) / (2 * speed);
 }

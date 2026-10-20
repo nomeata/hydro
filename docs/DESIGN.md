@@ -143,10 +143,12 @@ cell takes the stamp averaged over its square (4 × 4 points of the exact
 ellipsoid), so even a shallow press of the small brush is a rounded
 dimple over several cells, never one cell sunk. Pressed long enough, the
 result is a round bowl (or dome) whatever the ground was like. How far it
-is pressed fades over one radius of travel, so a dragged stroke cuts a
-round-bottomed channel of steady depth, rate × radius / speed (a quick
-swipe at 30 cells/s ~0.1 m; slow and it is a full channel), and strokes
-overlapping along a line make one smooth channel. *No cliffs:* after
+is pressed is rate × the time the stroke has spent around the spot (each
+earlier sample weighted 1 − d/r by its distance), so a dragged stroke
+cuts a round-bottomed channel of steady depth, rate × radius / (2 speed)
+(a quick swipe at 30 cells/s ~0.06 m; slow and it is a full channel),
+scrubbing back and forth digs deeper, and strokes overlapping along a
+line make one smooth channel. *No cliffs:* after
 every step the slopes around the stamp (up to 8 cells beyond it) relax to
 loose earth's angle of repose (loose loam as the talus sees it: 0.24 dry,
 0.18 under water), the earth sliding down and conserved: a deeper dig

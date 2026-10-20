@@ -249,7 +249,7 @@ describe('footbridges', () => {
     expect(br.broken).toBeUndefined();
     // Raising the bank under its end: the ground changes as anywhere, and the bridge breaks.
     const z0 = w.terrain(br.a);
-    sim.command(hold('raise', ax, ay, 0.3, 2));
+    sim.command(hold('raise', ax, ay, 1, 2));
     expect(w.terrain(br.a)).toBeGreaterThan(z0 + BRIDGE.disturb);
     expect(br.broken).toBe(true);
     expect(br.progress).toBe(BRIDGE.wreck);
