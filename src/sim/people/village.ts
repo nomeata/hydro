@@ -2196,11 +2196,13 @@ export class PeopleSystem {
     const arriveAbove = s.arriveAbove;
     // A family ready to come but no free house: it camps until one is built (round 6).
     const waitingFamily = s.ready && s.freeHouses <= 0;
+    // ...as long as the village is fed: in hard times they move on (and nobody else comes).
+    const fed = forced || (st.plenty ?? ECONOMY.enough) >= ECONOMY.enough;
     const camp = st.camp;
     const w = this.world;
     if (camp) {
       const campers = this.agents.filter((a) => a.camper && a.settlement === st.id && a.task !== Task.Leave);
-      if ((limit === 'open' || s.freeHouses > 0) && campers.length) {
+      if (fed && (limit === 'open' || s.freeHouses > 0) && campers.length) {
         // A free house: the family moves in (an arrival, as in Settlement.day).
         st.population += campers.length;
         s.movedIn();
@@ -2221,7 +2223,7 @@ export class PeopleSystem {
         this.endCamp(st, day, 0);
         return;
       }
-      const waiting = campsFor(limit, reputation, arriveAbove, st.population) || limit === 'building' || waitingFamily;
+      const waiting = fed && (campsFor(limit, reputation, arriveAbove, st.population) || limit === 'building' || waitingFamily);
       if (waiting && campers.length && day - camp.since < CAMP.stay && w.water[camp.cell]! < 0.05) return;
       // Nothing changes (or the village no longer draws them): they move on.
       for (const a of campers) {
@@ -2237,7 +2239,7 @@ export class PeopleSystem {
       this.endCamp(st, day, CAMP.again);
       return;
     }
-    if (!(campsFor(limit, reputation, arriveAbove, st.population) || waitingFamily) || day < (st.campAgain ?? 0)) return;
+    if (!fed || !(campsFor(limit, reputation, arriveAbove, st.population) || waitingFamily) || day < (st.campAgain ?? 0)) return;
     const cell = this.campSite(s);
     if (cell < 0) return;
     const n = this.rng.int(ECONOMY.familySize[0], Math.min(4, ECONOMY.familySize[1]) + 1);
@@ -2511,11 +2513,17 @@ export class PeopleSystem {
     this.goodLeft.set(st.id, good.length - nGood);
     // The food standing in the fields now, at each crop's current stage (round 6: plenty).
     let crops = 0;
+    let stage = 0;
+    let sown = 0;
     for (const i of this.fieldsOf(s)) {
       const c = w.crop[i]!;
-      if (c > 0) crops += FARMING.yield * Math.max(0.2, w.fertility[i]!) * (c / 255) * kindYield(this.fieldCrop[i] as FieldCrop);
+      if (c === 0) continue;
+      crops += FARMING.yield * Math.max(0.2, w.fertility[i]!) * (c / 255) * kindYield(this.fieldCrop[i] as FieldCrop);
+      stage += c / 255;
+      sown++;
     }
     st.crops = crops;
+    st.ripe = sown ? stage / sown : 0;
     // Surplus: good land left over for want of hands; the best few plots are pegged out.
     const pegs = common + nGood >= want ? good.slice(nGood, nGood + PEGS.max).map((c) => c[1]) : [];
     const old = st.pegs ?? [];

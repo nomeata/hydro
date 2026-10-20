@@ -31,7 +31,8 @@ export const ECONOMY = {
   /**
    * Plenty (`Settlement.plenty`): food in the store and in the fields now,
    * against the need until the next harvest (and the year after it, for the
-   * share of the crop already grown). 1 = just enough. Prosperity's food
+   * share of the crop already grown: by the crops' stage in spring, the
+   * calendar from summer, up to `growDays`). 1 = just enough. Prosperity's food
    * part is 0 at `plentyLo` and full at `plentyHi` ("plenty for everyone
    * and then some").
    */
@@ -184,6 +185,8 @@ export interface SettlementState {
    * family left. All absent in old saves.
    */
   crops?: number;
+  /** Mean stage of the sown crops, 0..1 (village.ts manageFields, daily). */
+  ripe?: number;
   plenty?: number;
   reputation?: number;
   ruins?: number;
@@ -336,7 +339,10 @@ export class Settlement {
   plenty(dayOfYear: number): number {
     const s = this.state;
     if (s.population <= 0) return ECONOMY.plentyHi;
-    const g = dayOfYear <= s.harvestDay ? Math.max(0, Math.min(1, (dayOfYear - 1) / (ECONOMY.growDays - 1))) : 0;
+    // The share of next year's food the fields hold: as far as the crops have grown, but by summer
+    // at least as far as the calendar says (so a stunted crop shows as the shortfall it is).
+    const summer = Math.max(0, Math.min(1, (dayOfYear - DAYS_PER_SEASON) / (ECONOMY.growDays - DAYS_PER_SEASON)));
+    const g = dayOfYear <= s.harvestDay ? Math.max(s.ripe ?? 0, summer) : 0;
     const days = Math.max(DAYS_PER_SEASON, this.daysToHarvest(dayOfYear) + g * DAYS_PER_YEAR);
     // The store spoils as it waits (about half of it waits half the time).
     const spoil = 1 + (ECONOMY.spoilage * days) / 2;
@@ -421,7 +427,7 @@ export class Settlement {
     s.pullNeed ??= E.pullNeed[0]! + (E.pullNeed[1]! - E.pullNeed[0]!) * rng.next();
     s.pull = Math.min(s.pullNeed, (s.pull ?? 0) + pArrive);
     if (pArrive === 0) s.pull *= 0.9; // they hear of hard times
-    if (this.ready && this.freeHouses > 0 && !s.camp) {
+    if (this.ready && short === 0 && this.freeHouses > 0 && !s.camp) {
       const n = rng.int(E.familySize[0], E.familySize[1] + 1);
       s.population += n;
       ev.arrived += n;
