@@ -59,9 +59,9 @@ describe('prosperity and milestones', () => {
     ]);
     const first = ms[0]!;
     const lastM = ms[ms.length - 1]!;
-    expect(milestoneSpan(0)).toMatchObject({ prev: 1, next: first, nextTools: ['weir'] });
+    expect(milestoneSpan(0)).toMatchObject({ prev: 1, next: first, nextTools: ['gate'] });
     expect(milestoneFraction(0)).toBe(0);
-    expect(milestoneSpan(first)).toMatchObject({ prev: first, next: ms[1]!, nextTools: ['gate'] });
+    expect(milestoneSpan(first)).toMatchObject({ prev: first, next: ms[1]!, nextTools: ['weir'] });
     expect(milestoneSpan(30)).toMatchObject({ prev: 30, next: 50, nextTools: ['wheel'] });
     expect(milestoneFraction(first)).toBeCloseTo(first / ms[1]!);
     expect(milestoneSpan(lastM)).toMatchObject({ prev: lastM, next: lastM * 2, nextTools: [] });
