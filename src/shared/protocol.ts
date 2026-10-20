@@ -334,6 +334,11 @@ export interface Snapshot {
   terrain?: { y0: number; y1: number; data: Float32Array };
   /** Full ground look (RGBA8), when changed. Not pooled. */
   look?: Uint8Array;
+  /**
+   * Snow heaped beside the fields (sim/people/village.ts snowPiles), with
+   * every `look`: flat [x, y, snow water above the snow around it (m)].
+   */
+  snowPiles?: Float32Array;
   /** Full plan target heights (NaN = none; the crew's structure work), when changed. Not pooled. */
   plan?: Float32Array;
   /** The last sculpt command (its `seq`) applied before this snapshot. */

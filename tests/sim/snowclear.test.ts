@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { SimTime } from '../../src/shared/protocol';
 import { CELL_AREA } from '../../src/sim/constants';
 import { SiteKind } from '../../src/sim/people/agents';
-import { PEOPLE_TICK, PeopleSystem, SNOW_CLEARING, clearSnow, type PeopleHost } from '../../src/sim/people/village';
+import { PEOPLE_TICK, PeopleSystem, SNOW_CLEARING, clearSnow, snowPiles, type PeopleHost } from '../../src/sim/people/village';
+import { PARAMS } from '../../src/sim/params';
 import { LandUse, SoilType, World } from '../../src/sim/world';
 
 /** Farmers shovel the snow off a field before they sow it (docs/PEOPLE.md §3.1). */
@@ -38,12 +39,34 @@ describe('clearing snow', () => {
     clearSnow(w, edge);
     expect(w.snow[edge]).toBe(0);
     expect(w.snow[w.idx(9, 20)]).toBeCloseTo(0.06, 6);
+    // A bank holds at most SNOW_CLEARING.pile above the snow cleared; the rest spreads along the edge.
+    for (let y = 10; y <= 30; y++) for (let x = 10; x <= 12; x++) clearSnow(w, w.idx(x, y));
+    for (let i = 0; i < w.size; i++) expect(w.snow[i]).toBeLessThanOrEqual(0.03 + SNOW_CLEARING.pile + 1e-6);
     const inner = w.idx(20, 20);
     const g0 = w.ground[inner]!;
     clearSnow(w, inner);
     expect(w.snow[inner]).toBe(0);
     expect(w.ground[inner]).toBeCloseTo(g0 + 0.03, 6);
     expect(total(w)).toBeCloseTo(before, 6);
+  });
+
+  it('leaves piles that melt within a week at +10 °C', () => {
+    const w = flat();
+    for (let y = 10; y <= 30; y++) for (let x = 10; x <= 30; x++) w.landuse[w.idx(x, y)] = LandUse.Field;
+    w.snow.fill(0.05);
+    const banks = new Map<number, number>();
+    for (let y = 10; y <= 30; y++) for (let x = 10; x <= 30; x++) clearSnow(w, w.idx(x, y), banks);
+    // The banks are known (for drawing them), each holding at most `pile` above the snow around.
+    const piles = snowPiles(w, banks);
+    expect(piles.length).toBe(banks.size * 3);
+    for (let k = 2; k < piles.length; k += 3) expect(piles[k]).toBeLessThanOrEqual(SNOW_CLEARING.pile + 1e-6);
+    // Degree-day melt (soilwater.ts) at +10 °C, as on every cell.
+    const perDay = PARAMS.meltPerDegreeDay * 10;
+    const maxSnow = Math.max(...Array.from(w.snow));
+    expect(maxSnow / perDay).toBeLessThan(7);
+    for (let i = 0; i < w.size; i++) w.snow[i] = Math.max(0, w.snow[i]! - 2 * perDay);
+    // Two warm days in, the land around is bare and only low banks remain, soon gone.
+    expect(Math.max(...Array.from(w.snow)) / perDay).toBeLessThan(2);
   });
 
   it('comes before sowing in a snowy spring, and the fields get sown', () => {
@@ -85,6 +108,13 @@ describe('clearing snow', () => {
     for (const i of sown) expect(w.snow[i]).toBe(0);
     // The snow went to banks beyond the field.
     expect(Math.max(...Array.from(w.snow))).toBeGreaterThan(0.03);
+    expect(p.snowBanks.size).toBeGreaterThan(0);
+    for (const i of p.snowBanks.keys()) expect(w.landuse[i]).not.toBe(LandUse.Field);
+    expect(snowPiles(w, p.snowBanks).length).toBeGreaterThan(0);
+    // Saved and restored with the people.
+    const q = new PeopleSystem(w, 1, C, C);
+    q.setState(p.getState());
+    expect([...q.snowBanks]).toEqual([...p.snowBanks]);
     expect(total(w) + used / CELL_AREA).toBeCloseTo(before, 3);
   }, 60_000);
 });
