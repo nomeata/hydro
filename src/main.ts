@@ -8,6 +8,7 @@ import { SimClient, type ReadyData } from './client/simClient';
 import { readSave, writeSave } from './persist/idb';
 import { Menu } from './ui/menu';
 import { Intro } from './ui/intro';
+import { IntroScenes } from './ui/introScenes';
 import { WorldMirror } from './client/mirror';
 import { Sculptor } from './client/sculptor';
 import { GameRenderer } from './render/renderer';
@@ -303,7 +304,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, sculptor, siteCrew: layers.siteCrew, data, autosave, crowd: layers.crowd, footprints: layers.footprints, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, sculptor, siteCrew: layers.siteCrew, data, autosave, crowd: layers.crowd, footprints: layers.footprints, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, IntroScenes, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
   }
   document.getElementById('loading')?.classList.add('done');
 }

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { openGame, runDays, settleFrames } from './helpers';
+import { clipShot, openGame, runDays, settleFrames } from './helpers';
 
 /** Pixels (of the game view) that differ between two screenshots. */
 function diffPixels(a: Buffer, b: Buffer): number {
@@ -28,12 +28,18 @@ function diffInfo(a: Buffer, b: Buffer): { n: number; where: string } {
   return { n, where: at.join(' ') };
 }
 
-const shot = (page: Page) => page.locator('#view').screenshot({ timeout: 120_000 });
+// (A clip, not locator.screenshot: no wait for the element to be "stable"
+// over animation frames, which software GL draws a second or more apart.)
+const shot = (page: Page) => clipShot(page, '#view');
+
+// A small view: software GL (CI) draws and screenshots it several times
+// faster, and a village close up still fills it with moving things.
+test.use({ viewport: { width: 640, height: 400 } });
 
 test('pausing freezes every animation (people, animals, smoke, water, wheels)', async ({ page }, info) => {
   test.skip(info.project.name !== 'desktop', 'one viewport is enough');
   test.setTimeout(480_000);
-  const errors = await openGame(page);
+  const errors = await openGame(page, '&size=128');
   await runDays(page, 1);
   // Look closely at the village: the mean position of its people.
   const n = await page.evaluate(() => {

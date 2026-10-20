@@ -143,3 +143,21 @@ export async function touchPath(page: Page, pts: [number, number][], stepMs = 30
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await cdp.detach();
 }
+
+/** Keep the welcome/tool-card scenes on screen instead of looping them (IntroScenes.hold). */
+export async function holdScenes(page: Page): Promise<void> {
+  await page.evaluate(() => ((window as any).__hydro.IntroScenes.hold = true));
+}
+
+/**
+ * Screenshot of the page region an element covers. Unlike locator.screenshot
+ * this does not wait for the element to be "stable" over animation frames,
+ * which on CI's software GL (a frame every second or more) can take minutes.
+ */
+export async function clipShot(page: Page, selector: string, timeout = 120_000): Promise<Buffer> {
+  const r = await page.evaluate((sel) => {
+    const b = document.querySelector(sel)!.getBoundingClientRect();
+    return { x: b.left, y: b.top, width: b.width, height: b.height };
+  }, selector);
+  return page.screenshot({ clip: r, timeout });
+}

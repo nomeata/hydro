@@ -1,10 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
-import { openGame, recordTexts } from './helpers';
+import { clipShot, holdScenes, openGame, recordTexts } from './helpers';
 
 /** Distinct colours (quantised) in a screenshot: a blank canvas has one or two. */
 async function colourCount(page: Page, selector: string): Promise<number> {
-  const png = PNG.sync.read(await page.locator(selector).screenshot());
+  const png = PNG.sync.read(await clipShot(page, selector));
   const seen = new Set<number>();
   for (let i = 0; i < png.data.length; i += 4) seen.add(((png.data[i]! >> 4) << 8) | ((png.data[i + 1]! >> 4) << 4) | (png.data[i + 2]! >> 4));
   return seen.size;
@@ -60,6 +60,10 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   test.setTimeout(360_000);
   const fallbacks = recordFallbacks(page);
   const errors = await openGame(page, '&size=64');
+  // The scenes loop (fade out, restart, fade in): on slow software GL most of
+  // a loop can be the gap, and the checks below kept sampling it. Hold each
+  // scene on screen once it is there instead.
+  await holdScenes(page);
   const workers = () => page.evaluate(() => (window as any).__hydro.SimClient.live as number);
   expect(await workers()).toBe(1);
 
@@ -136,6 +140,7 @@ test('live scenes survive a new deploy while the game is open (worker script gon
   test.setTimeout(360_000);
   const fallbacks = recordFallbacks(page);
   const errors = await openGame(page, '&size=64&cards=1');
+  await holdScenes(page);
   // The game keeps the worker script once it has started its own worker.
   await page.waitForFunction(() => (window as any).__hydro.SimClient.scriptKept, null, { timeout: 30_000 });
   // Every deploy replaces the hashed assets: the old worker file is gone.

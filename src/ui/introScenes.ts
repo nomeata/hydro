@@ -67,6 +67,12 @@ const T_RELEASE = 5.2;
 const T_GONE = 6.2;
 
 export class IntroScenes {
+  /**
+   * Test hook: scenes stay on their script's last state instead of fading out
+   * and starting over, so a slow test machine never samples the loop's gap.
+   */
+  static hold = false;
+
   /** Called once the first live frame is on screen (the SVG fallback can go). */
   onLive: (() => void) | null = null;
   /** Called when the live scenes cannot run (no WebGL, worker failure). */
@@ -263,7 +269,7 @@ export class IntroScenes {
       const t = (now - this.runStart) / 1000;
       const sc = SCRIPTS[this.scene];
       if (this.scene === 'shape') this.shapeScript(t);
-      if (t > sc.duration && !this.restartAt) {
+      if (t > sc.duration && !this.restartAt && !IntroScenes.hold) {
         // Fade out, then start over.
         this.container.classList.remove('live-on');
         this.restartAt = now + 350;
