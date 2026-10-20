@@ -156,6 +156,8 @@ export const enum EntityKind {
   Chick = 4,
   Dog = 5,
   Sheep = 6,
+  /** A founding party's loaded handcart, drawn by an ox (people/village.ts `carts`; round 6). */
+  Cart = 7,
 }
 
 /** What an entity is doing (drives the animation clip). */

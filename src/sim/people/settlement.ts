@@ -41,7 +41,7 @@ export const ECONOMY = {
   enough: 1,
   leaveRate: 0.3,
   /** Days of the growing season over which the fields' crop comes to count as next year's food. */
-  growDays: 2 * DAYS_PER_SEASON - 1,
+  growDays: 2 * DAYS_PER_SEASON - 2,
   /**
    * Prosperity = food part × (comfortBase + (1 − comfortBase) × comfort):
    * comfort (housing, water access, safety, weighted by `comfort`) is a
@@ -335,9 +335,11 @@ export class Settlement {
   plenty(dayOfYear: number): number {
     const s = this.state;
     if (s.population <= 0) return ECONOMY.plentyHi;
-    const g = dayOfYear <= s.harvestDay ? Math.min(1, dayOfYear / ECONOMY.growDays) : 0;
+    const g = dayOfYear <= s.harvestDay ? Math.max(0, Math.min(1, (dayOfYear - 1) / (ECONOMY.growDays - 1))) : 0;
     const days = Math.max(DAYS_PER_SEASON, this.daysToHarvest(dayOfYear) + g * DAYS_PER_YEAR);
-    return (s.food + (s.crops ?? 0)) / (s.population * ECONOMY.consumption * days);
+    // The store spoils as it waits (about half of it waits half the time).
+    const spoil = 1 + (ECONOMY.spoilage * days) / 2;
+    return (s.food + (s.crops ?? 0)) / (s.population * ECONOMY.consumption * days * spoil);
   }
 
   /** Reputation (absent in old saves: the wellbeing). */
