@@ -263,7 +263,7 @@ See docs/SOUND.md.
 - Music
 - Multiple biomes (desert oases, alpine)
 - Photo mode, timelapse of a valley over decades
-- ◐ Smooth terrain look (experiment, `?smooth=1`, default off): smooth
+- ✓ Smooth terrain look (now the only look; the flat path is gone): smooth
   normals with a hint of facets (creases at cliffs stay), ground colours
   blended bilinearly across cells; fields, paths, lining and water keep
-  their hard edges. `tools/shot-smooth.ts` renders flat vs smooth.
+  their hard edges.
