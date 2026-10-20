@@ -1,5 +1,6 @@
 /**
- * Canal planning for the playtest bots (bots.ts): a graded canal from a
+ * Canal planning (moved here from the playtest bots so the sim's ideas can
+ * use it, sim/ideas.ts "help"; tools/playtest/bots.ts): a graded canal from a
  * water level (a weir's pool, a wheel's head, the river) onto dry land,
  * routed like a player would lay it out: along the slope (a contour canal),
  * its water surface falling gently and never above the ground beside it
@@ -7,13 +8,19 @@
  * through as much dry land as it can water. One `shapeLine` dig with
  * absolute floor heights shapes it; `earthOf` gives the earth it moves.
  */
-import type { Command, Pt } from '../../src/shared/protocol';
-import { CELL_AREA } from '../../src/sim/constants';
-import { isRevealed } from '../../src/sim/fog';
-import { CAPILLARY, CROP_MOISTURE } from '../../src/sim/people/village';
-import { planDike, planLevel, planTrench, type PlanGrid } from '../../src/sim/plans/plans';
-import type { Simulation } from '../../src/sim/sim';
-import { LandUse } from '../../src/sim/world';
+import type { Command, Pt } from '../../shared/protocol';
+import { CELL_AREA } from '../constants';
+import { isRevealed } from '../fog';
+import { CAPILLARY, CROP_MOISTURE } from '../people/village';
+import { planDike, planLevel, planTrench, type PlanGrid } from './plans';
+import { LandUse, type World } from '../world';
+
+/** What the planner looks at (the Simulation). */
+export interface CanalHost {
+  readonly world: World;
+  readonly fog: boolean;
+  isFixed(i: number): boolean;
+}
 
 /** Water depth in the canal at its intake (m): the floor lies this far below the source's level. */
 export const CANAL_DEPTH = 0.4;
@@ -60,7 +67,7 @@ export interface CanalOptions {
 }
 
 /** Cells within `r` of any building or fixed cell (the canal keeps clear of the houses). */
-export function houseMargin(sim: Simulation, r = 2.5): Uint8Array {
+export function houseMargin(sim: CanalHost, r = 2.5): Uint8Array {
   const w = sim.world;
   const out = new Uint8Array(w.size);
   const R = Math.ceil(r);
@@ -84,7 +91,7 @@ export function houseMargin(sim: Simulation, r = 2.5): Uint8Array {
  * the land by route cost, then the end that waters most target cells for
  * its cost. Null if no route waters at least `minCovered` cells.
  */
-export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<number>, opts: CanalOptions = {}, minCovered = 12): CanalPlan | null {
+export function planCanal(sim: CanalHost, starts: CanalStart[], targets: Set<number>, opts: CanalOptions = {}, minCovered = 12): CanalPlan | null {
   const w = sim.world;
   const W = w.width;
   const maxLen = opts.maxLen ?? 90;
@@ -256,7 +263,7 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
  * floor and banks it clears, FOOTPRINT cells either side), and the fields
  * that footprint takes.
  */
-export function coverage(w: Simulation['world'], path: readonly number[], targets: Set<number>): { covered: Set<number>; lost: number } {
+export function coverage(w: World, path: readonly number[], targets: Set<number>): { covered: Set<number>; lost: number } {
   const W = w.width;
   const reach = wetReach() + 1;
   const R = Math.ceil(reach);
@@ -283,7 +290,7 @@ export function coverage(w: Simulation['world'], path: readonly number[], target
 }
 
 /** Worth of the cells a canal waters (dry fields 1, open land OPEN_LAND). */
-export function worthOf(w: Simulation['world'], cells: Iterable<number>): number {
+export function worthOf(w: World, cells: Iterable<number>): number {
   let n = 0;
   for (const j of cells) n += w.landuse[j] === LandUse.Field ? 1 : OPEN_LAND;
   return n;
@@ -324,23 +331,23 @@ export function simplify(ps: Pt[], tol: number): Pt[] {
  * Earth (m³) a list of shapeLine commands would move, applied in order
  * (the sim's own profiles; fixed cells are left alone, as the sim does).
  */
-export function earthOf(sim: Simulation, cmds: readonly Command[]): number {
+export function earthOf(sim: CanalHost, cmds: readonly Command[]): number {
   return shapeOf(sim, cmds).moved;
 }
 
 /** Cells a list of shapeLine commands would move by more than `min` m (their footprint). */
-export function footprintOf(sim: Simulation, cmds: readonly Command[], min = 0.1): number[] {
+export function footprintOf(sim: CanalHost, cmds: readonly Command[], min = 0.1): number[] {
   const { z } = shapeOf(sim, cmds);
   const w = sim.world;
   return [...z.keys()].filter((i) => Math.abs(z.get(i)! - w.terrain(i)) > min);
 }
 
 /** The terrain a list of shapeLine commands would leave (changed cells only). */
-export function shapeAfter(sim: Simulation, cmds: readonly Command[]): Map<number, number> {
+export function shapeAfter(sim: CanalHost, cmds: readonly Command[]): Map<number, number> {
   return shapeOf(sim, cmds).z;
 }
 
-function shapeOf(sim: Simulation, cmds: readonly Command[]): { moved: number; z: Map<number, number> } {
+function shapeOf(sim: CanalHost, cmds: readonly Command[]): { moved: number; z: Map<number, number> } {
   const w = sim.world;
   const z = new Map<number, number>();
   const terrain = (i: number) => z.get(i) ?? w.terrain(i);

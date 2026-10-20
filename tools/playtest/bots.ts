@@ -23,7 +23,7 @@ import { rasterisePath, type PlanGrid } from '../../src/sim/plans/plans';
 import { WEIR_MAX_HEIGHT } from '../../src/sim/structures/structures';
 import { wheelSite, wheelSites, type WheelGrid } from '../../src/sim/structures/wheel';
 import { LandUse } from '../../src/sim/world';
-import { canalCommand, earthOf, footprintOf, planCanal, shapeAfter, worthOf, type CanalPlan, type CanalStart } from './canal';
+import { canalCommand, earthOf, footprintOf, planCanal, shapeAfter, worthOf, type CanalPlan, type CanalStart } from '../../src/sim/plans/canal';
 import {
   cellsAround,
   cellX,
