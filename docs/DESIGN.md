@@ -142,7 +142,11 @@ touch the brush bites only after 90 ms, so a second finger still pans and
 zooms. They work while paused too: the sim applies every stroke sample at
 once. The client applies the same kernel to its mirror for instant feel,
 and the sim's terrain is the final word (`Snapshot.sculptSeq`). A ring on
-the ground shows the brush. **Undo** (the button by the sizes, Ctrl/Cmd+Z)
+the ground shows the brush, with contour lines every 0.25 m under it;
+while an earth brush is selected, faint contour lines (every 0.5 m, every
+2.5 m stronger) cover the whole map, on the river and lake beds too (veiled
+by the water's depth), fading out when zoomed far (`terrain.ts
+uContours`): the map looks different while a brush is still on. **Undo** (the button by the sizes, Ctrl/Cmd+Z)
 takes back the last strokes (the last 12, not across reloads).
 
 - *Water is conserved:* the brush never touches the water depth, so ground

@@ -108,8 +108,10 @@ export interface ToolHost {
   sculptor?: Sculptor;
   /** The brush's ring under the pointer, or none. */
   setBrushCursor?(c: { x: number; y: number; r: number; tool: BrushTool; active: boolean } | null): void;
-  /** The brush worked around (x, y) this frame (the cosmetic crew comes to look). */
+  /** The brush worked around (x, y) this frame (a soft earth sound). */
   brushed?(x: number, y: number, r: number): void;
+  /** Contour lines over the whole map: on while an earth brush is selected. */
+  setContours?(on: boolean): void;
 }
 
 /** A pump as the ghost shows it (PowerInfo's pump). */
@@ -546,6 +548,7 @@ export class ToolPalette {
     this.modes.hidden = !modes;
     this.brushRow.hidden = !brush;
     if (!brush) this.cursor(null);
+    this.host.setContours?.(brush);
     this.host.setGateGhost?.(null);
     this.host.setPowerGhost?.(null);
     this.refreshUndo();

@@ -447,6 +447,15 @@ export class GameRenderer {
   }
 
   /** Optimistic plan overlay (target height per cell, NaN = none), or null to clear. */
+  /** Contour lines across the whole map (terrain.ts), while an earth brush is selected. */
+  setContours(on: boolean): void {
+    this.terrain.uniforms.uContours.value = on ? 1 : 0;
+  }
+
+  get contours(): boolean {
+    return this.terrain.uniforms.uContours.value > 0;
+  }
+
   setPreviewPlan(cells: Float32Array | null): void {
     const u = this.terrain.uniforms;
     if (!cells) {

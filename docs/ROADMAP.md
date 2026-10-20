@@ -222,6 +222,8 @@ The interaction rework decided with the owner (DESIGN §4).
   up, Dig dashed with arrows down, Even a flat ring at its level), contour
   lines under the brush, the stroke's ground tinted warm (raised) or cool
   (dug) for a while
+- ☑ Map-wide faint contour lines (0.5 m, 2.5 m stronger) while an earth
+  brush is selected, on beds under water too
 - ☑ Fields survive gentle brushing and `shapeLine`; lost only where the
   ground gets too steep to farm (faint red tint near the limit, no note)
 - ☑ Every tool stays selected (after placing, or a tap that placed

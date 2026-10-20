@@ -69,6 +69,8 @@ export interface TerrainUniforms extends FrontUniforms, FogUniforms {
   uStubble: { value: number };
   uLining: { value: THREE.Texture };
   uLiningOn: { value: number };
+  /** Contour lines over the whole map (0..1): on while an earth brush is selected (renderer.setContours). */
+  uContours: { value: number };
 }
 
 const COMMON_GLSL = /* glsl */ `
@@ -122,6 +124,15 @@ uniform vec3 uSnowShade;
 uniform sampler2D uNoise;
 uniform float uFrost;
 uniform float uSnowAny;
+uniform float uContours;
+
+/** Coverage (0..1) of a contour line every \`step\` m at height hm (m): about a pixel wide, faded where lines crowd. */
+float contourLine(float hm, float step, float width) {
+  float u = hm / step;
+  float fw = max(fwidth(u), 1e-5);
+  float d = abs(fract(u + 0.5) - 0.5) / fw;
+  return (1.0 - smoothstep(width * 0.5, width * 0.5 + 0.9, d)) * (1.0 - smoothstep(0.1, 0.28, fw));
+}
 
 float tHash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
@@ -245,6 +256,19 @@ const FRAGMENT_COLOUR = /* glsl */ `
       c.g *= 0.98 + 0.04 * tHash(q + 17.0);
       groundCol = c;
 
+      // Contour lines (every 0.5 m, every 2.5 m stronger) while an earth brush
+      // is selected: thin, fading out when zoomed far and on near-flat ground
+      // (where an evened level would otherwise be all line). Drawn on the bed
+      // under water too, which the water then veils by its depth.
+      if (uContours > 0.001) {
+        float hm = vTerrWorld.y / uHeightScale;
+        float minor = contourLine(hm, 0.5, 0.8);
+        float major = contourLine(hm, 2.5, 1.3);
+        float far = 1.0 - smoothstep(0.35, 0.9, length(fwidth(vTerrWorld.xz)));
+        float tilt = smoothstep(0.004, 0.025, slope);
+        groundCol *= 1.0 - max(minor * 0.16, major * 0.3) * far * tilt * uContours;
+      }
+
       // Plan overlays (existing plan, then optimistic preview on top).
       if (uPlanOn > 0.5) {
         vec4 t = planOverlay(uPlan, cell, 0.35, 1.0, 0.14);
@@ -315,6 +339,7 @@ export function createTerrainUniforms(
     uStubble: { value: 0 },
     uLining: { value: tex.lining },
     uLiningOn: { value: 0 },
+    uContours: { value: 0 },
   };
 }
 

@@ -207,6 +207,7 @@ async function main(): Promise<void> {
     },
     sculptor,
     setBrushCursor: (c) => renderer.brushCursor.set(c),
+    setContours: (on) => renderer.setContours(on),
     brushed: (x, y) => sound.brush(x, y),
   });
 

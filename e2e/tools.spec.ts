@@ -152,7 +152,10 @@ test('brushes: distinct cursors, the fields under them kept, the stroke tinted, 
   await page.evaluate(([x, y]) => (window as any).__hydro.renderer.camera.setState({ x, y, viewHeight: 24 }, true), [field!.x, field!.y]);
   await settleFrames(page, 3);
   const at = await toScreen(page, field!.x, field!.y);
+  expect(await R('h.renderer.contours')).toBe(false);
   await pick(page, phone, 'button[data-tool=raise]');
+  // An earth brush shows contour lines over the whole map.
+  expect(await R('h.renderer.contours')).toBe(true);
   // Held over the field (a touch shows the ring once the brush bites).
   const release = await stroke(page, phone, [at, [at[0] + 2, at[1]], [at[0] + 4, at[1]]], true);
   await page.waitForTimeout(500);
