@@ -237,7 +237,7 @@ const FRAGMENT_COLOUR = /* glsl */ `
         {
           vec3 nf = wn.y < 0.0 ? -wn : wn;
           vec3 ns = normalize(vTerrN);
-          float k = smoothstep(0.82, 0.96, dot(nf, ns)) * 0.85;
+          float k = smoothstep(0.82, 0.96, dot(nf, ns)) * 0.78;
           wn = normalize(mix(nf, ns, k));
           gTerrN = wn;
         }
@@ -302,8 +302,9 @@ const FRAGMENT_COLOUR = /* glsl */ `
       vec4 ln = liningColour(c, cell);
       c = mix(c, ln.rgb, ln.a);
       #ifdef TERRAIN_SMOOTH
-        // Gentle, smooth variation (value noise over the cells).
-        float n = fieldNoise(vTerrWorld.xz * 0.8 + 3.1) * 0.7 + fieldNoise(vTerrWorld.xz * 0.27 + 11.7) * 0.3;
+        // Gentle variation: smooth value noise over the cells, with a faint
+        // trace of the per-triangle mottle (the ground keeps some grain).
+        float n = fieldNoise(vTerrWorld.xz * 0.8 + 3.1) * 0.6 + tHash(q * 2.0 + (lower ? 0.0 : 1.0) + 0.5) * 0.4;
         c *= mix(0.9 + 0.16 * n, 0.98 + 0.03 * n, cover);
         c.g *= 0.98 + 0.04 * fieldNoise(vTerrWorld.xz * 0.5 + 17.0);
       #else

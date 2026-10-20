@@ -130,7 +130,7 @@ async function compare(browser: Browser, a: string, b: string, out: string): Pro
     g.fillRect(0, 0, c.width, c.height);
     g.drawImage(A, 0, 0);
     g.drawImage(B, A.width + gap, 0);
-    const fs = Math.round(c.height / 28);
+    const fs = Math.round(Math.min(c.height, A.width) / 28);
     g.font = 'bold ' + fs + 'px sans-serif';
     for (const [label, x] of [['flat', 12], ['smooth', A.width + gap + 12]]) {
       g.fillStyle = 'rgba(0,0,0,0.55)';
