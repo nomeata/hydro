@@ -271,8 +271,11 @@ itself with its own clock.
 - **Terrain:** one shared indexed grid geometry (64×64 cells) drawn per
   chunk with an offset uniform. Heights come from a terrain height texture
   (R32F, `texelFetch`, NEAREST, so no float-linear extension is needed).
-  Edits are `texSubImage2D` row uploads. Flat shading from `dFdx/dFdy`
-  normals. Colour from the per-cell ground-look RGBA8 texture.
+  Edits are `texSubImage2D` row uploads. Smooth shading: vertex normals
+  from central height differences, blended with the `dFdx/dFdy` facet
+  normal where it bends far (creases at cliffs and banks stay) and a hint
+  of it elsewhere. Colour from the per-cell ground-look RGBA8 texture, blended bilinearly
+  across cells; fields, paths, lining and water keep hard edges.
 - **Water:** the same grid approach with the depth texture. Two depth
   textures (previous/current snapshot) are mixed for smooth interpolation.
   At dry vertices next to wet ones, the water height is set to the highest
