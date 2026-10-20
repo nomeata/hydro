@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import type { EntityFrame } from '../../shared/protocol';
+import { EntityKind, type EntityFrame } from '../../shared/protocol';
 import { heightToY, type HeightSampler } from '../coords';
 import { modelLibrary, unifyAnimated } from '../objects/loader';
 import { MODELS, type ModelName } from '../objects/manifest';
@@ -224,6 +224,7 @@ export class CrowdLayer {
     let drawn = 0;
 
     for (const t of this.tracks.tracks.values()) {
+      if (t.kind === EntityKind.Cart) continue; // drawn by CartLayer
       const e = this.ext(t);
       if (!e.rig) continue;
       const rig = e.rig;

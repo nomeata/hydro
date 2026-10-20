@@ -468,9 +468,10 @@ export interface PeopleState {
 }
 
 /**
- * A founding party's ox cart (round 6): it follows the party's first member
- * (`leader`, an agent id) to the new village and stays parked by the store
- * until day `until`, then is gone (unloaded, taken apart for the first house).
+ * A founding party's ox and cart (round 6, kinds Cow and Cart): the ox
+ * follows the party's first member (`leader`, an agent id), the cart the ox
+ * (`leader`: the ox's id), to the new village; they stay by the store until
+ * day `until`, then are gone (the cart unloaded, taken apart for the first house).
  */
 export interface Cart extends Animal {
   leader: number;
@@ -478,7 +479,7 @@ export interface Cart extends Animal {
 }
 
 /** A cart keeps this far (cells) behind its leader. */
-const CART_GAP = 1.1;
+const CART_GAP = 1.0;
 /** Days a cart stays by the new store after the party arrived. */
 export const CART_STAY = DAYS_PER_SEASON;
 
@@ -676,11 +677,12 @@ export class PeopleSystem {
 
   /**
    * Debugging and screenshots (Command 'debugVillage'): force a village's
-   * wellbeing (and with it its mood) or food, or dry out the soil around it;
+   * wellbeing (and with it its mood and reputation) or food, or dry out the soil around it,
+   * or send a family out to found a new village (`emigrate` people);
    * `camp` makes newcomers camp at its edge as if there were no room (until
    * `camp: false`; not saved).
    */
-  debugVillage(index: number, opts: { wellbeing?: number; food?: number; dry?: boolean; camp?: boolean }): void {
+  debugVillage(index: number, opts: { wellbeing?: number; food?: number; dry?: boolean; camp?: boolean; emigrate?: number }): void {
     const s = this.settlements[index];
     if (!s) return;
     const st = s.state;
@@ -692,7 +694,14 @@ export class PeopleSystem {
     }
     if (opts.wellbeing !== undefined) {
       st.wellbeing = opts.wellbeing;
+      st.reputation = opts.wellbeing;
       st.mood = opts.wellbeing > 0.62 ? 1 : opts.wellbeing < 0.28 ? -1 : 0;
+    }
+    if (opts.emigrate) {
+      // A family sets out to found a new village (or join a small one) now.
+      this.summerSurvey ??= this.surveyLand();
+      this.lastFounding = -1e9;
+      if (this.emigrate(s, opts.emigrate, this.lastDay, false)) st.population -= opts.emigrate;
     }
     if (opts.food !== undefined) st.food = opts.food;
     if (opts.dry) {
@@ -768,15 +777,15 @@ export class PeopleSystem {
     return packEntities(this.agents, speed, this.carts.length ? [...this.herds.animals, ...this.carts] : this.herds.animals);
   }
 
-  /** A cart for the party led by agent `leader`, bound for settlement `settlement`'s centre. */
+  /** An ox and its cart for the party led by agent `leader`, bound for settlement `settlement`'s centre. */
   private addCart(leader: Agent, settlement: number): void {
     const h = leader.heading;
-    this.carts.push({
+    const make = (kind: EntityKind, lead: number, back: number): Cart => ({
       id: this.nextId++,
       settlement,
-      kind: EntityKind.Cart,
-      x: leader.x - Math.cos(h) * CART_GAP,
-      y: leader.y - Math.sin(h) * CART_GAP,
+      kind,
+      x: leader.x - Math.cos(h) * back,
+      y: leader.y - Math.sin(h) * back,
       heading: h,
       vx: 0,
       vy: 0,
@@ -785,38 +794,53 @@ export class PeopleSystem {
       anim: EntityAnim.Walk,
       path: [],
       pathPos: 0,
-      leader: leader.id,
+      leader: lead,
     });
+    const ox = make(EntityKind.Cow, leader.id, CART_GAP);
+    const cart = make(EntityKind.Cart, ox.id, 2 * CART_GAP);
+    cart.carry = CarryKind.Bundle;
+    this.carts.push(ox, cart);
   }
 
-  /** Carts follow their leader at a cart's length; once the party is home they stand by the store a while. */
+  /**
+   * The ox follows the party's leader, the cart the ox, each a length behind;
+   * once the party is home they stand by the new store for CART_STAY days
+   * (the cart unloaded, the ox grazing), then are gone.
+   */
   private moveCarts(steps: number): void {
     if (!this.carts.length) return;
-    const max = WALK_SPEED * 1.2 * steps;
+    const max = WALK_SPEED * 1.25 * steps;
     for (const c of this.carts) {
-      const a = c.task === Task.Walk ? this.agents.find((g) => g.id === c.leader) : undefined;
       c.vx = 0;
       c.vy = 0;
-      if (!a || a.task !== Task.Walk || a.settlement !== c.settlement) {
-        if (c.task === Task.Walk) {
-          c.task = Task.Rest;
-          c.anim = EntityAnim.Idle;
-          c.until = this.lastDay + CART_STAY;
-        }
+      if (c.task !== Task.Walk) continue;
+      let lead: { x: number; y: number } | undefined;
+      if (c.kind === EntityKind.Cart) {
+        const ox = this.carts.find((o) => o.id === c.leader);
+        if (ox && ox.task === Task.Walk) lead = ox;
+      } else {
+        const a = this.agents.find((g) => g.id === c.leader);
+        if (a && a.task === Task.Walk && a.settlement === c.settlement) lead = a;
+      }
+      if (!lead) {
+        c.task = Task.Rest;
+        c.anim = c.kind === EntityKind.Cart ? EntityAnim.Idle : EntityAnim.Eat;
+        c.until = this.lastDay + CART_STAY;
+        delete c.carry; // unloaded
         continue;
       }
-      const dx = a.x - c.x;
-      const dy = a.y - c.y;
+      const dx = lead.x - c.x;
+      const dy = lead.y - c.y;
       const d = Math.hypot(dx, dy);
       if (d <= CART_GAP) {
         c.anim = EntityAnim.Idle;
         continue;
       }
       const m = Math.min(max, d - CART_GAP);
-      c.vx = (dx / d) * m / steps;
-      c.vy = (dy / d) * m / steps;
       c.x += (dx / d) * m;
       c.y += (dy / d) * m;
+      c.vx = ((dx / d) * m) / steps;
+      c.vy = ((dy / d) * m) / steps;
       c.heading = Math.atan2(dy, dx);
       c.anim = EntityAnim.Walk;
     }

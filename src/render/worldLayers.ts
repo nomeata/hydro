@@ -4,6 +4,7 @@
  * scenes (ui/introScenes.ts), so both are wired the same way.
  */
 import type { EntityFrame, Snapshot } from '../shared/protocol';
+import { CartLayer } from './crowd/carts';
 import { CrowdLayer } from './crowd/crowd';
 import { FakeCrowd, type FakeCrowdOptions } from './crowd/fakeCrowd';
 import { FishJumps } from './fishJumps';
@@ -18,6 +19,8 @@ export type AnimalOptions = Omit<FakeCrowdOptions, 'seed' | 'look' | 'people'>;
 export class WorldLayers {
   readonly vegetation: VegetationLayer;
   readonly crowd: CrowdLayer;
+  /** Founding parties' carts (crowd tracks of EntityKind.Cart). */
+  readonly carts: CartLayer;
   readonly fishJumps: FishJumps;
   /** Footprints in the snow behind walking people and animals. */
   readonly footprints: FootprintLayer;
@@ -47,6 +50,7 @@ export class WorldLayers {
     });
     if (data.revealed) this.vegetation.setRevealed(data.revealed);
     this.crowd = new CrowdLayer(renderer.scene, renderer.heights, { camera: renderer.camera.camera });
+    this.carts = new CartLayer(renderer.scene, renderer.heights);
     this.fishJumps = new FishJumps(renderer.scene, renderer.heights);
     this.footprints = new FootprintLayer(renderer.heights, renderer.lookTexture, () => renderer.groundBytes());
     renderer.scene.add(this.footprints.mesh);
@@ -61,6 +65,7 @@ export class WorldLayers {
       if (clock.playDt > 0) for (const [x, y] of this.sites) this.siteCrew.site(x, y);
       this.siteCrew.advance(clock.playDt);
       this.crowd.update(clock.playDt, clock.playMs, clock.animDt);
+      this.carts.update(this.crowd.tracks.tracks.values(), clock.playDt);
       this.footprints.snowfall = renderer.snowfall;
       this.footprints.update(clock.playDt, clock.gameSpeed, this.crowd.tracks.tracks.values());
       const cam = renderer.camera.getCurrentState();
@@ -110,6 +115,7 @@ export class WorldLayers {
     this.unlisten();
     this.vegetation.dispose();
     this.crowd.dispose();
+    this.carts.dispose();
     this.fishJumps.dispose();
     this.renderer.scene.remove(this.footprints.mesh);
     this.footprints.dispose();
