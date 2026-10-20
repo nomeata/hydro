@@ -304,7 +304,6 @@ function sendSnapshot(): boolean {
     transfer.push(snap.revealed.buffer);
   }
   snap.sculptSeq = sim.brush.seq;
-  snap.undoable = sim.brush.undoable;
   if (fixedMaybe || sim.planDirty || snap.buildings || snap.fields || snap.structures) {
     fixedMaybe = false;
     const fixed = new Uint8Array(w.size);

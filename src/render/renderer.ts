@@ -115,7 +115,7 @@ export class GameRenderer {
   private planRaw: Float32Array;
   /** Cells near the line of a weir under construction. */
   private weirMask = new Set<number>();
-  /** Tinted cells for the brushes: fields under the brush, the stroke's raised and dug ground, an undo's flash. */
+  /** Tinted cells for the brushes: fields under the brush, the stroke's raised and dug ground. */
   readonly cellTint: CellTint;
   /** Lining per cell as last received, and cells previewed by a lining tool. */
   private liningBase: Uint8Array;

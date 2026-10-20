@@ -1,7 +1,7 @@
 /**
  * The sim's side of the sculpting brushes (plans/sculpt.ts): applies brush
- * samples to the World at once (works while paused), and keeps the last few
- * strokes so they can be undone.
+ * samples to the World at once (works while paused), keeping the current
+ * stroke's ground from before it (the stamp's reference).
  *
  * Sculpted earth is loose: it slumps and erodes readily (the erosion
  * scratch's `loose`, set by the host), so a rough channel grades itself
@@ -19,7 +19,7 @@ import type { BrushTool, Pt } from '../../shared/protocol';
 import { CELL, CELL_AREA } from '../constants';
 import { CellFlag, LandUse, SOIL_PROPS, SoilType, type World } from '../world';
 import { clearGround, planDike, planLevel, planTrench, type PlanGrid } from './plans';
-import { brushSample, type SculptGrid } from './sculpt';
+import { brushSample, newStamp, type SculptGrid, type Stamp } from './sculpt';
 
 /** A cell's ground before a stroke first touched it. */
 interface Orig {
@@ -29,15 +29,17 @@ interface Orig {
   flags: number;
 }
 
-interface StrokeDiff {
+interface Stroke {
   id: number;
   orig: Map<number, Orig>;
   /** Total |change| per cell in this stroke (m). */
   moved: Map<number, number>;
+  /** The brush's stamp (Raise, Dig), carried from sample to sample. */
+  stamp: Stamp;
 }
 
-/** Strokes kept for undo. */
-export const UNDO_STROKES = 12;
+/** Wet for the stamp's slopes: under this much water (m), as hydro/talus.ts. */
+const WET_DEPTH = 0.05;
 /** Change (m) in a stroke after which what stood on a cell is cleared. */
 const CLEAR_AT = 0.05;
 /** Depth below the original ground that makes a cell part of a canal (m). */
@@ -71,13 +73,13 @@ export class Brushwork {
   /** Sequence number of the last sculpt command applied (the client's prediction waits for it). */
   seq = 0;
   /**
-   * Earth moved so far (m³, raised plus dug; undo counts as moving it back):
+   * Earth moved so far (m³, raised plus dug):
    * by the brushes, and by scripted lines (shapeLine: bots, scenes, tests).
    * Saved with the world, so a later round can give the bots a budget.
    */
   readonly moved = { brush: 0, script: 0 };
   private scripted = false;
-  private strokes: StrokeDiff[] = [];
+  private current: Stroke | null = null;
   /** Cells changed since the last field check. */
   private touched = new Set<number>();
   private readonly grid: SculptGrid;
@@ -91,25 +93,24 @@ export class Brushwork {
       height: world.height,
       terrain: (i) => world.terrain(i),
       fixed: (i) => host.fixed(i),
+      orig: (i) => {
+        const o = this.current?.orig.get(i);
+        return o ? o.bedrock + o.soil : world.terrain(i);
+      },
+      wet: (i) => world.water[i]! > WET_DEPTH,
     };
   }
 
-  /** Strokes that can be undone. */
-  get undoable(): number {
-    return this.strokes.length;
-  }
-
-  /** Forget all strokes (a new world, a load). */
+  /** Forget the current stroke (a new world, a load). */
   reset(): void {
-    this.strokes = [];
+    this.current = null;
   }
 
-  private stroke(id: number): StrokeDiff {
-    let s = this.strokes[this.strokes.length - 1];
+  private stroke(id: number): Stroke {
+    let s = this.current;
     if (!s || s.id !== id) {
-      s = { id, orig: new Map(), moved: new Map() };
-      this.strokes.push(s);
-      if (this.strokes.length > UNDO_STROKES) this.strokes.shift();
+      s = { id, orig: new Map(), moved: new Map(), stamp: newStamp() };
+      this.current = s;
     }
     return s;
   }
@@ -131,10 +132,14 @@ export class Brushwork {
       // The whole brush's rows count as changed (the client predicted them; the sim's word is final).
       y0 = Math.min(y0, Math.max(0, Math.floor(y - r)));
       y1 = Math.max(y1, Math.min(this.world.height - 1, Math.ceil(y + r)));
-      brushSample(this.grid, tool, x, y, r, dt, (i, dz) => this.change(s, i, dz));
+      brushSample(this.grid, tool, x, y, r, dt, s.stamp, (i, dz) => {
+        this.change(s, i, dz);
+        const cy = (i / this.world.width) | 0;
+        if (cy < y0) y0 = cy;
+        if (cy > y1) y1 = cy;
+      });
     }
     this.checkFields();
-    if (s.orig.size === 0 && this.strokes[this.strokes.length - 1] === s) this.strokes.pop();
     return y1 >= y0 ? { y0, y1 } : null;
   }
 
@@ -144,7 +149,7 @@ export class Brushwork {
    * dig grades the floor evenly from start to end `amount` below the
    * ground (or between absolute `floor` heights), raise heaps a level bank `amount` above the lowest ground on
    * the line, even flattens to the height at its start. Fixed cells are
-   * left alone. Counts as one stroke for undo. Returns the changed cells.
+   * left alone. Returns the changed cells.
    */
   shapeLine(kind: BrushTool, points: readonly Pt[], width: number, amount: number, stroke: number, floor?: readonly [number, number]): number[] {
     const w = this.world;
@@ -169,34 +174,11 @@ export class Brushwork {
     }
     this.scripted = false;
     this.checkFields();
-    if (s.orig.size === 0 && this.strokes[this.strokes.length - 1] === s) this.strokes.pop();
     return done;
   }
 
-  /** Undo the last stroke: its cells go back to the ground they had before it. Returns the cells changed, or null. */
-  undo(): number[] | null {
-    const s = this.strokes.pop();
-    if (!s) return null;
-    const w = this.world;
-    const keep = CellFlag.Fill | CellFlag.Canal;
-    const out: number[] = [];
-    for (const [i, o] of s.orig) {
-      // A structure built there since stays as it is.
-      if (this.host.fixed(i)) continue;
-      this.moved[s.id < 0 ? 'script' : 'brush'] += Math.abs(o.bedrock + o.soil - w.terrain(i)) * CELL_AREA;
-      w.bedrock[i] = o.bedrock;
-      w.soil[i] = o.soil;
-      w.soilType[i] = o.soilType;
-      w.flags[i] = (w.flags[i]! & ~keep) | (o.flags & keep);
-      this.squeeze(i);
-      this.host.changed(i);
-      out.push(i);
-    }
-    return out;
-  }
-
   /** Move cell i's ground by dz within stroke s. */
-  private change(s: StrokeDiff, i: number, dz: number): void {
+  private change(s: Stroke, i: number, dz: number): void {
     const w = this.world;
     if (!s.orig.has(i)) {
       this.host.willChange(i);

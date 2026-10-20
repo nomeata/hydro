@@ -20,6 +20,8 @@ export class WorldMirror implements PlanGrid {
   readonly landuse: Uint8Array;
   /** Cells the brushes leave alone (Snapshot.fixed; 1 = fixed). */
   fixed: Uint8Array;
+  /** Cells under water (1; more than 5 cm, from the last snapshot's depth): the brushes' earth stands at the wet angle of repose there. */
+  readonly wet: Uint8Array;
 
   constructor(data: ReadyData) {
     this.width = data.info.width;
@@ -30,6 +32,7 @@ export class WorldMirror implements PlanGrid {
     this.revealed = data.revealed ? data.revealed.slice() : null;
     this.landuse = new Uint8Array(this.width * this.height);
     this.fixed = data.fixed ? data.fixed.slice() : new Uint8Array(this.width * this.height);
+    this.wet = new Uint8Array(this.width * this.height);
   }
 
   /** Whether the brushes leave cell i alone (as the sim decides: Simulation.isFixed). */
@@ -84,6 +87,11 @@ export class WorldMirror implements PlanGrid {
     if (s.look) this.look = s.look.slice();
     if (s.revealed) this.revealed = s.revealed.slice();
     if (s.fixed) this.fixed = s.fixed.slice();
+    if (s.depth && s.depth.length === this.wet.length) {
+      const d = s.depth;
+      const wet = this.wet;
+      for (let i = 0; i < wet.length; i++) wet[i] = d[i]! > 0.05 ? 1 : 0;
+    }
     if (s.fields) {
       const lu = this.landuse;
       for (let i = 0; i < lu.length; i++) lu[i] = s.fields[i * FIELD_BYTES]!;

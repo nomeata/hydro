@@ -229,7 +229,6 @@ async function main(): Promise<void> {
       achievements.updateIdeas(s.ideas);
     }
     if (s.plan || s.lining) tools.planUpdated();
-    if (s.undoable !== undefined) tools.refreshUndo();
     if (s.structures || s.power) selection.refresh();
   });
 

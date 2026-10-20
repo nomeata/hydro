@@ -117,7 +117,7 @@ export class Simulation {
   readonly gatekeeper: Gatekeeper;
   /** Turbines, poles and electric pumps (M6; power/grid.ts). */
   readonly power: PowerGrid;
-  /** The sculpting brushes (plans/brushwork.ts): applied at once, the last strokes kept for undo. */
+  /** The sculpting brushes (plans/brushwork.ts): applied at once. */
   readonly brush: Brushwork;
   /** Ids of scripted strokes (shapeLine): negative, apart from the client's. */
   private scriptStroke = 0;
@@ -587,7 +587,7 @@ export class Simulation {
   private applyCommand(cmd: Command): void {
     const w = this.world;
     // Footbridges the brushes may disturb (their footings' heights before the stroke).
-    const footings = cmd.type === 'sculpt' || cmd.type === 'undoSculpt' || cmd.type === 'shapeLine' ? this.people?.bridges.footings() : undefined;
+    const footings = cmd.type === 'sculpt' || cmd.type === 'shapeLine' ? this.people?.bridges.footings() : undefined;
     switch (cmd.type) {
       case 'sculpt': {
         const r = this.brush.sculpt(cmd.tool, cmd.radius, cmd.stroke, cmd.samples);
@@ -602,12 +602,6 @@ export class Simulation {
         }
         break;
       }
-      case 'undoSculpt':
-        if (this.brush.undo()) {
-          this.lookDirty = true;
-          this.groundMoved(footings);
-        }
-        break;
       case 'shapeLine':
         if (this.brush.shapeLine(cmd.tool, cmd.points, cmd.width, cmd.amount ?? 1, --this.scriptStroke, cmd.floor).length) {
           this.lookDirty = true;

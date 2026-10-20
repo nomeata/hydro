@@ -266,7 +266,7 @@ describe('footbridges', () => {
     for (const c of br.cells) expect(w.landuse[c]).toBe(LandUse.Bridge);
   }, 240_000);
 
-  it('a light touch under a bridge, or one undone, leaves it standing', async () => {
+  it('a light touch under a bridge leaves it standing', async () => {
     const sim = village([{ x0: 26, y0: 13, x1: 33, y1: 16, crop: 40 }]);
     const p = sim.people!;
     const w = sim.world;
@@ -277,9 +277,6 @@ describe('footbridges', () => {
     const c0 = br.cells[0]!;
     sim.command(hold('raise', c0 % W, (c0 / W) | 0, 0.05, 7));
     expect(br.moved?.some((m) => m > 0)).toBe(true);
-    expect(br.broken).toBeUndefined();
-    sim.command({ type: 'undoSculpt' });
-    expect(br.moved).toBeUndefined();
     expect(br.broken).toBeUndefined();
   }, 240_000);
 

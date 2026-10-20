@@ -417,8 +417,7 @@ export class Bridges {
       });
       if (!any) return;
       if (moved.every((m) => Math.abs(m) <= BRIDGE.disturb)) {
-        if (moved.some((m) => Math.abs(m) > 1e-6)) b.moved = moved;
-        else delete b.moved; // undone
+        b.moved = moved;
         return;
       }
       this.wreck(b, day);

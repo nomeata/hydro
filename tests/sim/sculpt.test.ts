@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CellFlag, LandUse, SoilType, World } from '../../src/sim/world';
 import { Simulation } from '../../src/sim/sim';
-import { CELL_AREA, STEPS_PER_DAY } from '../../src/sim/constants';
-import { BRUSH, brushSample, brushWeight, passDepth, strokeSamples, type SculptGrid } from '../../src/sim/plans/sculpt';
+import { CELL, CELL_AREA, STEPS_PER_DAY } from '../../src/sim/constants';
+import { BRUSH, BRUSH_SIZES, brushSample, capHeight, newStamp, passDepth, stampOffset, strokeSamples, type SculptGrid } from '../../src/sim/plans/sculpt';
 import { loadGame, saveGame } from '../../src/sim/persist';
 import type { BrushTool, Command } from '../../src/shared/protocol';
 
@@ -25,28 +25,139 @@ function totalWater(w: World): number {
   return s * CELL_AREA;
 }
 
-const hold = (tool: BrushTool, x: number, y: number, seconds: number, radius = 2.5, stroke = 1): Command => {
+const hold = (tool: BrushTool, x: number, y: number, seconds: number, radius = 3, stroke = 1): Command => {
   const samples: number[] = [];
   for (let t = 0; t < seconds - 1e-9; t += 1 / 60) samples.push(x, y, 1 / 60);
   return { type: 'sculpt', tool, radius, stroke, samples };
 };
 
-describe('brush kernel', () => {
-  const flat: SculptGrid = { width: 20, height: 20, terrain: () => 5, fixed: () => false };
+/** A grid of `n`² cells with its own heights, to which the kernel's changes are applied. */
+function field(n: number, h: (x: number, y: number) => number, fixed: (i: number) => boolean = () => false) {
+  const z = Float64Array.from({ length: n * n }, (_, i) => h(i % n, (i / n) | 0));
+  const z0 = Float64Array.from(z);
+  const grid: SculptGrid = { width: n, height: n, terrain: (i) => z[i]!, fixed, orig: (i) => z0[i]! };
+  const stamp = newStamp();
+  /** The brush held at (x, y) for `seconds`, one sample per frame. */
+  const hold = (tool: BrushTool, x: number, y: number, r: number, seconds: number) => {
+    for (let t = 0; t < seconds - 1e-9; t += 1 / 60) {
+      const dz: [number, number][] = [];
+      brushSample(grid, tool, x, y, r, 1 / 60, stamp, (i, d) => dz.push([i, d]));
+      for (const [i, d] of dz) z[i]! += d;
+    }
+  };
+  const at = (x: number, y: number) => z[y * n + x]!;
+  /** Steepest drop to a neighbour (8-connected) over the distance (m per m). */
+  const steepest = () => {
+    let m = 0;
+    for (let y = 1; y < n - 1; y++)
+      for (let x = 1; x < n - 1; x++)
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            m = Math.max(m, Math.abs(at(x, y) - at(x + dx, y + dy)) / (Math.hypot(dx, dy) * CELL));
+          }
+    return m;
+  };
+  const volume = () => z.reduce((a, b) => a + b, 0) * CELL_AREA;
+  return { z, grid, stamp, hold, at, steepest, volume };
+}
 
-  it('raises by rate × time at the centre, with a soft falloff to nothing at the rim', () => {
-    const dz = new Map<number, number>();
-    brushSample(flat, 'raise', 10, 10, 3, 0.2, (i, d) => dz.set(i, d));
-    expect(dz.get(10 * 20 + 10)).toBeCloseTo(BRUSH.rate * 0.2, 6);
-    expect(dz.get(10 * 20 + 12)!).toBeCloseTo(BRUSH.rate * 0.2 * brushWeight(2, 3), 6);
-    expect(dz.has(10 * 20 + 13)).toBe(false);
-    const dig = new Map<number, number>();
-    brushSample(flat, 'dig', 10, 10, 3, 0.2, (i, d) => dig.set(i, d));
-    expect(dig.get(210)).toBeCloseTo(-BRUSH.rate * 0.2, 6);
+describe('brush kernel: the stamp', () => {
+  it('a held Dig at one spot converges to a round bowl, whatever the ground was like', () => {
+    const f = field(40, (x, y) => 5 + 0.3 * Math.sin(x * 1.7) * Math.cos(y * 2.3));
+    f.hold('dig', 20, 20, 3, 2);
+    // Round: cells at the same distance from the centre stand at the same height.
+    const byD = new Map<number, number[]>();
+    for (let y = 10; y <= 30; y++)
+      for (let x = 10; x <= 30; x++) {
+        const d = Math.round(Math.hypot(x - 20, y - 20) * 1000);
+        // (Inside where the ellipsoid is gentler than loose earth: outside it, the slumped earth follows the old bumps.)
+        if (d >= 2000) continue;
+        byD.set(d, [...(byD.get(d) ?? []), f.at(x, y)]);
+      }
+    const rings = [...byD.entries()].sort((a, b) => a[0] - b[0]);
+    for (const [, hs] of rings) expect(Math.max(...hs) - Math.min(...hs)).toBeLessThan(1e-3);
+    // A bowl: rising from the centre, the ellipsoid's shape, pressed in rate × time below the highest contact.
+    for (let k = 1; k < rings.length; k++) expect(rings[k]![1][0]!).toBeGreaterThanOrEqual(rings[k - 1]![1][0]! - 1e-6);
+    const bottom = f.at(20, 20);
+    expect(bottom).toBeLessThan(5 - BRUSH.rate * 2 + 0.3 + 1e-6);
+    expect(f.at(21, 20) - bottom).toBeCloseTo(stampOffset(1, 3), 1);
+    expect(f.at(22, 21) - bottom).toBeCloseTo(stampOffset(Math.sqrt(5), 3), 1);
+    // Smooth: nowhere steeper than loose earth stands.
+    expect(f.steepest()).toBeLessThan(BRUSH.repose * 1.05);
+  });
+
+  it('pressed deeper than its cap, the bowl widens into a funnel instead of steepening', () => {
+    const f = field(48, () => 10);
+    const r = 3;
+    f.hold('dig', 24, 24, r, 1.5);
+    const shallow = [...f.z].filter((h) => h < 10 - 0.05).length;
+    f.hold('dig', 24, 24, r, 6);
+    expect(10 - f.at(24, 24)).toBeGreaterThan(capHeight(r) * 1.5);
+    expect(f.steepest()).toBeLessThan(BRUSH.repose * 1.05);
+    // Wider than the stamp: dug ground reaches well beyond its rim.
+    const deep = [...f.z].filter((h) => h < 10 - 0.05).length;
+    expect(deep).toBeGreaterThan(shallow * 2);
+    expect(f.at(24 + r + 2, 24)).toBeLessThan(10 - 0.5);
+    // The slumped earth stays in the hole: what is gone is no more than the stamp pressed out.
+    expect(Math.abs(f.at(24 + r + 2, 24) - f.at(24, 24 + r + 2))).toBeLessThan(1e-6);
+  });
+
+  it('a held Raise heaps a round mound that broadens like a sand pile', () => {
+    const f = field(48, () => 10);
+    f.hold('raise', 24, 24, 3, 6);
+    expect(f.at(24, 24) - 10).toBeGreaterThan(capHeight(3));
+    expect(f.steepest()).toBeLessThan(BRUSH.repose * 1.05);
+    expect(f.at(28, 24)).toBeCloseTo(f.at(24, 28), 6);
+    expect(f.at(24 + 5, 24)).toBeGreaterThan(10.5);
+  });
+
+  it('the small brush makes a rounded bowl over its cells, never a single-cell spike', () => {
+    for (const tool of ['dig', 'raise'] as const)
+      for (const seconds of [0.1, 0.4, 1, 3]) {
+        const f = field(30, () => 5);
+        const r = BRUSH_SIZES[0]!;
+        // Off the cell centres too.
+        f.hold(tool, 15.3, 14.8, r, seconds);
+        expect(f.steepest()).toBeLessThan(BRUSH.repose * 1.05);
+        // The cell at the centre is no more than a gentle step from its neighbours.
+        const c = f.at(15, 15);
+        const ring = [f.at(14, 15), f.at(16, 15), f.at(15, 14), f.at(15, 16)];
+        const depth = Math.abs(c - 5);
+        expect(depth).toBeGreaterThan(0.05);
+        // A tap is a shallow dimple; held, a bowl over many cells whose centre is a gentle step below its neighbours.
+        if (seconds < 0.2) expect(depth).toBeLessThan(0.15);
+        if (seconds < 0.2) expect([...f.z].filter((h) => Math.abs(h - 5) > 0.2 * depth).length).toBeGreaterThanOrEqual(2);
+        else if (seconds < 1) expect([...f.z].filter((h) => Math.abs(h - 5) > 0.1 * depth).length).toBeGreaterThanOrEqual(4);
+        else {
+          for (const h of ring) expect(Math.abs(h - c)).toBeLessThan(0.6 * depth);
+          expect([...f.z].filter((h) => Math.abs(h - 5) > 0.3 * depth).length).toBeGreaterThanOrEqual(8);
+        }
+      }
+  });
+
+  it('dragged along a line it cuts a round-bottomed channel of steady depth', () => {
+    const f = field(60, () => 10);
+    const s = strokeSamples([[10, 30], [50, 30]], 2, 1 / 60);
+    for (let k = 0; k < s.length; k += 3) {
+      const dz: [number, number][] = [];
+      brushSample(f.grid, 'dig', s[k]!, s[k + 1]!, 3, s[k + 2]!, f.stamp, (i, d) => dz.push([i, d]));
+      for (const [i, d] of dz) f.z[i]! += d;
+    }
+    const d20 = 10 - f.at(20, 30);
+    const d40 = 10 - f.at(40, 30);
+    expect(d20).toBeGreaterThan(0.5);
+    expect(Math.abs(d40 - d20)).toBeLessThan(0.1 * d20);
+    expect(d20).toBeLessThan(passDepth(3, 2) * 1.3);
+    // Round bottomed and symmetric across.
+    expect(f.at(30, 29)).toBeCloseTo(f.at(30, 31), 3);
+    expect(f.at(30, 29)).toBeGreaterThan(f.at(30, 30));
+    expect(f.at(30, 28)).toBeGreaterThan(f.at(30, 29));
+    expect(f.steepest()).toBeLessThan(BRUSH.repose * 1.05);
   });
 
   it('a quick swipe does little; holding does a lot', () => {
-    expect(passDepth(2.5, 30)).toBeLessThan(0.15);
+    expect(passDepth(3, 30)).toBeLessThan(0.15);
     expect(BRUSH.rate * 2).toBeGreaterThan(2);
     const s = strokeSamples([[0, 0], [10, 0]], 5);
     let t = 0;
@@ -55,22 +166,28 @@ describe('brush kernel', () => {
   });
 
   it('leaves fixed cells alone and fades out beside them', () => {
-    const fixed: SculptGrid = { ...flat, fixed: (i) => i === 10 * 20 + 10 };
-    const dz = new Map<number, number>();
-    brushSample(fixed, 'dig', 10, 10, 4, 0.2, (i, d) => dz.set(i, d));
-    expect(dz.has(210)).toBe(false);
-    const next = Math.abs(dz.get(211)!);
-    const far = Math.abs(dz.get(213)!);
+    const f = field(30, () => 5, (i) => i === 15 * 30 + 15);
+    f.hold('dig', 15, 15, 4, 1.5);
+    expect(f.at(15, 15)).toBe(5);
+    const next = 5 - f.at(16, 15);
+    const far = 5 - f.at(17, 15);
     expect(next).toBeGreaterThan(0);
-    expect(next).toBeLessThan(0.5 * BRUSH.rate * 0.2 * brushWeight(1, 4));
-    expect(far).toBeCloseTo(BRUSH.rate * 0.2 * brushWeight(3, 4), 6);
+    expect(next).toBeLessThan(0.5 * far);
+  });
+
+  it('keeps a natural steep bank as it was, beyond what the stroke dug', () => {
+    // A 3 m step at x = 30 (steeper than loose earth), dug at well away from it.
+    const f = field(40, (x) => (x >= 30 ? 8 : 5));
+    f.hold('dig', 15, 20, 3, 2);
+    expect(f.at(30, 20) - f.at(29, 20)).toBeCloseTo(3, 6);
   });
 
   it('even pulls the ground towards its mean', () => {
+    const flat: SculptGrid = { width: 20, height: 20, terrain: () => 5, fixed: () => false };
     const bumpy: SculptGrid = { ...flat, terrain: (i) => ((i % 20) + ((i / 20) | 0)) % 2 ? 6 : 4 };
     let before = 0;
     let after = 0;
-    brushSample(bumpy, 'even', 10, 10, 3, 0.2, (i, d) => {
+    brushSample(bumpy, 'even', 10, 10, 3, 0.2, newStamp(), (i, d) => {
       before += Math.abs(bumpy.terrain(i) - 5);
       after += Math.abs(bumpy.terrain(i) + d - 5);
     });
@@ -87,8 +204,8 @@ describe('sculpting in the sim', () => {
     sim.command(hold('raise', 12, 12, 1));
     expect(w.terrain(i)).toBeGreaterThan(z + 1);
     expect(w.flags[i]! & CellFlag.Fill).toBeTruthy();
-    sim.command(hold('dig', 20, 12, 1, 2.5, 2));
-    const j = w.idx(20, 12);
+    sim.command(hold('dig', 22, 12, 1, 3, 2));
+    const j = w.idx(22, 12);
     expect(w.terrain(j)).toBeLessThan(z - 1);
     expect(w.flags[j]! & CellFlag.Canal).toBeTruthy();
     expect(w.flags[j]! & CellFlag.Fill).toBeFalsy();
@@ -104,7 +221,6 @@ describe('sculpting in the sim', () => {
     sim.command(hold('raise', 36, 36, 1.5, 4));
     sim.command(hold('dig', 32, 40, 1.5, 4, 2));
     sim.command(hold('even', 34, 38, 1, 4, 3));
-    sim.command({ type: 'undoSculpt' });
     expect(totalWater(w)).toBeCloseTo(before, 3);
     // The raised water runs off: still conserved while it flows (closed meadow, no rain).
     sim.vegetationOn = false;
@@ -154,23 +270,6 @@ describe('sculpting in the sim', () => {
     expect(w.terrain(w.idx(20, 9))).toBeLessThan(8.5);
     expect(w.landuse[steep[0]!]).toBe(LandUse.None);
     expect(w.landuse[steep[1]!]).toBe(LandUse.Field);
-  });
-
-  it('undoes the last strokes, one at a time', () => {
-    const w = meadow();
-    const sim = new Simulation(w, 1);
-    const orig = Float32Array.from({ length: w.size }, (_, i) => w.terrain(i));
-    sim.command(hold('raise', 10, 10, 1, 2.5, 1));
-    const after1 = Float32Array.from({ length: w.size }, (_, i) => w.terrain(i));
-    sim.command(hold('dig', 12, 10, 1, 2.5, 2));
-    sim.command(hold('dig', 13, 10, 0.5, 2.5, 2)); // the same stroke
-    expect(sim.brush.undoable).toBe(2);
-    sim.command({ type: 'undoSculpt' });
-    for (let i = 0; i < w.size; i++) expect(w.terrain(i)).toBeCloseTo(after1[i]!, 5);
-    sim.command({ type: 'undoSculpt' });
-    for (let i = 0; i < w.size; i++) expect(w.terrain(i)).toBeCloseTo(orig[i]!, 5);
-    expect(sim.brush.undoable).toBe(0);
-    sim.command({ type: 'undoSculpt' });
   });
 
   it('is deterministic and survives save and resume', async () => {
