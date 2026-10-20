@@ -64,27 +64,48 @@ export interface CanalOptions {
   width?: number;
   /** The village centre: the canal keeps out of the ring its houses grow into (forbidden within `r`/2, dearer within `r`). */
   village?: { x: number; y: number; r: number };
+  /** Ends to weigh at most (each costs a coverage count; default 400). */
+  ends?: number;
+  /** Only look within this box of cells (inclusive; default the whole map): quicker on a big map. */
+  box?: Box;
+}
+
+/** A box of cells, inclusive. */
+export interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** Each cell of `box` (clipped to the map; the whole map without one). */
+function eachIn(w: World, box: Box | undefined, f: (i: number, x: number, y: number) => void): void {
+  const x0 = Math.max(0, box?.x0 ?? 0);
+  const y0 = Math.max(0, box?.y0 ?? 0);
+  const x1 = Math.min(w.width - 1, box?.x1 ?? w.width);
+  const y1 = Math.min(w.height - 1, box?.y1 ?? w.height);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f(y * w.width + x, x, y);
 }
 
 /** Cells within `r` of any building or fixed cell (the canal keeps clear of the houses). */
-export function houseMargin(sim: CanalHost, r = 2.5): Uint8Array {
+export function houseMargin(sim: CanalHost, r = 2.5, box?: Box): Uint8Array {
   const w = sim.world;
   const out = new Uint8Array(w.size);
   const R = Math.ceil(r);
-  for (let i = 0; i < w.size; i++) {
+  eachIn(w, box && grow(box, R), (i, x, y) => {
     const lu = w.landuse[i];
-    if (lu !== LandUse.Building && !sim.isFixed(i)) continue;
-    if (sim.fog && !isRevealed(w, i)) continue; // unrevealed land is fixed, but needs no margin
-    const x = i % w.width;
-    const y = (i / w.width) | 0;
+    if (lu !== LandUse.Building && !sim.isFixed(i)) return;
+    if (sim.fog && !isRevealed(w, i)) return; // unrevealed land is fixed, but needs no margin
     for (let dy = -R; dy <= R; dy++)
       for (let dx = -R; dx <= R; dx++) {
         if (dx * dx + dy * dy > r * r || !w.inBounds(x + dx, y + dy)) continue;
         out[w.idx(x + dx, y + dy)] = 1;
       }
-  }
+  });
   return out;
 }
+
+const grow = (b: Box, d: number): Box => ({ x0: b.x0 - d, y0: b.y0 - d, x1: b.x1 + d, y1: b.y1 + d });
 
 /**
  * The best canal from `starts` onto `targets` (dry land cells): Dijkstra over
@@ -97,7 +118,8 @@ export function planCanal(sim: CanalHost, starts: CanalStart[], targets: Set<num
   const maxLen = opts.maxLen ?? 90;
   const maxCut = opts.maxCut ?? 2;
   const slope = opts.slope ?? CANAL_SLOPE;
-  const margin = houseMargin(sim);
+  const box = opts.box;
+  const margin = houseMargin(sim, 2.5, box);
   const cost = new Float64Array(w.size).fill(Infinity);
   const len = new Float64Array(w.size);
   const lvl = new Float64Array(w.size);
@@ -133,23 +155,28 @@ export function planCanal(sim: CanalHost, starts: CanalStart[], targets: Set<num
     }
     return top;
   };
+  const inBox = (i: number): boolean => {
+    if (!box) return true;
+    const x = i % W;
+    const y = (i / W) | 0;
+    return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+  };
   const ok = (i: number): boolean =>
+    inBox(i) &&
     !margin[i] && w.water[i]! < 0.05 && !(opts.blocked?.(i) ?? false) && (!sim.fog || isRevealed(w, i));
   // Lowest water surface within 2 cells of each cell: past its first cells the canal keeps
   // away from water lower than its own (it would spill into it, or become the river's bypass).
   const lowWater = new Float32Array(w.size).fill(Infinity);
-  for (let i = 0; i < w.size; i++) {
-    if (w.water[i]! < 0.05) continue;
+  eachIn(w, box && grow(box, 2), (i, x, y) => {
+    if (w.water[i]! < 0.05) return;
     const sf = w.surface(i);
-    const x = i % W;
-    const y = (i / W) | 0;
     for (let dy = -2; dy <= 2; dy++)
       for (let dx = -2; dx <= 2; dx++) {
         if (!w.inBounds(x + dx, y + dy)) continue;
         const j = w.idx(x + dx, y + dy);
         if (sf < lowWater[j]!) lowWater[j] = sf;
       }
-  }
+  });
   for (const s of starts) {
     if (!ok(s.cell)) continue;
     const g = w.terrain(s.cell);
@@ -215,7 +242,7 @@ export function planCanal(sim: CanalHost, starts: CanalStart[], targets: Set<num
   if (!reached.length) return null;
   // The end that waters most target cells for its cost.
   let best: { end: number; covered: number[]; score: number } | null = null;
-  const step = Math.max(1, Math.floor(reached.length / 400));
+  const step = Math.max(1, Math.floor(reached.length / (opts.ends ?? 400)));
   for (let k = 0; k < reached.length; k += step) {
     const end = reached[k]!;
     const path: number[] = [];

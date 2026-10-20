@@ -388,7 +388,16 @@ says "watch and learn". Instead, three small things, in order of value:
    `sim/ideas.ts`, the top of the Achievements card; ≤ 3 for unlocked
    tools, a small dot on the menu when a new one appears, Good Idea when
    one goes away by the player's works. No village names: places are said
-   relative to the village, above/below/beside it, since the camera turns.)*
+   relative to the village, above/below/beside it, since the camera turns.
+   A village that has struggled for a while — reputation under 40 % for
+   8 days, or stuck at the floor of eight drawing nobody — gets one
+   concrete help idea for the brushes, first in the list, chosen from its
+   situation and only when feasible (`sim/help.ts`): a bank where floods
+   reach its fields; a channel from a stream or pond above its dry fields,
+   graded along the slope (the bots' canal planner, `plans/canal.ts`;
+   open dry ground too once its good land is farmed), ringed from the
+   intake to the land it waters; a ditch from waterlogged ground down to
+   lower water. It goes when its reputation is back above 50 %.)*
 
 No contextual pop-ups, no arrows, no "suggested plan" ghosts: they would
 turn the sandbox into a tutorial and contradict pillar 4.
@@ -607,7 +616,7 @@ settlement.ts; shown per village with `?stats=1` as `limit`):
 
 | limit | meaning | what the player sees | what helps |
 |---|---|---|---|
-| `land` | food is short (or too little for a good reputation) and the good land within walking reach is used up | hardy crops (millet, paddies) at the edge, no pegged plots, families leaving; the idea "the good land … is all farmed" rings the dry ground water would make good | a canal to that ground, a footbridge, draining a marsh |
+| `land` | food is short (or too little for a good reputation) and the good land within walking reach is used up | hardy crops (millet, paddies) at the edge, no pegged plots, families leaving; the idea "the good land … is all farmed" rings the dry ground water would make good (and, once the village has struggled for a while, the help idea rings a feasible channel to it, §3) | a canal to that ground, a footbridge, draining a marsh |
 | `food` | food is short though good land is left: poor yields (dry or drowned fields), a lean season | the dry-fields idea in summer; pale crops, sacks by the store run low | water for the fields, fish |
 | `wellbeing` | fed, but the reputation is low (ruins by the village, no well, floods) | ruins, mood props | rebuilding (ruins vanish after two years), a well, keeping floods off |
 | `room` | families come, a house is wanted but no site is left | **newcomers camp** at the edge; the idea "no room left for houses" | level dry ground beside the village (Even), keep a flood plain dry |

@@ -122,6 +122,14 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   (land, food, wellbeing, room; `?stats=1`), newcomers camping at the edge
   when room or land is the limit, ideas that point at the limit (water the
   dry ground once the good land is farmed; level ground for houses)
+- ☑ Help for a struggling village (`sim/help.ts`): a village poor for a
+  while (reputation < 40 %, or at the floor of eight drawing nobody) gets
+  one concrete idea for the brushes from its situation: a graded channel
+  from higher water onto its dry fields (`plans/canal.ts planCanal`, moved
+  from the playtest bots), a bank where floods reach its fields, or a
+  ditch from waterlogged ground down to lower water; only when feasible;
+  it stands in for the village's dry/land/flood/marsh idea and goes once
+  prosperity is back above 50 %
 
 ## M4 — Structures ◐
 - ☑ M4a Lining (no erosion/slumping), weirs (hold to the crest, spill

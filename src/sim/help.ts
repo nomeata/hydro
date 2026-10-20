@@ -170,7 +170,9 @@ export function planHelp(h: HelpHost, s: Settlement): HelpPlan | null {
         flows.set(c, flowing);
       }
     }
-    const canal = starts.length ? planCanal(h, starts, targets, { village: { x: sx, y: sy, r: 10 }, maxEarth: HELP.earth, maxCut: HELP.cut }, HELP.channelWorth) : null;
+    const R = HELP.sourceReach + 2;
+    const box = { x0: Math.floor(sx - R), y0: Math.floor(sy - R), x1: Math.ceil(sx + R), y1: Math.ceil(sy + R) };
+    const canal = starts.length ? planCanal(h, starts, targets, { village: { x: sx, y: sy, r: 10 }, maxEarth: HELP.earth, maxCut: HELP.cut, box, ends: 60 }, HELP.channelWorth) : null;
     if (canal && worthOf(w, canal.covered) >= HELP.channelWorth) {
       const nf = canal.covered.filter((i) => w.landuse[i] === LandUse.Field).length;
       const at = ring(canal.covered.map(pt));
@@ -209,7 +211,8 @@ export function planHelp(h: HelpHost, s: Settlement): HelpPlan | null {
     if (coreN >= HELP.wetCells) {
       const C = pt(core);
       const zC = w.terrain(core);
-      const margin = houseMargin(h);
+      const R = HELP.drainReach + 3;
+      const margin = houseMargin(h, 2.5, { x0: Math.floor(C[0] - R), y0: Math.floor(C[1] - R), x1: C[0] + R, y1: C[1] + R });
       let best: { j: number; d: number } | null = null;
       for (const j of around(C[0], C[1], HELP.drainReach)) {
         if (w.water[j]! < 0.1 || w.surface(j) > zC - HELP.drainDrop) continue;
