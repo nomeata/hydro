@@ -72,6 +72,14 @@ export class IntroScenes {
    * and starting over, so a slow test machine never samples the loop's gap.
    */
   static hold = false;
+  /**
+   * Test hook: stop drawing new frames (the canvas keeps the last one), so a
+   * screenshot need not wait out software GL's multi-second frames.
+   */
+  static freeze = false;
+
+  /** Frames drawn of the scene shown (test hook: the live scene is drawing). */
+  framesShown = 0;
 
   /** Called once the first live frame is on screen (the SVG fallback can go). */
   onLive: (() => void) | null = null;
@@ -237,6 +245,7 @@ export class IntroScenes {
       r.weather.zoomBias = sc.clouds ?? 1;
       this.resetScript();
       this.runStart = performance.now();
+      this.framesShown = 0;
     }
     this.sculptor?.reconcile(s);
     this.mirror.apply(s);
@@ -276,7 +285,9 @@ export class IntroScenes {
       }
     }
     if (this.restartAt && now >= this.restartAt) this.restart();
+    if (IntroScenes.freeze && this.live) return;
     this.renderer.frame(now);
+    if (this.shownRun === this.wantRun) this.framesShown++;
     if (this.fadeInAfter > 0 && this.shownRun === this.wantRun && --this.fadeInAfter === 0) this.fadeIn();
   };
 

@@ -248,7 +248,6 @@ const data: InitialData = {
 const pr = params.get('pr');
 const renderer = new GameRenderer(canvas, data, {
   shadows: params.get('shadows') === '1',
-  smoothTerrain: params.get('smooth') === '1',
   ...(pr ? { pixelRatio: Number(pr) } : {}),
 });
 renderer.setSun(Number(params.get('sun') ?? 0.6), Number(params.get('season') ?? 1));

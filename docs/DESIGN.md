@@ -33,7 +33,7 @@
    and their economy level off (perhaps at a different level after a
    disturbance). This is a design guideline for every subsystem and its
    tuning, checked by long-horizon tests, not a formal requirement.
-7. **Cute and bustling.** Low-poly, flat-shaded, toy-like look (Kenney CC0
+7. **Cute and bustling.** Low-poly, softly shaded, toy-like look (Kenney CC0
    assets), lots of tiny moving things, day/night, seasons.
 
 ## 2. The world
@@ -330,7 +330,8 @@ The player asked for "more direct endorphin hits". Decisions:
   flow-aligned ripples). Plans stay visible under water.
 - 3D, WebGL, orthographic camera at an isometric-like angle; freely rotatable
   and zoomable; works with mouse and touch (Pixel 9a is a target device).
-- Flat-shaded low-poly terrain matching the Kenney style; water as a
+- Low-poly terrain matching the Kenney style, smooth-shaded with a hint
+  of facets (creases at cliffs stay); water as a
   translucent animated surface with foam on fast flow.
 - Fog of war: unexplored land is hidden behind soft clouds/darkness.
 - Sound (decision reversed: no longer deferred): a gentle, living
