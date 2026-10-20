@@ -43,9 +43,14 @@ describe('first village', () => {
     // Seed 3 has a lake by its river meadow at (74, 84) (the terrace start lies away from calm water).
     const gen = generateWorld({ seed: 3, size: 128 });
     const sim = new Simulation(gen.world, 3, { people: { startX: 74, startY: 84 } });
-    await runDays(sim, 20);
     const p = sim.people!;
-    const fishers = p.agents.filter((a) => a.job === 3);
+    // Fishers come and go with the stock (round 6: a busier village fishes the lake down by day 20).
+    let most = 0;
+    for (let d = 0; d < 20; d++) {
+      await runDays(sim, 1);
+      most = Math.max(most, p.agents.filter((a) => a.job === 3).length);
+    }
+    const fishers = { length: most };
     const s = p.settlements[0]!.state;
     let stock = 0;
     let cap = 0;

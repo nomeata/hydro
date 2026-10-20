@@ -847,3 +847,99 @@ wide canals); founding beside canal-watered land beyond the first
 village's fields; dikes set on unfarmed ground or cheaper (the earth
 budget and field loss decide); the hands-off band on dry seeds 10, 14
 (9–13 people in year 3).
+
+## Round 6 (tune6, October 2026)
+
+Owner's decision: prosperity means plenty for everyone and then some;
+people respond to reputation and envy (how good a village looks now), not
+to careful forecasts; growth is aggressive while a village looks good, and
+it shrinks quickly after a bad harvest. Additions: leaving families settle
+the valley (found or join villages), founding parties travel with an ox
+cart, ruins vanish after two years and cost reputation meanwhile. Measured
+with `--seeds 1..8 --years 3 --bots good,weircanal,wheel` (128², budget
+6000 m³; reference: main at 229955a, same command) and hands-off seeds
+9–16 for 3 years. New scratch tool `diag-chart.ts` (a run's history chart).
+
+### Changes
+- **Prosperity is plenty now** (`Settlement.plenty`, PEOPLE.md §4): store
+  plus the crops standing in the fields at their current stage, per head,
+  against the need to the next harvest and, for the share of next year's
+  crop already grown (by the crops' stage in spring, by the calendar from
+  summer, so a stunted crop shows at once), the year after; spoilage
+  counted. 0 % at 0.6, 50 % at just enough, 100 % at 1.4; comfort (housing,
+  water, safety) a 15 % term; τ 3 days.
+- **Reputation** = prosperity over ~5 days (weeks of calendar time), less
+  0.04 per ruin by the village. **Arrivals** `0.25 · (1 + P/20) ·
+  (rep − 0.6)/0.4` families a day while fed; with no free house the family
+  camps and houses go up promptly (one at a time per 25 people, on a field
+  if needed). **Births** 2 %/yr + up to 16 %/yr with prosperity.
+  **Departures** `0.3 · households · (1 − plenty)` a day below plenty 1.
+- **Removed**: the store window and growth horizon, the standing crop's
+  promise and its learned bias, spare land/food, the hamlet rule, the
+  shrink-ahead rule, the stalled-village founding rule.
+- **Founding by the valley's own people**: families leaving a village of
+  20+ in hard times (or flooded out of a crowded one) join a small village
+  nearby doing well, or found a new one at the best site (≥ 0.6 now and at
+  the end of last summer, canal-watered land included, −0.08 per ruin; at
+  most one a year), else leave; a crowded (30+), prosperous (rep ≥ 0.65)
+  village sends a young family out now and then. Strangers from the fog
+  found only in a valley of 40+, every 1.5 years at most. Founders take food
+  to the next harvest. They walk with an ox and a loaded handcart
+  (EntityKind.Cart, `render/crowd/carts.ts`), which stands unloaded by the
+  new store for a season.
+- **Ruins** grow over, become a grassy mound at 1.5 years and are gone at 2
+  (cell free for houses and the brushes).
+
+### Hands-off (seeds 1–16, 128², 3 years)
+
+| | main (seeds 1–8) / round 5 | round 6 |
+|---|---|---|
+| year 3, seeds 1–8 | 32/52/46/47/38/16/14/12 | 31/67/31/61/38/13/8/8 |
+| year 3, seeds 9–16 | – | 20/7/36/23/47/8/20/16 |
+| year 3 in 15–40 | 8/16 (round 5) | 8/16 (1, 3, 5, 9, 11, 12, 15, 16); above 2, 4, 13 (47–67); at the floor 7, 8, 10, 14 (7–8), seed 6 13 |
+| prosperity over year 3 | 92–100 % (fertile), 33–65 % (dry, steep) | 58–69 %; steep seeds at the floor 10–49 % |
+| weir unlock (15) | day 15–30 (seeds 1–8) | day 8–28 on 12/16 seeds (4–14 min); 64, 107 on 15, 16; seed 8 never |
+| villages at year 3 | 1–2 | 1–2 (second village in year 2 on 2, 4, 11) |
+
+Prosperity now swings with the seasons (high in a lush spring and summer,
+about half at the limit of the land after the harvest): the history chart
+reads "high → growing, about half → stationary, falling → leaving"
+(seed 4: 4 → 22 → 18 in year 1, 23 → 43 → 38 in year 2, 39 → 66 in
+year 3 as a second village grows). Villages overshoot after a good spring
+and shed families after the harvest within a few days.
+
+### Agency (128², 3 years; population at the end of years 1–3)
+
+| bot | s1 | s2 | s3 | s4 | s5 | s6 | s7 | s8 | mean Δ | main |
+|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | 10/23/31 | 18/29/67 | 13/27/31 | 19/39/61 | 16/28/38 | 8/13/13 | 8/8/8 | 8/7/8 | | |
+| good | 9/20/29 | 21/34/65 | 13/26/34 | 19/32/49 | 16/25/44 | 8/12/26 | 8/7/7 | 7/8/10 | +14 % | +24 % |
+| weircanal | 10/23/31 | 23/36/68 | 13/26/44 | 19/32/48 | 16/25/41 | 8/12/24 | = | = | +14 % | +14 % |
+| wheel | 10/23/30 | 17/27/48 | 14/27/59 | 19/31/58 | 18/27/58 | 8/15/24 | 8/8/8 | 8/13/15 | +35 % | +7 % |
+
+Seeds ≥ +30 %: good 1/8 (6: +100 %), weircanal 2/8 (3, 6), wheel 4/8
+(3: +90 %, 5: +53 %, 6: +85 %, 8: +88 %). Villages at year 3 with the bots:
+up to 3 (weircanal and wheel on seed 3, good on seed 2) against 2.
+Response (days from the first works to more houses + camps than
+hands-off): good 19–80, weircanal 20–60, wheel 12–96.
+
+### Findings
+- **Food now shows as people**: where the works add food (the wheel's
+  canal at field level, the dry terraces 3, 6, 8) the village grows by
+  half to double within the year, and it spreads (a third village). Where
+  the works take fields (canal footprints, weir pools on the fertile
+  seeds 2, 4) the village is smaller in proportion: the model no longer
+  hides either.
+- **The +30 % target is met by the wheel bot (mean +35 %, 4/8 seeds), not
+  by the good and weir bots** (+14 %): their canals water little land the
+  village did not farm already, or take farmed land. Response is still
+  weeks, not a season: the works water fields over weeks and the new crop
+  grows the next spring.
+- **Steep, dry seeds** (7, 8, 10, 14) sit at the floor of eight with low
+  prosperity (10–50 %): honest, but it reads as hardship; the floor keeps
+  them alive.
+
+### Open
+Bots that water land the village does not farm yet (ditch networks,
+canals beside the fields); the weir unlock on steep seeds (8, 16); whether
+the floor should hold a little prosperity.

@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { DAYS_PER_SEASON, STEPS_PER_DAY } from '../../src/sim/constants';
 import { loadGame, saveGame } from '../../src/sim/persist';
 import { Task } from '../../src/sim/people/agents';
-import { CAMP, ECONOMY, Settlement, campsFor, classifyGrowth, type GrowthFacts } from '../../src/sim/people/settlement';
+import { CAMP, ECONOMY, Settlement, campsFor, classifyGrowth, foodPart, type GrowthFacts } from '../../src/sim/people/settlement';
+import { Rng } from '../../src/shared/rng';
 import { Simulation } from '../../src/sim/sim';
 import { LandUse, SoilType, World } from '../../src/sim/world';
-import { CAMP_ID } from '../../src/shared/protocol';
+import { CAMP_ID, CarryKind, EntityKind } from '../../src/shared/protocol';
+import { RUIN_GONE } from '../../src/sim/people/village';
 
 const N = 64;
 
@@ -55,18 +57,19 @@ interface Hooks {
   planHouses(s: unknown): void;
 }
 
-const facts = (f: Partial<GrowthFacts>): GrowthFacts => ({ wellbeing: 0.9, arriveAbove: 0.6, fed: 2, freeHouses: 0, building: false, goodLeft: 10, ...f });
+const facts = (f: Partial<GrowthFacts>): GrowthFacts => ({ reputation: 0.9, arriveAbove: 0.6, plenty: 1.5, freeHouses: 0, building: false, goodLeft: 10, ...f });
 
 describe('growth limits', () => {
   it('names what holds a village back, most binding first', () => {
     expect(classifyGrowth(facts({ freeHouses: 1 }))).toBe('open');
     expect(classifyGrowth(facts({ building: true }))).toBe('building');
     expect(classifyGrowth(facts({}))).toBe('room');
-    expect(classifyGrowth(facts({ wellbeing: 0.55, freeHouses: 1 }))).toBe('wellbeing');
-    // The store won't last: land if no good land is left, else poor yields.
-    expect(classifyGrowth(facts({ fed: 0.8, freeHouses: 1 }))).toBe('food');
-    expect(classifyGrowth(facts({ fed: 0.8, goodLeft: 0, freeHouses: 1 }))).toBe('land');
-    expect(classifyGrowth(facts({ fed: ECONOMY.growFood, goodLeft: 0, freeHouses: 1 }))).toBe('open');
+    // Fed, but the reputation is low (ruins, say): not attractive.
+    expect(classifyGrowth(facts({ reputation: 0.5, freeHouses: 1 }))).toBe('wellbeing');
+    // Food short: land if no good land is left, else poor yields; low plenty explains a low reputation.
+    expect(classifyGrowth(facts({ plenty: 0.9, freeHouses: 1 }))).toBe('food');
+    expect(classifyGrowth(facts({ plenty: 0.9, goodLeft: 0, freeHouses: 1 }))).toBe('land');
+    expect(classifyGrowth(facts({ plenty: 1.02, reputation: 0.5, goodLeft: 0, freeHouses: 1 }))).toBe('land');
   });
 
   it('lets newcomers camp only when they would come but the village cannot take them', () => {
@@ -79,30 +82,66 @@ describe('growth limits', () => {
     for (const l of ['open', 'food', 'wellbeing'] as const) expect(campsFor(l, 0.9, 0.6)).toBe(false);
   });
 
-  it('draws families while crops stand, on spare food or spare good land (round 5)', () => {
+  it('judges plenty by the store and the crops standing now, against the need to the harvest (and the year after, as the crop grows)', () => {
     const s = new Settlement(0, 10, 10, 20, 0);
-    const doy = 10; // spring: the harvest (day 29) is 19 days off
-    const need = 20 * (s.daysToHarvest(doy) + 48 + 6);
-    s.state.food = 20 * 30; // lasts to the harvest, but not the growth horizon: no window
-    s.state.promiseBias = 1;
-    expect(s.growSecurity(doy)).toBeLessThan(ECONOMY.growFood);
-    expect(s.growth(doy)).toBe(0); // nothing stands in the fields
-    // The crops promise just enough: no spare food, and no spare land.
-    s.state.standing = need - s.state.food;
-    expect(s.ahead(doy)).toBeCloseTo(1);
-    expect(s.growth(doy)).toBe(0);
-    // ...with spare good land: families come.
-    s.state.spareLand = ECONOMY.spareFamily * ECONOMY.spareFamilies;
-    expect(s.growth(doy)).toBe(1);
-    s.state.spareLand = ECONOMY.spareFamily;
-    expect(s.growth(doy)).toBeCloseTo(1 / ECONOMY.spareFamilies);
-    // A poor harvest ahead: not even on spare land.
-    s.state.standing = 0.8 * need - s.state.food;
-    expect(s.growth(doy)).toBe(0);
-    // A rich one: spare food alone draws them.
-    delete s.state.spareLand;
-    s.state.standing = (ECONOMY.spareAhead + 0.2) * need - s.state.food;
-    expect(s.growth(doy)).toBeCloseTo(Math.min(1, (0.2 * need) / ECONOMY.spareFamily / ECONOMY.spareFamilies));
+    const winter = 40; // no crops: the store against the need to the harvest (day 28)
+    s.state.food = 20 * s.daysToHarvest(winter) * 1.2;
+    expect(s.plenty(winter)).toBeGreaterThan(0.9);
+    expect(s.plenty(winter)).toBeLessThan(1.2);
+    // Late summer: a ripe crop that feeds them a year, the store about empty.
+    const summer = s.state.harvestDay - 2;
+    s.state.food = 20 * 3;
+    s.state.crops = 20 * 48 * 1.1;
+    expect(s.plenty(summer)).toBeGreaterThan(0.9);
+    // The same fields stunted by a drought: the shortfall shows at once.
+    s.state.crops = 20 * 48 * 0.6;
+    expect(s.plenty(summer)).toBeLessThan(0.7);
+    expect(foodPart(s.plenty(summer))).toBeLessThan(0.15);
+    expect(foodPart(ECONOMY.plentyHi)).toBe(1);
+  });
+
+  it('grows quickly on plenty, sheds families quickly after a bad harvest, never below the floor', () => {
+    const rng = new Rng(3);
+    const run = (s: Settlement, days: number, plentyDays: number) => {
+      const ev = { arrived: 0, left: 0, born: 0 };
+      for (let d = 0; d < days; d++) {
+        const doy = 36 + (d % 10); // autumn and winter: the store is all there is
+        s.state.food = s.state.population * plentyDays * s.daysToHarvest(doy);
+        s.state.houses = Math.ceil(s.state.population / ECONOMY.houseCapacity) + 1; // houses go up promptly
+        const e = s.day(doy, rng);
+        ev.arrived += e.arrived;
+        ev.left += e.left;
+        ev.born += e.born;
+      }
+      return ev;
+    };
+    const rich = new Settlement(0, 10, 10, 20, 0);
+    const grow = run(rich, 12, 1.8);
+    expect(rich.state.reputation).toBeGreaterThan(0.8);
+    expect(grow.arrived).toBeGreaterThanOrEqual(6); // a season of plenty: a few families
+    expect(grow.left).toBe(0);
+    const poor = new Settlement(1, 10, 10, 30, 0);
+    poor.state.wellbeing = 0.9;
+    const shrink = run(poor, 12, 0.7);
+    expect(shrink.left).toBeGreaterThanOrEqual(8);
+    expect(shrink.arrived).toBe(0);
+    expect(poor.state.wellbeing).toBeLessThan(0.3);
+    run(poor, 60, 0.5);
+    expect(poor.state.population).toBeGreaterThanOrEqual(ECONOMY.stayers - 2); // no departures below the floor (a natural death now and then)
+  });
+
+  it('counts ruins against the reputation', () => {
+    const rng = new Rng(1);
+    const a = new Settlement(0, 10, 10, 20, 0);
+    const b = new Settlement(1, 10, 10, 20, 0);
+    b.state.ruins = 3;
+    for (let d = 0; d < 20; d++)
+      for (const s of [a, b]) {
+        s.state.food = 20 * 60;
+        s.state.population = 20;
+        s.day(40, rng);
+      }
+    expect(a.reputation - b.reputation).toBeCloseTo(3 * ECONOMY.ruinPenalty, 1);
   });
 
   it('judges each village daily', () => {
@@ -255,5 +294,60 @@ describe('houses and fields', () => {
     const b = onField[0]!;
     expect(Math.hypot(b.x - st.x, b.y - st.y)).toBeLessThanOrEqual(6);
     expect(w.landuse[w.idx(b.x, b.y)]).toBe(LandUse.Building);
+  });
+});
+
+describe('the valley spreads (round 6)', () => {
+  it('a family leaving founds a new village at a good site, walking there with its ox and cart', () => {
+    const sim = village();
+    sim.run(STEPS_PER_DAY);
+    const p = sim.people!;
+    const w = sim.world;
+    const s = p.settlements[0]!;
+    const site = w.idx(54, 50);
+    (p as unknown as { foundingSite: () => number }).foundingSite = () => site;
+    (p as unknown as { lastFounding: number }).lastFounding = -1e9;
+    const pop = s.state.population;
+    const food = s.state.food;
+    expect(p.emigrate(s, 3, 10, false)).toBe(true);
+    s.state.population -= 3;
+    expect(p.settlements.length).toBe(2);
+    const n = p.settlements[1]!.state;
+    expect(n.population).toBe(3);
+    expect(n.food).toBeGreaterThan(0);
+    expect(s.state.food).toBeCloseTo(food - n.food);
+    expect(p.agents.filter((a) => a.settlement === n.id).length).toBe(3);
+    expect(p.agents.filter((a) => a.settlement === s.state.id && a.task !== Task.Leave && !a.child).length).toBe(pop - 3);
+    const kinds = p.carts.map((c) => c.kind).sort();
+    expect(kinds).toEqual([EntityKind.Cow, EntityKind.Cart].sort());
+    const cart = p.carts.find((c) => c.kind === EntityKind.Cart)!;
+    expect(cart.carry).toBe(CarryKind.Bundle);
+    const x0 = cart.x;
+    sim.run(STEPS_PER_DAY);
+    // The cart rolled towards the new village and stands there, unloaded.
+    expect(cart.x).toBeGreaterThan(x0 + 10);
+    expect(Math.hypot(cart.x - n.x, cart.y - n.y)).toBeLessThan(4);
+    expect(cart.carry).toBeUndefined();
+    expect(cart.until).toBeGreaterThan(sim.time.day);
+    expect(p.entities(1).info.some((v, k) => k % 4 === 0 && v === EntityKind.Cart)).toBe(true);
+  });
+
+  it('ruins grow over, become a mound and are gone after two years, freeing the cell', () => {
+    const sim = village();
+    sim.run(STEPS_PER_DAY);
+    const p = sim.people!;
+    const w = sim.world;
+    const b = p.buildings.find((x) => x.kind === 'house')!;
+    b.kind = 'ruin';
+    b.ruinedDay = 0;
+    const hooks = p as unknown as { tendRuins(day: number): void };
+    hooks.tendRuins(2);
+    expect(p.settlements[0]!.state.ruins).toBe(1);
+    hooks.tendRuins(RUIN_GONE - 1);
+    expect(p.buildings.includes(b)).toBe(true);
+    hooks.tendRuins(RUIN_GONE);
+    expect(p.buildings.includes(b)).toBe(false);
+    expect(w.landuse[w.idx(b.x, b.y)]).toBe(LandUse.None);
+    expect(p.settlements[0]!.state.ruins).toBeUndefined();
   });
 });

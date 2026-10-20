@@ -4,14 +4,14 @@
  * player's plans, and the agents doing all of it. Land grows crops, agents
  * collect them, the settlement only decides (see §2 of the design).
  */
-import { CAMP_ID, CarryKind, EntityAnim, FISH_BLOCK, FieldCrop, STRESS_WET, type BuildingInfo, type SimTime, type StructureInfo } from '../../shared/protocol';
+import { CAMP_ID, CarryKind, EntityAnim, EntityKind, FISH_BLOCK, FieldCrop, STRESS_WET, type BuildingInfo, type SimTime, type StructureInfo } from '../../shared/protocol';
 import { Rng } from '../../shared/rng';
 import { CELL_AREA, DAYS_PER_SEASON, DAYS_PER_YEAR, STEPS_PER_DAY } from '../constants';
 import { REVEALED } from '../fog';
 import { PARAMS } from '../params';
 import { applyEarthwork, takenGround } from '../plans/plans';
 import { CellFlag, LandUse, SOIL_PROPS, type World } from '../world';
-import { Job, SiteKind, Task, packEntities, walk, type Agent, type Animal } from './agents';
+import { Job, SiteKind, Task, WALK_SPEED, packEntities, walk, type Agent, type Animal } from './agents';
 import { updateDesirePaths } from './desire';
 import { DITCH, chooseDitch } from './ditches';
 import { Herds, type HerdHome } from './herds';
@@ -189,9 +189,6 @@ export function snowPiles(w: World, banks: ReadonlyMap<number, number>): number[
   return out;
 }
 
-/** Good land counted as spare at most (cells, about three farmers' worth; round 5). */
-const SPARE_LAND_CELLS = 84;
-
 export const FARMING = {
   fieldsPerFarmer: 28,
   yield: 10,
@@ -334,13 +331,29 @@ export function cropStress(crop: number, moisture: number, water: number, growin
  */
 export const FOUNDING = {
   everyDays: 4,
-  /** Minimum days between two foundings. */
+  /**
+   * Minimum days between two new villages founded by the valley's own people
+   * (round 6): families leaving a village in hard times (`pushPopulation`:
+   * from a village at least this big, i.e. crowded for its land) found one
+   * where a site is good enough instead of leaving the valley; a crowded
+   * (`crowdedPopulation`), prosperous (reputation ≥ `adventure`) village
+   * sends a young family out now and then (`adventureChance` per look).
+   */
   interval: DAYS_PER_YEAR,
-  /** Total population of all villages that makes people look for new land. */
-  minPopulation: 40,
-  /** A single village this big that has stopped growing (`stalledDays` without growth) also sends people out. */
+  pushPopulation: 20,
   crowdedPopulation: 30,
-  stalledDays: 12,
+  adventure: 0.65,
+  adventureChance: 0.2,
+  /** A small village (under ECONOMY.smallVillage) this close takes in leaving families instead. */
+  joinDistance: 70,
+  /**
+   * Strangers from beyond the known land found a village too once the valley
+   * holds this many people, at most once per `fogInterval` days.
+   */
+  minPopulation: 40,
+  fogInterval: Math.round(1.5 * DAYS_PER_YEAR),
+  /** Attractiveness lost per ruin by a block (each, within `ATTRACT_BLOCK` cells of its centre). */
+  ruinPenalty: 0.08,
   /** Minimum distance (cells) to every other settlement. */
   minSpacing: 26,
   /**
@@ -364,6 +377,11 @@ export const FOUNDING = {
   startFood: 400,
 };
 export const ATTRACT_BLOCK = 8;
+/** A ruin not rebuilt becomes a grassy mound after RUIN_MOUND days and is gone after RUIN_GONE (two years). */
+export const RUIN_MOUND = Math.round(1.5 * DAYS_PER_YEAR);
+export const RUIN_GONE = 2 * DAYS_PER_YEAR;
+/** Ruins within this distance (cells) of a village centre cost it reputation. */
+const RUIN_NEAR = 16;
 /** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
 export const FLOOD_FORGET = 120;
 
@@ -443,7 +461,25 @@ export interface PeopleState {
   hardy?: number[];
   /** Snow banks beside the fields as pairs [cell, m] (PeopleSystem.snowBanks; absent in older saves: none). */
   snowBanks?: number[];
+  /** Founding parties' carts (absent in older saves: none). */
+  carts?: Cart[];
 }
+
+/**
+ * A founding party's ox and cart (round 6, kinds Cow and Cart): the ox
+ * follows the party's first member (`leader`, an agent id), the cart the ox
+ * (`leader`: the ox's id), to the new village; they stay by the store until
+ * day `until`, then are gone (the cart unloaded, taken apart for the first house).
+ */
+export interface Cart extends Animal {
+  leader: number;
+  until?: number;
+}
+
+/** A cart keeps this far (cells) behind its leader. */
+const CART_GAP = 1.0;
+/** Days a cart stays by the new store after the party arrived. */
+export const CART_STAY = DAYS_PER_SEASON;
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
 export type PeopleEvent = 'harvest' | 'catch' | 'rebuilt' | 'well' | 'mill' | 'bridge';
@@ -545,6 +581,8 @@ export class PeopleSystem {
   private reserved = new Set<number>();
   private lastDay = -1;
   private lastFounding = 0;
+  /** Founding parties' carts (round 6). */
+  carts: Cart[] = [];
   /** Highest total population so far: tools unlocked by it stay unlocked. */
   peakPopulation = 0;
   /**
@@ -637,11 +675,12 @@ export class PeopleSystem {
 
   /**
    * Debugging and screenshots (Command 'debugVillage'): force a village's
-   * wellbeing (and with it its mood) or food, or dry out the soil around it;
+   * wellbeing (and with it its mood and reputation) or food, or dry out the soil around it,
+   * or send a family out to found a new village (`emigrate` people);
    * `camp` makes newcomers camp at its edge as if there were no room (until
    * `camp: false`; not saved).
    */
-  debugVillage(index: number, opts: { wellbeing?: number; food?: number; dry?: boolean; camp?: boolean }): void {
+  debugVillage(index: number, opts: { wellbeing?: number; food?: number; dry?: boolean; camp?: boolean; emigrate?: number }): void {
     const s = this.settlements[index];
     if (!s) return;
     const st = s.state;
@@ -653,7 +692,14 @@ export class PeopleSystem {
     }
     if (opts.wellbeing !== undefined) {
       st.wellbeing = opts.wellbeing;
+      st.reputation = opts.wellbeing;
       st.mood = opts.wellbeing > 0.62 ? 1 : opts.wellbeing < 0.28 ? -1 : 0;
+    }
+    if (opts.emigrate) {
+      // A family sets out to found a new village (or join a small one) now.
+      this.summerSurvey ??= this.surveyLand();
+      this.lastFounding = -1e9;
+      if (this.emigrate(s, opts.emigrate, this.lastDay, false)) st.population -= opts.emigrate;
     }
     if (opts.food !== undefined) st.food = opts.food;
     if (opts.dry) {
@@ -722,10 +768,81 @@ export class PeopleSystem {
     // Remove agents who have left.
     this.agents = this.agents.filter((a) => !(a.task === Task.Leave && a.pathPos >= a.path.length));
     this.herds.tick(PEOPLE_TICK, this.settlements, (s) => this.herdHome(s));
+    this.moveCarts(PEOPLE_TICK);
   }
 
   entities(speed: number) {
-    return packEntities(this.agents, speed, this.herds.animals);
+    return packEntities(this.agents, speed, this.carts.length ? [...this.herds.animals, ...this.carts] : this.herds.animals);
+  }
+
+  /** An ox and its cart for the party led by agent `leader`, bound for settlement `settlement`'s centre. */
+  private addCart(leader: Agent, settlement: number): void {
+    const h = leader.heading;
+    const make = (kind: EntityKind, lead: number, back: number): Cart => ({
+      id: this.nextId++,
+      settlement,
+      kind,
+      x: leader.x - Math.cos(h) * back,
+      y: leader.y - Math.sin(h) * back,
+      heading: h,
+      vx: 0,
+      vy: 0,
+      task: Task.Walk,
+      timer: 0,
+      anim: EntityAnim.Walk,
+      path: [],
+      pathPos: 0,
+      leader: lead,
+    });
+    const ox = make(EntityKind.Cow, leader.id, CART_GAP);
+    const cart = make(EntityKind.Cart, ox.id, 2 * CART_GAP);
+    cart.carry = CarryKind.Bundle;
+    this.carts.push(ox, cart);
+  }
+
+  /**
+   * The ox follows the party's leader, the cart the ox, each a length behind;
+   * once the party is home they stand by the new store for CART_STAY days
+   * (the cart unloaded, the ox grazing), then are gone.
+   */
+  private moveCarts(steps: number): void {
+    if (!this.carts.length) return;
+    const max = WALK_SPEED * 1.25 * steps;
+    for (const c of this.carts) {
+      c.vx = 0;
+      c.vy = 0;
+      if (c.task !== Task.Walk) continue;
+      let lead: { x: number; y: number } | undefined;
+      if (c.kind === EntityKind.Cart) {
+        const ox = this.carts.find((o) => o.id === c.leader);
+        if (ox && ox.task === Task.Walk) lead = ox;
+      } else {
+        const a = this.agents.find((g) => g.id === c.leader);
+        if (a && a.task === Task.Walk && a.settlement === c.settlement) lead = a;
+      }
+      if (!lead) {
+        c.task = Task.Rest;
+        c.anim = c.kind === EntityKind.Cart ? EntityAnim.Idle : EntityAnim.Eat;
+        c.until = this.lastDay + CART_STAY;
+        delete c.carry; // unloaded
+        continue;
+      }
+      const dx = lead.x - c.x;
+      const dy = lead.y - c.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= CART_GAP) {
+        c.anim = EntityAnim.Idle;
+        continue;
+      }
+      const m = Math.min(max, d - CART_GAP);
+      c.x += (dx / d) * m;
+      c.y += (dy / d) * m;
+      c.vx = ((dx / d) * m) / steps;
+      c.vy = ((dy / d) * m) / steps;
+      c.heading = Math.atan2(dy, dx);
+      c.anim = EntityAnim.Walk;
+    }
+    this.carts = this.carts.filter((c) => c.until === undefined || c.until > this.lastDay);
   }
 
   /** Where a village's animals live. */
@@ -947,7 +1064,9 @@ export class PeopleSystem {
       this.tendWells(s, host);
       this.tendMill(s);
       this.updateSafety(s);
-      s.day(doy, this.rng);
+      const ev = s.day(doy, this.rng);
+      // Families leaving a crowded village in hard times found a new one, or join a small one, if they can.
+      if (ev.left > 0 && s.state.population + ev.left >= FOUNDING.pushPopulation) this.emigrate(s, ev.left, time.day, true);
       this.syncPopulation(s);
       this.syncChildren(s);
       this.planHouses(s);
@@ -967,11 +1086,7 @@ export class PeopleSystem {
     if (doy === FOUNDING.summerDay) this.summerSurvey = this.surveyLand();
     if (time.day % FOUNDING.everyDays === 0) this.considerFounding(time);
     this.updateQuays();
-    // Ruins grow over (rendering).
-    for (const b of this.buildings) {
-      const age = time.day - (b.ruinedDay ?? -1);
-      if (b.kind === 'ruin' && (age === DAYS_PER_SEASON || age === DAYS_PER_YEAR)) this.buildingsDirty = true;
-    }
+    this.tendRuins(time.day);
   }
 
   // ---------------------------------------------------------------------------
@@ -1308,10 +1423,40 @@ export class PeopleSystem {
     }).concat(camps);
   }
 
-  /** How overgrown a ruin is: 0 in its first season, 1 within the year, 2 after. */
+  /** How overgrown a ruin is: 0 in its first season, 1 within the year, 2 after, 3 a grassy mound in its last half year. */
   private ruinWeeds(b: Building): number {
     const age = this.lastDay - (b.ruinedDay ?? -DAYS_PER_YEAR);
-    return age < DAYS_PER_SEASON ? 0 : age < DAYS_PER_YEAR ? 1 : 2;
+    return age < DAYS_PER_SEASON ? 0 : age < DAYS_PER_YEAR ? 1 : age < RUIN_MOUND ? 2 : 3;
+  }
+
+  /**
+   * Daily: ruins grow over (rendering) and, not rebuilt after RUIN_GONE days,
+   * are gone, the cell free again; each ruin still standing near a village
+   * costs it reputation (settlement.ts `ruins`).
+   */
+  private tendRuins(day: number): void {
+    const w = this.world;
+    const gone = new Set<Building>();
+    for (const b of this.buildings) {
+      if (b.kind !== 'ruin') continue;
+      const age = day - (b.ruinedDay ?? day);
+      if (age === DAYS_PER_SEASON || age === DAYS_PER_YEAR || age === RUIN_MOUND) this.buildingsDirty = true;
+      if (b.ruinedDay !== undefined && age >= RUIN_GONE) gone.add(b);
+    }
+    if (gone.size) {
+      for (const b of gone) {
+        const i = w.idx(b.x, b.y);
+        if (w.landuse[i] === LandUse.Building) w.landuse[i] = LandUse.None;
+      }
+      this.buildings = this.buildings.filter((b) => !gone.has(b));
+      this.buildingsDirty = true;
+    }
+    for (const s of this.settlements) {
+      let n = 0;
+      for (const b of this.buildings) if (b.kind === 'ruin' && Math.hypot(b.x - s.state.x, b.y - s.state.y) <= RUIN_NEAR) n++;
+      if (n) s.state.ruins = n;
+      else delete s.state.ruins;
+    }
   }
 
   /** Lined banks by the houses that face open water read as quays. */
@@ -1383,15 +1528,10 @@ export class PeopleSystem {
   // ---------------------------------------------------------------------------
   // New villages
 
-  /** Whether the existing villages are big or crowded enough to send people out. */
+  /** Whether strangers from beyond the known land come to found a village (round 6: rarely; the valley's own people found most). */
   private wantsNewVillage(day: number): boolean {
-    if (!this.settlements.length || day - this.lastFounding < FOUNDING.interval) return false;
-    if (this.population >= FOUNDING.minPopulation) return true;
-    // Crowded: a village of 30 that has stopped growing for any reason (no land, no room, too
-    // little food, not attractive) for a while sends people out, so a player who waters its
-    // land does not delay the second village (docs/PLAYTEST.md round 4).
-    const stalled = (s: Settlement) => s.state.stalledSince !== undefined && day - s.state.stalledSince >= FOUNDING.stalledDays;
-    return this.settlements.some((s) => s.state.population >= FOUNDING.crowdedPopulation && stalled(s));
+    if (!this.settlements.length || day - this.lastFounding < FOUNDING.fogInterval) return false;
+    return this.population >= FOUNDING.minPopulation;
   }
 
   /**
@@ -1440,15 +1580,37 @@ export class PeopleSystem {
         if (near && canal < n * FOUNDING.canalShare) continue;
         const d = this.waterDist[c]!;
         const nearWater = d >= 2 && d <= 14 ? 0.15 : d < 2 ? 0 : Math.max(0, 0.15 * (1 - (d - 14) / 16));
-        out[by * bw + bx] = sum / n + nearWater;
+        let ruins = 0;
+        for (const b of this.buildings) if (b.kind === 'ruin' && Math.abs(b.x - cx) <= B && Math.abs(b.y - cy) <= B) ruins++;
+        out[by * bw + bx] = Math.max(0, sum / n + nearWater - ruins * FOUNDING.ruinPenalty);
       }
     return out;
   }
 
   private considerFounding(time: SimTime): void {
+    // Good times: a crowded, prosperous village sends a young family out to seek its luck.
+    if (time.day - this.lastFounding >= FOUNDING.interval)
+      for (const s of this.settlements) {
+        const st = s.state;
+        if (st.population < FOUNDING.crowdedPopulation || s.reputation < FOUNDING.adventure) continue;
+        if (this.rng.next() >= FOUNDING.adventureChance) continue;
+        const n = this.rng.int(2, 5);
+        if (this.emigrate(s, n, time.day, false)) {
+          st.population -= n;
+          break;
+        }
+      }
     if (!this.wantsNewVillage(time.day)) return;
+    const site = this.foundingSite();
+    if (site < 0) return;
+    this.foundAt(site, FOUNDING.food, this.rng.int(3, 6), true);
+    this.lastFounding = time.day;
+  }
+
+  /** The best site for a new village now (as good now as at the end of last summer), or −1. */
+  private foundingSite(): number {
     const summer = this.summerSurvey;
-    if (!summer) return;
+    if (!summer) return -1;
     const a = this.surveyLand();
     for (let b = 0; b < a.length; b++) a[b] = Math.min(a[b]!, summer[b] ?? 0);
     this.attractiveness = a;
@@ -1456,11 +1618,67 @@ export class PeopleSystem {
     const bw = Math.ceil(this.world.width / B);
     let best = -1;
     for (let b = 0; b < a.length; b++) if (a[b]! >= FOUNDING.minScore && (best < 0 || a[b]! > a[best]!)) best = b;
-    if (best < 0) return;
-    const site = this.bestSite((best % bw) * B + B / 2, Math.floor(best / bw) * B + B / 2, 6);
-    if (site < 0) return;
-    this.foundAt(site, FOUNDING.food, this.rng.int(3, 6), true);
-    this.lastFounding = time.day;
+    if (best < 0) return -1;
+    return this.bestSite((best % bw) * B + B / 2, Math.floor(best / bw) * B + B / 2, 6);
+  }
+
+  /**
+   * `n` people leave village `from` (its population already lowered by
+   * `left`, else the caller lowers it): they join a small village nearby
+   * that is doing well, or found a new one at the best site (at most one
+   * founding per FOUNDING.interval), walking there with their cart and a
+   * share of the store. False when there is nowhere to go (they leave the
+   * valley, as before).
+   */
+  emigrate(from: Settlement, n: number, day: number, left: boolean): boolean {
+    const doy = day % DAYS_PER_YEAR;
+    let target: Settlement | null = null;
+    let bestD = FOUNDING.joinDistance;
+    for (const s of this.settlements) {
+      if (s === from || s.state.population >= ECONOMY.smallVillage || s.state.population <= 0) continue;
+      if (s.reputation < s.arriveAbove - 0.1 || s.plenty(doy) < ECONOMY.enough) continue;
+      const d = Math.hypot(s.state.x - from.state.x, s.state.y - from.state.y);
+      if (d < bestD) {
+        bestD = d;
+        target = s;
+      }
+    }
+    // They take food to last them to the next harvest (and a season), as far as the store can spare it.
+    const pop = from.state.population + (left ? n : 0);
+    const want = n * (from.daysToHarvest(doy) + DAYS_PER_SEASON);
+    const food = Math.min(want, from.state.food * Math.min(0.5, (2 * n) / Math.max(1, pop)));
+    if (!target) {
+      if (day - this.lastFounding < FOUNDING.interval) return false;
+      const site = this.foundingSite();
+      if (site < 0) return false;
+      const W = this.world.width;
+      target = new Settlement(this.settlements.length, site % W, (site / W) | 0, 0, 0);
+      this.settlements.push(target);
+      this.addBuilding('store', target.state.id, site % W, (site / W) | 0);
+      this.buildings[this.buildings.length - 1]!.progress = 1;
+      this.lastFounding = day;
+    }
+    from.state.food -= food;
+    target.state.food += food;
+    target.state.population += n;
+    // The family itself walks over (with its cart): the people the old village had last.
+    const mine = this.agents.filter((a) => a.settlement === from.state.id && a.task !== Task.Leave && !a.child && !a.camper);
+    const centre = this.world.idx(Math.round(target.state.x), Math.round(target.state.y));
+    const party = mine.slice(-n);
+    for (const a of party) {
+      a.settlement = target.state.id;
+      a.job = Job.Idle;
+      a.carry = CarryKind.Bundle;
+      a.load = 0;
+      const path = this.pf.find(this.cellOf(a), centre, { window: 64 });
+      a.path = path ?? [];
+      a.pathPos = 0;
+      a.task = path ? Task.Walk : Task.None;
+      a.siteKind = SiteKind.Wander;
+      a.site = centre;
+    }
+    if (party.length) this.addCart(party[0]!, target.state.id);
+    return true;
   }
 
   /**
@@ -1477,8 +1695,17 @@ export class PeopleSystem {
     this.buildings[this.buildings.length - 1]!.progress = 1;
     s.state.population = people;
     const from = fromFog ? this.fogEdge(sx, sy) : -1;
-    if (from >= 0) for (let k = 0; k < people; k++) this.spawnAt(s, 0, from);
+    const party: Agent[] = [];
+    if (from >= 0)
+      for (let k = 0; k < people; k++) {
+        const a = this.spawnAt(s, 0, from);
+        if (a) party.push(a);
+      }
+    const before = this.agents.length;
     this.syncPopulation(s);
+    if (!party.length) party.push(...this.agents.slice(before));
+    const lead = party.find((a) => a.task === Task.Walk);
+    if (lead) this.addCart(lead, s.state.id);
     return s;
   }
 
@@ -1597,7 +1824,17 @@ export class PeopleSystem {
       if (w.water[w.idx(b.x, b.y)]! > 0.4) {
         if (b.progress >= 1) {
           const s = this.settlements[b.settlement];
-          if (s) s.state.houses = Math.max(0, s.state.houses - 1);
+          if (s) {
+            const st = s.state;
+            st.houses = Math.max(0, st.houses - 1);
+            // Flooded out of a crowded village, the family moves on: to a new village if a site
+            // is good enough (or a small one nearby), else out of the valley (round 6).
+            if (st.population > st.houses * ECONOMY.houseCapacity && st.population > ECONOMY.stayers) {
+              const n = Math.min(st.population - ECONOMY.stayers, this.rng.int(ECONOMY.familySize[0], ECONOMY.familySize[1] + 1));
+              st.population -= n;
+              this.emigrate(s, n, day, true);
+            }
+          }
         }
         b.kind = 'ruin';
         b.progress = 0;
@@ -1877,8 +2114,9 @@ export class PeopleSystem {
   }
 
   private planHouses(s: Settlement): void {
-    const building = this.buildings.some((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1);
-    if (building || !s.wantsHouse()) return;
+    // Houses go up promptly (round 6): one at a time in a hamlet, more at once in a bigger village.
+    const building = this.buildings.filter((b) => b.settlement === s.state.id && b.kind === 'house' && b.progress < 1).length;
+    if (building >= 1 + Math.floor(s.state.population / 25) || !s.wantsHouse(building)) return;
     // Rebuild a ruin once its site has long been dry (people forget floods).
     const w0 = this.world;
     const ruin = this.buildings.find(
@@ -1964,15 +2202,20 @@ export class PeopleSystem {
     const st = s.state;
     const forced = this.debugCamp.has(st.id);
     const limit = forced ? 'room' : st.limit;
-    const wellbeing = forced ? 1 : st.wellbeing;
-    const arriveAbove = st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove;
+    const reputation = forced ? 1 : s.reputation;
+    const arriveAbove = s.arriveAbove;
+    // A family ready to come but no free house: it camps until one is built (round 6).
+    const waitingFamily = s.ready && s.freeHouses <= 0;
+    // ...as long as the village is fed: in hard times they move on (and nobody else comes).
+    const fed = forced || (st.plenty ?? ECONOMY.enough) >= ECONOMY.enough;
     const camp = st.camp;
     const w = this.world;
     if (camp) {
       const campers = this.agents.filter((a) => a.camper && a.settlement === st.id && a.task !== Task.Leave);
-      if (limit === 'open' && campers.length) {
+      if (fed && (limit === 'open' || s.freeHouses > 0) && campers.length) {
         // A free house: the family moves in (an arrival, as in Settlement.day).
         st.population += campers.length;
+        s.movedIn();
         const centre = w.idx(Math.round(st.x), Math.round(st.y));
         for (const a of campers) {
           delete a.camper;
@@ -1990,7 +2233,7 @@ export class PeopleSystem {
         this.endCamp(st, day, 0);
         return;
       }
-      const waiting = campsFor(limit, wellbeing, arriveAbove, st.population) || limit === 'building';
+      const waiting = fed && (campsFor(limit, reputation, arriveAbove, st.population) || limit === 'building' || waitingFamily);
       if (waiting && campers.length && day - camp.since < CAMP.stay && w.water[camp.cell]! < 0.05) return;
       // Nothing changes (or the village no longer draws them): they move on.
       for (const a of campers) {
@@ -2001,10 +2244,12 @@ export class PeopleSystem {
         a.path = path ?? [];
         a.pathPos = 0;
       }
+      st.pull = 0; // they tell others there was no room
+      delete st.pullNeed;
       this.endCamp(st, day, CAMP.again);
       return;
     }
-    if (!campsFor(limit, wellbeing, arriveAbove, st.population) || day < (st.campAgain ?? 0)) return;
+    if (!fed || !(campsFor(limit, reputation, arriveAbove, st.population) || waitingFamily) || day < (st.campAgain ?? 0)) return;
     const cell = this.campSite(s);
     if (cell < 0) return;
     const n = this.rng.int(ECONOMY.familySize[0], Math.min(4, ECONOMY.familySize[1]) + 1);
@@ -2268,7 +2513,7 @@ export class PeopleSystem {
     }
     // Shortage: good land used up, more hands than fields and not food enough to grow.
     const doy = time.season * DAYS_PER_SEASON + time.dayOfSeason;
-    const needFood = s.growSecurity(doy) < ECONOMY.growFood;
+    const needFood = s.plenty(doy) < ECONOMY.enough + 0.2;
     if (time.season !== 3 && nGood >= good.length && total < want && needFood) {
       const share = s.foodSecurity(doy) < HARDY.hungryBelow ? HARDY.hungryShare : HARDY.share;
       const cap = Math.floor(HARDY.base + share * (common + nGood)) - (total - common - nGood);
@@ -2276,24 +2521,19 @@ export class PeopleSystem {
       for (let k = 0; k < n; k++) claim(marginal[k]![1], marginal[k]![2]);
     }
     this.goodLeft.set(st.id, good.length - nGood);
-    // The harvest the standing crops promise, and what the good land left would yield (round 5:
-    // year-round growth on spare food and land).
-    const left = Math.max(0, 2 * DAYS_PER_SEASON - doy);
-    let standing = 0;
-    if (growing)
-      for (const i of this.fieldsOf(s)) {
-        const kind = this.fieldCrop[i] as FieldCrop;
-        const c = w.crop[i]! || (canSow ? 8 : 0);
-        if (!c) continue;
-        const f = w.water[i]! > drownDepth(kind) ? 0 : kindGrowth(kind, this.fieldMoisture[i]!, w.water[i]!);
-        const ripe = Math.min(255, c + FARMING.growPerDay * f * left);
-        if (ripe >= FARMING.lateHarvest) standing += FARMING.yield * Math.max(0.2, w.fertility[i]!) * (ripe / 255) * kindYield(kind);
-      }
-    st.standing = standing;
-    let spare = 0;
-    for (let k = nGood; k < Math.min(good.length, nGood + SPARE_LAND_CELLS); k++)
-      spare += FARMING.yield * Math.max(0.2, w.fertility[good[k]![1]]!) * cropGrowth(this.fieldMoisture[good[k]![1]]!);
-    st.spareLand = spare;
+    // The food standing in the fields now, at each crop's current stage (round 6: plenty).
+    let crops = 0;
+    let stage = 0;
+    let sown = 0;
+    for (const i of this.fieldsOf(s)) {
+      const c = w.crop[i]!;
+      if (c === 0) continue;
+      crops += FARMING.yield * Math.max(0.2, w.fertility[i]!) * (c / 255) * kindYield(this.fieldCrop[i] as FieldCrop);
+      stage += c / 255;
+      sown++;
+    }
+    st.crops = crops;
+    st.ripe = sown ? stage / sown : 0;
     // Surplus: good land left over for want of hands; the best few plots are pegged out.
     const pegs = common + nGood >= want ? good.slice(nGood, nGood + PEGS.max).map((c) => c[1]) : [];
     const old = st.pegs ?? [];
@@ -2309,9 +2549,9 @@ export class PeopleSystem {
   private judgeGrowth(s: Settlement, doy: number, day: number): void {
     const st = s.state;
     const limit = classifyGrowth({
-      wellbeing: st.wellbeing,
-      arriveAbove: st.population < ECONOMY.smallVillage ? ECONOMY.arriveSmall : ECONOMY.arriveAbove,
-      fed: s.growth(doy) > 0 ? ECONOMY.growFood : s.growSecurity(doy),
+      reputation: s.reputation,
+      arriveAbove: s.arriveAbove,
+      plenty: s.plenty(doy),
       freeHouses: s.freeHouses,
       building: this.buildings.some((b) => b.settlement === st.id && b.kind === 'house' && b.progress < 1),
       goodLeft: this.goodLeft.get(st.id) ?? 0,
@@ -3087,6 +3327,7 @@ export class PeopleSystem {
       bridges: this.bridges.list.length ? this.bridges.list : undefined,
       hardy: this.hardyList(),
       snowBanks: this.snowBanks.size ? [...this.snowBanks].flat() : undefined,
+      carts: this.carts.length ? this.carts : undefined,
     });
   }
 
@@ -3133,6 +3374,7 @@ export class PeopleSystem {
     this.peakPopulation = c.peak ?? 0;
     this.floods = c.floods ?? { cells: 0, ruined: 0 };
     this.herds.animals = c.animals ?? [];
+    this.carts = c.carts ?? [];
     this.noAnimals = c.noAnimals ?? false;
     this.summerSurvey = c.summerSurvey ? Float32Array.from(c.summerSurvey) : null;
     this.bridges.list = c.bridges ?? [];

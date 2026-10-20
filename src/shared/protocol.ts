@@ -156,6 +156,8 @@ export const enum EntityKind {
   Chick = 4,
   Dog = 5,
   Sheep = 6,
+  /** A founding party's loaded handcart, drawn by an ox (people/village.ts `carts`; round 6). */
+  Cart = 7,
 }
 
 /** What an entity is doing (drives the animation clip). */
@@ -237,7 +239,7 @@ export interface BuildingInfo {
   spin?: number;
   /** Mills: grain waiting to be ground (sacks shown by the door, 0..3). */
   sacks?: number;
-  /** Ruins: how overgrown, 0 (fresh mud) .. 2 (a year or more). */
+  /** Ruins: how overgrown, 0 (fresh mud) .. 2 (a year or more), 3 a grassy mound (its last half year). */
   weeds?: number;
 }
 
@@ -459,7 +461,7 @@ export type Command =
   /** Debug: pour water. */
   | { type: 'debugWater'; x: number; y: number; radius: number; depth: number }
   /** Debug/screenshots: force village `index`'s wellbeing (and mood) or food, or dry out its fields' soil. */
-  | { type: 'debugVillage'; index: number; wellbeing?: number; food?: number; dry?: boolean; camp?: boolean };
+  | { type: 'debugVillage'; index: number; wellbeing?: number; food?: number; dry?: boolean; camp?: boolean; emigrate?: number };
 
 // ---------------------------------------------------------------------------
 // Messages.

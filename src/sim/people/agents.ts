@@ -179,8 +179,10 @@ export function walk(world: World, a: Walker, steps: number, speed = 1): boolean
 export interface Animal extends Walker {
   id: number;
   settlement: number;
-  /** EntityKind: Cow, Sheep, Pig or Chick. */
+  /** EntityKind: Cow, Sheep, Pig or Chick (or a founding party's Cart). */
   kind: EntityKind;
+  /** A cart's load (CarryKind.Bundle while on the road; absent: none). */
+  carry?: CarryKind;
   task: Task;
   timer: number;
   anim: EntityAnim;
@@ -200,7 +202,7 @@ export function packEntities(agents: readonly Agent[], speed: number, animals: r
     info[i * 4] = a.kind;
     info[i * 4 + 1] = a.id & 3;
     info[i * 4 + 2] = a.anim;
-    info[i * 4 + 3] = CarryKind.None;
+    info[i * 4 + 3] = a.carry ?? CarryKind.None;
     pos[i * 5] = a.x;
     pos[i * 5 + 1] = a.y;
     pos[i * 5 + 2] = a.vx * k;

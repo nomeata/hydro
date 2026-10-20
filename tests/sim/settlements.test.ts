@@ -22,6 +22,7 @@ async function runDays(sim: Simulation, days: number, until?: () => boolean): Pr
 const saved = { ...FOUNDING };
 FOUNDING.minPopulation = 4;
 FOUNDING.interval = 4;
+FOUNDING.fogInterval = 4;
 // Migrants judge the land at the end of summer as well: survey it on day 1.
 FOUNDING.summerDay = 1;
 afterAll(() => Object.assign(FOUNDING, saved));
@@ -50,6 +51,7 @@ describe('more settlements', () => {
     const w = sim.world;
     // Let a few weeks of farming pass (founding again is held off).
     FOUNDING.interval = 1000;
+    FOUNDING.fogInterval = 1000;
     await runDays(sim, 16);
     const b = p.settlements[1]!.state;
     // The new village is known land now.

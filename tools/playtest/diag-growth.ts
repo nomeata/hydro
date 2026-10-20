@@ -2,7 +2,6 @@
 import { readFileSync } from 'node:fs';
 import { DAYS_PER_SEASON, STEPS_PER_DAY } from '../../src/sim/constants';
 import { loadGame } from '../../src/sim/persist';
-import { ECONOMY } from '../../src/sim/people/settlement';
 import { makeBot } from './bots';
 import { villages } from './geo';
 import { CAPILLARY } from '../../src/sim/people/village';
@@ -25,6 +24,6 @@ for (let d = 16; d < until; d++) {
     const unfinished = bs.filter((b: any) => b.progress < 1).map((b: any) => `${b.kind}${b.progress.toFixed(2)}`);
     const jobs: Record<number, number> = {};
     for (const a of P.agents) if (a.settlement === st.id) jobs[a.job] = (jobs[a.job] ?? 0) + 1;
-    console.log(`d${d} pop ${st.population} houses ${st.houses} free ${s.freeHouses} w ${st.wellbeing.toFixed(2)} fs ${s.foodSecurity(doy).toFixed(2)} fedH ${s.foodSecurity(doy, ECONOMY.growHorizon).toFixed(2)} wants ${s.wantsHouse()} building ${unfinished.join(',')} jobs ${JSON.stringify(jobs)} villages ${villages(sim).length} limit ${st.limit} camp ${st.camp ? "yes" : "-"}`);
+    console.log(`d${d} pop ${st.population} houses ${st.houses} free ${s.freeHouses} w ${st.wellbeing.toFixed(2)} fs ${s.foodSecurity(doy).toFixed(2)} plenty ${s.plenty(doy).toFixed(2)} rep ${s.reputation.toFixed(2)} wants ${s.wantsHouse()} building ${unfinished.join(',')} jobs ${JSON.stringify(jobs)} villages ${villages(sim).length} limit ${st.limit} camp ${st.camp ? "yes" : "-"}`);
   }
 }
