@@ -135,8 +135,11 @@ The ground is sculpted with three **brushes**; structures are placed as
 flattened sphere as wide as the brush (its cap `BRUSH.flatten` = 0.2 m per
 m of radius deep, which looks like a sphere flattened to 0.4 with the
 map's 2× vertical exaggeration) that is pressed into the ground (Dig) or
-pushed up from under it (Raise). It first sits where it would touch the
-ground as it was before the stroke, and while held it moves on at a
+pushed up from under it (Raise). It first sits where its inner part
+(0.3 of its radius, under the pointer) would touch the ground as it was
+before the stroke (so on a slope it bites where it is held; the ground
+never moves faster than the stamp, so where its flank cuts into a
+hillside nothing pops), and while held it moves on at a
 steady 1.2 m/s (`BRUSH.rate`): the ground becomes min(ground, the stamp's
 lower surface) for Dig, max(ground, its upper surface) for Raise. Each
 cell takes the stamp averaged over its square (4 × 4 points of the exact

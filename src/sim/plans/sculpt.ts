@@ -3,8 +3,9 @@
  *
  * Raise and Dig are a *stamp*: a flattened sphere (the cap of an ellipsoid,
  * as wide as the brush, `capHeight` deep) pressed into the ground (Dig) or
- * pushed up from below it (Raise). It first sits where it would touch the
- * ground as it was before the stroke, and while held it moves on at a
+ * pushed up from below it (Raise). It first sits where its inner part
+ * (under the pointer) would touch the ground as it was before the stroke,
+ * and while held it moves on at a
  * steady rate (`BRUSH.rate`): the ground becomes min(ground, stamp's lower
  * surface) for Dig, max(ground, upper surface) for Raise, evaluated with
  * the exact ellipsoid at every cell centre, so the result is a round bowl
@@ -57,6 +58,8 @@ export const BRUSH = {
    * (render/coords.ts VERTICAL_EXAGGERATION).
    */
   flatten: 0.2,
+  /** The ground follows the stamp at most this many times its rate (no pop where its flank cuts in at once). */
+  follow: 1,
   /** Repose slope (rise per run) the earth around the stamp relaxes to: loose loam, dry... */
   repose: LOOSE,
   /** ...and wet (under water). */
@@ -223,7 +226,13 @@ export function brushSample(
   /** Per cell, the stamp's offsets at its sub-points (SUB² each). */
   const offs: number[] = [];
   const masks: number[] = [];
+  // Where it first touches: within the inner part (CONTACT × r) of the
+  // stamp, under the pointer, so on a slope it bites where it is held (the
+  // outer part may cut into the hillside at once); anywhere, if that is all
+  // fixed.
+  const eIn = stampOffset(CONTACT * r, r, c);
   let contact = dig ? -Infinity : Infinity;
+  let anywhere = contact;
   for (let yy = sy0; yy <= sy1; yy++)
     for (let xx = sx0; xx <= sx1; xx++) {
       const k = (yy - ry0) * bw + (xx - rx0);
@@ -244,11 +253,15 @@ export function brushSample(
       }
       for (let q = o; q < o + SUB * SUB; q++) {
         const e = offs[q]!;
-        if (e < c) contact = dig ? Math.max(contact, z0[k]! - e) : Math.min(contact, z0[k]! + e);
+        if (e >= c) continue;
+        const touch = dig ? z0[k]! - e : z0[k]! + e;
+        if (e <= eIn) contact = dig ? Math.max(contact, touch) : Math.min(contact, touch);
+        anywhere = dig ? Math.max(anywhere, touch) : Math.min(anywhere, touch);
       }
       cells.push(k);
       masks.push(m);
     }
+  if (!Number.isFinite(contact)) contact = anywhere;
   if (!cells.length || !Number.isFinite(contact)) return;
   const level = dig ? contact - depth : contact + depth;
   // Box of the cells changed so far (region coordinates).
@@ -257,6 +270,7 @@ export function brushSample(
   let by0 = bh;
   let by1 = -1;
   const inv = 1 / (SUB * SUB);
+  const step = BRUSH.follow * BRUSH.rate * t;
   for (let q = 0; q < cells.length; q++) {
     const k = cells[q]!;
     const g0 = z0[k]!;
@@ -268,7 +282,9 @@ export function brushSample(
     }
     // Near fixed cells the stamp bites less deep.
     bite *= inv * masks[q]!;
-    const target = dig ? g0 - bite : g0 + bite;
+    // The ground follows the stamp at most `follow` × rate, so where its flank
+    // meets ground well above (below) it, nothing pops.
+    const target = dig ? Math.max(g0 - bite, z[k]! - step) : Math.min(g0 + bite, z[k]! + step);
     if (dig ? target < z[k]! : target > z[k]!) {
       z[k] = target;
       const kx = k % bw;
@@ -290,6 +306,8 @@ export function brushSample(
 }
 
 const DIAG = Math.SQRT2;
+/** The stamp first touches the ground within this fraction of its radius. */
+const CONTACT = 0.3;
 /** Sub-points per cell side at which the stamp is sampled. */
 const SUB = 4;
 const NB_X = [-1, 0, 1, -1, 1, -1, 0, 1];
