@@ -123,8 +123,11 @@ const CLEAR_RING: [number, number][] = (() => {
   return out.map(([dx, dy]) => [dx, dy]);
 })();
 
-/** Shovel the snow off field cell `i` (see `SNOW_CLEARING`). Mass-conserving. */
-export function clearSnow(w: World, i: number): void {
+/**
+ * Shovel the snow off field cell `i` (see `SNOW_CLEARING`). Mass-conserving.
+ * The snow put on each bank cell is added to `banks` (cell → m), if given.
+ */
+export function clearSnow(w: World, i: number, banks?: Map<number, number>): void {
   const swe = w.snow[i]!;
   if (swe <= 0) return;
   w.snow[i] = 0;
@@ -144,6 +147,7 @@ export function clearSnow(w: World, i: number): void {
     const put = Math.min(left, top - w.snow[j]!);
     if (put <= 0) continue;
     w.snow[j]! += put;
+    if (banks) banks.set(j, (banks.get(j) ?? 0) + put);
     left -= put;
     if (left <= 0) return;
   }
@@ -154,35 +158,34 @@ export function clearSnow(w: World, i: number): void {
   w.water[i]! += left - soak;
 }
 
-/** Snow (m water) above the ground around it from which a cell beside a field counts as a pile (`snowPiles`). */
-export const SNOW_PILE_MIN = 0.008;
+/** Snow piled on a bank cell (m water) below which it is forgotten (`PeopleSystem.snowBanks`). */
+export const SNOW_BANK_MIN = 0.001;
 
 /**
  * The snow banks beside the fields (see `clearSnow`), for the renderer: flat
- * [x, y, swe above the snow around it (m)] for each open cell next to a
- * field whose snow stands at least `SNOW_PILE_MIN` above that of its lowest
- * dry, open neighbour (the undisturbed level; none: bare ground).
+ * [x, y, swe (m)] for each bank cell, the snow it holds above the
+ * undisturbed level around it (the least snow on open, dry land within two
+ * cells that is no bank), at most what was piled there.
  */
-export function snowPiles(w: World): number[] {
+export function snowPiles(w: World, banks: ReadonlyMap<number, number>): number[] {
   const { width: W, height: H, snow, landuse, water } = w;
   const out: number[] = [];
-  for (let y = 1; y < H - 1; y++)
-    for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
-      const s = snow[i]!;
-      if (s < SNOW_PILE_MIN || landuse[i] === LandUse.Field) continue;
-      let ref = Infinity;
-      let field = false;
-      for (let dy = -1; dy <= 1; dy++)
-        for (let dx = -1; dx <= 1; dx++) {
-          if (!dx && !dy) continue;
-          const j = i + dy * W + dx;
-          if (landuse[j] === LandUse.Field) field = true;
-          else if (water[j]! < 0.02 && snow[j]! < ref) ref = snow[j]!;
-        }
-      if (!field) continue;
-      const ex = s - (ref === Infinity ? 0 : ref);
-      if (ex >= SNOW_PILE_MIN) out.push(x, y, ex);
-    }
+  for (const [i, piled] of banks) {
+    const x = i % W;
+    const y = (i / W) | 0;
+    let ref = Infinity;
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        const lu = landuse[j];
+        if ((lu === LandUse.None || lu === LandUse.Pasture) && water[j]! < 0.02 && !banks.has(j) && snow[j]! < ref) ref = snow[j]!;
+      }
+    const ex = Math.min(piled, snow[i]! - (ref === Infinity ? 0 : ref));
+    if (ex >= SNOW_BANK_MIN) out.push(x, y, ex);
+  }
   return out;
 }
 
@@ -438,6 +441,8 @@ export interface PeopleState {
   bridges?: Footbridge[];
   /** Field cells sown with a hardy crop, as pairs [cell, FieldCrop] (absent in older saves: none). */
   hardy?: number[];
+  /** Snow banks beside the fields as pairs [cell, m] (PeopleSystem.snowBanks; absent in older saves: none). */
+  snowBanks?: number[];
 }
 
 /** Small happenings reported to `PeopleSystem.onEvent` (achievements). */
@@ -504,6 +509,12 @@ export class PeopleSystem {
   readonly fieldMoisture: Float32Array;
   /** What each field cell grows (FieldCrop: Common, Millet or Paddy); meaningful on LandUse.Field only. */
   readonly fieldCrop: Uint8Array;
+  /**
+   * Snow banks beside the fields: cell → snow (m water) the farmers piled
+   * there (clearSnow), no more than the cell still holds (trimmed daily as
+   * it melts). Only drawn (snowPiles); the snow itself is in World.snow.
+   */
+  readonly snowBanks = new Map<number, number>();
   /** 1 on the villages' pegged plots (SettlementState.pegs), for the renderer. */
   private readonly pegMask: Uint8Array;
   /** Nearest water cell for each cell (or -1), recomputed daily. */
@@ -700,6 +711,7 @@ export class PeopleSystem {
     if (time.day !== this.lastDay) {
       this.lastDay = time.day;
       this.daily(time, host);
+      this.trimSnowBanks();
     }
     if (step % 30 === 0) {
       this.floodHouses(time.day);
@@ -2587,13 +2599,13 @@ export class PeopleSystem {
       case SiteKind.ClearSnow: {
         const i = a.site;
         if (w.landuse[i] !== LandUse.Field) break;
-        clearSnow(w, i);
+        clearSnow(w, i, this.snowBanks);
         const x = i % w.width;
         for (const d of [-1, 1])
           for (let k = 1; k <= SNOW_CLEARING.strip; k++) {
             const j = i + d * k;
             if (x + d * k < 0 || x + d * k >= w.width || w.landuse[j] !== LandUse.Field || w.crop[j] !== 0 || this.reserved.has(j)) break;
-            clearSnow(w, j);
+            clearSnow(w, j, this.snowBanks);
           }
         break;
       }
@@ -3074,7 +3086,18 @@ export class PeopleSystem {
       summerSurvey: this.summerSurvey ? Array.from(this.summerSurvey, (v) => Math.round(v * 1000) / 1000) : undefined,
       bridges: this.bridges.list.length ? this.bridges.list : undefined,
       hardy: this.hardyList(),
+      snowBanks: this.snowBanks.size ? [...this.snowBanks].flat() : undefined,
     });
+  }
+
+  /** Banks keep at most the snow their cell holds; melted ones are forgotten. */
+  private trimSnowBanks(): void {
+    const snow = this.world.snow;
+    for (const [i, v] of this.snowBanks) {
+      const left = Math.min(v, snow[i]!);
+      if (left < SNOW_BANK_MIN) this.snowBanks.delete(i);
+      else if (left < v) this.snowBanks.set(i, left);
+    }
   }
 
   /** Hardy field cells as [cell, kind] pairs for saving (undefined when none). */
@@ -3117,6 +3140,9 @@ export class PeopleSystem {
     this.fieldCrop.fill(FieldCrop.Common);
     const hardy = c.hardy ?? [];
     for (let k = 0; k + 1 < hardy.length; k += 2) this.fieldCrop[hardy[k]!] = hardy[k + 1]!;
+    this.snowBanks.clear();
+    const banks = c.snowBanks ?? [];
+    for (let k = 0; k + 1 < banks.length; k += 2) this.snowBanks.set(banks[k]!, banks[k + 1]!);
     this.rebuildPegMask();
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.

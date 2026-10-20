@@ -12,6 +12,7 @@ import { newGame } from './newgame';
 import { SCENE_LAYOUT, buildScene, cloneScene } from './scenes';
 import type { SceneId } from '../shared/protocol';
 import { snowPiles } from './people/village';
+import { snowCoverByte } from './hydro/soilwater';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -114,7 +115,8 @@ function start(s: Simulation, m: Record<string, unknown>): void {
   lastFixed = fixed.slice();
   s.revealDirty = false;
   s.takeDirtyRows();
-  s.lookDirty = false;
+  // The first snapshot resends the look, with the snow piles (Snapshot.snowPiles).
+  s.lookDirty = true;
   s.planDirty = false;
   post(
     {
@@ -227,7 +229,13 @@ function sendSnapshot(): boolean {
     snap.look = look;
     sim.lookDirty = false;
     transfer.push(look.buffer);
-    snap.snowPiles = new Float32Array(sim.people ? snowPiles(sim.world) : []);
+    // Piles are drawn as mounds (render/village/snowPiles.ts): the ground under one shows the snow around it.
+    const piles = sim.people ? snowPiles(w, sim.people.snowBanks) : [];
+    for (let k = 0; k < piles.length; k += 3) {
+      const i = piles[k + 1]! * w.width + piles[k]!;
+      look[i * 4 + 3] = snowCoverByte(Math.max(0, w.snow[i]! - piles[k + 2]!));
+    }
+    snap.snowPiles = new Float32Array(piles);
   }
   if (sim.people) {
     const ent = sim.people.entities(speed);
