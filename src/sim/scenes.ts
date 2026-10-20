@@ -7,11 +7,12 @@
  *               dry hollow with the Dig brush (real sculpt commands) and the
  *               water follows.
  *  - 'village': a ready-made village by the pond (PeopleSystem.stage).
- *  - 'weir':    the tool card for the weir: low summer water; a weir across
- *               the river (built at once) holds a pool behind it.
- *  - 'gate':    the tool card for the sluice gate: a full reservoir above
+ *  - 'gate':    the tool card for the sluice gate: the first tool to unlock: a
+ *               reservoir held behind an earth bank above
  *               dry fields; a villager walks over and opens the gate, the
  *               canal fills and the fields green (structures/gatekeeper.ts).
+ *  - 'weir':    the tool card for the weir: low summer water; a weir across
+ *               the river (built at once) holds a pool behind it.
  *  - 'wheel':   the tool card for the water wheel: dry fields on a terrace
  *               high above a fast river; a wheel (built) lifts water into a
  *               trench across the terrace (structures/wheel.ts).
@@ -40,7 +41,7 @@ import { CellFlag, FIELD_SPECS, SOIL_PROPS, SoilType, World } from './world';
 
 export type { SceneId };
 export { SCENE_LAYOUT };
-export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village', 'weir', 'gate', 'wheel', 'turbine', 'poles', 'pump'];
+export const SCENE_IDS: readonly SceneId[] = ['water', 'shape', 'village', 'gate', 'weir', 'wheel', 'turbine', 'poles', 'pump'];
 
 export const SCENE_SIZE = 96;
 const SEED = 20251;

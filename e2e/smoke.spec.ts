@@ -52,7 +52,7 @@ test('digit keys pick tools, Escape returns to Look', async ({ page }) => {
   await expect(page.locator('button[data-tool=raise]')).toHaveAttribute('title', 'Raise (2)');
   await page.keyboard.press('Escape');
   await expect(page.locator('button[data-tool=look]')).toHaveAttribute('aria-pressed', 'true');
-  // A locked tool (Gate, 6) only says when it unlocks, for a moment.
+  // A locked tool (Weir, 6) only says when it unlocks, for a moment.
   const lookHint = await page.locator('.tools .hint').textContent();
   const hints = await recordTexts(page, '.tools .hint');
   await page.keyboard.press('6');
@@ -80,16 +80,16 @@ test('tool hints say why; a tool card shows at unlock and again from the ⓘ', a
   await page.locator('button[data-tool=raise]').click();
   await expect(page.locator('.tools .hint')).toContainText('flood');
   await expect(page.locator('.tools .hint-info')).toBeHidden();
-  // Reaching 15 villagers unlocks the weir: the next pick of a tool opens its card.
+  // Reaching 15 villagers unlocks the gate: the next pick of a tool opens its card.
   await page.evaluate(() => (window as any).__hydro.tools.setPopulation(15));
-  await page.locator('button[data-tool=weir]').click();
+  await page.locator('button[data-tool=gate]').click();
   await expect(page.locator('.tool-card')).toBeVisible();
-  await expect(page.locator('.tool-card h2')).toHaveText('Weir');
+  await expect(page.locator('.tool-card h2')).toHaveText('Gate');
   expect(await page.evaluate(() => (window as any).__hydro.client.getSpeed())).toBe(0);
   await page.locator('.tool-card .next').click();
   await expect(page.locator('.tool-card')).toBeHidden();
   // Shown once; the ⓘ on the hint line brings it back.
-  await page.locator('button[data-tool=weir]').click();
+  await page.locator('button[data-tool=gate]').click();
   await expect(page.locator('.tool-card')).toBeHidden();
   await page.locator('.tools .hint-info').click();
   await expect(page.locator('.tool-card')).toBeVisible();
