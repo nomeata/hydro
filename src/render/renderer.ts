@@ -28,6 +28,7 @@ import { WeatherLayer, createFrontUniforms } from './weather';
 import { BuildingsLayer } from './village/buildings';
 import { CropLayer } from './village/crops';
 import { PlotLayer } from './village/plots';
+import { SnowPileLayer } from './village/snowPiles';
 import { VillageCuesLayer } from './village/cues';
 import { MillWheelsLayer } from './village/millwheels';
 import { fieldsToRgba } from './village/fields';
@@ -91,6 +92,8 @@ export class GameRenderer {
   /** Crop models on fields when zoomed in (the terrain shader paints the fields). */
   readonly crops: CropLayer;
   readonly plots: PlotLayer;
+  /** Snow heaped beside the fields when the farmers clear them. */
+  readonly snowPiles: SnowPileLayer;
   /** Chimney smoke, laundry and flowers showing each village's mood. */
   readonly cues: VillageCuesLayer;
   readonly millWheels: MillWheelsLayer;
@@ -254,6 +257,7 @@ export class GameRenderer {
     this.updateSnowAny();
     this.crops = new CropLayer(this.scene, this.heights);
     this.plots = new PlotLayer(this.scene, this.heights);
+    this.snowPiles = new SnowPileLayer(this.scene, this.heights);
     this.cues = new VillageCuesLayer(this.scene, this.heights);
     this.millWheels = new MillWheelsLayer(this.scene, this.heights);
     this.millWheels.flowAt = (x, y, out) => this.flow.velocityAt(x, y, out);
@@ -381,6 +385,7 @@ export class GameRenderer {
       this.cellTint.refreshHeights();
       this.crops.invalidate();
       this.plots.invalidate();
+      this.snowPiles.invalidate();
     }
     if (s.look) {
       (this.tex.look.image.data as Uint8Array).set(s.look.subarray(0, n * 4));
@@ -389,6 +394,7 @@ export class GameRenderer {
       this.lookHasSnow = hasSnow(this.tex.look.image.data as Uint8Array);
       this.updateSnowAny();
     }
+    if (s.snowPiles) this.snowPiles.setPiles(s.snowPiles);
     if (s.structures) {
       this.structures.setStructures(s.structures);
       this.buildingWeirs(s.structures);
@@ -635,6 +641,7 @@ export class GameRenderer {
     const cs = this.camera.getCurrentState();
     this.crops.update(nowMs, cs.x, cs.y, cs.viewHeight);
     this.plots.update(cs.viewHeight);
+    this.snowPiles.update(cs.viewHeight);
     this.cues.update(adt, cs.viewHeight);
     this.millWheels.update(clock.playDt, this.flow.gameSpeed);
     this.structures.update(clock.playDt);
@@ -691,6 +698,7 @@ export class GameRenderer {
     this.buildings.dispose();
     this.crops.dispose();
     this.plots.dispose();
+    this.snowPiles.dispose();
     this.cues.dispose();
     this.millWheels.dispose();
     this.structures.dispose();

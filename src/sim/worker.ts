@@ -11,6 +11,7 @@ import { Simulation } from './sim';
 import { newGame } from './newgame';
 import { SCENE_LAYOUT, buildScene, cloneScene } from './scenes';
 import type { SceneId } from '../shared/protocol';
+import { snowPiles } from './people/village';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -226,6 +227,7 @@ function sendSnapshot(): boolean {
     snap.look = look;
     sim.lookDirty = false;
     transfer.push(look.buffer);
+    snap.snowPiles = new Float32Array(sim.people ? snowPiles(sim.world) : []);
   }
   if (sim.people) {
     const ent = sim.people.entities(speed);

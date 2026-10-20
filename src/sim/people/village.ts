@@ -103,12 +103,16 @@ const TIRED_SPEED = 0.6;
  * patchy and sown straight into) is shovelled clear first, a work step of
  * `timer` people-ticks that clears the cell and up to `strip` cells of the
  * same field on either side along x (still to be sown), so clearing costs
- * the farmers little time. The snow goes onto the nearest cell beyond the
- * field within `reach` cells (a bank along the field's edge that melts
- * later); deep inside a large field, where there is none, it is trodden in
- * and soaks into the soil. Either way no water is made or lost.
+ * the farmers little time. The snow goes onto the nearest cells beyond the
+ * field within `reach` cells, a low bank along the field's edge: each holds
+ * at most `pile` (m water) more than the cleared cell had, so that a bank
+ * melts within a few warm days after the snow around it rather than
+ * standing as a deep heap for weeks (the farmers spread it along the
+ * edge); what does not fit, and the snow deep inside a large field with no
+ * edge in reach, is trodden in and soaks into the soil. Either way no water
+ * is made or lost.
  */
-export const SNOW_CLEARING = { min: 0.0015, timer: 50, reach: 3, strip: 1 };
+export const SNOW_CLEARING = { min: 0.0015, timer: 50, reach: 3, strip: 1, pile: 0.06 };
 
 /** Ring offsets (dx, dy) by distance, nearest first, for `clearSnow`. */
 const CLEAR_RING: [number, number][] = (() => {
@@ -127,6 +131,8 @@ export function clearSnow(w: World, i: number): void {
   const W = w.width;
   const x = i % W;
   const y = (i / W) | 0;
+  const top = swe + SNOW_CLEARING.pile;
+  let left = swe;
   for (const [dx, dy] of CLEAR_RING) {
     const nx = x + dx;
     const ny = y + dy;
@@ -135,14 +141,49 @@ export function clearSnow(w: World, i: number): void {
     const lu = w.landuse[j];
     if (lu !== LandUse.None && lu !== LandUse.Pasture) continue;
     if (w.water[j]! > 0.02 || w.flags[j]! & CellFlag.Structure) continue;
-    w.snow[j]! += swe;
-    return;
+    const put = Math.min(left, top - w.snow[j]!);
+    if (put <= 0) continue;
+    w.snow[j]! += put;
+    left -= put;
+    if (left <= 0) return;
   }
-  // No bank in reach: trodden into the soil (any excess stays on top).
+  // No room on a bank in reach: trodden into the soil (any excess stays on top).
   const cap = w.soil[i]! * SOIL_PROPS[w.soilType[i]!]!.porosity;
-  const soak = Math.max(0, Math.min(swe, cap - w.ground[i]!));
+  const soak = Math.max(0, Math.min(left, cap - w.ground[i]!));
   w.ground[i]! += soak;
-  w.water[i]! += swe - soak;
+  w.water[i]! += left - soak;
+}
+
+/** Snow (m water) above the ground around it from which a cell beside a field counts as a pile (`snowPiles`). */
+export const SNOW_PILE_MIN = 0.008;
+
+/**
+ * The snow banks beside the fields (see `clearSnow`), for the renderer: flat
+ * [x, y, swe above the snow around it (m)] for each open cell next to a
+ * field whose snow stands at least `SNOW_PILE_MIN` above that of its lowest
+ * dry, open neighbour (the undisturbed level; none: bare ground).
+ */
+export function snowPiles(w: World): number[] {
+  const { width: W, height: H, snow, landuse, water } = w;
+  const out: number[] = [];
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1, i = y * W + 1; x < W - 1; x++, i++) {
+      const s = snow[i]!;
+      if (s < SNOW_PILE_MIN || landuse[i] === LandUse.Field) continue;
+      let ref = Infinity;
+      let field = false;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const j = i + dy * W + dx;
+          if (landuse[j] === LandUse.Field) field = true;
+          else if (water[j]! < 0.02 && snow[j]! < ref) ref = snow[j]!;
+        }
+      if (!field) continue;
+      const ex = s - (ref === Infinity ? 0 : ref);
+      if (ex >= SNOW_PILE_MIN) out.push(x, y, ex);
+    }
+  return out;
 }
 
 /** Good land counted as spare at most (cells, about three farmers' worth; round 5). */
