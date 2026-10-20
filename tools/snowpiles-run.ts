@@ -1,13 +1,16 @@
 /**
  * Snow piles beside the fields (village.ts SNOW_CLEARING): how deep they get
  * and how long they last.
- *   npx tsx tools/snowpiles-run.ts [--seed 1] [--size 256] [--from 140] [--to 165] [--save out/piles.hydro]
+ *   npx tsx tools/snowpiles-run.ts [--seed 1] [--size 256] [--from 140] [--to 165]
+ *     [--save out/piles --save-days 145,151]   (writes out/piles-<day>.hydro)
+ *     [--load game.hydro] [--snow-mult 10]     (resume a save, its snow scaled: a snowier winter)
+ * Prints the banks four times a game day from day `from`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { STEPS_PER_DAY } from '../src/sim/constants';
 import { newGame } from '../src/sim/newgame';
 import { loadGame, saveGame } from '../src/sim/persist';
-import { LandUse } from '../src/sim/world';
+import { snowPiles } from '../src/sim/people/village';
 
 const args = process.argv.slice(2);
 const opt = (k: string, d: string) => {
@@ -26,34 +29,16 @@ const sim = load ? (await loadGame(readFileSync(load).buffer as ArrayBuffer)).si
 const w = sim.world;
 const mult = Number(opt('snow-mult', '1'));
 for (let i = 0; i < w.size; i++) w.snow[i]! *= mult;
-/** Snow above the lowest non-field neighbour, near fields. */
+/** The snow banks beside the fields (village.ts snowPiles): count, deepest, total (m water above the snow around). */
 function piles(): { n: number; max: number; sum: number } {
-  let n = 0;
+  const p = sim.people ? snowPiles(w, sim.people.snowBanks) : [];
   let max = 0;
   let sum = 0;
-  for (let y = 1; y < w.height - 1; y++)
-    for (let x = 1; x < w.width - 1; x++) {
-      const i = y * w.width + x;
-      const s = w.snow[i]!;
-      if (s < 0.008 || w.landuse[i] === LandUse.Field) continue;
-      let ref = Infinity;
-      let field = false;
-      for (let dy = -1; dy <= 1; dy++)
-        for (let dx = -1; dx <= 1; dx++) {
-          if (!dx && !dy) continue;
-          const j = i + dy * w.width + dx;
-          if (w.landuse[j] === LandUse.Field) field = true;
-          else if (w.water[j]! < 0.02) ref = Math.min(ref, w.snow[j]!);
-        }
-      if (!field) continue;
-      const ex = s - (ref === Infinity ? 0 : ref);
-      if (ex > 0.008) {
-        n++;
-        sum += ex;
-        max = Math.max(max, ex);
-      }
-    }
-  return { n, max, sum };
+  for (let k = 2; k < p.length; k += 3) {
+    max = Math.max(max, p[k]!);
+    sum += p[k]!;
+  }
+  return { n: p.length / 3, max, sum };
 }
 let day = 0;
 while (sim.step / STEPS_PER_DAY < to) {

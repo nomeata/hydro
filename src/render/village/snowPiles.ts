@@ -21,6 +21,12 @@ const MAX_RADIUS = 0.75;
 /** Segments around, rings up. */
 const SEG = 12;
 const RINGS = 4;
+/** A pile's clumps: [share of the snow, offset along the pile and across (× its radius)]. */
+const CLUMPS: [number, number, number][] = [
+  [0.6, 0, 0],
+  [0.22, 0.75, 0.6],
+  [0.18, -0.7, 0.5],
+];
 
 export interface SnowPile {
   x: number;
@@ -52,7 +58,7 @@ export class SnowPileLayer {
   private mesh: THREE.Mesh | null = null;
   private key = '';
   private piles: SnowPile[] = [];
-  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x2a2e33 });
+  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x23272b });
 
   constructor(
     scene: THREE.Object3D,
@@ -110,32 +116,24 @@ export class SnowPileLayer {
     const idx: number[] = [];
     const top = new THREE.Color(0xeceeee);
     const crust = new THREE.Color(0xd3d6d6);
-    const dirt = new THREE.Color(0xa49d91);
+    const dirt = new THREE.Color(0x9c9487);
     const c = new THREE.Color();
-    for (const p of this.piles) {
-      const { radius, height } = pileSize(p.swe);
-      if (radius < 0.08) continue;
+    /** One lumpy dome, stretched (sx, sz) along direction `ang`. */
+    const dome = (cx: number, cz: number, radius: number, height: number, ang: number, sx: number, sz: number, seed: number) => {
       const hY = heightToY(height);
-      const seed = p.y * 4099 + p.x;
-      // A little off the cell centre, stretched along a random direction,
-      // its outline lumpy (two low harmonics, as shovelled heaps are).
-      const cx = p.x + 0.5 + (hash(seed, 1) - 0.5) * 0.3;
-      const cz = p.y + 0.5 + (hash(seed, 2) - 0.5) * 0.3;
-      const ang = hash(seed, 3) * Math.PI;
       const ca = Math.cos(ang);
       const sa = Math.sin(ang);
-      const sx = 1.4;
-      const sz = 0.75;
       const ph2 = hash(seed, 4) * Math.PI * 2;
       const ph3 = hash(seed, 5) * Math.PI * 2;
       const base = pos.length / 3;
-      // Rings from the foot (r = 0) up; the apex closes it.
+      // Rings from the foot (r = 0) up; the apex closes it. The outline is
+      // lumpy (two low harmonics and a little noise, as shovelled heaps are).
       for (let r = 0; r <= RINGS; r++) {
         const t = r / (RINGS + 1);
         const rho = Math.sqrt(1 - t);
         for (let s = 0; s < SEG; s++) {
           const a = (s / SEG) * Math.PI * 2;
-          const lump = 1 + 0.1 * Math.sin(2 * a + ph2) + 0.07 * Math.sin(3 * a + ph3) + (hash(seed, 10 + r * SEG + s) - 0.5) * 0.08;
+          const lump = 1 + 0.1 * Math.sin(2 * a + ph2) + 0.07 * Math.sin(3 * a + ph3) + (hash(seed, 10 + r * SEG + s) - 0.5) * 0.1;
           const lx = Math.cos(a) * rho * radius * sx * lump;
           const lz = Math.sin(a) * rho * radius * sz * lump;
           const wx = cx + lx * ca - lz * sa;
@@ -144,7 +142,7 @@ export class SnowPileLayer {
           pos.push(wx, g + (r === 0 ? -0.01 : hY * t * (1 + (hash(seed, 50 + r * SEG + s) - 0.5) * 0.4)), wz);
           // Clean crust on top, greyer and dirtier towards the foot (old, settled snow).
           const k = hash(seed, 90 + r * SEG + s);
-          c.copy(crust).lerp(top, t * 1.3 * (0.6 + 0.4 * k)).lerp(dirt, r === 0 ? 0.7 : r === 1 ? 0.35 * k : 0.25 * k * k * k);
+          c.copy(crust).lerp(top, t * 1.3 * (0.6 + 0.4 * k)).lerp(dirt, r === 0 ? 0.8 : r === 1 ? 0.45 * k : 0.3 * k * k * k);
           col.push(c.r, c.g, c.b);
         }
       }
@@ -152,17 +150,35 @@ export class SnowPileLayer {
       pos.push(cx, apexG + hY, cz);
       col.push(top.r, top.g, top.b);
       const apex = base + (RINGS + 1) * SEG;
-      // Counter-clockwise seen from above/outside.
       for (let r = 0; r < RINGS; r++)
         for (let s = 0; s < SEG; s++) {
           const s1 = (s + 1) % SEG;
           const a0 = base + r * SEG + s;
           const a1 = base + r * SEG + s1;
-          const b0 = a0 + SEG;
-          const b1 = a1 + SEG;
-          idx.push(a0, b0, a1, a1, b0, b1);
+          idx.push(a0, a0 + SEG, a1, a1, a0 + SEG, a1 + SEG);
         }
       for (let s = 0; s < SEG; s++) idx.push(base + RINGS * SEG + s, apex, base + RINGS * SEG + ((s + 1) % SEG));
+    };
+    for (const p of this.piles) {
+      const seed = p.y * 4099 + p.x;
+      // A little off the cell centre, along a random direction; bigger piles
+      // are a main heap with a clump or two thrown beside it.
+      const cx = p.x + 0.5 + (hash(seed, 1) - 0.5) * 0.3;
+      const cz = p.y + 0.5 + (hash(seed, 2) - 0.5) * 0.3;
+      const ang = hash(seed, 3) * Math.PI;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      const clumps = p.swe > 0.02 ? CLUMPS : CLUMPS.slice(0, 1);
+      const share = clumps.reduce((t, k) => t + k[0], 0);
+      const main = pileSize(p.swe).radius;
+      for (let k = 0; k < clumps.length; k++) {
+        const [f, along, side] = clumps[k]!;
+        const { radius, height } = pileSize((p.swe * f) / share);
+        if (radius < 0.06) continue;
+        const ox = along * main * 1.3;
+        const oz = side * main * (hash(seed, 6 + k) - 0.3);
+        dome(cx + ox * ca - oz * sa, cz + ox * sa + oz * ca, radius, height, ang + (hash(seed, 20 + k) - 0.5) * 0.8, 1.3, 0.8, seed * 3 + k);
+      }
     }
     if (!pos.length) return;
     const geo = new THREE.BufferGeometry();
