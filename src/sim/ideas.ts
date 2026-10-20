@@ -7,7 +7,9 @@
  * village (a marsh), a strong stream near a village without a mill, a
  * finished weir without a turbine, houses far from power, and what holds a
  * village's growth back (no good land left: the dry ground water would
- * make good; no room for houses).
+ * make good; no room for houses), and, for a village that has struggled
+ * for a while, one concrete thing the brushes could do to feed it
+ * (sim/help.ts: a channel, a bank, a drain).
  *
  * An idea appears after it is found on two looks in a row and goes away
  * after two looks without it (no flicker after a shower); dry fields are
@@ -19,20 +21,23 @@
  * Purely an observer, like the achievements: it never changes the world
  * and draws no random numbers. Its small state is saved with the world.
  */
-import type { IdeaInfo, IdeaKind } from '../shared/protocol';
+import type { Command, IdeaInfo, IdeaKind } from '../shared/protocol';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR } from './constants';
 import { CellFlag, LandUse } from './world';
 import { CROP_MOISTURE, FARMING, cropGrowth } from './people/village';
 import { MILL } from './people/mills';
 import type { AchievementHost, Achievements } from './achievements';
+import { HELP, planHelp, struggling, type HelpHost, type HelpPlan, type HelpWhat } from './help';
 
 /** What the ideas look at (the Simulation). */
-export interface IdeasHost extends AchievementHost {
+export interface IdeasHost extends HelpHost {
   readonly achievements: Achievements;
 }
 
 /** Days between two looks. */
 export const IDEAS_EVERY = 2;
+/** Days between two plans for a struggling village (help.ts); a multiple of IDEAS_EVERY. */
+export const HELP_PLAN = 3 * IDEAS_EVERY;
 
 export const IDEAS = {
   /** Dry fields: at least this many field cells, and this share of a village's fields, too dry to grow well in summer. */
@@ -69,7 +74,7 @@ export const IDEAS = {
 };
 
 /** Order in the list (most pressing first). */
-const PRIORITY: Readonly<Record<IdeaKind, number>> = { flood: 6, land: 5.5, dry: 5, room: 4.5, mill: 4, poles: 3, turbine: 2.5, marsh: 2 };
+const PRIORITY: Readonly<Record<IdeaKind, number>> = { help: 7, flood: 6, land: 5.5, dry: 5, room: 4.5, mill: 4, poles: 3, turbine: 2.5, marsh: 2 };
 
 const TOOL: Readonly<Record<IdeaKind, string>> = {
   dry: 'dig',
@@ -81,10 +86,12 @@ const TOOL: Readonly<Record<IdeaKind, string>> = {
   poles: 'turbine',
   land: 'dig',
   room: 'even',
+  // (Or 'raise' for a bank: the plan says.)
+  help: 'dig',
 };
 
 /** Looks in a row without the problem before an idea goes (a mill's stream runs low in late summer: half a year). */
-const KEEP: Readonly<Record<IdeaKind, number>> = { flood: 2, dry: 2, marsh: 3, mill: 12, turbine: 2, poles: 2, land: 6, room: 4 };
+const KEEP: Readonly<Record<IdeaKind, number>> = { help: 3, flood: 2, dry: 2, marsh: 3, mill: 12, turbine: 2, poles: 2, land: 6, room: 4 };
 
 /** An idea's spot moves only when the problem moved at least this far (cells): fewer updates. */
 const MOVE = 3;
@@ -102,10 +109,24 @@ interface Entry {
   shown: boolean;
   /** Priority for the order. */
   p: number;
+  /** A help idea's plan, for the text (absent for other kinds). */
+  help?: HelpSay;
+}
+
+/** What a help idea says (help.ts HelpPlan, without its commands). */
+interface HelpSay {
+  what: HelpWhat;
+  fields: boolean;
+  stream: boolean;
+  /** The land it is for. */
+  ax: number;
+  ay: number;
 }
 
 export interface IdeasState {
   entries: Entry[];
+  /** Struggling villages (settlement id) and the day they began to struggle (absent in old saves). */
+  low?: [number, number][];
 }
 
 /** A found problem, before it becomes an idea. */
@@ -117,7 +138,13 @@ interface Found {
   r: number;
   /** Extra priority (e.g. how big it is). */
   weight: number;
+  /** The tool, when not the kind's own. */
+  tool?: string;
+  help?: HelpSay;
 }
+
+/** Ideas a help idea of each sort stands in for (the same village's). */
+const REPLACES: Readonly<Record<HelpWhat, readonly IdeaKind[]>> = { channel: ['land', 'dry'], bank: ['flood'], drain: ['marsh'] };
 
 const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
 
@@ -132,13 +159,20 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export class Ideas {
   private entries = new Map<string, Entry>();
+  /** Struggling villages: settlement id → the day they began to struggle. */
+  private low = new Map<number, number>();
+  /** The last help plans (idea id → plan), for headless checks (not saved). */
+  private plans = new Map<string, HelpPlan>();
   /** Set when the shown list changed, for snapshots. */
   dirty = true;
 
   /** The shown ideas, most pressing first. */
   list(): IdeaInfo[] {
-    return [...this.entries.values()]
-      .filter((e) => e.shown)
+    // A shown help idea stands in for its village's ideas of the same sort (help.ts).
+    const shown = [...this.entries.values()].filter((e) => e.shown);
+    const replaced = new Set(shown.flatMap((e) => (e.help ? REPLACES[e.help.what].map((k) => `${k}:${e.village}`) : [])));
+    return shown
+      .filter((e) => !replaced.has(e.info.id))
       .sort((a, b) => b.p - a.p || (a.info.id < b.info.id ? -1 : 1))
       .map((e) => ({ ...e.info }));
   }
@@ -174,9 +208,11 @@ export class Ideas {
     const season = Math.floor(doy / DAYS_PER_SEASON);
     const judgeDry = season === 1 && doy % DAYS_PER_SEASON >= IDEAS.drySummerDay;
     const found = new Map<string, Found>();
-    for (const f of findProblems(h, judgeDry)) {
+    const helps = this.findHelp(h, day);
+    const replaced = new Set(helps.flatMap((f) => REPLACES[f.help!.what].map((k) => `${k}:${f.village}`)));
+    for (const f of [...helps, ...findProblems(h, judgeDry)]) {
       const id = f.kind === 'turbine' ? 'turbine' : `${f.kind}:${f.village}`;
-      if (!found.has(id)) found.set(id, f);
+      if (!found.has(id) && !replaced.has(id)) found.set(id, f);
     }
     const looked = (k: IdeaKind) => k !== 'dry' || judgeDry;
     // Found: count the hit, show after two.
@@ -188,7 +224,7 @@ export class Ideas {
         f.y = e.info.y;
         f.r = e.info.r;
       }
-      const info: IdeaInfo = { id, kind: f.kind, tool: TOOL[f.kind], text: ideaText(h, f), x: f.x, y: f.y, r: f.r };
+      const info: IdeaInfo = { id, kind: f.kind, tool: f.tool ?? TOOL[f.kind], text: ideaText(h, f), x: f.x, y: f.y, r: f.r };
       const ach = IDEA_ACHIEVEMENTS[f.kind];
       if (ach && !h.achievements.hasEarned(ach)) info.achievement = ach;
       if (!e) {
@@ -198,6 +234,7 @@ export class Ideas {
       if (e.shown && (e.info.text !== info.text || e.info.x !== info.x || e.info.y !== info.y || e.info.r !== info.r)) this.dirty = true;
       e.info = info;
       e.village = f.village;
+      e.help = f.help;
       e.p = PRIORITY[f.kind] + f.weight;
       e.hits++;
       e.misses = 0;
@@ -210,7 +247,7 @@ export class Ideas {
     for (const [id, e] of this.entries) {
       if (found.has(id)) continue;
       // Kept for now; the village may have a new name meanwhile ("the old village").
-      const text = ideaText(h, { kind: e.info.kind, village: e.village, x: e.info.x, y: e.info.y, r: e.info.r, weight: 0 });
+      const text = ideaText(h, { kind: e.info.kind, village: e.village, x: e.info.x, y: e.info.y, r: e.info.r, weight: 0, help: e.help });
       if (e.shown && text !== e.info.text) this.dirty = true;
       e.info.text = text;
       if (!looked(e.info.kind)) continue;
@@ -220,6 +257,7 @@ export class Ideas {
       const done = e.info.kind === 'mill' && h.people?.buildings.some((b) => b.kind === 'mill' && b.settlement === h.people!.settlements[e.village]?.state.id);
       if (e.shown && e.misses < KEEP[e.info.kind] && !done) continue;
       this.entries.delete(id);
+      this.plans.delete(id);
       if (!e.shown) continue;
       this.dirty = true;
       const k = e.info.kind;
@@ -229,13 +267,62 @@ export class Ideas {
     this.forgetEarned((a) => h.achievements.hasEarned(a));
   }
 
+  /**
+   * Help for the villages that have struggled for a while (help.ts): one
+   * concrete, feasible plan each, or none. Tracks who struggles since when.
+   */
+  private findHelp(h: IdeasHost, day: number): Found[] {
+    const p = h.people;
+    if (!p) return [];
+    const out: Found[] = [];
+    const ids = new Set<number>();
+    p.settlements.forEach((s, k) => {
+      const id = s.state.id;
+      ids.add(id);
+      if (s.state.population <= 0 || !struggling(s, this.low.has(id))) {
+        this.low.delete(id);
+        return;
+      }
+      if (!this.low.has(id)) this.low.set(id, day);
+      if (day - this.low.get(id)! < HELP.days) return;
+      // Planning walks the land (a canal search): only every HELP_PLAN days; in between the idea holds.
+      const e = this.entries.get(`help:${k}`);
+      if (day % HELP_PLAN !== 0) {
+        if (e?.help) out.push({ kind: 'help', village: k, x: e.info.x, y: e.info.y, r: e.info.r, weight: 0, tool: e.info.tool, help: e.help });
+        return;
+      }
+      const plan = planHelp(h, s);
+      if (!plan) return;
+      this.plans.set(`help:${k}`, plan);
+      out.push({
+        kind: 'help',
+        village: k,
+        x: plan.x,
+        y: plan.y,
+        r: plan.r,
+        weight: 0,
+        tool: plan.tool,
+        help: { what: plan.what, fields: plan.fields, stream: plan.stream, ax: plan.at[0], ay: plan.at[1] },
+      });
+    });
+    for (const id of [...this.low.keys()]) if (!ids.has(id)) this.low.delete(id);
+    return out;
+  }
+
+  /** The commands that would carry out a help idea (headless checks: tools/playtest/diag-stuck.ts). */
+  helpCommands(id: string): Command[] {
+    return this.plans.get(id)?.commands ?? [];
+  }
+
   getState(): IdeasState {
-    return { entries: [...this.entries.values()].map((e) => ({ ...e, info: { ...e.info } })) };
+    return { entries: [...this.entries.values()].map((e) => ({ ...e, info: { ...e.info } })), low: [...this.low] };
   }
 
   /** Load (with the world's achievements, already loaded: links to earned ones are dropped). */
   setState(st: IdeasState | undefined, earned?: (id: string) => boolean): void {
     this.entries.clear();
+    this.plans.clear();
+    this.low = new Map(st?.low ?? []);
     for (const e of st?.entries ?? []) this.entries.set(e.info.id, { ...e, info: { ...e.info } });
     if (earned) this.forgetEarned(earned);
     this.dirty = true;
@@ -249,9 +336,9 @@ function ideaText(h: AchievementHost, f: Found): string {
   const n = p.settlements.length;
   const label = villageLabel(f.village, n);
   const s = p.settlements[f.village]?.state;
-  const where = (near: string) => {
-    if (!s || Math.hypot(f.x - s.x, f.y - s.y) < 6) return `${near} ${label}`;
-    const dh = w.terrain(w.idx(f.x, f.y)) - w.terrain(w.idx(Math.round(s.x), Math.round(s.y)));
+  const where = (near: string, x = f.x, y = f.y) => {
+    if (!s || Math.hypot(x - s.x, y - s.y) < 6) return `${near} ${label}`;
+    const dh = w.terrain(w.idx(x, y)) - w.terrain(w.idx(Math.round(s.x), Math.round(s.y)));
     return dh > 1.5 ? `above ${label}` : dh < -1.5 ? `below ${label}` : `beside ${label}`;
   };
   switch (f.kind) {
@@ -271,6 +358,18 @@ function ideaText(h: AchievementHost, f: Found): string {
       return `The good land of ${label} is all farmed and newcomers are waiting — the dry ground ${where('around')} could feed them if a channel brought it water.`;
     case 'room':
       return `Newcomers are waiting, but ${label} has no room left for houses — level some dry ground ${where('beside')} for them.`;
+    case 'help': {
+      const hs = f.help;
+      const at = (near: string) => (hs ? where(near, hs.ax, hs.ay) : where(near));
+      switch (hs?.what ?? 'channel') {
+        case 'bank':
+          return `${cap(label)} is struggling: floods reach its fields ${at('around')}. Raise a bank between them and the water.`;
+        case 'drain':
+          return `${cap(label)} is struggling: the ground ${at('by')} is waterlogged. Dig a ditch from it down to the lower water.`;
+        default:
+          return `${cap(label)} is struggling: ${hs?.fields === false ? `the dry ground ${at('around')} could feed it. Dig a channel to it` : `its fields ${at('around')} are too dry. Dig a channel to them`} from the ${hs?.stream === false ? 'pond' : 'stream'} above, gently downhill.`;
+      }
+    }
   }
 }
 

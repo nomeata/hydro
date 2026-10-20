@@ -376,7 +376,10 @@ observer; every 2 days it looks for problems near each village (field
 moisture in summer, flood memory, shallow still water, strong streams,
 weirs, the power grid) and keeps an idea while found (shown after two looks
 in a row, gone after two without; dry fields judged only in summer, mills
-kept half a year). Snapshots carry `ideas: IdeaInfo[]` when the list
+kept half a year). A village that has struggled for a while gets one
+concrete help idea (`sim/help.ts`: a channel planned with
+`plans/canal.ts`, a bank or a drain), planned every 6 days.
+Snapshots carry `ideas: IdeaInfo[]` when the list
 changes; the UI shows the first three for unlocked tools in the
 Achievements card, "Show me" focuses the camera and rings the spot
 (`ui/areaHighlight.ts`).

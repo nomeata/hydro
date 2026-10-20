@@ -85,12 +85,12 @@ direction, flood memory, known land. They respect the tool unlocks
 (population peak), act from `--act-day` and look again every
 `--check-every` days. Since round 3 every bot has the **same earth
 budget** (`--budget`, default 6000 m³ dug plus raised over the run;
-`canal.ts earthOf` prices a plan before it is issued, the run records
+`plans/canal.ts earthOf` prices a plan before it is issued, the run records
 what `Simulation.brush.moved.script` actually counted); weirs (stone,
 built by the crew) and wheels do not count against it. Earthworks are
 `shapeLine` commands (the brushes' rules, at once); a dig may give
 absolute floor heights, so a canal is graded to a water level in one
-stroke. Canals are laid out by `canal.ts planCanal`: a Dijkstra over the
+stroke. Canals are laid out by `plans/canal.ts planCanal`: a Dijkstra over the
 land from the water's edge whose water surface falls 6 mm a cell and
 never stands above the ground beside it (no spills), that keeps off lower
 water (or it becomes the river's bypass), costs cut depth and fields
@@ -943,3 +943,14 @@ hands-off): good 19–80, weircanal 20–60, wheel 12–96.
 Bots that water land the village does not farm yet (ditch networks,
 canals beside the fields); the weir unlock on steep seeds (8, 16); whether
 the floor should hold a little prosperity.
+
+### Help idea for struggling villages (after round 6)
+`sim/help.ts` (GAMEPLAY §3): checked with the scratch tool
+`tools/playtest/diag-stuck.ts --seeds 7,8 --days 144 --follow`, which
+applies each new help idea's channel (up to three, a player following the
+Ideas list) against an untouched copy. Seed 7 (village in a bowl, its pond
+3 m below the fields): the idea appears on day 33 (channels from the
+outlet stream and the pond into the bank, 600–1300 m³ each); reputation in
+year 2–3 50–84 % against 6–21 % hands-off, 8–13 people against 8. Seed 8:
+idea on day 33, reputation 52–83 % against 38–49 %, 8–17 people against
+7–10.

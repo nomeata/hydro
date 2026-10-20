@@ -1,5 +1,6 @@
 /**
- * Canal planning for the playtest bots (bots.ts): a graded canal from a
+ * Canal planning (moved here from the playtest bots so the sim's ideas can
+ * use it, sim/ideas.ts "help"; tools/playtest/bots.ts): a graded canal from a
  * water level (a weir's pool, a wheel's head, the river) onto dry land,
  * routed like a player would lay it out: along the slope (a contour canal),
  * its water surface falling gently and never above the ground beside it
@@ -7,13 +8,19 @@
  * through as much dry land as it can water. One `shapeLine` dig with
  * absolute floor heights shapes it; `earthOf` gives the earth it moves.
  */
-import type { Command, Pt } from '../../src/shared/protocol';
-import { CELL_AREA } from '../../src/sim/constants';
-import { isRevealed } from '../../src/sim/fog';
-import { CAPILLARY, CROP_MOISTURE } from '../../src/sim/people/village';
-import { planDike, planLevel, planTrench, type PlanGrid } from '../../src/sim/plans/plans';
-import type { Simulation } from '../../src/sim/sim';
-import { LandUse } from '../../src/sim/world';
+import type { Command, Pt } from '../../shared/protocol';
+import { CELL_AREA } from '../constants';
+import { isRevealed } from '../fog';
+import { CAPILLARY, CROP_MOISTURE } from '../people/village';
+import { planDike, planLevel, planTrench, type PlanGrid } from './plans';
+import { LandUse, type World } from '../world';
+
+/** What the planner looks at (the Simulation). */
+export interface CanalHost {
+  readonly world: World;
+  readonly fog: boolean;
+  isFixed(i: number): boolean;
+}
 
 /** Water depth in the canal at its intake (m): the floor lies this far below the source's level. */
 export const CANAL_DEPTH = 0.4;
@@ -57,40 +64,62 @@ export interface CanalOptions {
   width?: number;
   /** The village centre: the canal keeps out of the ring its houses grow into (forbidden within `r`/2, dearer within `r`). */
   village?: { x: number; y: number; r: number };
+  /** Ends to weigh at most (each costs a coverage count; default 400). */
+  ends?: number;
+  /** Only look within this box of cells (inclusive; default the whole map): quicker on a big map. */
+  box?: Box;
+}
+
+/** A box of cells, inclusive. */
+export interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** Each cell of `box` (clipped to the map; the whole map without one). */
+function eachIn(w: World, box: Box | undefined, f: (i: number, x: number, y: number) => void): void {
+  const x0 = Math.max(0, box?.x0 ?? 0);
+  const y0 = Math.max(0, box?.y0 ?? 0);
+  const x1 = Math.min(w.width - 1, box?.x1 ?? w.width);
+  const y1 = Math.min(w.height - 1, box?.y1 ?? w.height);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f(y * w.width + x, x, y);
 }
 
 /** Cells within `r` of any building or fixed cell (the canal keeps clear of the houses). */
-export function houseMargin(sim: Simulation, r = 2.5): Uint8Array {
+export function houseMargin(sim: CanalHost, r = 2.5, box?: Box): Uint8Array {
   const w = sim.world;
   const out = new Uint8Array(w.size);
   const R = Math.ceil(r);
-  for (let i = 0; i < w.size; i++) {
+  eachIn(w, box && grow(box, R), (i, x, y) => {
     const lu = w.landuse[i];
-    if (lu !== LandUse.Building && !sim.isFixed(i)) continue;
-    if (sim.fog && !isRevealed(w, i)) continue; // unrevealed land is fixed, but needs no margin
-    const x = i % w.width;
-    const y = (i / w.width) | 0;
+    if (lu !== LandUse.Building && !sim.isFixed(i)) return;
+    if (sim.fog && !isRevealed(w, i)) return; // unrevealed land is fixed, but needs no margin
     for (let dy = -R; dy <= R; dy++)
       for (let dx = -R; dx <= R; dx++) {
         if (dx * dx + dy * dy > r * r || !w.inBounds(x + dx, y + dy)) continue;
         out[w.idx(x + dx, y + dy)] = 1;
       }
-  }
+  });
   return out;
 }
+
+const grow = (b: Box, d: number): Box => ({ x0: b.x0 - d, y0: b.y0 - d, x1: b.x1 + d, y1: b.y1 + d });
 
 /**
  * The best canal from `starts` onto `targets` (dry land cells): Dijkstra over
  * the land by route cost, then the end that waters most target cells for
  * its cost. Null if no route waters at least `minCovered` cells.
  */
-export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<number>, opts: CanalOptions = {}, minCovered = 12): CanalPlan | null {
+export function planCanal(sim: CanalHost, starts: CanalStart[], targets: Set<number>, opts: CanalOptions = {}, minCovered = 12): CanalPlan | null {
   const w = sim.world;
   const W = w.width;
   const maxLen = opts.maxLen ?? 90;
   const maxCut = opts.maxCut ?? 2;
   const slope = opts.slope ?? CANAL_SLOPE;
-  const margin = houseMargin(sim);
+  const box = opts.box;
+  const margin = houseMargin(sim, 2.5, box);
   const cost = new Float64Array(w.size).fill(Infinity);
   const len = new Float64Array(w.size);
   const lvl = new Float64Array(w.size);
@@ -126,23 +155,28 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
     }
     return top;
   };
+  const inBox = (i: number): boolean => {
+    if (!box) return true;
+    const x = i % W;
+    const y = (i / W) | 0;
+    return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+  };
   const ok = (i: number): boolean =>
+    inBox(i) &&
     !margin[i] && w.water[i]! < 0.05 && !(opts.blocked?.(i) ?? false) && (!sim.fog || isRevealed(w, i));
   // Lowest water surface within 2 cells of each cell: past its first cells the canal keeps
   // away from water lower than its own (it would spill into it, or become the river's bypass).
   const lowWater = new Float32Array(w.size).fill(Infinity);
-  for (let i = 0; i < w.size; i++) {
-    if (w.water[i]! < 0.05) continue;
+  eachIn(w, box && grow(box, 2), (i, x, y) => {
+    if (w.water[i]! < 0.05) return;
     const sf = w.surface(i);
-    const x = i % W;
-    const y = (i / W) | 0;
     for (let dy = -2; dy <= 2; dy++)
       for (let dx = -2; dx <= 2; dx++) {
         if (!w.inBounds(x + dx, y + dy)) continue;
         const j = w.idx(x + dx, y + dy);
         if (sf < lowWater[j]!) lowWater[j] = sf;
       }
-  }
+  });
   for (const s of starts) {
     if (!ok(s.cell)) continue;
     const g = w.terrain(s.cell);
@@ -208,7 +242,7 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
   if (!reached.length) return null;
   // The end that waters most target cells for its cost.
   let best: { end: number; covered: number[]; score: number } | null = null;
-  const step = Math.max(1, Math.floor(reached.length / 400));
+  const step = Math.max(1, Math.floor(reached.length / (opts.ends ?? 400)));
   for (let k = 0; k < reached.length; k += step) {
     const end = reached[k]!;
     const path: number[] = [];
@@ -256,7 +290,7 @@ export function planCanal(sim: Simulation, starts: CanalStart[], targets: Set<nu
  * floor and banks it clears, FOOTPRINT cells either side), and the fields
  * that footprint takes.
  */
-export function coverage(w: Simulation['world'], path: readonly number[], targets: Set<number>): { covered: Set<number>; lost: number } {
+export function coverage(w: World, path: readonly number[], targets: Set<number>): { covered: Set<number>; lost: number } {
   const W = w.width;
   const reach = wetReach() + 1;
   const R = Math.ceil(reach);
@@ -283,7 +317,7 @@ export function coverage(w: Simulation['world'], path: readonly number[], target
 }
 
 /** Worth of the cells a canal waters (dry fields 1, open land OPEN_LAND). */
-export function worthOf(w: Simulation['world'], cells: Iterable<number>): number {
+export function worthOf(w: World, cells: Iterable<number>): number {
   let n = 0;
   for (const j of cells) n += w.landuse[j] === LandUse.Field ? 1 : OPEN_LAND;
   return n;
@@ -324,23 +358,23 @@ export function simplify(ps: Pt[], tol: number): Pt[] {
  * Earth (m³) a list of shapeLine commands would move, applied in order
  * (the sim's own profiles; fixed cells are left alone, as the sim does).
  */
-export function earthOf(sim: Simulation, cmds: readonly Command[]): number {
+export function earthOf(sim: CanalHost, cmds: readonly Command[]): number {
   return shapeOf(sim, cmds).moved;
 }
 
 /** Cells a list of shapeLine commands would move by more than `min` m (their footprint). */
-export function footprintOf(sim: Simulation, cmds: readonly Command[], min = 0.1): number[] {
+export function footprintOf(sim: CanalHost, cmds: readonly Command[], min = 0.1): number[] {
   const { z } = shapeOf(sim, cmds);
   const w = sim.world;
   return [...z.keys()].filter((i) => Math.abs(z.get(i)! - w.terrain(i)) > min);
 }
 
 /** The terrain a list of shapeLine commands would leave (changed cells only). */
-export function shapeAfter(sim: Simulation, cmds: readonly Command[]): Map<number, number> {
+export function shapeAfter(sim: CanalHost, cmds: readonly Command[]): Map<number, number> {
   return shapeOf(sim, cmds).z;
 }
 
-function shapeOf(sim: Simulation, cmds: readonly Command[]): { moved: number; z: Map<number, number> } {
+function shapeOf(sim: CanalHost, cmds: readonly Command[]): { moved: number; z: Map<number, number> } {
   const w = sim.world;
   const z = new Map<number, number>();
   const terrain = (i: number) => z.get(i) ?? w.terrain(i);
