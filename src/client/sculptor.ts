@@ -34,6 +34,8 @@ export class Sculptor {
   touchedFixed = false;
   /** Height change per cell of the current stroke (m). */
   strokeDz = new Map<number, number>();
+  /** Whether a cell was wet when the stroke first looked at it (kept for the stroke, as the sim's: plans/brushwork.ts). */
+  private strokeWet = new Map<number, boolean>();
 
   constructor(
     private readonly mirror: WorldMirror,
@@ -48,7 +50,14 @@ export class Sculptor {
       fixed: (i) => mirror.isFixed(i),
       // The ground before the stroke: the mirror's, less what this stroke did to it.
       orig: (i) => mirror.terrainH[i]! - (this.strokeDz.get(i) ?? 0),
-      wet: (i) => mirror.wet[i] === 1,
+      wet: (i) => {
+        let v = this.strokeWet.get(i);
+        if (v === undefined) {
+          v = mirror.wet[i] === 1;
+          this.strokeWet.set(i, v);
+        }
+        return v;
+      },
     };
   }
 
@@ -60,6 +69,7 @@ export class Sculptor {
     this.strokeId++;
     this.touchedFixed = false;
     this.strokeDz = new Map();
+    this.strokeWet = new Map();
     this.stamp = newStamp();
   }
 

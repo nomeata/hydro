@@ -101,7 +101,7 @@ export interface SculptGrid {
   fixed(i: number): boolean;
   /** The ground of cell i before the current stroke (default: as it is). */
   orig?(i: number): number;
-  /** Whether cell i is under water (its earth stands at the wet angle of repose). */
+  /** Whether cell i is under water (its earth stands at the wet angle of repose); hosts keep the answer for the whole stroke. */
   wet?(i: number): boolean;
 }
 

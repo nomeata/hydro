@@ -71,8 +71,9 @@ test('the Dig brush digs at once while held, stays selected, and the sim agrees 
   const z1 = await height(page, s.x, s.y);
   expect(z1).toBeLessThan(z0 - 0.3);
   await expect(page.locator('[data-tool=dig]')).toHaveAttribute('aria-pressed', 'true');
-  // The prediction ran the same stamp as the sim.
-  expect(Math.abs(z1 - predicted)).toBeLessThan(0.1);
+  // The prediction ran the same stamp as the sim (with the same wet cells:
+  // the groundwater the dig squeezes out does not change them mid-stroke).
+  expect(Math.abs(z1 - predicted)).toBeLessThan(0.02);
   // Raise beside it: the ground comes up.
   const zr = await height(page, s.x + 3, s.y + 3);
   await page.click('[data-tool=raise]');

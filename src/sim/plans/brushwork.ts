@@ -36,6 +36,13 @@ interface Stroke {
   moved: Map<number, number>;
   /** The brush's stamp (Raise, Dig), carried from sample to sample. */
   stamp: Stamp;
+  /**
+   * Whether a cell was wet when the stroke first looked at it: the stamp's
+   * slopes keep that for the whole stroke, so groundwater the dig squeezes
+   * out (squeeze) does not change them mid-stroke; the client's prediction
+   * cannot see that water until the next snapshot (client/sculptor.ts).
+   */
+  wet: Map<number, boolean>;
 }
 
 /** Wet for the stamp's slopes: under this much water (m), as hydro/talus.ts. */
@@ -97,7 +104,15 @@ export class Brushwork {
         const o = this.current?.orig.get(i);
         return o ? o.bedrock + o.soil : world.terrain(i);
       },
-      wet: (i) => world.water[i]! > WET_DEPTH,
+      wet: (i) => {
+        const m = this.current?.wet;
+        let v = m?.get(i);
+        if (v === undefined) {
+          v = world.water[i]! > WET_DEPTH;
+          m?.set(i, v);
+        }
+        return v;
+      },
     };
   }
 
@@ -109,7 +124,7 @@ export class Brushwork {
   private stroke(id: number): Stroke {
     let s = this.current;
     if (!s || s.id !== id) {
-      s = { id, orig: new Map(), moved: new Map(), stamp: newStamp() };
+      s = { id, orig: new Map(), moved: new Map(), stamp: newStamp(), wet: new Map() };
       this.current = s;
     }
     return s;
