@@ -1,25 +1,45 @@
 /**
- * Who opens and closes the sluice gates (docs/GAMEPLAY.md §2). Villagers
- * work a gate near their village: they release the reservoir in spring and
- * summer when their fields below it run dry, never while houses below are
- * wet, and close it again to refill. Any gate, with or without a village,
- * opens before the water spills over its dike (flood relief).
+ * Who sets the sluice gates (docs/GAMEPLAY.md §2). Villagers work a gate
+ * near their village: in spring and summer they let water through to their
+ * fields below it, as far as the fields need, never while houses below are
+ * wet or the fields stand in water, and close it otherwise. Any gate, with
+ * or without a village, lets just enough through before the water would
+ * spill over its dike (flood relief). The water above the gate may be a
+ * pond that only rain refills or a canal fed from a river: every rule looks
+ * only at the level just upstream (`hU`) against the crest and the sill,
+ * and at the fields below.
  *
- * Checked eight times a game day per finished gate (first matching rule
- * wins):
- *  1. Flood relief: the upstream pool is within 0.25 m of the crest → open,
- *     until it is 0.7 m below it.
- *  2. Keeper village only: a house within 16 cells of the downstream end was
- *     in water (> 0.1 m) today or yesterday → closed.
- *  3. Keeper village only, spring and summer: ≥ 15 % of the village's fields
- *     within 24 cells of the downstream end are dry and the pool is ≥ 0.4 m
- *     above the sill → open; it stays open while ≥ 5 % are dry and the head
- *     is ≥ 0.25 m.
- *  4. Otherwise closed (the reservoir refills).
- * A gate switches at most once in two days, except to open for flood
- * relief. With a keeper village, a villager walks to the gate and turns its
- * wheel while the leaf moves; if nobody comes in time (a quarter day for
- * flood relief, a day otherwise) the gate moves by itself.
+ * The leaf is continuous: `aim` (0..1) is where it is set, `lift` follows
+ * it. A partly raised leaf lowers the wall's crest (structures.ts), so the
+ * rules think in terms of the *opening* o (0..1): the water runs over the
+ * leaf o²·(hU − sill) deep (fine steps at the low end), o = 0 holds the
+ * water at its level (the leaf fully down), o = 1 is the leaf fully up.
+ *
+ * Checked eight times a game day per finished gate; the gate is set to the
+ * larger of:
+ *  1. Flood relief: proportional to how close `hU` is to the crest: o = 0
+ *     at 0.4 m below it, o = 1 at 0.05 m below it; once open, at least
+ *     o + 1.5·(0.3 m − (crest − hU)), so it settles where the water stands
+ *     0.3 m below the crest (or fully open if it cannot hold it there),
+ *     and closes again below o = 0.08 as the water goes down.
+ *  2. Keeper village only, spring and summer (else 0): 0 if a house within
+ *     16 cells of the downstream end was in water (> 0.1 m) today or
+ *     yesterday, or if ≥ 30 % of the village's fields within 24 cells of it
+ *     are waterlogged (wet crop stress); ≥ 15 % waterlogged throttles an
+ *     open gate to 0.4 of its opening at once. Otherwise a feedback
+ *     controller on the shares of dry and wet served fields: a closed gate
+ *     opens to o = min(0.4, 0.15 + 0.3·dry) when ≥ 15 % are dry and the
+ *     head `hU − sill` is ≥ 0.4 m; an open one (head ≥ 0.25 m, else it
+ *     closes) eases off by 2·wet (at most half) while ≥ 5 % are wet, opens
+ *     further by 0.25·dry while ≥ 5 % are dry, and otherwise stays
+ *     (settled: neither many dry nor many wet). Below o = 0.08 it closes.
+ * Changes of the opening smaller than 0.04 are not made. A change
+ * waits at least two days after the last one (half a day for relief easing
+ * off as the water goes down), except urgent ones: more relief, or closing
+ * for wet houses or waterlogged fields. With a keeper
+ * village, a villager walks to the gate and turns its wheel while the leaf
+ * moves; if nobody comes in time (an eighth of a day when urgent, a day
+ * otherwise) the gate moves by itself.
  *
  * Deterministic: no randomness; all state lives on the Gate records
  * (structures.ts) and is saved with them. Gates held by the toggleGate
@@ -30,39 +50,60 @@ import { STEPS_PER_DAY } from '../constants';
 import { SiteKind, Task } from '../people/agents';
 import type { PeopleSystem } from '../people/village';
 import { LandUse, type World } from '../world';
-import type { Gate, Structures } from './structures';
+import { gateAim, type Gate, type Structures } from './structures';
 
 /** Why a gate is open. */
 export const enum GateMode {
   None = 0,
-  /** Rule 1: the pool nearly reached the crest. */
+  /** Rule 1: the water nearly reached the crest. */
   Relief = 1,
-  /** Rule 3: the villagers water their fields. */
+  /** Rule 2: the villagers water their fields. */
   Irrigate = 2,
 }
 
 export const GATEKEEPING = {
   /** Steps between checks (three game hours). */
   every: STEPS_PER_DAY / 8,
-  /** Steps a gate stays as it is before it may switch again (except to open for relief). */
+  /** Steps a gate stays as it is before it may change again (except urgent changes). */
   hold: 2 * STEPS_PER_DAY,
-  /** Flood relief opens this far below the crest (m) and closes this far below it. */
-  reliefOpen: 0.25,
-  reliefClose: 0.7,
+  /** The shorter wait before flood relief eases off again as the water goes down. */
+  reliefHold: STEPS_PER_DAY / 2,
+  /** Flood relief: the opening grows from 0 at this far below the crest (m) to 1 at this far below it. */
+  reliefStart: 0.4,
+  reliefFull: 0.05,
+  /** An open relief gate then opens further or eases off by reliefGain per metre the water is above or below this far under the crest. */
+  reliefKeep: 0.3,
+  reliefGain: 1.5,
   /** Houses this close (cells) to the downstream end, in water this deep (m), keep the gate shut. */
   houseRange: 16,
   houseWet: 0.1,
   /** Fields this close (cells) to the downstream end are served by the gate; fewer than minFields count as none. */
   fieldRange: 24,
   minFields: 6,
-  /** Share of dry served fields to open for, and to stay open while. */
+  /** Share of dry served fields to open a closed gate for, and to open an open one further for. */
   dryOpen: 0.15,
-  dryStay: 0.05,
-  /** Pool head above the sill (m) to open for, and to stay open while. */
+  dryMore: 0.05,
+  /** Share of waterlogged served fields to ease off for, to throttle at once for (to `throttle` of the opening), and to close at once for. */
+  wetEase: 0.05,
+  wetThrottle: 0.15,
+  throttle: 0.4,
+  wetClose: 0.3,
+  /** Controller gains: first opening o = min(openMax, openBase + openGain·dry); then o += moreGain·dry, o −= o·min(easeMax, easeGain·wet). */
+  openBase: 0.15,
+  openGain: 0.3,
+  openMax: 0.4,
+  moreGain: 0.25,
+  easeGain: 2,
+  easeMax: 0.5,
+  /** Openings below this close the gate. */
+  minOpening: 0.08,
+  /** Changes of the opening smaller than this are not made. */
+  minChange: 0.04,
+  /** Head above the sill (m) to open a closed gate for the fields, and to keep it open. */
   headOpen: 0.4,
   headStay: 0.25,
-  /** Steps to wait for the villager before the gate moves by itself: for relief, otherwise. */
-  waitRelief: STEPS_PER_DAY / 4,
+  /** Steps to wait for the villager before the gate moves by itself: urgent, otherwise. */
+  waitUrgent: STEPS_PER_DAY / 8,
   waitWork: STEPS_PER_DAY,
 } as const;
 
@@ -107,7 +148,7 @@ export class Gatekeeper {
   }
 
   /**
-   * A villager reached gate `id` (PeopleSystem.onGate): the waiting switch
+   * A villager reached gate `id` (PeopleSystem.onGate): the waiting change
    * happens now. Returns the gate's centre to face, or null if there is
    * nothing to do there.
    */
@@ -115,8 +156,8 @@ export class Gatekeeper {
     const g = this.structures.gates.find((g) => g.id === id);
     if (!g) return null;
     const want = g.want ?? -1;
-    if (want >= 0) this.apply(g, want === 1, g.wantMode ?? GateMode.None, agent, this.clock());
-    else if ((g.lift ?? 0) === (g.open ? 1 : 0)) return null;
+    if (want >= 0) this.apply(g, want, g.wantMode ?? GateMode.None, agent, this.clock());
+    else if ((g.lift ?? 0) === gateAim(g)) return null;
     return [g.x, g.y];
   }
 
@@ -184,6 +225,24 @@ export class Gatekeeper {
     return out;
   }
 
+  /** The opening (0..1, see the header) that leaf position `aim` gives at upstream level hU. */
+  static opening(g: Gate, aim: number, hU: number): number {
+    if (aim <= 0) return 0;
+    if (aim >= 1) return 1;
+    const head = hU - g.sill;
+    if (!(head > 1e-3)) return 0;
+    const over = aim * (g.top - g.sill) - (g.top - hU);
+    return over <= 0 ? 0 : Math.min(1, Math.sqrt(over / head));
+  }
+
+  /** The leaf position (0..1) for opening o at upstream level hU. */
+  static aimFor(g: Gate, o: number, hU: number): number {
+    if (o <= 0) return 0;
+    if (o >= 1) return 1;
+    const head = Math.max(0, hU - g.sill);
+    return Math.max(0, Math.min(1, (g.top - hU + o * o * head) / Math.max(1e-3, g.top - g.sill)));
+  }
+
   private check(g: Gate, step: number, time: SimTime, people: PeopleSystem | null): void {
     const w = this.world;
     const K = GATEKEEPING;
@@ -217,45 +276,67 @@ export class Gatekeeper {
       }
     }
 
-    let want = false;
-    let mode: GateMode = GateMode.None;
-    const reliefLine = g.open && g.mode === GateMode.Relief ? v.crest - K.reliefClose : v.crest - K.reliefOpen;
-    const relief = g.open && g.mode === GateMode.Relief ? v.hU > reliefLine : v.hU >= reliefLine;
-    if (relief) {
-      want = true;
-      mode = GateMode.Relief;
-    } else if (keeper && (g.wetDay ?? -1e9) >= day - 1) {
-      want = false;
-    } else if (keeper && people && (time.season === 0 || time.season === 1)) {
-      const dry = this.dryShare(people, keeper, v.downX, v.downY, time.season);
+    const aim = gateAim(g);
+    const o = Gatekeeper.opening(g, aim, v.hU);
+
+    // 1. Flood relief: as much as keeps the water safely below the crest.
+    const margin = v.crest - v.hU;
+    let relief = Math.max(0, Math.min(1, (K.reliefStart - margin) / (K.reliefStart - K.reliefFull)));
+    // An open relief gate is trimmed towards keeping the water `reliefKeep` below the crest.
+    if (g.mode === GateMode.Relief && o > 0) relief = Math.max(relief, Math.min(1, o + K.reliefGain * (K.reliefKeep - margin)));
+    if (relief < K.minOpening) relief = 0;
+
+    // 2. The keeper village's fields.
+    let fields = 0;
+    let wetStop = false;
+    if (keeper && people && (time.season === 0 || time.season === 1)) {
       const head = v.hU - g.sill;
-      const ok = g.open ? dry >= K.dryStay && head >= K.headStay : dry >= K.dryOpen && head >= K.headOpen;
-      if (ok) {
-        want = true;
-        mode = GateMode.Irrigate;
+      const { dry, wet } = this.fieldShares(people, keeper, v.downX, v.downY, time.season);
+      const housesWet = (g.wetDay ?? -1e9) >= day - 1;
+      if (housesWet || wet >= K.wetClose) wetStop = true;
+      else if (o <= 0) {
+        if (dry >= K.dryOpen && head >= K.headOpen) fields = Math.min(K.openMax, K.openBase + K.openGain * dry);
+      } else if (wet >= K.wetThrottle) {
+        wetStop = true;
+        fields = o * K.throttle;
+      } else if (head >= K.headStay) {
+        if (wet >= K.wetEase) fields = o * (1 - Math.min(K.easeMax, K.easeGain * wet));
+        else if (dry >= K.dryMore) fields = Math.min(1, o + K.moreGain * dry);
+        else fields = o;
       }
+      if (fields < K.minOpening) fields = 0;
     }
 
+    const target = Math.max(relief, fields);
+    const mode = target <= 0 ? GateMode.None : relief >= fields ? GateMode.Relief : GateMode.Irrigate;
+    let next = target > 0 ? Gatekeeper.aimFor(g, target, v.hU) : 0;
+    // A gate that would let nothing over yet stays shut (no leaf in the way of nothing).
+    if (next > 0 && Gatekeeper.opening(g, next, v.hU) <= 0) next = 0;
+    // Urgent: more relief, or closing (down to the relief) for wet houses or drowned fields.
+    const urgent = (mode === GateMode.Relief && next > aim) || (wetStop && next < aim);
+
     const pending = g.want ?? -1;
-    if (want === g.open) {
-      // Nothing to change (a waiting call is no longer needed); an open gate may stay open for another reason.
+    if (Math.abs(Gatekeeper.opening(g, next, v.hU) - o) < K.minChange && (next > 0) === (aim > 0)) {
+      // Nothing worth changing (a waiting call is no longer needed).
       if (pending >= 0) g.want = -1;
-      if (g.open) g.mode = mode;
+      if (aim > 0 && mode !== GateMode.None) g.mode = mode;
       return;
     }
-    const urgent = want && mode === GateMode.Relief;
-    if (pending >= 0 && (pending === 1) === want) {
-      // Waiting for the villager: move by itself if nobody came in time.
-      if (step - (g.wantStep ?? step) >= (urgent ? K.waitRelief : K.waitWork)) this.apply(g, want, mode, -1, time);
+    if (pending >= 0) {
+      // Waiting for the villager: the new aim replaces the old; move by itself if nobody came in time.
+      g.want = next;
+      g.wantMode = mode;
+      if (step - (g.wantStep ?? step) >= (urgent ? K.waitUrgent : K.waitWork)) this.apply(g, next, mode, -1, time);
       else if (people && keeperIndex >= 0 && !this.onTheWay(people, g)) this.call(g, people, keeperIndex, time);
       return;
     }
-    if (!urgent && step - (g.lastSwitch ?? -1e9) < K.hold) return;
+    const easing = g.mode === GateMode.Relief && mode !== GateMode.Irrigate && next < aim;
+    if (!urgent && step - (g.lastSwitch ?? -1e9) < (easing ? K.reliefHold : K.hold)) return;
     if (!people || keeperIndex < 0) {
-      this.apply(g, want, mode, -1, time);
+      this.apply(g, next, mode, -1, time);
       return;
     }
-    g.want = want ? 1 : 0;
+    g.want = next;
     g.wantMode = mode;
     g.wantStep = step;
     this.call(g, people, keeperIndex, time);
@@ -276,7 +357,7 @@ export class Gatekeeper {
       }
     }
     if (stand < 0) {
-      this.apply(g, g.want === 1, g.wantMode ?? GateMode.None, -1, time);
+      this.apply(g, Math.max(0, g.want ?? 0), g.wantMode ?? GateMode.None, -1, time);
       return;
     }
     people.callToGate(index, stand, g.id, time);
@@ -286,29 +367,33 @@ export class Gatekeeper {
     return people.agents.some((a) => a.siteKind === SiteKind.Gate && a.site === g.id && a.task === Task.Walk);
   }
 
-  private apply(g: Gate, open: boolean, mode: GateMode, operator: number, time: SimTime): void {
+  private apply(g: Gate, aim: number, mode: GateMode, operator: number, time: SimTime): void {
     g.want = -1;
-    if (g.open !== open) {
-      g.open = open;
+    const before = gateAim(g);
+    if (aim !== before) {
+      const opened = before <= 0 && aim > 0;
+      g.aim = aim;
+      g.open = aim > 0;
       g.lastSwitch = time.step;
       g.operator = operator;
       this.structures.structuresDirty = true;
-      if (open && mode === GateMode.Relief) {
+      if (aim > before && mode === GateMode.Relief && (g.reliefDay ?? -1) < 0) {
         g.reliefDay = time.day;
         g.overtopped = false;
       }
-      if (open && mode === GateMode.Irrigate && operator >= 0) this.onEvent?.('irrigated');
+      if (opened && mode === GateMode.Irrigate && operator >= 0) this.onEvent?.('irrigated');
     }
-    g.mode = open ? mode : GateMode.None;
+    g.mode = aim > 0 ? mode : GateMode.None;
   }
 
-  /** Share of the keeper village's fields near the downstream end that are dry (0 with fewer than minFields). */
-  private dryShare(people: PeopleSystem, keeper: NonNullable<ReturnType<PeopleSystem['settlementNear']>>, x0: number, y0: number, season: number): number {
+  /** Shares of the keeper village's fields near the downstream end that are dry and waterlogged (0 with fewer than minFields). */
+  private fieldShares(people: PeopleSystem, keeper: NonNullable<ReturnType<PeopleSystem['settlementNear']>>, x0: number, y0: number, season: number): { dry: number; wet: number } {
     const w = this.world;
     const R = GATEKEEPING.fieldRange;
     const many = people.settlements.length > 1;
     let n = 0;
     let dry = 0;
+    let wet = 0;
     for (let y = Math.max(0, y0 - R); y <= Math.min(w.height - 1, y0 + R); y++)
       for (let x = Math.max(0, x0 - R); x <= Math.min(w.width - 1, x0 + R); x++) {
         if ((x - x0) ** 2 + (y - y0) ** 2 > R * R) continue;
@@ -318,7 +403,8 @@ export class Gatekeeper {
         n++;
         const s = people.stressAt(i, season);
         if (s >= 1 && s <= 127) dry++;
+        else if (s >= 128) wet++;
       }
-    return n < GATEKEEPING.minFields ? 0 : dry / n;
+    return n < GATEKEEPING.minFields ? { dry: 0, wet: 0 } : { dry: dry / n, wet: wet / n };
   }
 }
