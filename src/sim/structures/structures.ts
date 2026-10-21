@@ -24,7 +24,7 @@
  * Everything here is deterministic and part of SimState.
  */
 import type { Pt, StructureInfo } from '../../shared/protocol';
-import { LINING_DONE, LINING_QUAY } from '../../shared/protocol';
+import { LINING_DONE, LINING_QUAY, LINING_WORN } from '../../shared/protocol';
 import type { Walls } from '../hydro/inertial';
 import { GATE_DAM_WIDTH, WEIR_CREST, WEIR_MAX_WALL, clearGround, keepsPlan, planBank, rasterisePath, weirCrest, weirShape } from '../plans/plans';
 import { CELL_AREA, DT } from '../constants';
@@ -950,12 +950,16 @@ export class Structures {
   // ---------------------------------------------------------------------------
   // Snapshots and persistence
 
-  /** Lining per cell (see LINING_DONE); `quay` marks lined cells shown as quays. */
-  packLining(out: Uint8Array, quay?: Uint8Array | null): void {
+  /**
+   * Lining per cell (see LINING_DONE); `quay` marks lined cells shown as
+   * quays, `worn` the villagers' lining no longer kept up (cell → condition).
+   */
+  packLining(out: Uint8Array, quay?: Uint8Array | null, worn?: ReadonlyMap<number, number> | null): void {
     const flags = this.world.flags;
     for (let i = 0; i < out.length; i++)
       out[i] = (flags[i]! & CellFlag.Lined) !== 0 ? (quay && quay[i] ? LINING_QUAY : LINING_DONE) : 0;
-    for (const [i, p] of this.lining) out[i] = 1 + Math.min(252, Math.floor(p * 253));
+    if (worn) for (const [i, c] of worn) if (out[i]! >= LINING_QUAY) out[i] = LINING_WORN + Math.max(0, Math.min(125, Math.round(c * 125)));
+    for (const [i, p] of this.lining) out[i] = 1 + Math.min(LINING_WORN - 2, Math.floor(p * (LINING_WORN - 1)));
   }
 
   info(): StructureInfo[] {

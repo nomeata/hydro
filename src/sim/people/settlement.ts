@@ -132,6 +132,8 @@ export interface SettlementState {
   lineBudget?: number;
   /** The village's fishing jetty, once chosen. */
   jetty?: Jetty;
+  /** After its jetty fell down unused (people/wear.ts): no new one before this day. */
+  jettyAgain?: number;
   /**
    * Visible mood (docs/PEOPLE.md §7), from wellbeing with hysteresis so the
    * props it drives don't flicker: 1 prosperous, 0 ordinary, −1 struggling

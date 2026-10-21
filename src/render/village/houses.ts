@@ -645,6 +645,56 @@ export function ruinDesign(variant: number, weeds = 0): Design {
   };
 }
 
+/**
+ * A well or a mill left unused (people/wear.ts; `wear` 1 or 2): at 1 its
+ * colours drained grey and weeds at its foot; at 2 falling apart: the
+ * well's little roof, rope and buckets gone, the mill's roof sagging, walls
+ * and posts askew, boards fallen on the ground, more weeds and a shrub.
+ */
+export function wornDesign(d: Design, wear: number): Design {
+  if (wear <= 0) return d;
+  const ALLS = F | W | R | D;
+  const parts: Part[] = [];
+  d.parts.forEach((p, k) => {
+    if (wear >= 2) {
+      const h = h01(k + 101, d.name.length);
+      if (p.m === 'survival_bucket' || p.m === 'sack' || (p.m === 'gable' && d.name.startsWith('well')) || (p.m === 'pole' && (p.s?.[0] ?? 1) < 0.02)) return;
+      if (p.m === 'town_roof_gable') {
+        parts.push({ ...p, y: p.y - 0.1, roll: 0.22, lean: 0.08 });
+        return;
+      }
+      if (typeof p.m === 'string' && p.m.startsWith('town_wall')) {
+        parts.push({ ...p, lean: 0.08 + 0.12 * h, pivot: 0.5 });
+        return;
+      }
+      if (p.m === 'pole' || p.m === 'beam') {
+        parts.push({ ...p, roll: (h - 0.5) * 0.5 });
+        return;
+      }
+    }
+    parts.push(p);
+  });
+  const n = wear >= 2 ? 6 : 3;
+  for (let k = 0; k < n; k++) {
+    const a = h01(d.name.length + 41, k) * Math.PI * 2;
+    const r = 0.45 + 0.25 * h01(d.name.length + 43, k);
+    parts.push({ m: k === 4 ? 'shrub' : 'weed', x: Math.cos(a) * r, y: 0, z: Math.sin(a) * r, rot: k % 4, s: [0.26, 0.24 + 0.1 * h01(k, 7), 0.26], stages: ALLS, fresh: true });
+  }
+  if (wear >= 2)
+    for (let k = 0; k < 2; k++) {
+      const a = h01(d.name.length + 47, k) * Math.PI * 2;
+      parts.push({ m: 'board', x: Math.cos(a) * 0.6, y: 0, z: Math.sin(a) * 0.6, rot: k, s: [0.5, 0.04, 0.12], roll: 0.15, stages: ALLS });
+    }
+  return {
+    ...d,
+    name: `${d.name}-worn${wear}`,
+    roof: d.roof !== undefined ? muddy(d.roof, 0.9) : undefined,
+    plaster: d.plaster !== undefined ? muddy(d.plaster, 0.95) : undefined,
+    stain: 0,
+    parts,
+  };
+}
+
 /** Parts of a design present at a stage. */
 export function partsAt(d: Design, stage: Stage): Part[] {
   return d.parts.filter((p) => (p.stages & (1 << stage)) !== 0);

@@ -6,6 +6,7 @@
  * carry the stones and do the work.
  */
 import { CellFlag, LandUse, type World } from '../world';
+import type { Worn } from './wear';
 
 export const WORKS = {
   /** Banks within this many cells of houses and their yards are lined (not by fields: a river may take a field). */
@@ -28,7 +29,7 @@ export const WORKS = {
 };
 
 /** A villagers' jetty: from the shore cell out over the water. */
-export interface Jetty {
+export interface Jetty extends Worn {
   shore: number;
   /** Deck cells over the water, from the shore outwards (the last is the fishing end). */
   cells: number[];

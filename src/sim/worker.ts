@@ -302,7 +302,7 @@ function sendSnapshot(): boolean {
   }
   if (st.liningDirty || people?.quayDirty) {
     const lining = new Uint8Array(w.size);
-    st.packLining(lining, people?.quay);
+    st.packLining(lining, people?.quay, people?.liningWorn());
     if (people) people.quayDirty = false;
     snap.lining = lining;
     st.liningDirty = false;

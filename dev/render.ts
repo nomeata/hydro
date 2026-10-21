@@ -3,14 +3,17 @@
  * meandering river, a lake, a bog, plan cells and animated fake water.
  *
  * URL params: size=256, shadows=1, sun=0.6 (time of day), season=1,
- * cam=x,y,yawDeg,pitchDeg,viewHeight, pr=pixelRatio, still=1 (no animation).
+ * cam=x,y,yawDeg,pitchDeg,viewHeight, pr=pixelRatio, still=1 (no animation),
+ * decks=1 (the villagers' jetties at the lake and footbridges over the river,
+ * with wells, a mill and lining beside them, sound / weathered / falling
+ * apart from left to right: people/wear.ts).
  * Keys: t toggles "tool mode" (left drag/one finger paints a dig preview).
  */
 import { GameRenderer, type InitialData } from '../src/render/renderer';
 import { attachCameraInput } from '../src/render/camera';
 import { fbm, ridged } from '../src/shared/noise';
-import type { Snapshot } from '../src/shared/protocol';
-import { VEL_SCALE } from '../src/shared/protocol';
+import type { BuildingInfo, Snapshot, StructureInfo } from '../src/shared/protocol';
+import { LINING_DONE, LINING_WORN, VEL_SCALE } from '../src/shared/protocol';
 
 const params = new URLSearchParams(location.search);
 const N = Number(params.get('size') ?? 256);
@@ -310,11 +313,42 @@ const still = params.get('still') === '1';
 const t0 = performance.now();
 let simT = 0;
 renderer.applySnapshot(snapshot(0));
+if (params.get('decks') === '1') renderer.applySnapshot({ ...snapshot(0), ...decksScene() });
 setInterval(() => {
   if (still) return;
   simT = (performance.now() - t0) / 1000;
   renderer.applySnapshot(snapshot(simT));
 }, 100);
+
+/** The disrepair stages side by side (decks=1): three jetties, three footbridges, wells, a mill, lining. */
+function decksScene(): Partial<Snapshot> {
+  const structures: StructureInfo[] = [];
+  const buildings: BuildingInfo[] = [];
+  const lining = new Uint8Array(W * H);
+  const dry = (x: number, y: number) => terrain[y * W + x]! > Math.max(riverSurf[y * W + x]!, lakeMask[y * W + x] ? LAKE_LEVEL : -Infinity) + 0.45;
+  [0, 1, 2].forEach((wear, k) => {
+    // A jetty from the lake's south shore out over the water.
+    const jx = Math.round(lakeX - 8 + k * 8);
+    let sy = Math.round(lakeY);
+    while (sy < H - 1 && !dry(jx, sy)) sy++;
+    structures.push({ id: 100 + k, kind: 'jetty', x: jx, y: sy, x2: jx, y2: sy - 3, rot: -Math.PI / 2, width: 3, top: LAKE_LEVEL + 0.55, sill: LAKE_LEVEL + 0.55, open: false, progress: 1, ...(wear ? { wear } : {}) });
+    for (const dx of [-1, 1]) lining[sy * W + jx + dx] = wear ? LINING_WORN + [125, 70, 25][wear]! : LINING_DONE;
+    buildings.push({ id: 300 + k, kind: 'well', x: jx + 3, y: sy + 3, rot: 0, progress: 1, ...(wear ? { wear } : {}) });
+    // A footbridge over the river.
+    const bx = Math.round(W * 0.47 + k * 9);
+    const rz = Math.round(riverZ(bx));
+    let ya = rz;
+    let yb = rz;
+    while (ya > 0 && !dry(bx, ya)) ya--;
+    while (yb < H - 1 && !dry(bx, yb)) yb++;
+    const deck = Math.max(...Array.from({ length: yb - ya - 1 }, (_, n) => riverSurf[(ya + 1 + n) * W + bx]!)) + 0.7;
+    structures.push({ id: 200 + k, kind: 'bridge', x: bx, y: yb, x2: bx, y2: ya, rot: -Math.PI / 2, width: yb - ya - 1, top: deck, sill: Math.min(terrain[ya * W + bx]!, terrain[yb * W + bx]!), open: false, progress: 1, ...(wear ? { wear } : {}) });
+    for (let dx = -3; dx <= 3; dx++) if (dx) lining[yb * W + bx + dx] = wear ? LINING_WORN + [125, 70, 25][wear]! : LINING_DONE;
+  });
+  const mx = Math.round(W * 0.47 + 22);
+  buildings.push({ id: 400, kind: 'mill', x: mx, y: Math.round(riverZ(mx)) + 5, rot: Math.PI / 2, progress: 1, spin: 0, wear: 2 });
+  return { structures, buildings, lining };
+}
 
 const hud = document.getElementById('hud')!;
 let lastPick = '–';

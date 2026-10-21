@@ -3,14 +3,16 @@
  * and the water shader (the cobbled bed showing through clear water).
  *
  * The lining texture is R8 per cell (protocol LINING_DONE): 0 none,
- * 1..253 planned with build progress, 254 a quay (dressed stone slabs with
- * a pale coping along the water), 255 lined (cobbles). Requires
+ * 1..127 planned with build progress, 128..253 villagers' lining no longer
+ * kept up (by its condition: stones lost, moss and grass in the joints),
+ * 254 a quay (dressed stone slabs with a pale coping along the water),
+ * 255 lined (cobbles). Requires
  * `uniform vec2 uGrid; uniform float uTime;` in the including shader. The
  * full code is compiled only with `#define HYDRO_LINING` (see
  * GameRenderer.uploadLining), so worlds without lining pay nothing.
  */
 import * as THREE from 'three';
-import { LINING_DONE, LINING_QUAY } from '../../shared/protocol';
+import { LINING_DONE, LINING_QUAY, LINING_WORN } from '../../shared/protocol';
 
 export function makeLiningTexture(width: number, height: number): THREE.DataTexture {
   const t = new THREE.DataTexture(new Uint8Array(width * height), width, height, THREE.RedFormat, THREE.UnsignedByteType);
@@ -109,8 +111,19 @@ vec4 liningColour(vec3 c, vec2 cell) {
     quay *= 1.0 - 0.3 * kerb * (1.0 - cope);
     return vec4(quay, 1.0);
   }
+  if (v > ${LINING_WORN - 0.5}) {
+    // Worn (no longer kept up): moss creeps over the stones, grass fills the
+    // joints, and more and more stones are gone as the condition falls.
+    float cond = (v - ${LINING_WORN}.0) / 125.0;
+    vec3 moss = vec3(0.40, 0.46, 0.30);
+    vec3 wornCol = mix(stone * 0.9, moss, (1.0 - cond) * 0.55 * (0.6 + 0.4 * lHash(wp * 7.0)));
+    wornCol = mix(wornCol, mix(c, moss, 0.4), cb.y);
+    float kept = step(cb.x, 0.3 + 0.7 * cond);
+    wornCol *= 1.0 - 0.18 * kerb * cond;
+    return vec4(mix(c, wornCol, kept), 1.0);
+  }
   // Planned: grey dashes, with stones laid as the work progresses.
-  float prog = (v - 1.0) / 252.0;
+  float prog = (v - 1.0) / ${LINING_WORN - 2}.0;
   float stripe = step(0.5, fract((wp.x - wp.y) * 0.35 - uTime * 0.3));
   vec3 planCol = mix(c, vec3(0.80, 0.80, 0.84), mix(0.25, 0.5, stripe) + 0.4 * kerb);
   float laid = step(cb.x, prog) * (1.0 - cb.y);

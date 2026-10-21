@@ -71,6 +71,8 @@ export const enum SiteKind {
   Pole = 21,
   /** Shovel the snow off a field cell before sowing it (site = the field cell; village.ts `clearSnow`). */
   ClearSnow = 22,
+  /** Mend a structure in disrepair (site = building or bridge id, or -1 for the village jetty; people/wear.ts). */
+  Repair = 23,
 }
 
 export interface Agent {

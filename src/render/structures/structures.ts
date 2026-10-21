@@ -117,6 +117,29 @@ function deckGeometry(): THREE.BufferGeometry {
   return paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0xc39a66, 0.3);
 }
 
+/** The same, long unused (people/wear.ts): silver-grey wood. */
+function oldDeckGeometry(): THREE.BufferGeometry {
+  return paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0x8f8a7c, 0.35);
+}
+
+/** An old pile: grey, green with slime towards the foot. */
+function oldPileGeometry(): THREE.BufferGeometry {
+  const g = paint(new THREE.CylinderGeometry(0.5, 0.5, 1, 6).translate(0, 0.5, 0), 0x6a6458, 0.2);
+  const col = g.getAttribute('color');
+  const p = g.getAttribute('position');
+  const slime = srgb(0x3f5a32);
+  for (let i = 0; i < p.count; i++) {
+    const t = Math.max(0, 1 - p.getY(i) * 1.6);
+    col.setXYZ(i, col.getX(i) * (1 - t) + slime.r * t, col.getY(i) * (1 - t) + slime.g * t, col.getZ(i) * (1 - t) + slime.b * t);
+  }
+  return g;
+}
+
+/** A cushion of moss (unit box, base at 0). */
+function mossGeometry(): THREE.BufferGeometry {
+  return paint(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), 0x5d7a3a, 0.3);
+}
+
 /**
  * Unit noria (diameter 1, axle along x, wheel in the y-z plane, centred on
  * the origin): a rim of planks, spokes, a hub and buckets on the rim,
@@ -210,7 +233,26 @@ export class StructuresLayer {
   /** Current leaf lift 0..1 per gate id (animated). */
   private lift = new Map<number, number>();
   private readonly pieces: Record<
-    'post' | 'leaf' | 'beam' | 'wheel' | 'plank' | 'ashlar' | 'bollard' | 'lantern' | 'bench' | 'pile' | 'deck' | 'noria' | 'trough' | 'flow' | 'coping' | 'sheet' | 'foam',
+    | 'post'
+    | 'leaf'
+    | 'beam'
+    | 'wheel'
+    | 'plank'
+    | 'ashlar'
+    | 'bollard'
+    | 'lantern'
+    | 'bench'
+    | 'pile'
+    | 'deck'
+    | 'oldDeck'
+    | 'oldPile'
+    | 'moss'
+    | 'noria'
+    | 'trough'
+    | 'flow'
+    | 'coping'
+    | 'sheet'
+    | 'foam',
     Piece
   >;
   /** Spin angle per water wheel id (radians), and the game speed (0 = paused; set from snapshots). */
@@ -261,6 +303,9 @@ export class StructuresLayer {
       bench: make('bench', benchGeometry()),
       pile: make('pile', pileGeometry()),
       deck: make('deck', deckGeometry(), 128),
+      oldDeck: make('old-deck', oldDeckGeometry(), 64),
+      oldPile: make('old-pile', oldPileGeometry(), 32),
+      moss: make('moss', mossGeometry(), 32),
       noria: make('noria', noriaGeometry(), 8),
       trough: make('trough', troughGeometry(), 8),
       flow: make('flow', waterGeometry(), 16),
@@ -649,7 +694,12 @@ export class StructuresLayer {
     }
   }
 
-  /** A planked deck on piles from the shore cell out over the water; piles go in first. */
+  /**
+   * A planked deck on piles from the shore cell out over the water; piles
+   * go in first. Left unused (`wear`, people/wear.ts) the wood greys and
+   * gathers moss, then planks go missing, the piles lean and the far end
+   * sags towards the water.
+   */
   private layoutJetty(j: StructureInfo): void {
     if (j.x2 === undefined || j.y2 === undefined) return;
     const P = this.pieces;
@@ -657,7 +707,15 @@ export class StructuresLayer {
     const c = Math.cos(j.rot);
     const sn = Math.sin(j.rot);
     const done = j.progress >= 1;
+    const wear = done ? (j.wear ?? 0) : 0;
+    const deck = wear ? P.oldDeck : P.deck;
     const yDeck = done ? heightToY(j.top) : heightToY(this.heights.terrainAt(j.x, j.y)) + 0.05;
+    const u0 = 0.15;
+    const u1 = len + 0.45;
+    // Falling apart: the deck sags towards the far end.
+    const sag = wear >= 2 ? 0.12 : 0;
+    const yAt = (u: number) => yDeck - sag * Math.max(0, (u - u0) / (u1 - u0));
+    const pitch = wear >= 2 ? -Math.atan(sag / (u1 - u0)) : 0;
     // Piles: pairs along the jetty, as many as the work so far.
     const pairs = Math.max(1, Math.round(len * 1.5));
     const built = done ? pairs : Math.floor(pairs * j.progress * 1.5);
@@ -667,21 +725,28 @@ export class StructuresLayer {
       for (const side of [-0.32, 0.32]) {
         const px = j.x + c * u - sn * side;
         const py = j.y + sn * u + c * side;
-        this.put(P.pile, px, py, j.rot, 0, bed - 0.05, 0.11, yDeck + 0.12 - bed, 0.11);
+        const lean = wear >= 2 ? (hash01(j.id * 97 + k * 2 + (side > 0 ? 1 : 0)) - 0.5) * 0.5 : 0;
+        this.put(wear ? P.oldPile : P.pile, px, py, j.rot, 0, bed - 0.05, 0.11, yAt(u) + 0.12 - bed, 0.11, lean);
       }
     }
     if (!done && j.progress < 0.6) return;
     // Deck: cross planks with small gaps, two stringers below.
-    const u0 = 0.15;
-    const u1 = len + 0.45;
     const deckTo = done ? u1 : u0 + (u1 - u0) * Math.min(1, (j.progress - 0.6) / 0.4);
-    this.put(P.deck, j.x, j.y, j.rot, (u0 + deckTo) / 2, yDeck - 0.09, deckTo - u0, 0.05, 0.08);
+    const mid = (u0 + deckTo) / 2;
+    this.put(deck, j.x, j.y, j.rot, mid, yAt(mid) - 0.09, deckTo - u0, 0.05, 0.08, pitch);
     for (const side of [-0.28, 0.28]) {
-      this.put(P.deck, j.x - sn * side, j.y + c * side, j.rot, (u0 + deckTo) / 2, yDeck - 0.09, deckTo - u0, 0.06, 0.07);
+      this.put(deck, j.x - sn * side, j.y + c * side, j.rot, mid, yAt(mid) - 0.09, deckTo - u0, 0.06, 0.07, pitch);
     }
-    for (let u = u0 + 0.09; u < deckTo; u += 0.19) this.put(P.deck, j.x, j.y, j.rot, u, yDeck - 0.04, 0.16, 0.05, 0.78);
-    // A bollard at the end for the boats.
-    if (done) this.put(P.bollard, j.x + c * (u1 - 0.12) - sn * 0.3, j.y + sn * (u1 - 0.12) + c * 0.3, j.rot, 0, yDeck, 0.8, 0.8, 0.8);
+    let k = 0;
+    for (let u = u0 + 0.09; u < deckTo; u += 0.19, k++) {
+      const h = hash01(j.id * 131 + k);
+      if (wear >= 2 && h < 0.35) continue; // a plank gone
+      const skew = wear >= 2 && h > 0.85 ? 0.25 : 0;
+      this.put(deck, j.x + c * u, j.y + sn * u, j.rot + skew, 0, yAt(u) - 0.04, 0.16, 0.05, 0.78, pitch);
+      if (wear && h > 0.55 && h < 0.75) this.put(P.moss, j.x - sn * (h - 0.65) * 3, j.y + c * (h - 0.65) * 3, j.rot, u, yAt(u) + 0.005, 0.14, 0.025, 0.22);
+    }
+    // A bollard at the end for the boats (gone once it falls apart).
+    if (done && wear < 2) this.put(P.bollard, j.x + c * (u1 - 0.12) - sn * 0.3, j.y + sn * (u1 - 0.12) + c * 0.3, j.rot, 0, yDeck, 0.8, 0.8, 0.8);
   }
 
   /**
@@ -690,7 +755,9 @@ export class StructuresLayer {
    * either side. Built piles first, then the planks out from the village
    * bank, the rails last (a stack of planks waits on the bank meanwhile).
    * A flood leaves the piles (the middle ones snapped) and stubs of deck at
-   * both banks, one plank hanging into the water.
+   * both banks, one plank hanging into the water. Left unused (`wear`,
+   * people/wear.ts) the wood greys and gathers moss, then planks and rail
+   * go missing and the piles lean.
    */
   private layoutBridge(b: StructureInfo): void {
     const d = deckOf(b, (x, y) => this.heights.terrainAt(x, y));
@@ -701,6 +768,8 @@ export class StructuresLayer {
     const done = b.progress >= 1;
     const broken = !!b.broken;
     const prog = Math.min(1, Math.max(0, b.progress));
+    const wear = b.wear ?? 0;
+    const deck = wear ? P.oldDeck : P.deck;
     const y = (u: number) => heightToY(deckHeight(d, u));
     const at = (u: number, v: number): [number, number] => [b.x + d.c * u - d.s * v, b.y + d.s * u + d.c * v];
     // Piles under every deck cell (and between, for longer spans).
@@ -717,7 +786,8 @@ export class StructuresLayer {
         const bed = heightToY(hs.terrainAt(px, py));
         const surf = heightToY(hs.terrainAt(px, py) + hs.depthAt(px, py));
         const topY = snapped ? Math.max(bed + 0.05, surf + 0.06 + 0.05 * Math.abs(side)) : y(u) - 0.02;
-        this.put(P.pile, px, py, rot, 0, bed - 0.05, 0.1, Math.max(0.05, topY - bed + 0.05), 0.1);
+        const lean = wear >= 2 ? (hash01(b.id * 89 + k * 2 + (side > 0 ? 1 : 0)) - 0.5) * 0.45 : 0;
+        this.put(wear ? P.oldPile : P.pile, px, py, rot, 0, bed - 0.05, 0.1, Math.max(0.05, topY - bed + 0.05), 0.1, lean);
       }
     }
     // Planks: from the village bank out (when rebuilding, from the stub on).
@@ -729,9 +799,17 @@ export class StructuresLayer {
       to = d.u0 + (d.u1 - d.u0) * Math.max(0.22, (prog - 0.4) / 0.6);
       back = d.u0 + (d.u1 - d.u0) * 0.84;
     } else if (prog >= 0.4) to = d.u0 + (d.u1 - d.u0) * Math.min(1, (prog - 0.4) / 0.5);
+    let pk = 0;
     const plank = (u: number) => {
+      const h = hash01(b.id * 131 + pk++);
+      if (wear >= 2 && h < 0.3) return; // a plank gone
       const slope = (y(u + 0.05) - y(u - 0.05)) / 0.1;
-      this.put(P.deck, b.x, b.y, rot, u, y(u) - 0.045, 0.15, 0.045, 0.82, Math.atan(slope));
+      const [px, py] = at(u, 0);
+      this.put(deck, px, py, rot + (wear >= 2 && h > 0.88 ? 0.22 : 0), 0, y(u) - 0.045, 0.15, 0.045, 0.82, Math.atan(slope));
+      if (wear && h > 0.6 && h < 0.78) {
+        const [mx, my] = at(0, (h - 0.69) * 4);
+        this.put(P.moss, mx, my, rot, u, y(u) + 0.002, 0.13, 0.025, 0.2, Math.atan(slope));
+      }
     };
     const stringers = (u0: number, u1: number) => {
       // Two stringers under the planks, in short sloping segments.
@@ -744,7 +822,7 @@ export class StructuresLayer {
         const L = Math.hypot(e - a, y(e) - y(a)) + 0.02;
         for (const side of [-0.3, 0.3]) {
           const [sx, sy] = at(0, side);
-          this.put(P.deck, sx, sy, rot, m, y(m) - 0.1, L, 0.06, 0.07, pitch);
+          this.put(deck, sx, sy, rot, m, y(m) - 0.1, L, 0.06, 0.07, pitch);
         }
       }
     };
@@ -758,25 +836,34 @@ export class StructuresLayer {
       // A plank hanging from the break into the water.
       const [hx, hy] = at(to + 0.12, 0.15);
       const surf = heightToY(hs.terrainAt(hx, hy) + hs.depthAt(hx, hy));
-      this.put(P.deck, hx, hy, rot + 0.5, 0, Math.max(surf - 0.05, y(to) - 0.35), 0.5, 0.04, 0.15, 0.9);
+      this.put(deck, hx, hy, rot + 0.5, 0, Math.max(surf - 0.05, y(to) - 0.35), 0.5, 0.04, 0.15, 0.9);
     }
     // Handrails once the deck is across: posts and a rail on either side.
     if (done) {
       const posts = Math.max(2, Math.round((d.u1 - d.u0) / 0.55) + 1);
       for (const side of [-0.38, 0.38]) {
         let pu = d.u0 + 0.04;
+        let gap = false;
         for (let k = 0; k < posts; k++) {
           const u = d.u0 + 0.04 + ((d.u1 - d.u0 - 0.08) * k) / (posts - 1);
           const [px, py] = at(u, side);
-          this.put(P.beam, px, py, rot, 0, y(u) - 0.05, 0.045, 0.3, 0.045);
-          if (k > 0) {
+          const h = hash01(b.id * 53 + k * 2 + (side > 0 ? 1 : 0));
+          // Falling apart: a post or a stretch of rail gone, the posts askew.
+          if (wear >= 2 && h < 0.3) {
+            pu = u;
+            gap = true;
+            continue;
+          }
+          this.put(wear ? P.oldDeck : P.beam, px, py, rot, 0, y(u) - 0.05, 0.045, 0.3, 0.045, wear >= 2 ? (h - 0.5) * 0.5 : 0);
+          if (k > 0 && !gap && !(wear >= 2 && h > 0.75)) {
             const m = (pu + u) / 2;
             const [mx, my] = at(0, side);
             const yr0 = y(pu) + 0.22;
             const yr1 = y(u) + 0.22;
-            this.put(P.beam, mx, my, rot, m, (yr0 + yr1) / 2 - 0.02, Math.hypot(u - pu, yr1 - yr0) + 0.04, 0.035, 0.035, Math.atan((yr1 - yr0) / (u - pu)));
+            this.put(wear ? P.oldDeck : P.beam, mx, my, rot, m, (yr0 + yr1) / 2 - 0.02, Math.hypot(u - pu, yr1 - yr0) + 0.04, 0.035, 0.035, Math.atan((yr1 - yr0) / (u - pu)));
           }
           pu = u;
+          gap = false;
         }
       }
     } else {
