@@ -75,6 +75,9 @@ See docs/PEOPLE.md (phases §10).
   times; per-village store with sacks, hay and a fish-drying rack;
   land short or to spare: hardy millet and rice paddies on marginal land
   in a shortage, pegged plots on good land waiting for hands (PEOPLE §3.1)
+- ☑ Disrepair (PEOPLE.md §5.6): unused jetties, footbridges, wells, mills
+  and the villagers' lining weather, fall apart and are gone; mended when
+  used again
 
 ## M3½ — Endorphins ☑
 Player feedback: more direct progress hits; keep it all positive

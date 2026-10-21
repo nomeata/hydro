@@ -519,6 +519,49 @@ they look after the water by their homes on their own:
   the welcome scenes still use it (their staged village keeps no animals,
   `PeopleSystem.noAnimals`).
 
+### 5.6 Disrepair (`people/wear.ts`)
+What the villagers built and no longer use falls down, like a ruined house
+(§5.3), and is gone in the end, its cells free again:
+- Each jetty, footbridge, well and mill (and each cell the villagers lined
+  themselves) keeps the day it was last **used** and a **condition** 1 → 0
+  (both optional in saves; older saves count from loading, and their old
+  lining is not known to be the villagers', so it never wears).
+- Use: someone walked on the jetty or the bridge deck lately (footfall,
+  `traffic`); a bucket drawn from a well that gives water (a dry well does
+  not count); grain brought to or ground at the mill, or a mill whose wheel
+  can grind for a village with fields. Lining is "used" while it is kept
+  up: within 10 cells of a standing house, store, well or mill of a
+  peopled village, by its jetty's landing, or next to a canal near a
+  peopled village.
+- Unused for half a year (`WEAR.grace`, 24 days) the condition falls and
+  reaches 0 after another 1¼ years (`span`), 2.5× faster in or under the
+  water (an awash jetty, a flooded well or mill, a submerged lined cell, a
+  flood-wrecked bridge nobody rebuilds). A jetty awash gets no fishers.
+- At 0: the jetty's and bridge's deck cells stop being `bridge` land use, the
+  well or mill is taken down; a gone jetty is not replaced for a year. Worn
+  lining loses its stones cell by cell (each cell at its own threshold
+  below 0.5): the bank erodes again.
+- Used again while still standing, a builder mends it (`SiteKind.Repair`,
+  a quarter per visit while below 0.8; after houses, the jetty and bridges
+  under construction, before poles and stone work). Kept-up lining mends by
+  itself (a twelfth a day).
+- A mill without a head for a year is given up as before, but stands
+  derelict (`abandoned`, no longer the village's mill, so another may be
+  built elsewhere) and falls down; an unfinished one is still taken down.
+- Look (`wear` 1 below 0.66, 2 below 0.33, in `StructureInfo` and
+  `BuildingInfo`): weathered — silver-grey wood, moss on planks and slime on
+  the piles, wells and mills drained grey with weeds at their foot; falling
+  apart — planks and rail missing, piles and posts askew, the jetty's end
+  sagging and its bollard gone, the well's roof, rope and buckets gone, the
+  mill's walls leaning and roof sagging, boards on the ground. Worn lining
+  (`LINING_WORN` 128..253 in the lining snapshot) shows moss, grass in the
+  joints and missing stones. `dev/render.html?decks=1` shows the stages side
+  by side.
+- Not affected: the player's structures (weirs, gates, wheels, turbines,
+  pumps, the lining the player ordered) and the power grid. Founding carts
+  and camps already leave on their own, woodpiles burn down, and the herd's
+  fold is not a built structure.
+
 ## 6. Fog of war & progression (M3-γ)
 - `world.revealed` (u8, persisted): a disc of 40 cells around the start
   point, then `R = 56 + 5·√pop` cells around each settlement, updated
