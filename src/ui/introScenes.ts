@@ -57,7 +57,7 @@ const SCRIPTS: Record<SceneId, Script> = {
   pump: { camera: { x: 72, y: 70, yaw: -20 * DEG, pitch: 40 * DEG, viewHeight: 24 }, speed: 3, duration: 16 },
 };
 
-/** Frames rendered from a scene's first state before it fades in over the drawing. */
+/** Frames rendered from a scene's first state before it fades in over the loader. */
 const FADE_IN_FRAMES = 3;
 
 /** Timeline of the 'shape' scene (seconds). */
@@ -81,7 +81,7 @@ export class IntroScenes {
   /** Frames drawn of the scene shown (test hook: the live scene is drawing). */
   framesShown = 0;
 
-  /** Called once the first live frame is on screen (the SVG fallback can go). */
+  /** Called once the first live frame is on screen (the loader can go). */
   onLive: (() => void) | null = null;
   /** Called when the live scenes cannot run (no WebGL, worker failure). */
   onFail: (() => void) | null = null;
@@ -152,7 +152,7 @@ export class IntroScenes {
         try {
           this.renderer = new GameRenderer(this.canvas, data, { pixelRatio: Math.min(devicePixelRatio || 1, 1.5), shadows: false });
         } catch (e) {
-          console.warn('Welcome scenes: no WebGL, keeping the drawings.', e);
+          console.warn('Welcome scenes: no WebGL, keeping the still loader.', e);
           this.fail();
           return;
         }
@@ -173,7 +173,7 @@ export class IntroScenes {
         this.raf = requestAnimationFrame(this.frame);
       },
       (e) => {
-        console.warn('Welcome scenes: the scene worker failed, keeping the drawings.', e);
+        console.warn('Welcome scenes: the scene worker failed, keeping the still loader.', e);
         this.fail();
       },
     );
@@ -254,7 +254,7 @@ export class IntroScenes {
     r.applySnapshot(s);
     this.layers.applySnapshot(s);
     // Fade in once a few frames of this state are on screen (frame()):
-    // on a slow phone the first ones can take a while, and the drawing
+    // on a slow phone the first ones can take a while, and the loader
     // stays until then.
     if (first) this.fadeInAfter = FADE_IN_FRAMES;
   }

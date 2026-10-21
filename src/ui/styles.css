@@ -215,8 +215,6 @@ html, body {
 .hint-info[hidden] { display: none; }
 /* Tool cards (toolCards.ts): a smaller welcome-style card. */
 .tool-card .intro-card { width: min(380px, 100%); }
-.tool-card .intro-svg { display: grid; place-items: center; height: 100%; }
-.tool-card .intro-svg svg { width: 30%; height: auto; opacity: 0.6; }
 .tool-card .intro-card p { min-height: 0; font-size: 14px; }
 .tool-card .intro-card h2 { margin-top: 10px; }
 
@@ -354,10 +352,35 @@ html, body {
   overflow: hidden;
   background: #bfe3f2;
 }
-.intro-svg svg { display: block; width: 100%; height: auto; }
-/* Live scenes (introScenes.ts): the canvas fades in over the drawing once it
+/* The mill loader (loader.ts): a round window onto a prerendered strip of
+   24 frames, stepped through in 2.4 s; it stands still (first frame) when
+   the scenes cannot run (.still) or under reduced motion. */
+.mill-loader {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 66%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  overflow: hidden;
+  background: #5aa24a;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.75), 0 6px 16px rgba(40, 80, 110, 0.25);
+}
+.mill-loader-strip {
+  width: 2400%;
+  height: 100%;
+  background: url('./loader-mill.webp') 0 0 / 100% 100% no-repeat;
+  animation: mill-turn 2.4s steps(24) infinite;
+}
+@keyframes mill-turn { to { transform: translateX(-100%); } }
+.intro-art.still .mill-loader-strip { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mill-loader-strip { animation: none; }
+}
+/* Live scenes (introScenes.ts): the canvas fades in over the loader once it
    has rendered, then hides it; whenever the scene is not on screen (still
-   loading on a slow phone, between pages and loops) the drawing shows. */
+   loading on a slow phone, between pages and loops) the loader shows. */
 .intro-live, .intro-overlay {
   position: absolute;
   inset: 0;
@@ -368,7 +391,8 @@ html, body {
 .intro-live { display: block; opacity: 0; transition: opacity 0.35s ease; }
 .intro-overlay { opacity: 0; transition: opacity 0.35s ease; overflow: hidden; }
 .intro-art.live-on .intro-live, .intro-art.live-on .intro-overlay { opacity: 1; }
-.intro-art.live-on .intro-svg { visibility: hidden; transition: visibility 0s 0.35s; }
+.intro-art.live-on .mill-loader { visibility: hidden; transition: visibility 0s 0.35s; }
+.intro-art.live-on .mill-loader-strip { animation-play-state: paused; }
 .intro-hand {
   position: absolute;
   left: 0;

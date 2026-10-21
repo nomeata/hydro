@@ -7,8 +7,8 @@
  */
 import type { SceneId } from '../shared/protocol';
 import { toolName } from '../shared/progress';
-import { ICONS } from './icons';
 import { IntroScenes } from './introScenes';
+import { LOADER_HTML } from './loader';
 
 interface CardDef {
   scene: SceneId;
@@ -63,7 +63,7 @@ export class ToolCards {
     this.el.setAttribute('aria-modal', 'true');
     this.el.innerHTML = `
       <div class="intro-card panel">
-        <div class="intro-art"><div class="intro-svg tool-card-icon"></div></div>
+        <div class="intro-art">${LOADER_HTML}</div>
         <h2></h2>
         <p class="intro-text"></p>
         <div class="intro-nav"><span></span><button class="next">Got it</button></div>
@@ -106,7 +106,6 @@ export class ToolCards {
     this.el.setAttribute('aria-label', toolName(tool));
     this.el.querySelector('h2')!.textContent = toolName(tool);
     this.el.querySelector('.intro-text')!.textContent = def.text;
-    this.el.querySelector('.tool-card-icon')!.innerHTML = ICONS[tool as keyof typeof ICONS] ?? '';
     this.el.hidden = false;
     try {
       const s = seenSet();
@@ -115,18 +114,20 @@ export class ToolCards {
     } catch {
       // Storage unavailable: it may show again next time.
     }
-    this.art.classList.remove('live', 'live-on');
-    // Each opening tries afresh (a failure last time may have passed); on failure the icon stays.
+    this.art.classList.remove('live', 'live-on', 'still');
+    // Each opening tries afresh (a failure last time may have passed); on failure the mill stands still.
     try {
       const sc = new IntroScenes(this.art, def.scene);
       sc.onLive = () => this.art.classList.add('live');
       sc.onFail = () => {
         this.scenes = null;
         this.art.classList.remove('live', 'live-on');
+        this.art.classList.add('still');
       };
       this.scenes = sc;
     } catch (e) {
       console.warn('Tool card scene unavailable', e);
+      this.art.classList.add('still');
     }
   }
 
