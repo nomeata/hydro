@@ -24,7 +24,7 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
   await page.mouse.down();
   await page.mouse.up();
   // The tap shows the head before it places the turbine.
-  await expect.poll(hints).toContainEqual(expect.stringMatching(/head|No head/));
+  await expect.poll(hints, { timeout: 60_000 }).toContainEqual(expect.stringMatching(/head|No head/));
   await expect.poll(async () => (await power(page))?.turbines.length ?? 0, { timeout: 15_000 }).toBe(1);
   // The tool stays selected after placing.
   await expect(page.locator('button[data-tool=power]')).toHaveAttribute('aria-pressed', 'true');
@@ -88,13 +88,17 @@ test('the turbine: tapped onto a weir, built, and making power from the water fa
 test('a turbine tapped on flat ground is refused with a reason', async ({ page }) => {
   await openGame(page, '&size=128&cheat=1');
   await page.locator('button[data-tool=power]').click();
+  await expect(page.locator('button[data-tool=power]')).toHaveAttribute('aria-pressed', 'true');
+  await settleFrames(page, 3);
   const { startX, startY } = await page.evaluate(() => (window as any).__hydro.data.info);
   const q = await toScreen(page, startX + 2, startY + 2);
   const hints = await recordTexts(page, '.tools .hint');
   await page.mouse.move(q[0], q[1]);
   await page.mouse.down();
   await page.mouse.up();
-  await expect.poll(hints).toContainEqual(expect.stringContaining('Tap the crest'));
+  // (The first hover and tap can stall a slow CI machine's frames for seconds: the record keeps the
+  // passing refusal, and the poll gives the tap time to be handled.)
+  await expect.poll(hints, { timeout: 60_000 }).toContainEqual(expect.stringContaining('Tap the crest'));
   await page.waitForTimeout(500);
   expect((await power(page))?.turbines.length ?? 0).toBe(0);
 });
