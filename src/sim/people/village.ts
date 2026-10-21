@@ -1495,9 +1495,9 @@ export class PeopleSystem {
    * Daily: mark what was used today (a walker on a jetty or a bridge deck;
    * wells and mills are marked as people fetch and grind), and let the rest
    * weather. Gone at condition 0: the jetty's and bridge's cells free again,
-   * a well or mill taken down, a lined cell's stones lost (cell by cell).
+   * a well or mill taken down, a lined cell's stones lost (cell by cell). Public for tests.
    */
-  private tendWear(day: number): void {
+  tendWear(day: number): void {
     const w = this.world;
     const used = (cells: readonly number[]) => cells.some((c) => w.traffic[c]! >= WEAR.traffic);
     // The jetties.
