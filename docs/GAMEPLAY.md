@@ -287,6 +287,7 @@ a self-acting fallback keeps a gate useful in empty land.
   during spring/summer; `0` if there are fewer than 6 served fields.
 
 ### 2.2 Rule (first matching line wins)
+*Superseded by §2.5 (the rule as built now); kept for the record.*
 1. **Flood relief** (always, keeper or not): if `hU ≥ crest − 0.25 m` →
    **open**. Stay open until `hU ≤ crest − 0.7 m`.
 2. **Don't drown the neighbours** (keeper only): if any village house
@@ -327,6 +328,41 @@ by itself. `toggleGate` holds a gate by hand (tests, scenes).*
   water spills over." *(As built since the gate unlocks before the weir:
   "Tap a raised bank (or a weir) to put a sluice gate in it, or draw
   across a channel for an earth dam with a gate…".)*
+
+### 2.5 Partial openings and canal-fed gates (round 2, October 2026)
+Played gates sat in canals fed from a river, not in closed ponds: a
+bang-bang gate either flooded the fields below or let them dry, and a
+relief gate threw the whole canal open. The rule as built now
+(`gatekeeper.ts` header):
+- **Continuous leaf.** `Gate.aim` (0..1) is where the leaf is set, `lift`
+  follows it at `1/LIFT_STEPS` per step (`open` = `aim > 0`; old saves:
+  `aim = open`). The rules think in the *opening* `o`: water runs over the
+  leaf `o²·(hU − sill)` deep, so `aim = (top − hU + o²(hU − sill))/(top − sill)`.
+  Everything is judged from the level just upstream `hU` against the
+  crest and sill, so it works the same whether a pond or a river feeds it;
+  a closed gate in a canal backs the water up to the river's level.
+- **Relief, proportional**: `o = (0.4 − margin)/0.35` with `margin = crest − hU`
+  (0 at 0.4 m below the crest, fully open at 0.05 m); an open relief gate
+  is trimmed by `1.5·(0.3 − margin)` per check, so it settles with the water
+  0.3 m below the crest, and closes as the water goes down. Wins over
+  everything below (a bank must not breach). In autumn and winter, with
+  nothing needed, gates are closed unless relief opens them.
+- **Fields (keeper village, spring and summer)**: closed if a house below
+  was wet today or yesterday, or ≥ 30 % of the served fields are
+  waterlogged (crop stress wet); ≥ 15 % waterlogged throttles an open gate
+  to 0.4 of its opening at once. Otherwise a feedback controller: a closed
+  gate opens to `min(0.4, 0.15 + 0.3·dry)` for `dryShare ≥ 0.15` (head
+  ≥ 0.4 m); an open one opens further by `0.25·dry` while ≥ 5 % are dry,
+  eases off by `2·wet` (at most half) while ≥ 5 % are wet, and otherwise
+  stays; under `o = 0.08`, or head < 0.25 m, it closes.
+- **Pace.** Changes of `o` under 0.04 are not made; a change waits two
+  days after the last one (half a day for relief easing off), except
+  **urgent** ones — more relief, or closing for wet houses or waterlogged
+  fields — which are called at once; the gate moves by itself if no
+  villager came within an eighth of a day (urgent) or a day.
+- Achievements: **Gatekeeper** when villagers open a closed gate for the
+  fields; **Safety Valve** when relief opened (or opened further) and the
+  dike stayed dry that day.
 
 ---
 

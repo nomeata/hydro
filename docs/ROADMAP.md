@@ -109,6 +109,9 @@ See docs/GAMEPLAY.md §7 (prioritised list).
   summer release for dry fields, never while houses below are wet, flood
   relief by itself; a villager walks over and turns the wheel; no tap to
   toggle; achievements Gatekeeper (villagers) and Safety Valve
+- ☑ Gate control, round 2 (GAMEPLAY §2.5): a continuous leaf set by a
+  feedback controller on dry/waterlogged fields, waterlogged fields and wet
+  houses close it at once, proportional flood relief; works for canal-fed gates
 - ☑ Tool cards at unlock (weir, gate): a live staged scene and two lines,
   shown at the next tool pick, again from the hint's ⓘ (`ui/toolCards.ts`);
   the water wheel's card too
