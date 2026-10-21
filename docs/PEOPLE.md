@@ -128,19 +128,23 @@ A field cell due for sowing under more than 1.5 mm of snow water (thinner
 snow is patchy and sown straight into) is first shovelled clear: a work
 step a little longer than sowing (`SiteKind.ClearSnow`, the shovel swing
 `EntityAnim.Shovel`) that clears a short strip, the cell and the next
-unsown field cell on either side, then the cells are sown as usual. The snow is piled on
-the nearest cells beyond the field (open land or pasture, dry, no structure)
-within 3 cells, a low bank along the field's edge: a bank cell holds at
-most 6 cm of water more than the cleared cell had (`pile`), so the banks
-melt a day or two after the snow around them (within a week even in a
-snowy, cool spring) instead of lingering as deep heaps; the rest, and the
+unsown field cell on either side, then the cells are sown as usual. Half the
+snow (`bank`) is thrown onto the nearest cells beyond the field (open land
+or pasture, dry, no structure) within 3 cells, a low bank along the field's
+edge: a bank cell holds at most 2.5 cm of water more than the cleared cell
+had (`pile`), so the banks melt a day or two after the snow around them
+instead of lingering as heaps; the other half, what does not fit, and the
 snow deep inside a large field, is trodden in and soaks into the soil (any
-excess stays on top). The people remember the bank cells
-(`PeopleSystem.snowBanks`, saved); the renderer draws them as small
-faceted heaps of crusted snow sized by the snow they hold above the snow
-around, shrinking as they melt (`render/village/snowPiles.ts`, from
-`Snapshot.snowPiles`), and the ground under a heap shows only the snow
-around it. No water is made or lost. Snow falling on a sown field is
+excess stays on top). A bank standing in more than 3 cm of water
+(`flooded`) melts into it within hours (`floodMelt`, 10 cm water a day).
+The people remember the bank cells (`PeopleSystem.snowBanks`, saved); the
+renderer (`render/village/snowPiles.ts`, from `Snapshot.snowPiles`, which
+leaves flooded banks out) groups adjacent bank cells into one bank and
+draws it as a few low, broad, overlapping snow mounds strung along it
+(instanced; white with a cool blue shade, a little grey at the foot, sunk
+slightly into the ground), sized by the snow held above the snow around,
+shrinking as they melt; banks with little snow are not drawn. The ground
+under a bank shows only the snow around it. No water is made or lost. Snow falling on a sown field is
 left alone. Under snow, fields stay readable at every zoom (terrain
 shader, `fieldSnow` in `render/village/fields.ts`): the snow is ribbed by
 the furrows, the outline shows as a shaded seam at least a pixel wide,
