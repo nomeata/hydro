@@ -233,12 +233,15 @@ async function main(): Promise<void> {
   });
 
   let last = performance.now();
+  // Test hook: hold the last drawn frame (e2e screenshots on slow software GL,
+  // where a busy render loop starves the screenshot's compositor frame).
+  const render = { hold: false };
   const loop = (now: number) => {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     hud.frame(dt);
     // The welcome panels cover the game (and render their own scenes).
-    if (!intro.isOpen && !cards.isOpen) renderer.frame(now);
+    if (!intro.isOpen && !cards.isOpen && !render.hold) renderer.frame(now);
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
@@ -303,7 +306,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, mirror, tools, sculptor, siteCrew: layers.siteCrew, data, autosave, crowd: layers.crowd, footprints: layers.footprints, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, IntroScenes, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, render, mirror, tools, sculptor, siteCrew: layers.siteCrew, data, autosave, crowd: layers.crowd, footprints: layers.footprints, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, IntroScenes, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
   }
   document.getElementById('loading')?.classList.add('done');
 }

@@ -1,6 +1,6 @@
 import { test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { openGame, runDays, settleFrames } from './helpers';
+import { openGame, runDays, settleFrames, stillShot } from './helpers';
 import { OG, makeOgScene, showOgScene } from '../tools/og-image';
 
 /**
@@ -17,17 +17,21 @@ test.describe('@readme', () => {
     mkdirSync(OUT, { recursive: true });
     await openGame(page);
     await runDays(page, 1);
+    // (The game is paused in test mode: a still scene.)
     await settleFrames(page, 3);
     const suffix = info.project.name === 'phone' ? '-phone' : '';
-    await page.screenshot({ path: `${OUT}/overview${suffix}.png`, timeout: 120_000 });
+    await stillShot(page, `${OUT}/overview${suffix}.png`);
     if (info.project.name === 'desktop') {
       await page.evaluate(() => {
         const cam = (window as any).__hydro.renderer.camera;
         cam.zoomBy(2.2);
         cam.rotateBy(0.6);
+        // Jump to the goal: the damped glide would otherwise end wherever the
+        // (slow, uneven) frames leave it when the frame is held.
+        cam.setState(cam.getState(), true);
       });
       await settleFrames(page, 3);
-      await page.screenshot({ path: `${OUT}/closeup.png`, timeout: 120_000 });
+      await stillShot(page, `${OUT}/closeup.png`);
     }
   });
 
@@ -39,7 +43,10 @@ test.describe('@readme', () => {
     const scene = await makeOgScene();
     const page = await browser.newPage({ viewport: { width: OG.width, height: OG.height }, baseURL: info.project.use.baseURL });
     await showOgScene(page, './', scene);
-    await page.screenshot({ path: 'dist/og.png', timeout: 120_000 });
+    // (Frames, not just time: on a busy software GL a 5 s wait can be a
+    // couple of frames, and the held frame must show the settled scene.)
+    await settleFrames(page, 10);
+    await stillShot(page, 'dist/og.png');
     await page.close();
   });
 });

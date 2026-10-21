@@ -161,3 +161,21 @@ export async function clipShot(page: Page, selector: string, timeout = 120_000):
   }, selector);
   return page.screenshot({ clip: r, timeout });
 }
+
+/**
+ * Screenshot of the whole page with the game's last frame held. The render
+ * loop stops drawing first (__hydro.render.hold): on CI's software GL a busy
+ * loop (a terrain frame every second or more) starves the screenshot's own
+ * compositor frame, so page.screenshot took minutes or timed out; held, it
+ * takes a fraction of a second. Rendering resumes afterwards.
+ */
+export async function stillShot(page: Page, path: string, timeout = 120_000): Promise<Buffer> {
+  await page.evaluate(() => ((window as any).__hydro.render.hold = true));
+  try {
+    // Let the frame in flight finish.
+    await settleFrames(page, 2);
+    return await page.screenshot({ path, timeout, caret: 'hide' });
+  } finally {
+    await page.evaluate(() => ((window as any).__hydro.render.hold = false));
+  }
+}
