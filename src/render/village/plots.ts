@@ -1,9 +1,10 @@
 /**
  * Pegged plots (docs/PEOPLE.md §3.1): good land a village has staked out
  * for farmers still to come, drawn as little wooden pegs at the corners of
- * the plot's outline with a string between them, a hand's breadth above
- * the meadow. The terrain shader paints the string and peg shadows too, so
- * the plots read from afar; these models are the close-up. One merged mesh
+ * the plot's outline with a string between them that follows the ground
+ * (tied near the peg tops, sagging between). The terrain shader paints the
+ * string and peg spots too, so the plots read from afar, and fades them out
+ * close up where these models stand instead. One merged mesh
  * (one draw call), rebuilt only when the set of pegged cells changes.
  */
 import * as THREE from 'three';
@@ -45,6 +46,36 @@ export function pegOutline(fields: Uint8Array, width: number, height: number): P
       }
     }
   return { pegs: [...pegs.values()], strings };
+}
+
+/** Peg size (three.js units: one unit is a cell): half-width, height above ground, depth driven in. */
+const PEG_HALF = 0.03;
+const PEG_TALL = 0.12;
+const PEG_SINK = 0.08;
+/** The string's half-thickness, and its height above the ground where it is tied (near a peg top) and mid-way. */
+const STRING_HALF = 0.007;
+export const STRING_TIE = 0.08;
+export const STRING_SAG = 0.035;
+/** Points per string side: 8 pieces, so every kink of the terrain triangles under it (at quarters) is a point. */
+const STRING_PIECES = 8;
+
+/**
+ * The centre line of one string side (cell-coord endpoints, as in
+ * PegGeometry.strings) in three.js coords: it follows the drawn ground,
+ * STRING_TIE above it at the pegs and sagging to STRING_SAG mid-way.
+ */
+export function stringPoints(heights: HeightSampler, seg: readonly [number, number, number, number]): [number, number, number][] {
+  const [ax, ay, bx, by] = seg;
+  const out: [number, number, number][] = [];
+  for (let k = 0; k <= STRING_PIECES; k++) {
+    const t = k / STRING_PIECES;
+    const cx = ax + (bx - ax) * t;
+    const cy = ay + (by - ay) * t;
+    const u = 2 * t - 1;
+    const lift = STRING_SAG + (STRING_TIE - STRING_SAG) * u * u;
+    out.push([cx + 0.5, heightToY(heights.terrainAt(cx, cy)) + lift, cy + 0.5]);
+  }
+  return out;
 }
 
 export class PlotLayer {
@@ -126,19 +157,42 @@ export class PlotLayer {
     const wood = new THREE.Color(0x8a6238);
     const woodTop = new THREE.Color(0xd8b07a);
     const string = new THREE.Color(0xf2ead2);
-    const PEG = 0.035;
-    const TALL = 0.2;
-    const LIFT = 0.13;
     for (const [px, py] of pegs) {
       const wx = px + 0.5;
       const wz = py + 0.5;
-      const g = y(px, py) - 0.03;
-      box(wx - PEG, g, wz - PEG, wx + PEG, g + 0.03 + TALL, wz + PEG, wood, woodTop);
+      // Stands on the drawn ground at its exact spot, driven in deep enough that no side floats on a slope.
+      const g = y(px, py);
+      box(wx - PEG_HALF, g - PEG_SINK, wz - PEG_HALF, wx + PEG_HALF, g + PEG_TALL, wz + PEG_HALF, wood, woodTop);
     }
-    const S = 0.008;
-    for (const [ax, ay, bx, by] of strings) {
-      const ys = (y(ax, ay) + y(bx, by)) / 2 + LIFT;
-      box(Math.min(ax, bx) + 0.5 - S, ys - S, Math.min(ay, by) + 0.5 - S, Math.max(ax, bx) + 0.5 + S, ys + S, Math.max(ay, by) + 0.5 + S, string, string);
+    // The string: a thin square tube from peg to peg that follows the ground
+    // (sampled at the terrain triangles' kinks, so it never cuts in), tied
+    // near the peg tops and sagging towards the ground between them.
+    const S = STRING_HALF;
+    const quad = (a: number[], b: number[], c: number[], d: number[], n: number[], flip: boolean) => {
+      for (const q of flip ? [a, c, b, a, d, c] : [a, b, c, a, c, d]) {
+        pos.push(q[0]!, q[1]!, q[2]!);
+        nrm.push(...n);
+        col.push(string.r, string.g, string.b);
+      }
+    };
+    for (const seg of strings) {
+      const pts = stringPoints(this.heights, seg);
+      const alongX = seg[1] === seg[3];
+      // Horizontal offset across the string.
+      const sx = alongX ? 0 : S;
+      const sz = alongX ? S : 0;
+      for (let k = 0; k + 1 < pts.length; k++) {
+        const [ax, ay, az] = pts[k]!;
+        const [bx, by, bz] = pts[k + 1]!;
+        const A = (dx: number, dy: number) => [ax + dx * sx, ay + dy * S, az + dx * sz];
+        const B = (dx: number, dy: number) => [bx + dx * sx, by + dy * S, bz + dx * sz];
+        const side = alongX ? [0, 0, 1] : [1, 0, 0];
+        const other = side.map((v) => -v);
+        quad(A(-1, 1), A(1, 1), B(1, 1), B(-1, 1), [0, 1, 0], !alongX);
+        quad(A(1, 1), A(1, -1), B(1, -1), B(1, 1), side, !alongX);
+        quad(A(-1, -1), A(-1, 1), B(-1, 1), B(-1, -1), other, !alongX);
+        quad(A(1, -1), A(-1, -1), B(-1, -1), B(1, -1), [0, -1, 0], !alongX);
+      }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

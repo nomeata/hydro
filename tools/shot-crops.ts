@@ -4,6 +4,7 @@
  * several seasons, at close, desktop and phone zoom.
  *
  *   npx tsx tools/shot-crops.ts make            # Node: out/crops-<season>.bin (+ out/crops.json)
+ *   npx tsx tools/shot-crops.ts make --steep 4  # the strip on a slope (~4 m rise across it) instead
  *   npx vite preview --port 4173 &              # after npm run build
  *   npx tsx tools/shot-crops.ts shoot [--url http://localhost:4173/]
  *
@@ -38,6 +39,7 @@ if (mode === 'make') {
   const { STEPS_PER_DAY, DAYS_PER_SEASON, DAYS_PER_YEAR } = await import('../src/sim/constants');
   const { LandUse } = await import('../src/sim/world');
   const seed = Number(arg('seed', '3'));
+  const steep = Number(arg('steep', '0'));
   const { sim } = newGame(seed, 128);
   const days = Number(arg('days', '14'));
   for (let d = 0; d < days; d++) sim.run(STEPS_PER_DAY);
@@ -70,7 +72,7 @@ if (mode === 'make') {
         }
       if (!good) continue;
       const d = Math.hypot(x0 + 8 - cx, y0 + 2 - cy);
-      const score = d + 30 * (hi - lo);
+      const score = d + 30 * Math.abs(hi - lo - steep);
       if (d > 5 && (!best || score < best[2])) best = [x0, y0, score];
     }
   if (!best) throw new Error('no flat strip near the village');
@@ -121,6 +123,9 @@ if (mode === 'make') {
   });
   const views: { name: string; phone: boolean; cam: Record<string, number> }[] = [
     { name: 'close', phone: false, cam: { viewHeight: 12, pitch: 0.75 } },
+    // Right up at the pegged plot (the strip's last block).
+    { name: 'pegs', phone: false, cam: { dx: 6, viewHeight: 8, pitch: 0.6 } },
+    { name: 'pegs-phone', phone: true, cam: { dx: 6, viewHeight: 8, pitch: 0.7 } },
     { name: 'desktop', phone: false, cam: { viewHeight: 36 } },
     { name: 'phone', phone: true, cam: { viewHeight: 40 } },
     { name: 'far', phone: false, cam: { viewHeight: 90 } },
@@ -155,7 +160,7 @@ if (mode === 'make') {
       );
       await page.goto(`${url}?test=1&persist=1`);
       await page.waitForFunction(() => (window as any).__hydro, null, { timeout: 120_000 });
-      await page.evaluate((c) => (window as any).__hydro.renderer.camera.setState(c, true), { x: at.x, y: at.y, ...v.cam });
+      await page.evaluate((c) => (window as any).__hydro.renderer.camera.setState(c, true), (({ dx, ...c }) => ({ ...c, x: at.x + (dx ?? 0), y: at.y }))(v.cam as Record<string, number> & { dx?: number }));
       await page.waitForTimeout(4000);
       const path = `out/crops-${s.name}-${v.name}.png`;
       await page.screenshot({ path, timeout: 120_000 });
