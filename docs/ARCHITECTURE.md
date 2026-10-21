@@ -346,8 +346,12 @@ The welcome panels are illustrated by the real engine, not by drawings:
   the canvas: it picks the Dig brush and brushes out along the line and back
   (real `sculpt` commands, predicted on the scene's `WorldMirror` by a
   `Sculptor`), and the hollow fills.
-- **Fallback:** the SVG drawings show while the scene loads and stay when
-  WebGL or the worker fails.
+- **Loader and fallback:** while a scene loads (and between loops) a small
+  round picture of a village mill with its wheel turning shows on the
+  panel's background (`ui/loader.ts`): a 24-frame sprite strip
+  (`ui/loader-mill.webp`) prerendered by the real engine with
+  `tools/shot-loader.ts`, stepped by CSS. When WebGL or the worker fails, the
+  mill stands still (first frame), as it does under reduced motion.
 
 ## 6. Persistence (M1b)
 Header JSON + binary fields, gzip via `CompressionStream`, stored in

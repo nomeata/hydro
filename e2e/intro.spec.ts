@@ -10,20 +10,20 @@ async function colourCount(page: Page, selector: string): Promise<number> {
   return seen.size;
 }
 
-/** Console warnings about the live scenes giving up (the drawings stay instead). */
+/** Console warnings about the live scenes giving up (the still mill loader stays instead). */
 function recordFallbacks(page: Page): string[] {
   const out: string[] = [];
   page.on('console', (m) => {
     const t = m.text();
-    if (/unavailable|keeping the drawings|scene worker failed/i.test(t)) out.push(t);
+    if (/unavailable|keeping the still loader|scene worker failed/i.test(t)) out.push(t);
   });
   return out;
 }
 
 /**
- * Wait until `art` (an .intro-art) shows its live scene, not the drawing: the
- * canvas is there and faded in, the drawing hidden. Fails at once if the
- * scenes fall back to the drawing (canvas removed or a fallback warning),
+ * Wait until `art` (an .intro-art) shows its live scene, not the loader: the
+ * canvas is there and faded in, the mill loader hidden. Fails at once if the
+ * scenes fall back to the still loader (canvas removed, `.still`, or a fallback warning),
  * and only waits long for slow software GL.
  */
 async function expectLive(page: Page, art: string, fallbacks: string[], timeout = 90_000): Promise<void> {
@@ -34,6 +34,7 @@ async function expectLive(page: Page, art: string, fallbacks: string[], timeout 
         return page.evaluate((sel) => {
           const a = document.querySelector(sel);
           if (!a) return 'no art';
+          if (a.classList.contains('still')) return 'fallback: still loader';
           if (!a.querySelector('canvas.intro-live')) return 'fallback: no live canvas';
           return a.classList.contains('live') && a.classList.contains('live-on') ? 'live' : 'waiting';
         }, art);
@@ -41,16 +42,16 @@ async function expectLive(page: Page, art: string, fallbacks: string[], timeout 
       { timeout, intervals: [500, 1000, 2000] },
     )
     .not.toMatch(/^(waiting|no art)$/);
-  if (fallbacks.length) throw new Error(`live scene fell back to the drawing: ${fallbacks.join(' | ')}`);
+  if (fallbacks.length) throw new Error(`live scene fell back to the still loader: ${fallbacks.join(' | ')}`);
   expect(await page.evaluate((sel) => (document.querySelector(sel)!.classList.contains('live') ? 'live' : 'not live'), art)).toBe('live');
   await expect(page.locator(`${art} canvas.intro-live`)).toBeVisible();
-  // Once the canvas has faded in, the drawing goes (it shows again while a
+  // Once the canvas has faded in, the loader goes (it shows again while a
   // scene restarts or loads, which can take seconds on a slow phone).
   await expect
     .poll(() => page.evaluate((sel) => {
       const a = document.querySelector(sel)!;
-      const svg = a.querySelector('.intro-svg svg');
-      return a.classList.contains('live-on') && !!svg && getComputedStyle(svg).visibility === 'hidden';
+      const loader = a.querySelector('.mill-loader');
+      return a.classList.contains('live-on') && !!loader && getComputedStyle(loader).visibility === 'hidden';
     }, art), { timeout: 60_000, intervals: [250, 500, 1000] })
     .toBe(true);
 }
@@ -71,16 +72,20 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   const intro = page.locator('.intro');
   await expect(intro).toBeVisible();
   await expect(intro.locator('h2')).toHaveText('Water shapes the land');
-  // A second worker runs the scene; its first frames fade in over the drawing.
+  // A second worker runs the scene; its first frames fade in over the mill loader.
   expect(await workers()).toBe(2);
-  // Until the scene is on screen, the drawing shows (no blank box on a slow phone).
+  // Until the scene is on screen, the loader shows and turns (no blank box on a slow phone).
   expect(
     await page.evaluate(() => {
       const a = document.querySelector('.intro .intro-art')!;
-      return a.classList.contains('live-on') || getComputedStyle(a.querySelector('.intro-svg svg')!).visibility === 'visible';
+      const strip = a.querySelector('.mill-loader-strip')!;
+      return (
+        a.classList.contains('live-on') ||
+        (getComputedStyle(a.querySelector('.mill-loader')!).visibility === 'visible' && getComputedStyle(strip).animationName === 'mill-turn')
+      );
     }),
   ).toBe(true);
-  // The live scene, not the drawing (which shows only when the scenes cannot run).
+  // The live scene, not the loader (which stands still when the scenes cannot run).
   await expectLive(page, '.intro .intro-art', fallbacks);
   // The scene keeps drawing (the scene's own frame count, not pixels: on CI's
   // software GL a frame can take seconds, and a screenshot of a canvas that
@@ -88,7 +93,7 @@ test('welcome panels show live scenes, navigate, and clean up', async ({ page })
   const framesShown = () => page.evaluate(() => (window as any).__hydro.intro.scenes?.framesShown as number);
   const f0 = await framesShown();
   await expect.poll(framesShown, { timeout: 90_000, intervals: [500, 1000, 2000] }).toBeGreaterThan(f0 + 1);
-  // What it drew is a landscape, not a blank canvas over the drawing (a
+  // What it drew is a landscape, not a blank canvas over the loader (a
   // handful of colours): one screenshot with the scene held still.
   await page.evaluate(() => ((window as any).__hydro.IntroScenes.freeze = true));
   try {
