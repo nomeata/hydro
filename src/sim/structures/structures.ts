@@ -47,18 +47,20 @@ export interface Gate {
   top: number;
   top0: number;
   sill: number;
-  /** Where the leaf is going: open (up, water passes to the sill) or closed. */
+  /** Whether the leaf is set open at all (`aim` > 0). */
   open: boolean;
   progress: number;
-  /** How far the leaf is up, 0 (closed) .. 1 (open); follows `open` (absent in old saves: = open). */
+  /** How far the leaf is up, 0 (closed) .. 1 (open); follows `aim` (absent in old saves: = open). */
   lift?: number;
+  /** Where the leaf is going, 0..1 (absent in old saves: open ? 1 : 0). */
+  aim?: number;
   /** Gatekeeping (gatekeeper.ts; absent in old saves). Why the gate is open (GateMode). */
   mode?: number;
   /** Step of the last switch (−1e9: never). */
   lastSwitch?: number;
   /** Id of the villager who last worked the gate (−1: it moved by itself, or never). */
   operator?: number;
-  /** A switch waiting for a villager: −1 none, 0 close, 1 open; its mode, and the step it was asked for. */
+  /** A change waiting for a villager: −1 none, else the leaf's new aim (0..1); its mode, and the step it was asked for. */
   want?: number;
   wantMode?: number;
   wantStep?: number;
@@ -774,8 +776,9 @@ export class Structures {
     g.manual = true;
     g.want = -1;
     const next = open ?? !g.open;
-    if (next === g.open) return false;
+    if (next === g.open && gateAim(g) === (next ? 1 : 0)) return false;
     g.open = next;
+    g.aim = next ? 1 : 0;
     this.structuresDirty = true;
     return true;
   }
@@ -784,10 +787,10 @@ export class Structures {
   stepGates(): void {
     let moved = false;
     for (const g of this.gates) {
-      const target = g.open ? 1 : 0;
+      const target = gateAim(g);
       const l = g.lift ?? target;
       if (l === target) continue;
-      const next = target > l ? Math.min(1, l + 1 / LIFT_STEPS) : Math.max(0, l - 1 / LIFT_STEPS);
+      const next = target > l ? Math.min(target, l + 1 / LIFT_STEPS) : Math.max(target, l - 1 / LIFT_STEPS);
       g.lift = next;
       moved = true;
       // Snapshots at tenths of the travel (the renderer eases in between).
@@ -1042,6 +1045,11 @@ export class Structures {
     this.structuresDirty = true;
     this.liningDirty = true;
   }
+}
+
+/** Where a gate's leaf is going (0..1). */
+export function gateAim(g: Gate): number {
+  return g.aim ?? (g.open ? 1 : 0);
 }
 
 /** How far a gate's leaf is up (0..1). */

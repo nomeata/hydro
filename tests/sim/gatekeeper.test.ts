@@ -165,7 +165,7 @@ describe('villager-operated sluice gates', () => {
     expect(g.operator).toBe(-1);
     // The pool goes down; once it is well below the crest the gate closes again (at most once in two days).
     await runDays(sim, 3);
-    expect(w.surface(w.idx(10, 32))).toBeLessThan(22 - GATEKEEPING.reliefClose + 0.05);
+    expect(w.surface(w.idx(10, 32))).toBeLessThan(22 - GATEKEEPING.reliefStart + 0.05);
     expect(g.open).toBe(false);
     expect(sim.achievements.earned.map((e) => e.id)).toContain('safetyValve');
     expect(sim.achievements.earned.map((e) => e.id)).not.toContain('gatekeeper');
