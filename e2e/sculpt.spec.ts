@@ -80,7 +80,16 @@ test('the Dig brush digs at once while held, stays selected, and the sim agrees 
   const [rx, ry] = await toScreen(page, s.x + 3, s.y + 3);
   await page.mouse.move(rx, ry);
   await page.mouse.down();
+  // Held until the prediction has risen (slow frames lose hold time beyond BRUSH.maxDt).
   await page.waitForTimeout(800);
+  await page.waitForFunction(
+    ([cx, cy, z]) => {
+      const h = (window as any).__hydro;
+      return h.mirror.terrainH[cy! * h.mirror.width + cx!] > z!;
+    },
+    [s.x + 3, s.y + 3, zr + 0.25],
+    { timeout: 20_000 },
+  );
   await page.mouse.up();
   await caughtUp(page);
   expect(await height(page, s.x + 3, s.y + 3)).toBeGreaterThan(zr + 0.15);
