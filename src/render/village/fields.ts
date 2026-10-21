@@ -447,7 +447,9 @@ vec3 pathColour(vec3 ground, vec3 world) {
 
 // Pegged plot (good land staked out, not ploughed): the meadow a little trodden and
 // paler inside, a string along the plot's outline and a peg at each corner of it.
-vec3 peggedColour(vec3 ground, ivec2 c, vec2 f) {
+// Close up the 3D string and pegs (plots.ts) stand there instead: the painted ones,
+// which would show beside them by parallax, fade out near the camera.
+vec3 peggedColour(vec3 ground, ivec2 c, vec2 f, vec3 world) {
   bool w = fieldCropAt(c + ivec2(-1, 0)) != 3 || int(fieldAt(c + ivec2(-1, 0)).r + 0.5) != 0;
   bool e = fieldCropAt(c + ivec2(1, 0)) != 3 || int(fieldAt(c + ivec2(1, 0)).r + 0.5) != 0;
   bool s = fieldCropAt(c + ivec2(0, -1)) != 3 || int(fieldAt(c + ivec2(0, -1)).r + 0.5) != 0;
@@ -458,14 +460,15 @@ vec3 peggedColour(vec3 ground, ivec2 c, vec2 f) {
   if (e) str = max(str, fieldLine(1.0 - f.x, 0.022));
   if (s) str = max(str, fieldLine(f.y, 0.022));
   if (n) str = max(str, fieldLine(1.0 - f.y, 0.022));
-  col = mix(col, vec3(0.93, 0.9, 0.78), str * 0.9);
-  // Pegs: dark wood at the outline's corners (shadow-like dots; the 3D pegs stand on them).
+  float far = smoothstep(35.0, 60.0, distance(world, cameraPosition));
+  col = mix(col, vec3(0.93, 0.9, 0.78), str * 0.9 * far);
+  // Pegs: dark wood at the outline's corners (shadow-like dots, under the 3D pegs).
   float peg = 0.0;
   vec2 g = vec2(f.x < 0.5 ? f.x : 1.0 - f.x, f.y < 0.5 ? f.y : 1.0 - f.y);
   bool xe = f.x < 0.5 ? w : e;
   bool ye = f.y < 0.5 ? s : n;
   if (xe || ye) peg = fieldLine(length(g), 0.06);
-  return mix(col, vec3(0.28, 0.2, 0.12), peg * 0.85);
+  return mix(col, vec3(0.28, 0.2, 0.12), peg * 0.85 * far);
 }
 
 // Paddies: small basins of standing water between low earth bunds, the rice planted in clumps.
@@ -527,7 +530,7 @@ vec3 fieldColour(vec3 ground, vec3 world) {
     return mix(ground, uYard, (1.0 - smoothstep(0.38, 0.52, d)) * 0.85);
   }
   int kind = fieldCropAt(c);
-  if (lu == 0 && kind == 3) return peggedColour(ground, c, f);
+  if (lu == 0 && kind == 3) return peggedColour(ground, c, f, world);
   if (lu != 1) return ground;
   float crop = fd.g;
   float g = clamp((crop - ${CROP_SOWN}.0) / (${CROP_RIPE}.0 - ${CROP_SOWN}.0), 0.0, 1.0);
