@@ -20,10 +20,10 @@ const PILE_DENSITY = 0.3;
 /** A bank holding less snow water than this (m × cells) is not drawn. */
 const MIN_BANK = 0.04;
 /** Roughly one mound per this many bank cells. */
-const CELLS_PER_MOUND = 3.5;
+const CELLS_PER_MOUND = 2;
 /** Mound half-width across the bank (cells), and least half-length along it. */
-const HALF_WIDTH = 0.65;
-const MIN_HALF_LENGTH = 1.0;
+const HALF_WIDTH = 0.42;
+const MIN_HALF_LENGTH = 0.6;
 /** Tallest mound (m): more snow makes it broader instead. */
 const MAX_HEIGHT = 0.4;
 /** Mounds below this height (m) are not drawn. */
@@ -64,8 +64,8 @@ function hash(a: number, b: number): number {
 
 /**
  * Group the pile cells into banks (8-connected) and string a few overlapping
- * mounds along each, holding the bank's snow (a paraboloid of half-axes a, b
- * and height h holds π/2 · a · b · h).
+ * mounds along each, holding the bank's snow (a mound of half-axes a, b and
+ * height h with the profile of moundGeometry holds π · a · b · h / 2.4).
  */
 export function mounds(piles: readonly SnowPile[]): Mound[] {
   const at = new Map<number, number>();
@@ -134,15 +134,15 @@ export function mounds(piles: readonly SnowPile[]): Mound[] {
       // Long enough to reach into the next mound (one continuous bank), a little varied.
       let a = Math.max(MIN_HALF_LENGTH, (hi - lo) / 2 + 0.6) * (0.9 + 0.25 * hash(seed, 1));
       const b = HALF_WIDTH * (0.85 + 0.3 * hash(seed, 2));
-      let h = (2 * vol) / (Math.PI * a * b * CELL_METRES * CELL_METRES);
+      let h = (2.4 * vol) / (Math.PI * a * b * CELL_METRES * CELL_METRES);
       if (h > MAX_HEIGHT) {
         a *= h / MAX_HEIGHT;
         h = MAX_HEIGHT;
       }
       if (h < MIN_HEIGHT) continue;
       out.push({
-        x: cx + 0.5 + (hash(seed, 3) - 0.5) * 0.25,
-        z: cy + 0.5 + (hash(seed, 4) - 0.5) * 0.25,
+        x: cx + 0.5 + (hash(seed, 3) - 0.5) * 0.15,
+        z: cy + 0.5 + (hash(seed, 4) - 0.5) * 0.15,
         a,
         b,
         h,
@@ -160,22 +160,23 @@ function moundGeometry(variant: number): THREE.BufferGeometry {
   const col: number[] = [];
   const idx: number[] = [];
   const top = new THREE.Color(0xf6f8fb);
-  const shade = new THREE.Color(0xdbe5f0);
+  const shade = new THREE.Color(0xc9d7e8);
   const foot = new THREE.Color(0xb9bbb6);
   const c = new THREE.Color();
   const ph2 = hash(variant, 7) * Math.PI * 2;
   const ph3 = hash(variant, 8) * Math.PI * 2;
   for (let r = 0; r <= RINGS; r++) {
     // r = 0: the sunk foot; then rings up the flank to near the crest.
-    const t = r / (RINGS + 1);
-    const rho = r === 0 ? 1.05 : Math.sqrt(1 - t);
+    // A soft profile, y = (1 - ρ²)^1.4: a gentle foot that rises to a rounded crest.
+    const rho = r === 0 ? 1.05 : 1 - (r - 1) / RINGS;
+    const t = r === 0 ? 0 : Math.pow(1 - rho * rho, 1.4);
     for (let s = 0; s < SEG; s++) {
       const a = (s / SEG) * Math.PI * 2;
       const lump = 1 + 0.08 * Math.sin(2 * a + ph2) + 0.06 * Math.sin(3 * a + ph3) + (hash(variant * 997 + r, s) - 0.5) * 0.08;
       const y = r === 0 ? -0.25 : t * (1 + (hash(variant * 991 + r, s + 50) - 0.5) * 0.25);
       pos.push(Math.cos(a) * rho * lump, y, Math.sin(a) * rho * lump);
       // White on top, a cool blue on the flanks, a little grey only at the foot.
-      c.copy(shade).lerp(top, Math.min(1, t * 1.6));
+      c.copy(shade).lerp(top, Math.min(1, t * 1.8));
       if (r <= 1) c.lerp(foot, r === 0 ? 0.55 : 0.18 * hash(variant, s + 90));
       col.push(c.r, c.g, c.b);
     }
@@ -205,7 +206,7 @@ export class SnowPileLayer {
   private key = '';
   private piles: SnowPile[] = [];
   private drawn = 0;
-  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x1d2633 });
+  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x1a2230 });
 
   constructor(
     scene: THREE.Object3D,

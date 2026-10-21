@@ -7,11 +7,11 @@ describe('snow pile mounds', () => {
     const bank: SnowPile[] = Array.from({ length: 12 }, (_, k) => ({ x: 10 + k, y: 5, swe: 0.02 }));
     const ms = mounds(bank);
     expect(ms.length).toBeGreaterThanOrEqual(2);
-    expect(ms.length).toBeLessThanOrEqual(5);
+    expect(ms.length).toBeLessThanOrEqual(7);
     ms.sort((a, b) => a.x - b.x);
     for (const m of ms) {
       // Low and broad: far wider (m) than high.
-      expect(m.h / (m.b * 5)).toBeLessThan(0.1);
+      expect(m.h / (m.b * 5)).toBeLessThan(0.2);
       expect(m.a).toBeGreaterThanOrEqual(m.b * 0.9);
       // Along the bank (x).
       expect(Math.abs(Math.cos(m.ang))).toBeGreaterThan(0.9);
