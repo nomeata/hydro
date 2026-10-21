@@ -33,8 +33,7 @@ const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium',
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
-// The canvas is rendered at 2× the CSS size of the card art (the strip is crisp on phones).
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 2 });
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
 const page = await ctx.newPage();
 // tsx names the arrow functions inside page.evaluate callbacks with a helper the page lacks.
 await page.addInitScript('window.__name = (f) => f');
@@ -50,8 +49,17 @@ await page.evaluate(() => {
   h.showCard('weir');
 });
 await page.waitForSelector('.tool-card .intro-art.live-on', { timeout: 120_000 });
-// Let the river settle under the weir.
+// Let the river settle under the weir (its race wet along the bank-normal).
+await page.waitForFunction(() => {
+  const m = (window as any).__hydro.cards.scenes?.mirror;
+  return !!m && m.wet[44 * m.width + 31] === 1;
+}, null, { timeout: 120_000, polling: 500 });
 await page.waitForTimeout(4000);
+
+// A big card, so the canvas has some 900 px to scale down from (the camera's view height is in metres: same framing).
+await page.addStyleTag({ content: '.tool-card .intro-card { width: 1000px !important; max-width: none !important; }' });
+await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+await page.waitForTimeout(1000);
 
 /** Put a finished mill on the bank just below the weir, its wheel in the race. */
 const placed = await page.evaluate((camJson) => {
@@ -60,26 +68,21 @@ const placed = await page.evaluate((camJson) => {
   const r = sc.renderer;
   const m = sc.mirror;
   const W = m.width;
-  // Below the weir's north-east end: walk from the river towards the bank.
+  // Below the weir's north-east end: the race's edge cell nearest (32.5, 43.5)
+  // whose east neighbour is dry bank (the house stands there, its wheel facing west).
   const wet = (x: number, y: number) => m.wet[y * W + x] === 1;
   let bx = 0;
   let by = 0;
   let sx = 0;
   let sy = 0;
-  outer: for (let k = 0; k < 12; k++) {
-    // Along the bank-normal (+1, −1) from a point in the river below the weir.
-    const x = Math.round(31 + k * 0.7);
-    const y = Math.round(44 - k * 0.7);
-    for (const [dx, dy] of [[1, 0], [0, -1]] as const) {
-      if (wet(x, y) && !wet(x + dx, y + dy)) {
-        bx = x + dx;
-        by = y + dy;
-        sx = x;
-        sy = y;
-        break outer;
-      }
+  let best = Infinity;
+  for (let y = 40; y <= 46; y++)
+    for (let x = 29; x <= 37; x++) {
+      if (!wet(x, y) || wet(x + 1, y)) continue;
+      const d = Math.hypot(x - 32.5, y - 43.5);
+      if (d < best) [best, sx, sy, bx, by] = [d, x, y, x + 1, y];
     }
-  }
+  if (!bx) throw new Error('no river bank found below the weir (scene not settled?)');
   const rot = Math.round(Math.atan2(-(sy - by), sx - bx) / (Math.PI / 2)) * (Math.PI / 2);
   const mill = { id: 9001, kind: 'mill', x: bx, y: by, rot, progress: 1, spin: 1.6, sacks: 2 };
   (window as any).__loaderMill = mill;
@@ -89,7 +92,17 @@ const placed = await page.evaluate((camJson) => {
   r.millWheels.setBuildings(list);
   // Keep later snapshots from dropping it.
   const apply = r.applySnapshot.bind(r);
-  r.applySnapshot = (s: any) => apply(s.buildings ? { ...s, buildings: [...s.buildings, mill] } : s);
+  // The scene's calendar runs on (it is held, not looped): keep it on this early-summer day.
+  let day: { time: unknown; climate: unknown } | null = null;
+  const fix = (s: any) => {
+    day ??= { time: s.time, climate: s.climate };
+    return { ...s, ...day };
+  };
+  (window as any).__loaderFix = fix;
+  r.applySnapshot = (s: any) => apply(fix(s.buildings ? { ...s, buildings: [...s.buildings, mill] } : s));
+  const layers = h.cards.scenes.layers;
+  const applyL = layers.applySnapshot.bind(layers);
+  layers.applySnapshot = (s: any) => applyL(fix(s));
   // No clouds or jumping fish: the loop must repeat.
   h.cards.scenes.layers.fishJumps.rateScale = 0;
   r.weather.zoomBias = 0;
@@ -116,7 +129,8 @@ function decode(url: string): PNG {
 
 /** Square crop around the canvas centre, resampled to SIZE (box filter). */
 function crop(png: PNG): PNG {
-  const side = Math.min(png.width, png.height);
+  // A few pixels in from the canvas edge (its outermost rows can be dark).
+  const side = Math.min(png.width, png.height) - 12;
   const x0 = Math.floor((png.width - side) / 2);
   const y0 = Math.floor((png.height - side) / 2);
   const out = new PNG({ width: SIZE, height: SIZE });
@@ -125,8 +139,8 @@ function crop(png: PNG): PNG {
     for (let x = 0; x < SIZE; x++) {
       const acc = [0, 0, 0];
       let n = 0;
-      for (let v = Math.floor(y * k); v < Math.floor((y + 1) * k); v++)
-        for (let u = Math.floor(x * k); u < Math.floor((x + 1) * k); u++) {
+      for (let v = Math.floor(y * k); v < Math.max(Math.floor((y + 1) * k), Math.floor(y * k) + 1); v++)
+        for (let u = Math.floor(x * k); u < Math.max(Math.floor((x + 1) * k), Math.floor(x * k) + 1); u++) {
           const i = ((y0 + v) * png.width + x0 + u) * 4;
           acc[0] += png.data[i]!;
           acc[1] += png.data[i + 1]!;
