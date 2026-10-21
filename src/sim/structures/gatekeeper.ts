@@ -11,25 +11,29 @@
  *
  * The leaf is continuous: `aim` (0..1) is where it is set, `lift` follows
  * it. A partly raised leaf lowers the wall's crest (structures.ts), so the
- * rules think in terms of the *opening* o (0..1), the share of the head
- * above the sill that flows over the leaf: o = 0 holds the water at its
- * level, o = 1 is the leaf fully up. aim = 1 − (1 − o)(hU − sill)/(top − sill).
+ * rules think in terms of the *opening* o (0..1): the water runs over the
+ * leaf o²·(hU − sill) deep (fine steps at the low end), o = 0 holds the
+ * water at its level (the leaf fully down), o = 1 is the leaf fully up.
  *
  * Checked eight times a game day per finished gate; the gate is set to the
  * larger of:
  *  1. Flood relief: proportional to how close `hU` is to the crest: o = 0
- *     at 0.4 m below it, o = 1 at 0.05 m below it.
+ *     at 0.4 m below it, o = 1 at 0.05 m below it; once open, at least
+ *     o + 1.5·(0.3 m − (crest − hU)), so it settles where the water stands
+ *     0.3 m below the crest (or fully open if it cannot hold it there),
+ *     and closes again below o = 0.08 as the water goes down.
  *  2. Keeper village only, spring and summer (else 0): 0 if a house within
  *     16 cells of the downstream end was in water (> 0.1 m) today or
- *     yesterday, or if ≥ 15 % of the village's fields within 24 cells of it
- *     are waterlogged (wet crop stress), or if the head `hU − sill` is
- *     below 0.25 m (0.4 m to open a closed gate). Otherwise a feedback
+ *     yesterday, or if ≥ 30 % of the village's fields within 24 cells of it
+ *     are waterlogged (wet crop stress); ≥ 15 % waterlogged throttles an
+ *     open gate to 0.4 of its opening at once. Otherwise a feedback
  *     controller on the shares of dry and wet served fields: a closed gate
- *     opens to o = 0.1 + 1.5·dry when ≥ 15 % are dry; an open one opens
- *     further by 0.6·dry while ≥ 5 % are dry, eases off by 3·wet (at most
- *     60 %) while ≥ 5 % are wet, and trims 15 % when none are dry; between
- *     that it stays (settled). Below o = 0.08 it closes.
- * Changes smaller than 0.05 of the leaf's travel are not made. A change
+ *     opens to o = min(0.4, 0.15 + 0.3·dry) when ≥ 15 % are dry and the
+ *     head `hU − sill` is ≥ 0.4 m; an open one (head ≥ 0.25 m, else it
+ *     closes) eases off by 2·wet (at most half) while ≥ 5 % are wet, opens
+ *     further by 0.25·dry while ≥ 5 % are dry, trims 15 % when none are
+ *     dry, and otherwise stays (settled). Below o = 0.08 it closes.
+ * Changes of the opening smaller than 0.04 are not made. A change
  * waits at least two days after the last one (half a day for relief easing
  * off as the water goes down), except urgent ones: more relief, or closing
  * for wet houses or waterlogged fields. With a keeper
@@ -67,6 +71,9 @@ export const GATEKEEPING = {
   /** Flood relief: the opening grows from 0 at this far below the crest (m) to 1 at this far below it. */
   reliefStart: 0.4,
   reliefFull: 0.05,
+  /** An open relief gate then opens further or eases off by reliefGain per metre the water is above or below this far under the crest. */
+  reliefKeep: 0.3,
+  reliefGain: 1.5,
   /** Houses this close (cells) to the downstream end, in water this deep (m), keep the gate shut. */
   houseRange: 16,
   houseWet: 0.1,
@@ -76,20 +83,23 @@ export const GATEKEEPING = {
   /** Share of dry served fields to open a closed gate for, and to open an open one further for. */
   dryOpen: 0.15,
   dryMore: 0.05,
-  /** Share of waterlogged served fields to ease off for, and to close at once for. */
+  /** Share of waterlogged served fields to ease off for, to throttle at once for (to `throttle` of the opening), and to close at once for. */
   wetEase: 0.05,
-  wetClose: 0.15,
-  /** Controller gains: first opening o = openBase + openGain·dry; then o += moreGain·dry, o −= o·min(easeMax, easeGain·wet); trim when none are dry. */
-  openBase: 0.1,
-  openGain: 1.5,
-  moreGain: 0.6,
-  easeGain: 3,
-  easeMax: 0.6,
+  wetThrottle: 0.15,
+  throttle: 0.4,
+  wetClose: 0.3,
+  /** Controller gains: first opening o = min(openMax, openBase + openGain·dry); then o += moreGain·dry, o −= o·min(easeMax, easeGain·wet); trim when none are dry. */
+  openBase: 0.15,
+  openGain: 0.3,
+  openMax: 0.4,
+  moreGain: 0.25,
+  easeGain: 2,
+  easeMax: 0.5,
   trim: 0.15,
   /** Openings below this close the gate. */
   minOpening: 0.08,
-  /** Leaf changes smaller than this are not made. */
-  minChange: 0.05,
+  /** Changes of the opening smaller than this are not made. */
+  minChange: 0.04,
   /** Head above the sill (m) to open a closed gate for the fields, and to keep it open. */
   headOpen: 0.4,
   headStay: 0.25,
@@ -219,16 +229,19 @@ export class Gatekeeper {
   /** The opening (0..1, see the header) that leaf position `aim` gives at upstream level hU. */
   static opening(g: Gate, aim: number, hU: number): number {
     if (aim <= 0) return 0;
+    if (aim >= 1) return 1;
     const head = hU - g.sill;
-    if (!(head > 1e-3)) return aim >= 1 ? 1 : 0;
-    return Math.max(0, Math.min(1, 1 - ((1 - aim) * (g.top - g.sill)) / head));
+    if (!(head > 1e-3)) return 0;
+    const over = aim * (g.top - g.sill) - (g.top - hU);
+    return over <= 0 ? 0 : Math.min(1, Math.sqrt(over / head));
   }
 
   /** The leaf position (0..1) for opening o at upstream level hU. */
   static aimFor(g: Gate, o: number, hU: number): number {
     if (o <= 0) return 0;
+    if (o >= 1) return 1;
     const head = Math.max(0, hU - g.sill);
-    return Math.max(0, Math.min(1, 1 - ((1 - o) * head) / Math.max(1e-3, g.top - g.sill)));
+    return Math.max(0, Math.min(1, (g.top - hU + o * o * head) / Math.max(1e-3, g.top - g.sill)));
   }
 
   private check(g: Gate, step: number, time: SimTime, people: PeopleSystem | null): void {
@@ -269,7 +282,10 @@ export class Gatekeeper {
 
     // 1. Flood relief: as much as keeps the water safely below the crest.
     const margin = v.crest - v.hU;
-    const relief = Math.max(0, Math.min(1, (K.reliefStart - margin) / (K.reliefStart - K.reliefFull)));
+    let relief = Math.max(0, Math.min(1, (K.reliefStart - margin) / (K.reliefStart - K.reliefFull)));
+    // An open relief gate is trimmed towards keeping the water `reliefKeep` below the crest.
+    if (g.mode === GateMode.Relief && o > 0) relief = Math.max(relief, Math.min(1, o + K.reliefGain * (K.reliefKeep - margin)));
+    if (relief < K.minOpening) relief = 0;
 
     // 2. The keeper village's fields.
     let fields = 0;
@@ -280,14 +296,17 @@ export class Gatekeeper {
       const housesWet = (g.wetDay ?? -1e9) >= day - 1;
       if (housesWet || wet >= K.wetClose) wetStop = true;
       else if (o <= 0) {
-        if (dry >= K.dryOpen && head >= K.headOpen) fields = Math.min(1, K.openBase + K.openGain * dry);
+        if (dry >= K.dryOpen && head >= K.headOpen) fields = Math.min(K.openMax, K.openBase + K.openGain * dry);
+      } else if (wet >= K.wetThrottle) {
+        wetStop = true;
+        fields = o * K.throttle;
       } else if (head >= K.headStay) {
         if (wet >= K.wetEase) fields = o * (1 - Math.min(K.easeMax, K.easeGain * wet));
         else if (dry >= K.dryMore) fields = Math.min(1, o + K.moreGain * dry);
         else if (dry > 0) fields = o;
         else fields = o * (1 - K.trim);
-        if (fields < K.minOpening) fields = 0;
       }
+      if (fields < K.minOpening) fields = 0;
     }
 
     const target = Math.max(relief, fields);
@@ -299,7 +318,7 @@ export class Gatekeeper {
     const urgent = (mode === GateMode.Relief && next > aim) || (wetStop && next < aim);
 
     const pending = g.want ?? -1;
-    if (Math.abs(next - aim) < K.minChange && (next > 0) === (aim > 0)) {
+    if (Math.abs(Gatekeeper.opening(g, next, v.hU) - o) < K.minChange && (next > 0) === (aim > 0)) {
       // Nothing worth changing (a waiting call is no longer needed).
       if (pending >= 0) g.want = -1;
       if (aim > 0 && mode !== GateMode.None) g.mode = mode;

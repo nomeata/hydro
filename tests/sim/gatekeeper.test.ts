@@ -48,6 +48,8 @@ function valley(pool = 1.5): World {
       w.ground[i] = 0;
       w.fertility[i] = 0.8;
       if (x < 19) w.water[i] = pool;
+      // A dug canal: its water wets the fields beside it (CAPILLARY.canalReach).
+      if (canal && x > 21) w.flags[i] |= CellFlag.Canal;
       w.revealed[i] = 255;
     }
   for (let y = 31; y <= 33; y++) w.flags[w.idx(W - 1, y)] |= CellFlag.Outlet;
