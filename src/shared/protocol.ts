@@ -241,6 +241,8 @@ export interface BuildingInfo {
   sacks?: number;
   /** Ruins: how overgrown, 0 (fresh mud) .. 2 (a year or more), 3 a grassy mound (its last half year). */
   weeds?: number;
+  /** Wells and mills left unused (people/wear.ts): 1 weathered, 2 falling apart (absent: sound). */
+  wear?: number;
 }
 
 /**
@@ -286,14 +288,19 @@ export interface StructureInfo {
   flow?: number;
   /** Footbridges (x, y and x2, y2 are the banks at either end): swept away by a flood, the piles left. */
   broken?: boolean;
+  /** Jetties and footbridges left unused (people/wear.ts): 1 weathered, 2 falling apart (absent: sound). */
+  wear?: number;
 }
 
 /**
- * Lining state per cell in Snapshot.lining: 0 none, 1..253 planned
- * (progress), 254 lined as a quay (a lake front by the houses), 255 lined.
+ * Lining state per cell in Snapshot.lining: 0 none, 1..127 planned
+ * (progress), 128..253 villagers' lining no longer kept up (its condition:
+ * LINING_WORN + round(cond · 125); people/wear.ts), 254 lined as a quay (a
+ * lake front by the houses), 255 lined.
  */
 export const LINING_DONE = 255;
 export const LINING_QUAY = 254;
+export const LINING_WORN = 128;
 
 /** Village statistics (hidden from players; shown with ?stats=1; population drives tool unlocks). */
 export interface VillageStats {

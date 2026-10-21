@@ -21,6 +21,7 @@
 import type { StructureInfo } from '../../shared/protocol';
 import { LandUse, CellFlag, type World } from '../world';
 import { MAX_WADE } from './path';
+import { condOf, wearLevel, type Worn } from './wear';
 import { octile, WalkMap } from './reach';
 
 export const BRIDGE = {
@@ -68,7 +69,7 @@ export const BRIDGE = {
   disturb: 0.1,
 };
 
-export interface Footbridge {
+export interface Footbridge extends Worn {
   id: number;
   settlement: number;
   /** Dry bank cells at either end: `a` on the village side (builders work from it), `b` opposite. */
@@ -463,6 +464,8 @@ export function bridgeInfo(w: World, list: readonly Footbridge[]): StructureInfo
       progress: b.progress,
     };
     if (b.broken) o.broken = true;
+    const wear = wearLevel(condOf(b));
+    if (wear) o.wear = wear;
     out.push(o);
   }
   return out;

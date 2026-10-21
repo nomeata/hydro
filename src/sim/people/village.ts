@@ -22,6 +22,7 @@ import { WELL, chooseWellSite, drawWell, waterAccess, wellWorks } from './wells'
 import { WORKS, chooseJetty, markQuays, standCell, surveyLining } from './works';
 import { Bridges, bridgeInfo, type Footbridge } from './bridges';
 import { REACH_RULES, WalkMap } from './reach';
+import { WEAR, condOf, liningFails, needsRepair, renew, repair, wearLevel, weather, type Worn } from './wear';
 
 /** Hydro steps between agent updates. */
 export const PEOPLE_TICK = 2;
@@ -389,7 +390,7 @@ const RUIN_NEAR = 16;
 /** Flood memory forgotten after a dry spring (of 255; docs/GAMEPLAY.md §4.3 P3). */
 export const FLOOD_FORGET = 120;
 
-export interface Building {
+export interface Building extends Worn {
   id: number;
   kind: 'house' | 'store' | 'ruin' | 'well' | 'mill';
   settlement: number;
@@ -409,6 +410,8 @@ export interface Building {
   idle?: number;
   /** Ruins: the day the flood took it (absent in older saves: long ago). */
   ruinedDay?: number;
+  /** Mills: given up (no head for MILL.abandonDays); left to fall down (wear.ts). */
+  abandoned?: boolean;
 }
 
 /** Steps between updates of the mills' wheels. */
@@ -467,6 +470,8 @@ export interface PeopleState {
   snowBanks?: number[];
   /** Founding parties' carts (absent in older saves: none). */
   carts?: Cart[];
+  /** The villagers' own lined cells as triples [cell, day last kept up, condition] (wear.ts; absent in older saves: none known). */
+  linedWear?: number[];
 }
 
 /**
@@ -587,6 +592,8 @@ export class PeopleSystem {
   private lastFounding = 0;
   /** Founding parties' carts (round 6). */
   carts: Cart[] = [];
+  /** Cells the villagers lined themselves, with their wear (wear.ts): only these fall into disrepair. */
+  private readonly linedWear = new Map<number, Worn>();
   /** Highest total population so far: tools unlocked by it stay unlocked. */
   peakPopulation = 0;
   /**
@@ -1090,6 +1097,7 @@ export class PeopleSystem {
     // Migrants remember how the land looked at the end of summer.
     if (doy === FOUNDING.summerDay) this.summerSurvey = this.surveyLand();
     if (time.day % FOUNDING.everyDays === 0) this.considerFounding(time);
+    this.tendWear(time.day);
     this.updateQuays();
     this.tendRuins(time.day);
   }
@@ -1120,7 +1128,8 @@ export class PeopleSystem {
     const w = Math.max(0, Math.min(1, st.wellbeing));
     st.lineBudget = Math.min(WORKS.maxBudget, (st.lineBudget ?? 0) + WORKS.ratePerDay * (0.2 + 0.8 * w));
     if (!st.lineSites.length) st.lineBudget = Math.min(st.lineBudget, 1);
-    if (!st.jetty && this.agents.some((a) => a.settlement === st.id && a.job === Job.Fisher)) {
+    if (!st.jetty && (st.jettyAgain ?? 0) <= this.lastDay && this.agents.some((a) => a.settlement === st.id && a.job === Job.Fisher)) {
+      delete st.jettyAgain;
       const W = this.world.width;
       const j = chooseJetty(this.world, st.x, st.y, (c) => {
         const b = Math.floor(c / W / FISH_BLOCK) * this.fbw + Math.floor((c % W) / FISH_BLOCK);
@@ -1259,7 +1268,8 @@ export class PeopleSystem {
 
   /** The village's mill (built or being built), if any. */
   millOf(id: number): Building | null {
-    return this.buildings.find((b) => b.settlement === id && b.kind === 'mill') ?? null;
+    // (A mill given up is no longer the village's mill: it stands derelict until it falls down.)
+    return this.buildings.find((b) => b.settlement === id && b.kind === 'mill' && !b.abandoned) ?? null;
   }
 
   /** Wells of a village (built or being built). */
@@ -1350,8 +1360,20 @@ export class PeopleSystem {
     const live = millTurns(headAt(this.world, m.wheel), MILL.runShare);
     m.idle = live ? 0 : (m.idle ?? 0) + 1;
     st.milling = m.progress >= 1 && (m.running ?? false);
+    // A mill that can grind for a farming village is kept up (the harvest comes once a year).
+    if (live && m.progress >= 1 && this.fieldsOf(s).length >= MILL.minFields / 2) m.used = this.lastDay;
     if (m.idle < (m.progress >= 1 ? MILL.abandonDays : MILL.abandonDays / 2)) return;
-    // Given up: the house is taken down (whatever grain was left rots).
+    st.milling = false;
+    if (m.progress >= 1) {
+      // Given up: left standing, unused, to fall down (wear.ts); whatever grain was left rots.
+      m.abandoned = true;
+      m.running = false;
+      m.spin = 0;
+      m.grain = 0;
+      this.buildingsDirty = true;
+      return;
+    }
+    // An unfinished one is taken down.
     const w = this.world;
     const i = w.idx(m.x, m.y);
     if (w.landuse[i] === LandUse.Building) w.landuse[i] = LandUse.None;
@@ -1363,7 +1385,7 @@ export class PeopleSystem {
   /** Every MILL_EVERY steps: the wheels turn with the water; a mill grinds while the head gives enough power. */
   private updateMills(): void {
     for (const m of this.buildings) {
-      if (m.kind !== 'mill' || m.wheel === undefined) continue;
+      if (m.kind !== 'mill' || m.wheel === undefined || m.abandoned) continue;
       const hd = headAt(this.world, m.wheel);
       const turn = m.progress >= 1 && millTurns(hd, MILL.turnShare);
       const spin = turn ? Math.round(hd.speed * 20) / 20 : 0;
@@ -1424,6 +1446,8 @@ export class PeopleSystem {
         o.spin = b.spin ?? 0;
         o.sacks = Math.min(3, Math.ceil((b.grain ?? 0) / MILL.grind));
       }
+      const wear = wearLevel(condOf(b));
+      if (wear) o.wear = wear;
       return o;
     }).concat(camps);
   }
@@ -1462,6 +1486,171 @@ export class PeopleSystem {
       if (n) s.state.ruins = n;
       else delete s.state.ruins;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Disrepair (wear.ts): what the villagers no longer use falls down
+
+  /**
+   * Daily: mark what was used today (a walker on a jetty or a bridge deck;
+   * wells and mills are marked as people fetch and grind), and let the rest
+   * weather. Gone at condition 0: the jetty's and bridge's cells free again,
+   * a well or mill taken down, a lined cell's stones lost (cell by cell).
+   */
+  private tendWear(day: number): void {
+    const w = this.world;
+    const used = (cells: readonly number[]) => cells.some((c) => w.traffic[c]! >= WEAR.traffic);
+    // The jetties.
+    for (const s of this.settlements) {
+      const j = s.state.jetty;
+      if (!j || j.progress < 1) continue;
+      const before = wearLevel(condOf(j));
+      if (used(j.cells)) j.used = day;
+      const c = weather(j, day, this.jettyDrowned(j));
+      if (c <= 0) {
+        for (const k of j.cells) if (w.landuse[k] === LandUse.Bridge) w.landuse[k] = LandUse.None;
+        delete s.state.jetty;
+        // Not rebuilt at once: a year's thought first.
+        s.state.jettyAgain = day + DAYS_PER_YEAR;
+        this.jettyDirty = true;
+      } else if (wearLevel(c) !== before) this.jettyDirty = true;
+    }
+    // The footbridges (also one a flood broke that nobody rebuilds).
+    const gone: Footbridge[] = [];
+    for (const b of this.bridges.list) {
+      if (b.progress < 1 && !b.broken) continue;
+      const before = wearLevel(condOf(b));
+      if (!b.broken && used(b.cells)) b.used = day;
+      const c = weather(b, day, b.broken === true || b.cells.some((k) => w.surface(k) > b.top));
+      if (c <= 0) gone.push(b);
+      else if (wearLevel(c) !== before) this.bridges.dirty = true;
+    }
+    if (gone.length) {
+      for (const b of gone) for (const k of b.cells) if (w.landuse[k] === LandUse.Bridge) w.landuse[k] = LandUse.None;
+      this.bridges.list = this.bridges.list.filter((b) => !gone.includes(b));
+      this.bridges.dirty = true;
+    }
+    // Wells and mills (used: marked by the water carriers, the miller and the mill's own day).
+    const down = new Set<Building>();
+    for (const b of this.buildings) {
+      if ((b.kind !== 'well' && b.kind !== 'mill') || b.progress < 1) continue;
+      const before = wearLevel(condOf(b));
+      const c = weather(b, day, w.water[w.idx(b.x, b.y)]! > 0.1);
+      if (c <= 0) down.add(b);
+      else if (wearLevel(c) !== before) this.buildingsDirty = true;
+    }
+    if (down.size) {
+      for (const b of down) {
+        const i = w.idx(b.x, b.y);
+        if (w.landuse[i] === LandUse.Building) w.landuse[i] = LandUse.None;
+      }
+      this.buildings = this.buildings.filter((b) => !down.has(b));
+      this.buildingsDirty = true;
+    }
+    this.wearLining(day);
+  }
+
+  /** A jetty's deck is awash (no fisher sits there; it rots faster). */
+  private jettyDrowned(j: { cells: readonly number[]; top: number }): boolean {
+    return this.world.surface(j.cells[j.cells.length - 1]!) > j.top;
+  }
+
+  /**
+   * Daily: the villagers' own lining is kept up near their homes (and by
+   * their canals and jetty) and slowly mends there; elsewhere it weathers,
+   * and as its condition falls the stones go cell by cell (liningFails),
+   * the bank open to the water again.
+   */
+  private wearLining(day: number): void {
+    if (!this.linedWear.size) return;
+    const w = this.world;
+    const W = w.width;
+    const anchors: { x: number; y: number; r: number }[] = [];
+    const centres: { x: number; y: number }[] = [];
+    for (const s of this.settlements) {
+      if (s.state.population <= 0) continue;
+      centres.push({ x: s.state.x, y: s.state.y });
+      const j = s.state.jetty;
+      if (j && j.progress >= 1) anchors.push({ x: j.shore % W, y: (j.shore / W) | 0, r: 2 });
+    }
+    const living = new Set(this.settlements.filter((s) => s.state.population > 0).map((s) => s.state.id));
+    for (const b of this.buildings)
+      if (b.kind !== 'ruin' && !b.abandoned && b.progress >= 1 && living.has(b.settlement)) anchors.push({ x: b.x, y: b.y, r: WEAR.liningNear });
+    const R = WORKS.canalRadius + WORKS.near;
+    const canal = (i: number) => {
+      for (const j of [i, i - 1, i + 1, i - W, i + W]) if (j >= 0 && j < w.size && (w.flags[j]! & CellFlag.Canal) !== 0) return true;
+      return false;
+    };
+    for (const [i, o] of this.linedWear) {
+      if ((w.flags[i]! & CellFlag.Lined) === 0) {
+        this.linedWear.delete(i);
+        continue;
+      }
+      const x = i % W;
+      const y = (i / W) | 0;
+      const before = Math.round(condOf(o) * 10);
+      const kept =
+        anchors.some((a) => Math.max(Math.abs(a.x - x), Math.abs(a.y - y)) <= a.r) ||
+        (canal(i) && centres.some((c) => Math.hypot(c.x - x, c.y - y) <= R));
+      if (kept) {
+        o.used = day;
+        if (o.cond !== undefined) {
+          o.cond += WEAR.mend;
+          if (o.cond >= 1) delete o.cond;
+        }
+      }
+      const c = weather(o, day, w.water[i]! > 0.3);
+      if (c < liningFails(i)) {
+        w.flags[i]! &= ~CellFlag.Lined;
+        this.linedWear.delete(i);
+        this.quayDirty = true;
+      } else if (Math.round(c * 10) !== before) this.quayDirty = true;
+    }
+  }
+
+  /** The villagers' lining no longer kept up: cell → condition (snapshot; LINING_WORN). */
+  liningWorn(): Map<number, number> {
+    const out = new Map<number, number>();
+    for (const [i, o] of this.linedWear) if (o.cond !== undefined) out.set(i, o.cond);
+    return out;
+  }
+
+  /** Cells the villagers lined themselves, with their wear (tests, debugging). */
+  villageLining(): ReadonlyMap<number, Readonly<Worn>> {
+    return this.linedWear;
+  }
+
+  /** Something of the village's in use but in disrepair, for a builder to mend: its id (-1: the jetty) and where to stand. */
+  private repairSite(s: Settlement, day: number): { id: number; cell: number } | null {
+    const w = this.world;
+    const ok = (c: number) => !this.blocked.has(c);
+    const j = s.state.jetty;
+    if (j && j.progress >= 1 && needsRepair(j, day) && ok(j.shore)) return { id: -1, cell: j.shore };
+    for (const b of this.bridges.list)
+      if (b.settlement === s.state.id && b.progress >= 1 && needsRepair(b, day) && ok(b.a)) return { id: b.id, cell: b.a };
+    for (const b of this.buildings) {
+      if (b.settlement !== s.state.id || (b.kind !== 'well' && b.kind !== 'mill') || b.progress < 1 || b.abandoned) continue;
+      const c = w.idx(b.x, b.y);
+      if (needsRepair(b, day) && ok(c)) return { id: b.id, cell: c };
+    }
+    return null;
+  }
+
+  /** A builder's mending visit (SiteKind.Repair). */
+  private mend(s: Settlement | undefined, id: number): void {
+    if (!s) return;
+    if (id === -1) {
+      const j = s.state.jetty;
+      if (j && repair(j)) this.jettyDirty = true;
+      return;
+    }
+    const b = this.bridges.list.find((x) => x.id === id);
+    if (b) {
+      if (repair(b)) this.bridges.dirty = true;
+      return;
+    }
+    const m = this.buildings.find((x) => x.id === id);
+    if (m && repair(m)) this.buildingsDirty = true;
   }
 
   /** Lined banks by the houses that face open water read as quays. */
@@ -1506,6 +1695,7 @@ export class PeopleSystem {
         sill: j.top,
         open: false,
         progress: j.progress,
+        ...(wearLevel(condOf(j)) ? { wear: wearLevel(condOf(j)) } : {}),
       });
     }
     return out;
@@ -1951,7 +2141,7 @@ export class PeopleSystem {
     let bestScore = -Infinity;
     // The village jetty's end is the favourite spot.
     const end = this.jettyEnd(s);
-    if (end >= 0 && !this.reserved.has(end) && !this.blocked.has(end)) {
+    if (end >= 0 && !this.reserved.has(end) && !this.blocked.has(end) && !this.jettyDrowned(s.state.jetty!)) {
       const b = Math.floor(end / W / FISH_BLOCK) * this.fbw + Math.floor((end % W) / FISH_BLOCK);
       const K = this.fishCap[b]!;
       if (K > 0 && this.fish[b]! / K > 0.2) return end;
@@ -2347,6 +2537,7 @@ export class PeopleSystem {
     const jettyWork =
       (st.jetty !== undefined && st.jetty.progress < 1) ||
       this.bridges.site(st.id, this.lastDay, (c) => this.blocked.has(c)) !== null ||
+      this.repairSite(s, this.lastDay) !== null ||
       (this.poles?.site(st.id, this.lastDay, (c) => this.blocked.has(c)) ?? null) !== null;
     const masons = stoneWork || jettyWork ? Math.max(1, Math.round(n * (0.04 + 0.08 * Math.max(0, st.wellbeing)))) : 0;
     want.set(Job.Builder, Math.max(masons, houseWork || planWork ? Math.max(1, Math.round(n * (planWork ? 0.45 : 0.25))) : 0));
@@ -2687,6 +2878,7 @@ export class PeopleSystem {
       }
       case SiteKind.Jetty:
       case SiteKind.Pole:
+      case SiteKind.Repair:
         a.timer = 60;
         a.anim = EntityAnim.Build;
         break;
@@ -2928,6 +3120,7 @@ export class PeopleSystem {
         const well = a.site >= 0 ? this.buildings.find((b) => b.id === a.site && b.kind === 'well') : undefined;
         a.carry = well && well.dry ? CarryKind.None : CarryKind.Bucket;
         a.load = 0;
+        if (well && !well.dry) well.used = this.lastDay;
         break;
       }
       case SiteKind.Pour:
@@ -2936,6 +3129,7 @@ export class PeopleSystem {
       case SiteKind.Mill: {
         const m = this.buildings.find((b) => b.id === a.site && b.kind === 'mill');
         if (m && a.carry === CarryKind.Sack && a.load > 0) {
+          m.used = this.lastDay;
           m.grain = (m.grain ?? 0) + a.load;
           a.load = 0;
           a.carry = CarryKind.None;
@@ -2948,6 +3142,7 @@ export class PeopleSystem {
         const m = this.buildings.find((b) => b.id === a.site && b.kind === 'mill');
         const g = m ? Math.min(m.grain ?? 0, MILL.grind) : 0;
         if (m && g > 0) {
+          m.used = this.lastDay;
           m.grain = (m.grain ?? 0) - g;
           if (m.grain < 1e-6) m.grain = 0;
           a.load = g * (m.running ? MILL.bonus : 1);
@@ -2961,6 +3156,7 @@ export class PeopleSystem {
         if (a.carry === CarryKind.Stone && (w.flags[i]! & CellFlag.Lined) === 0) {
           w.flags[i]! |= CellFlag.Lined;
           w.vegetation[i] = Math.min(w.vegetation[i]!, 0.05);
+          this.linedWear.set(i, { used: this.lastDay });
           if (s) {
             s.state.lineBudget = Math.max(0, (s.state.lineBudget ?? 0) - 1);
             s.state.lineSites = s.state.lineSites?.filter((c) => c !== i);
@@ -2972,10 +3168,17 @@ export class PeopleSystem {
       }
       case SiteKind.Bridge: {
         const b = this.bridges.list.find((x) => x.id === a.site);
-        if (b && this.bridges.work(b.id)) this.onEvent?.('bridge', b.a);
+        if (b && this.bridges.work(b.id)) {
+          renew(b, this.lastDay);
+          this.onEvent?.('bridge', b.a);
+        }
         a.carry = CarryKind.None;
         break;
       }
+      case SiteKind.Repair:
+        this.mend(s, a.site);
+        a.carry = CarryKind.None;
+        break;
       case SiteKind.Pole:
         this.poles?.work(a.site);
         a.carry = CarryKind.None;
@@ -3046,6 +3249,15 @@ export class PeopleSystem {
       if (br && this.goTo(a, br.a, SiteKind.Bridge, time, br.id)) {
         a.carry = CarryKind.Log;
         return;
+      }
+      // Mending what is in use but falling into disrepair (wear.ts).
+      const rep = this.repairSite(s, time.day);
+      if (rep && !this.agents.some((o) => o !== a && o.siteKind === SiteKind.Repair && o.site === rep.id && o.settlement === a.settlement)) {
+        if (this.goTo(a, rep.cell, SiteKind.Repair, time, rep.id)) {
+          a.carry = CarryKind.Log;
+          return;
+        }
+        this.blocked.set(rep.cell, time.day + 3);
       }
       // Power poles: carry one out and put it up.
       const pole = this.poles?.site(s.state.id, time.day, (c) => this.blocked.has(c));
@@ -3333,6 +3545,7 @@ export class PeopleSystem {
       hardy: this.hardyList(),
       snowBanks: this.snowBanks.size ? [...this.snowBanks].flat() : undefined,
       carts: this.carts.length ? this.carts : undefined,
+      linedWear: this.linedWear.size ? [...this.linedWear].flatMap(([i, o]) => [i, o.used ?? this.lastDay, condOf(o)]) : undefined,
     });
   }
 
@@ -3404,6 +3617,9 @@ export class PeopleSystem {
     this.snowBanks.clear();
     const banks = c.snowBanks ?? [];
     for (let k = 0; k + 1 < banks.length; k += 2) this.snowBanks.set(banks[k]!, banks[k + 1]!);
+    this.linedWear.clear();
+    const lw = c.linedWear ?? [];
+    for (let k = 0; k + 2 < lw.length; k += 3) this.linedWear.set(lw[k]!, lw[k + 2]! < 1 ? { used: lw[k + 1]!, cond: lw[k + 2]! } : { used: lw[k + 1]! });
     this.rebuildPegMask();
     if (c.fish && c.fish.length === this.fish.length) this.fish.set(c.fish);
     // Capacity is recomputed daily; restore the day's value so a load mid-day continues exactly.
