@@ -742,7 +742,7 @@ export class StructuresLayer {
       const h = hash01(j.id * 131 + k);
       if (wear >= 2 && h < 0.35) continue; // a plank gone
       const skew = wear >= 2 && h > 0.85 ? 0.25 : 0;
-      this.put(deck, j.x, j.y, j.rot + skew, u, yAt(u) - 0.04, 0.16, 0.05, 0.78, pitch);
+      this.put(deck, j.x + c * u, j.y + sn * u, j.rot + skew, 0, yAt(u) - 0.04, 0.16, 0.05, 0.78, pitch);
       if (wear && h > 0.55 && h < 0.75) this.put(P.moss, j.x - sn * (h - 0.65) * 3, j.y + c * (h - 0.65) * 3, j.rot, u, yAt(u) + 0.005, 0.14, 0.025, 0.22);
     }
     // A bollard at the end for the boats (gone once it falls apart).
@@ -804,7 +804,8 @@ export class StructuresLayer {
       const h = hash01(b.id * 131 + pk++);
       if (wear >= 2 && h < 0.3) return; // a plank gone
       const slope = (y(u + 0.05) - y(u - 0.05)) / 0.1;
-      this.put(deck, b.x, b.y, rot + (wear >= 2 && h > 0.88 ? 0.22 : 0), u, y(u) - 0.045, 0.15, 0.045, 0.82, Math.atan(slope));
+      const [px, py] = at(u, 0);
+      this.put(deck, px, py, rot + (wear >= 2 && h > 0.88 ? 0.22 : 0), 0, y(u) - 0.045, 0.15, 0.045, 0.82, Math.atan(slope));
       if (wear && h > 0.6 && h < 0.78) {
         const [mx, my] = at(0, (h - 0.69) * 4);
         this.put(P.moss, mx, my, rot, u, y(u) + 0.002, 0.13, 0.025, 0.2, Math.atan(slope));
