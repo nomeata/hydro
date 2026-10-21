@@ -31,8 +31,8 @@
  *     opens to o = min(0.4, 0.15 + 0.3·dry) when ≥ 15 % are dry and the
  *     head `hU − sill` is ≥ 0.4 m; an open one (head ≥ 0.25 m, else it
  *     closes) eases off by 2·wet (at most half) while ≥ 5 % are wet, opens
- *     further by 0.25·dry while ≥ 5 % are dry, trims 15 % when none are
- *     dry, and otherwise stays (settled). Below o = 0.08 it closes.
+ *     further by 0.25·dry while ≥ 5 % are dry, and otherwise stays
+ *     (settled: neither many dry nor many wet). Below o = 0.08 it closes.
  * Changes of the opening smaller than 0.04 are not made. A change
  * waits at least two days after the last one (half a day for relief easing
  * off as the water goes down), except urgent ones: more relief, or closing
@@ -88,14 +88,13 @@ export const GATEKEEPING = {
   wetThrottle: 0.15,
   throttle: 0.4,
   wetClose: 0.3,
-  /** Controller gains: first opening o = min(openMax, openBase + openGain·dry); then o += moreGain·dry, o −= o·min(easeMax, easeGain·wet); trim when none are dry. */
+  /** Controller gains: first opening o = min(openMax, openBase + openGain·dry); then o += moreGain·dry, o −= o·min(easeMax, easeGain·wet). */
   openBase: 0.15,
   openGain: 0.3,
   openMax: 0.4,
   moreGain: 0.25,
   easeGain: 2,
   easeMax: 0.5,
-  trim: 0.15,
   /** Openings below this close the gate. */
   minOpening: 0.08,
   /** Changes of the opening smaller than this are not made. */
@@ -303,8 +302,7 @@ export class Gatekeeper {
       } else if (head >= K.headStay) {
         if (wet >= K.wetEase) fields = o * (1 - Math.min(K.easeMax, K.easeGain * wet));
         else if (dry >= K.dryMore) fields = Math.min(1, o + K.moreGain * dry);
-        else if (dry > 0) fields = o;
-        else fields = o * (1 - K.trim);
+        else fields = o;
       }
       if (fields < K.minOpening) fields = 0;
     }
