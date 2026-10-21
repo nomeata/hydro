@@ -38,7 +38,7 @@ describe('clearing snow', () => {
     const edge = w.idx(10, 20);
     clearSnow(w, edge);
     expect(w.snow[edge]).toBe(0);
-    expect(w.snow[w.idx(9, 20)]).toBeCloseTo(0.06, 6);
+    expect(w.snow[w.idx(9, 20)]).toBeCloseTo(0.03 + 0.03 * SNOW_CLEARING.bank, 6);
     // A bank holds at most SNOW_CLEARING.pile above the snow cleared; the rest spreads along the edge.
     for (let y = 10; y <= 30; y++) for (let x = 10; x <= 12; x++) clearSnow(w, w.idx(x, y));
     for (let i = 0; i < w.size; i++) expect(w.snow[i]).toBeLessThanOrEqual(0.03 + SNOW_CLEARING.pile + 1e-6);
@@ -58,7 +58,8 @@ describe('clearing snow', () => {
     for (let y = 10; y <= 30; y++) for (let x = 10; x <= 30; x++) clearSnow(w, w.idx(x, y), banks);
     // The banks are known (for drawing them), each holding at most `pile` above the snow around.
     const piles = snowPiles(w, banks);
-    expect(piles.length).toBe(banks.size * 3);
+    expect(piles.length).toBeGreaterThan(0);
+    expect(piles.length).toBeLessThanOrEqual(banks.size * 3);
     for (let k = 2; k < piles.length; k += 3) expect(piles[k]).toBeLessThanOrEqual(SNOW_CLEARING.pile + 1e-6);
     // Degree-day melt (soilwater.ts) at +10 °C, as on every cell.
     const perDay = PARAMS.meltPerDegreeDay * 10;
@@ -67,6 +68,27 @@ describe('clearing snow', () => {
     for (let i = 0; i < w.size; i++) w.snow[i] = Math.max(0, w.snow[i]! - 2 * perDay);
     // Two warm days in, the land around is bare and only low banks remain, soon gone.
     expect(Math.max(...Array.from(w.snow)) / perDay).toBeLessThan(2);
+  });
+
+  it('melts banks standing in flood water into it, and does not draw them', () => {
+    const w = flat();
+    const p = new PeopleSystem(w, 1, C, C);
+    const dry = w.idx(5, 5);
+    const wet = w.idx(9, 5);
+    for (const i of [dry, wet]) {
+      w.snow[i] = 0.02;
+      p.snowBanks.set(i, 0.02);
+    }
+    w.water[wet] = 0.1;
+    expect(snowPiles(w, p.snowBanks)).toEqual([5, 5, 0.019999999552965164]);
+    const before = total(w);
+    // Half a day of 30-step calls.
+    for (let k = 0; k < 10; k++) (p as unknown as { meltFloodedBanks(): void }).meltFloodedBanks();
+    expect(w.snow[wet]).toBe(0);
+    expect(p.snowBanks.has(wet)).toBe(false);
+    expect(w.water[wet]).toBeCloseTo(0.12, 6);
+    expect(w.snow[dry]).toBeCloseTo(0.02, 6);
+    expect(total(w)).toBeCloseTo(before, 6);
   });
 
   it('comes before sowing in a snowy spring, and the fields get sown', () => {

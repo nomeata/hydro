@@ -42,7 +42,7 @@ Fun on screen fast.
 ## M1c — Deep water ◐
 - ☑ Lateral groundwater (hourly Darcy diffusion), springs/bogs via overflow
 - ☑ Deep percolation sink so closed basins don't fill up over years
-- Snow + melt (☑ footprints in snow, slushy desire paths, snow shovelled off fields before sowing, ☑ onto low banks that melt within days, drawn as crusted heaps, fields readable under snow at every zoom); ☑ climate anomaly (wet/dry years, GAMEPLAY §4.3 P1)
+- Snow + melt (☑ footprints in snow, slushy desire paths, snow shovelled off fields before sowing, ☑ half onto low banks that melt within days (fast when flooded), drawn as low snow mounds, fields readable under snow at every zoom); ☑ climate anomaly (wet/dry years, GAMEPLAY §4.3 P1)
 - ☑ Phone bench page (`?bench=1`)
 - ☑ CPU cap on touch devices (sim duty cycle 45%, `?duty=` overrides)
 - Quality tiers (pending real-device numbers)

@@ -103,16 +103,17 @@ const TIRED_SPEED = 0.6;
  * patchy and sown straight into) is shovelled clear first, a work step of
  * `timer` people-ticks that clears the cell and up to `strip` cells of the
  * same field on either side along x (still to be sown), so clearing costs
- * the farmers little time. The snow goes onto the nearest cells beyond the
- * field within `reach` cells, a low bank along the field's edge: each holds
- * at most `pile` (m water) more than the cleared cell had, so that a bank
- * melts within a few warm days after the snow around it rather than
- * standing as a deep heap for weeks (the farmers spread it along the
- * edge); what does not fit, and the snow deep inside a large field with no
- * edge in reach, is trodden in and soaks into the soil. Either way no water
- * is made or lost.
+ * the farmers little time. Only a share `bank` of the snow is thrown onto
+ * the nearest cells beyond the field within `reach` cells, a low bank along
+ * the field's edge: each holds at most `pile` (m water) more than the
+ * cleared cell had, so that a bank melts within a day or two after the snow
+ * around it rather than standing as a deep heap for weeks (the farmers
+ * spread it along the edge); the rest, what does not fit, and the snow deep
+ * inside a large field with no edge in reach, is trodden in and soaks into
+ * the soil. A bank flooded deeper than `flooded` (m) melts into the water at
+ * `floodMelt` (m water per day). Either way no water is made or lost.
  */
-export const SNOW_CLEARING = { min: 0.0015, timer: 50, reach: 3, strip: 1, pile: 0.06 };
+export const SNOW_CLEARING = { min: 0.0015, timer: 50, reach: 3, strip: 1, pile: 0.025, bank: 0.5, flooded: 0.03, floodMelt: 0.1 };
 
 /** Ring offsets (dx, dy) by distance, nearest first, for `clearSnow`. */
 const CLEAR_RING: [number, number][] = (() => {
@@ -135,7 +136,7 @@ export function clearSnow(w: World, i: number, banks?: Map<number, number>): voi
   const x = i % W;
   const y = (i / W) | 0;
   const top = swe + SNOW_CLEARING.pile;
-  let left = swe;
+  let left = swe * SNOW_CLEARING.bank;
   for (const [dx, dy] of CLEAR_RING) {
     const nx = x + dx;
     const ny = y + dy;
@@ -149,9 +150,10 @@ export function clearSnow(w: World, i: number, banks?: Map<number, number>): voi
     w.snow[j]! += put;
     if (banks) banks.set(j, (banks.get(j) ?? 0) + put);
     left -= put;
-    if (left <= 0) return;
+    if (left <= 0) break;
   }
-  // No room on a bank in reach: trodden into the soil (any excess stays on top).
+  // The rest, and what found no room on a bank in reach: trodden into the soil (any excess stays on top).
+  left += swe * (1 - SNOW_CLEARING.bank);
   const cap = w.soil[i]! * SOIL_PROPS[w.soilType[i]!]!.porosity;
   const soak = Math.max(0, Math.min(left, cap - w.ground[i]!));
   w.ground[i]! += soak;
@@ -171,6 +173,8 @@ export function snowPiles(w: World, banks: ReadonlyMap<number, number>): number[
   const { width: W, height: H, snow, landuse, water } = w;
   const out: number[] = [];
   for (const [i, piled] of banks) {
+    // A flooded bank is melting into the water (meltFloodedBanks), not drawn.
+    if (water[i]! > SNOW_CLEARING.flooded) continue;
     const x = i % W;
     const y = (i / W) | 0;
     let ref = Infinity;
@@ -760,6 +764,7 @@ export class PeopleSystem {
       this.trimSnowBanks();
     }
     if (step % 30 === 0) {
+      this.meltFloodedBanks();
       this.floodHouses(time.day);
       this.bridges.flood(time.day);
     }
@@ -3329,6 +3334,20 @@ export class PeopleSystem {
       snowBanks: this.snowBanks.size ? [...this.snowBanks].flat() : undefined,
       carts: this.carts.length ? this.carts : undefined,
     });
+  }
+
+  /** Snow banks standing in water melt into it (SNOW_CLEARING.floodMelt; called every 30 steps). */
+  private meltFloodedBanks(): void {
+    const { snow, water } = this.world;
+    const m = (SNOW_CLEARING.floodMelt * 30) / STEPS_PER_DAY;
+    for (const [i, v] of this.snowBanks) {
+      if (water[i]! <= SNOW_CLEARING.flooded) continue;
+      const d = Math.min(m, v, snow[i]!);
+      snow[i]! -= d;
+      water[i]! += d;
+      if (v - d < SNOW_BANK_MIN) this.snowBanks.delete(i);
+      else this.snowBanks.set(i, v - d);
+    }
   }
 
   /** Banks keep at most the snow their cell holds; melted ones are forgotten. */
