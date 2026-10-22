@@ -343,7 +343,11 @@ function carveGate(w: World): void {
     for (let x = x0; x <= x1; x++) {
       const i = w.idx(x, y);
       const edge = x === x0 || x === x1 || y === y0 || y === y1;
-      if (edge) set(i, Math.max(w.terrain(i), ring));
+      // (The ring is heaped earth: a bank a gate can go into.)
+      if (edge) {
+        set(i, Math.max(w.terrain(i), ring));
+        w.flags[i]! |= CellFlag.Fill;
+      }
       else {
         set(i, Math.min(w.terrain(i), floor));
         w.water[i] = level - w.terrain(i);
@@ -388,7 +392,7 @@ function stageGate(sim: Simulation): void {
   const G = SCENE_LAYOUT.gate;
   const v = G.village;
   const gy = G.gate.y;
-  sim.command({ type: 'placeGate', points: [[G.gate.x, gy]], width: 1, height: 0 });
+  sim.command({ type: 'placeGate', points: [[G.gate.x, gy]] });
   buildNow(sim);
   const R = Math.PI / 2;
   sim.people!.stage({

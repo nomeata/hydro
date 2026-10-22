@@ -37,7 +37,7 @@ import { StructuresLayer } from './structures/structures';
 import { WheelPreview } from './structures/wheelPreview';
 import { BrushCursor } from './brushCursor';
 import { CellTint } from './cellTint';
-import { GatePreview } from './structures/gatePreview';
+import { GatePreview, GateSites } from './structures/gatePreview';
 import { PowerLayer } from './power/power';
 import { makeLiningTexture } from './structures/lining';
 import { FogField } from './fog';
@@ -110,6 +110,8 @@ export class GameRenderer {
   private readonly ghostMat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, color: 0xd8f0ff, emissive: 0x203040 });
   /** The gate tool's hover ghost. */
   readonly gatePreview: GatePreview;
+  /** The gate tool's site marks. */
+  readonly gateSites: GateSites;
   /** A weir being drawn or edited, as it will stand (the weir tool, the selection's handles). */
   readonly weirGhost: GatePreview;
   /** Weirs the crew is still building, shown whole as a ghost (their plan cells are not highlighted). */
@@ -270,6 +272,7 @@ export class GameRenderer {
     this.powerGhost = new PowerLayer(this.scene, this.heights, this.ghostMat);
     this.powerGhost.group.renderOrder = 12;
     this.gatePreview = new GatePreview(this.scene, this.heights);
+    this.gateSites = new GateSites(this.scene, this.heights);
     this.weirGhost = new GatePreview(this.scene, this.heights);
     this.buildGhost = new GatePreview(this.scene, this.heights, 0.35);
     this.planRaw = data.plan.slice();
@@ -380,6 +383,7 @@ export class GameRenderer {
       this.wheelPreview.refreshHeights();
       this.power.refreshHeights();
       this.gatePreview.refreshHeights();
+      this.gateSites.refreshHeights();
       this.weirGhost.refreshHeights();
       this.buildGhost.refreshHeights();
       this.cellTint.refreshHeights();
@@ -646,6 +650,7 @@ export class GameRenderer {
     this.millWheels.update(clock.playDt, this.flow.gameSpeed);
     this.structures.update(clock.playDt);
     this.wheelPreview.update(dt);
+    this.gateSites.update(dt);
     this.brushCursor.update();
     this.cellTint.update();
     this.power.update(adt);

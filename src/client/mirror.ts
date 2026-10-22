@@ -3,7 +3,7 @@
  * kept current from snapshots. Implements PlanGrid so tools can preview plans
  * with exactly the same rasterisation as the simulation.
  */
-import { FIELD_BYTES, type Snapshot } from '../shared/protocol';
+import { FIELD_BYTES, FIXED_BRUSH, FIXED_CANAL, FIXED_WALL, type Snapshot } from '../shared/protocol';
 import { keepsPlan } from '../sim/plans/plans';
 import type { PlanGrid } from '../sim/plans/plans';
 import type { ReadyData } from './simClient';
@@ -18,7 +18,7 @@ export class WorldMirror implements PlanGrid {
   revealed: Uint8Array | null;
   /** Land use per cell (from the fields snapshots; plans go round houses). */
   readonly landuse: Uint8Array;
-  /** Cells the brushes leave alone (Snapshot.fixed; 1 = fixed). */
+  /** Snapshot.fixed: cells the brushes leave alone (FIXED_BRUSH), banks and weirs (FIXED_WALL), canals (FIXED_CANAL). */
   fixed: Uint8Array;
   /** Cells under water (1; more than 5 cm, from the last snapshot's depth): the brushes' earth stands at the wet angle of repose there. */
   readonly wet: Uint8Array;
@@ -37,7 +37,17 @@ export class WorldMirror implements PlanGrid {
 
   /** Whether the brushes leave cell i alone (as the sim decides: Simulation.isFixed). */
   isFixed(i: number): boolean {
-    return this.fixed[i] === 1 || (this.revealed !== null && this.revealed[i]! < 128);
+    return (this.fixed[i]! & FIXED_BRUSH) !== 0 || (this.revealed !== null && this.revealed[i]! < 128);
+  }
+
+  /** Whether cell i is a raised bank or weir a gate can go into (the sim's Structures.gateGrid). */
+  isWall(i: number): boolean {
+    return (this.fixed[i]! & FIXED_WALL) !== 0;
+  }
+
+  /** Whether cell i is a dug canal. */
+  isCanal(i: number): boolean {
+    return (this.fixed[i]! & FIXED_CANAL) !== 0;
   }
 
   /** Whether cell (x, y) is known land (revealed ≥ 128). */

@@ -2,7 +2,7 @@
  * Simulation orchestrator: owns the world and runs all subsystems at their
  * rates. Independent of workers and DOM, so it runs the same in Node tests.
  */
-import { FIELD_BYTES, type Command, type SimTime } from '../shared/protocol';
+import { FIELD_BYTES, FIXED_BRUSH, FIXED_CANAL, FIXED_WALL, type Command, type SimTime } from '../shared/protocol';
 import { Rng } from '../shared/rng';
 import { timeAt, seaLevelTemperature } from './climate/calendar';
 import { Weather, type WeatherState } from './climate/weather';
@@ -324,11 +324,22 @@ export class Simulation {
     return lu !== LandUse.Bridge || !(this.people?.bridges.onDeck(i) ?? false);
   }
 
-  /** The brushes' fixed cells for the client (Snapshot.fixed; fog is the client's own). */
+  /**
+   * The brushes' fixed cells for the client (Snapshot.fixed: FIXED_BRUSH;
+   * fog is the client's own), and the cells the gate tool sees as a bank or
+   * weir (FIXED_WALL) or a canal (FIXED_CANAL).
+   */
   packFixed(out: Uint8Array): void {
     const w = this.world;
     const { landuse, flags, plan } = w;
-    for (let i = 0; i < out.length; i++) out[i] = this.fixedGround(i, landuse[i]!) || (flags[i]! & CellFlag.Structure) !== 0 || !Number.isNaN(plan[i]!) ? 1 : 0;
+    const wall = this.structures.gateGrid().wall;
+    for (let i = 0; i < out.length; i++) {
+      const f = flags[i]!;
+      let v = this.fixedGround(i, landuse[i]!) || (f & CellFlag.Structure) !== 0 || !Number.isNaN(plan[i]!) ? FIXED_BRUSH : 0;
+      if ((f & CellFlag.Fill) !== 0 && wall(i)) v |= FIXED_WALL;
+      if ((f & CellFlag.Canal) !== 0) v |= FIXED_CANAL;
+      out[i] = v;
+    }
   }
 
   /**
@@ -555,6 +566,13 @@ export class Simulation {
         this.lookDirty = true;
       }
       this.power.daily();
+      // Sluice gates' sills follow a bed dug or scoured deeper beside them.
+      const sills = this.structures.followSills();
+      if (sills.length) {
+        this.crew.enqueue(sills);
+        this.planDirty = true;
+        this.syncStructureFlags();
+      }
       // The villagers' grid: fallen poles, poles in the way, and the next lines.
       this.power.groundCheck(today);
       this.power.planGrid(today);
@@ -633,7 +651,7 @@ export class Simulation {
         this.removeStructure(cmd.kind, cmd.id);
         break;
       case 'placeGate': {
-        const r = this.structures.placeGate(cmd.points, Math.max(1, Math.min(3, cmd.width)), cmd.height);
+        const r = this.structures.placeGate(cmd.points);
         if (r) {
           this.achievements.planned(w, r.cells);
           this.crew.enqueue(r.cells);
