@@ -38,3 +38,32 @@ export function undershotSign(yaw: number, vx: number, vy: number, prev = 1): nu
   if (Math.abs(along) <= 0.15 * speed || speed < 1e-3) return prev;
   return along > 0 ? 1 : -1;
 }
+
+/** A noria's axle may lie this far (radians) off the line to its head cell before the trough bends. */
+const AXLE_SNAP = 0.35;
+
+/**
+ * The direction (radians, cell axes, as `StructureInfo.rot`) of a noria's
+ * axle. A noria stands with its wheel plane along the current, so the axle
+ * lies across it, pointing to the bank its trough leads to (towards
+ * `(hx, hy)`, the head cell relative to the wheel). Without a current to
+ * go by, or when the line to the head is nearly across it anyway, the axle
+ * points straight at the head (`rot`): one straight trough.
+ */
+export function noriaAxle(rot: number, hx: number, hy: number, vx: number, vy: number): number {
+  const speed = Math.hypot(vx, vy);
+  if (speed < 0.05) return rot;
+  // Across the current, on the head's side.
+  let ax = -vy / speed;
+  let ay = vx / speed;
+  const tx = hx || hy ? hx : Math.cos(rot);
+  const ty = hx || hy ? hy : Math.sin(rot);
+  if (ax * tx + ay * ty < 0) {
+    ax = -ax;
+    ay = -ay;
+  }
+  const a = Math.atan2(ay, ax);
+  const t = Math.atan2(ty, tx);
+  const off = Math.abs(Math.atan2(Math.sin(a - t), Math.cos(a - t)));
+  return off <= AXLE_SNAP ? t : a;
+}
