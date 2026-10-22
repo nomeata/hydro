@@ -15,7 +15,7 @@
  * state; wheels spin (only their own instances are rewritten per frame).
  */
 import * as THREE from 'three';
-import { undershotSign, wheelQuaternion } from '../wheelSpin';
+import { noriaAxle, undershotSign, wheelQuaternion } from '../wheelSpin';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LINING_QUAY, type StructureInfo } from '../../shared/protocol';
 import { heightToY, type HeightSampler } from '../coords';
@@ -259,6 +259,8 @@ export class StructuresLayer {
   private spin = new Map<number, number>();
   /** ±1 per wheel id: the way it turns, its bottom moving with the current (wheelSpin.ts). */
   private spinDir = new Map<number, number>();
+  /** Axle direction per wheel id (wheelSpin.ts noriaAxle), fixed once the current there is known; `key` is where it stands. */
+  private axle = new Map<number, { key: string; a: number }>();
   private readonly vtmp: [number, number] = [0, 0];
   /** Water velocity (m/s, cell axes) at a cell; set by the renderer. */
   flowAt: ((x: number, y: number, out: [number, number]) => [number, number]) | null = null;
@@ -401,6 +403,8 @@ export class StructuresLayer {
       this.lift.set(s.id, next);
       moved = true;
     }
+    // A wheel turns its plane along the current once the current there is known.
+    for (const s of this.list) if (s.kind === 'wheel' && !this.axleKnown(s) && this.axleKnown(s, true)) moved = true;
     if (moved) this.layout();
     // Wheels turn with the current: ω ∝ its speed, the bottom moving with the water.
     let spun = false;
@@ -410,7 +414,7 @@ export class StructuresLayer {
       let dir = this.spinDir.get(s.id) ?? 1;
       if (this.flowAt) {
         const [vx, vy] = this.flowAt(s.x, s.y, this.vtmp);
-        dir = undershotSign(-s.rot, vx, vy, dir);
+        dir = undershotSign(-this.axleOf(s), vx, vy, dir);
         this.spinDir.set(s.id, dir);
       }
       this.spin.set(s.id, ((this.spin.get(s.id) ?? 0) + dir * dt * g * WHEEL_SPIN * s.speed) % (Math.PI * 2));
@@ -506,7 +510,7 @@ export class StructuresLayer {
       const { yc, d } = this.wheelFrame(wh);
       this.ensure(piece, piece.n + 1);
       this.p.set(wh.x + 0.5, yc, wh.y + 0.5);
-      wheelQuaternion(-wh.rot, this.spin.get(wh.id) ?? 0, this.q);
+      wheelQuaternion(-this.axleOf(wh), this.spin.get(wh.id) ?? 0, this.q);
       // Taller wheels are built broader too.
       this.s.set(wheelBreadth(d), d, d);
       this.m.compose(this.p, this.q, this.s);
@@ -516,44 +520,81 @@ export class StructuresLayer {
     piece.mesh.instanceMatrix.needsUpdate = true;
   }
 
+  /** Whether the wheel's axle is settled (`compute`: settle it now if the current is known). */
+  private axleKnown(wh: StructureInfo, compute = false): boolean {
+    if (compute) this.axleOf(wh);
+    return this.axle.get(wh.id)?.key === `${wh.x},${wh.y},${wh.x2},${wh.y2}`;
+  }
+
+  /** The direction of a wheel's axle (radians, cell axes): across the current, towards its trough's bank. */
+  private axleOf(wh: StructureInfo): number {
+    const key = `${wh.x},${wh.y},${wh.x2},${wh.y2}`;
+    const known = this.axle.get(wh.id);
+    if (known?.key === key) return known.a;
+    if (!this.flowAt) return wh.rot;
+    const [vx, vy] = this.flowAt(wh.x, wh.y, this.vtmp);
+    if (Math.hypot(vx, vy) < 0.05) return wh.rot;
+    const a = noriaAxle(wh.rot, (wh.x2 ?? wh.x) - wh.x, (wh.y2 ?? wh.y) - wh.y, vx, vy);
+    this.axle.set(wh.id, { key, a });
+    return a;
+  }
+
   /**
    * A water wheel: two posts in the river carrying the axle, the wheel
-   * (layoutNorias), and a trough on stilts from beside the wheel's top to
-   * the head cell, with water running in it and spilling out at the end.
+   * (layoutNorias) with its plane along the current, and a trough on
+   * stilts from beside the wheel's top (out along the axle, bending
+   * towards the head cell if that lies off the axle's line) to the head
+   * cell, with water running in it and spilling out at the end.
    */
   private layoutWheel(wh: StructureInfo): void {
     const P = this.pieces;
     const { yc, d, yTrough } = this.wheelFrame(wh);
     const bed = heightToY(wh.sill);
     const prog = Math.min(1, Math.max(0, wh.progress));
-    const c = Math.cos(wh.rot);
-    const sn = Math.sin(wh.rot);
+    const ax = this.axleOf(wh);
     // Posts either side of the wheel, rising with the work (stouter for a tall wheel).
     const half = 0.17 * wheelBreadth(d);
     const post = 0.08 + 0.02 * d;
-    for (const u of [-half, half]) this.put(P.beam, wh.x, wh.y, wh.rot, u, bed - 0.05, post, (yc + 0.06 - bed + 0.05) * Math.max(0.15, prog), post * 1.2);
+    for (const u of [-half, half]) this.put(P.beam, wh.x, wh.y, ax, u, bed - 0.05, post, (yc + 0.06 - bed + 0.05) * Math.max(0.15, prog), post * 1.2);
     if (prog < 0.5) return;
-    this.put(P.beam, wh.x, wh.y, wh.rot, 0, yc - 0.03, 2 * half + 0.12, 0.06, 0.06);
-    // The trough: from beside the wheel's top to over the head cell.
-    const u0 = 0.1 * wheelBreadth(d);
-    const u1 = Math.max(u0 + 0.3, Math.hypot((wh.x2 ?? wh.x) - wh.x, (wh.y2 ?? wh.y) - wh.y) + 0.05);
+    this.put(P.beam, wh.x, wh.y, ax, 0, yc - 0.03, 2 * half + 0.12, 0.06, 0.06);
     const tH = 0.09;
-    const tFrom = prog >= 1 ? u1 : u0 + (u1 - u0) * (prog - 0.5) * 2;
-    this.put(P.trough, wh.x, wh.y, wh.rot, (u0 + tFrom) / 2, yTrough, tFrom - u0, tH, 0.2);
+    const u0 = 0.1 * wheelBreadth(d);
+    const hx = (wh.x2 ?? wh.x) - wh.x;
+    const hy = (wh.y2 ?? wh.y) - wh.y;
+    const hl = Math.hypot(hx, hy);
+    // The trough leaves the wheel along the axle, to its elbow just past the post
+    // (or straight on to the head when the axle points at it).
+    const straight = Math.abs(Math.atan2(Math.sin(ax - wh.rot), Math.cos(ax - wh.rot))) < 1e-6;
+    const uE = straight ? u0 : half + 0.18;
+    const ex = wh.x + Math.cos(ax) * uE;
+    const ey = wh.y + Math.sin(ax) * uE;
+    // From the elbow on to just past the head cell's centre.
+    const end = hl > 0 ? 0.05 / hl + 1 : 1;
+    const tx = wh.x + (hl > 0 ? hx * end : Math.cos(ax) * (u0 + 0.3));
+    const ty = wh.y + (hl > 0 ? hy * end : Math.sin(ax) * (u0 + 0.3));
+    const rot2 = Math.atan2(ty - ey, tx - ex);
+    const L2 = Math.max(0.3 - (uE - u0), Math.hypot(tx - ex, ty - ey));
+    const grow = prog >= 1 ? 1 : (prog - 0.5) * 2;
+    if (!straight) this.put(P.trough, wh.x, wh.y, ax, (u0 + uE + 0.1) / 2, yTrough, uE + 0.1 - u0, tH, 0.2);
+    this.put(P.trough, ex, ey, rot2, (L2 * grow) / 2, yTrough, L2 * grow, tH, 0.2);
     // Stilts under it, down to the ground (or the river bed).
-    for (let u = u0 + 0.25; u < tFrom; u += 0.6) {
-      const g = heightToY(this.heights.terrainAt(wh.x + c * u, wh.y + sn * u));
+    const c2 = Math.cos(rot2);
+    const s2 = Math.sin(rot2);
+    for (let u = straight ? 0.25 : 0; u < L2 * grow; u += 0.6) {
+      const g = heightToY(this.heights.terrainAt(ex + c2 * u, ey + s2 * u));
       // (Stouter the higher they stand: an aqueduct onto a high terrace.)
       const t = 0.05 + 0.025 * Math.max(0, yTrough - g);
-      if (yTrough - g > 0.04) this.put(P.beam, wh.x, wh.y, wh.rot, u, g - 0.03, t, yTrough - g + 0.03, t);
+      if (yTrough - g > 0.04) this.put(P.beam, ex, ey, rot2, u, g - 0.03, t, yTrough - g + 0.03, t);
     }
     if (prog < 1 || !wh.open) return;
     // Running water in the trough, and a little fall into the head cell.
-    this.put(P.flow, wh.x, wh.y, wh.rot, (u0 + u1) / 2, yTrough + 0.025, u1 - u0 - 0.04, 0.035, 0.13);
-    const ground = heightToY(this.heights.terrainAt(wh.x + c * u1, wh.y + sn * u1));
-    this.put(P.flow, wh.x, wh.y, wh.rot, u1 + 0.03, ground, 0.05, yTrough + 0.06 - ground, 0.11);
+    if (!straight) this.put(P.flow, wh.x, wh.y, ax, (u0 + uE + 0.06) / 2, yTrough + 0.025, uE + 0.06 - u0 - 0.02, 0.035, 0.13);
+    this.put(P.flow, ex, ey, rot2, L2 / 2 + (straight ? 0 : -0.02), yTrough + 0.025, L2 - 0.04 + (straight ? 0 : 0.04), 0.035, 0.13);
+    const ground = heightToY(this.heights.terrainAt(ex + c2 * L2, ey + s2 * L2));
+    this.put(P.flow, ex, ey, rot2, L2 + 0.03, ground, 0.05, yTrough + 0.06 - ground, 0.11);
     // Water tipping from the top bucket into the trough.
-    this.put(P.flow, wh.x, wh.y, wh.rot, 0.05, yTrough + 0.03, 0.05, yc + d / 2 - yTrough - 0.03, 0.08);
+    this.put(P.flow, wh.x, wh.y, ax, 0.05, yTrough + 0.03, 0.05, yc + d / 2 - yTrough - 0.03, 0.08);
   }
 
   private layoutGate(g: StructureInfo): void {
