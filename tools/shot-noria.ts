@@ -3,7 +3,8 @@
  * seed-3 world (as e2e/wheel.spec.ts does), builds it, and screenshots it
  * close up in 3 frames, the wheel advanced by the renderer's own spin
  * direction between them, with the local current drawn as a blue arrow.
- *   npx tsx tools/shot-noria.ts [--url http://localhost:4233/] [--out out] [--yaw 0.6] [--step 0.12]
+ *   npx tsx tools/shot-noria.ts [--url http://localhost:4233/] [--out out] [--yaw 0.6] [--step 0.12] [--along]
+ *   (--along: a bank cell downstream or upstream, not across the current)
  */
 import { chromium } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -29,7 +30,7 @@ page.on('pageerror', (e) => console.log(`[pageerror] ${e}`));
 await page.goto(`${url}?test=1&seed=3&size=128&cheat=1`);
 await page.waitForFunction(() => (window as any).__hydro, null, { timeout: 120_000 });
 await page.waitForSelector('#loading.done', { state: 'attached', timeout: 120_000 });
-const site = await page.evaluate(() => {
+const site = await page.evaluate((alongOpt) => {
   const h = (window as any).__hydro;
   const m = h.mirror;
   const depth: Float32Array = h.renderer.heights.depth;
@@ -52,13 +53,14 @@ const site = await page.evaluate(() => {
           const d = Math.hypot(x - startX, y - startY);
           // The bank across the current (as a player draws it).
           const sp = Math.hypot(vel[2 * i]!, vel[2 * i + 1]!);
-          if (Math.abs(dx! * vel[2 * i]! + dy! * vel[2 * i + 1]!) > 0.3 * sp) break;
+          const along = Math.abs(dx! * vel[2 * i]! + dy! * vel[2 * i + 1]!) / sp;
+          if (alongOpt ? along < 0.7 : along > 0.3) break;
           if (lift > 0.5 && lift < 4.5 && (!best || d < best.d)) best = { x, y, hx, hy, d };
           break;
         }
     }
   return best;
-});
+}, args.includes('--along'));
 console.log('site', JSON.stringify(site));
 await page.evaluate((s) => (window as any).__hydro.client.command({ type: 'placeWheel', points: [[s.x, s.y], [s.hx, s.hy]] }), site);
 await page.waitForFunction(() => (window as any).__hydro.renderer.structures.structures.some((s: any) => s.kind === 'wheel'), null, { timeout: 30_000 });
