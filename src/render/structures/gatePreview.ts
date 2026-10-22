@@ -143,7 +143,8 @@ export class GateSites {
     const s = new THREE.Vector3(k, k, k);
     for (let j = 0; j < n; j++) {
       const st = this.sites[j]!;
-      const y = heightToY(Math.max(this.heights.terrainAt(st.x, st.y), st.top));
+      // On the crest, or on the water standing over it.
+      const y = heightToY(Math.max(this.heights.terrainAt(st.x, st.y) + this.heights.depthAt(st.x, st.y), st.top));
       p.set(st.x + 0.5, y + 0.08, st.y + 0.5);
       m.compose(p, q, s);
       this.rings.setMatrixAt(j, m);
