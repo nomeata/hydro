@@ -31,6 +31,11 @@ function channel(inflow = 0, soil = 0): World {
   return w;
 }
 
+/** Water 1 m deep in the channel up to column `x1` (a pond behind a bank there: a gate goes only where it holds water back). */
+function pond(w: World, x1: number): void {
+  for (let y = 13; y <= 19; y++) for (let x = 1; x <= x1; x++) w.water[w.idx(x, y)] = 1;
+}
+
 async function build(sim: Simulation, maxDays = 30): Promise<void> {
   for (let d = 0; d < maxDays * 10; d++) {
     if (sim.crew.pending === 0 && !sim.structures.pending) return;
@@ -112,16 +117,14 @@ describe('weir vs dike', () => {
     expect(c.structures.weirs[0]!.top).toBeCloseTo(foot + 4, 5);
   });
 
-  it('a gate drawn across a channel builds an earth dam (no weir needed) with the gate at its lowest point', async () => {
+  it('a gate never builds a dam of its own: drawn across a bare channel, nothing is placed', () => {
     const sim = new Simulation(channel(), 1);
-    sim.command({ type: 'placeGate', points: [[30, 10], [30, 22]], width: 1, height: 2 });
-    expect(sim.structures.weirs.length).toBe(0);
-    expect(sim.structures.gates.length).toBe(1);
-    const g = sim.structures.gates[0]!;
-    expect(g.top - g.sill).toBeCloseTo(2, 5);
-    await build(sim, 15);
-    expect(ground(sim.world, 30, 12)).toBeCloseTo(g.top, 1);
-  }, 60_000);
+    pond(sim.world, 28);
+    sim.command({ type: 'placeGate', points: [[30, 10], [30, 22]] });
+    sim.command({ type: 'placeGate', points: [[30, 16]] });
+    expect(sim.structures.gates.length).toBe(0);
+    expect(sim.crew.pending).toBe(0);
+  });
 });
 
 describe('editing a weir', () => {
@@ -255,7 +258,8 @@ describe('shaping the ground and what stands on it', () => {
 
     const g = new Simulation(channel(), 1);
     g.command({ type: 'shapeLine', tool: 'raise', points: [[40, 6], [40, 26]], width: 2, amount: 3 });
-    g.command({ type: 'placeGate', points: [[40, 16]], width: 1, height: 0 });
+    pond(g.world, 38);
+    g.command({ type: 'placeGate', points: [[40, 16]] });
     expect(g.structures.gates.length).toBe(1);
     g.command({ type: 'placePoles', points: [[44, 6], [44, 12]] });
     g.power.crewWork(1);
@@ -272,7 +276,8 @@ describe('shaping the ground and what stands on it', () => {
     const w = sim.world;
     sim.command({ type: 'shapeLine', tool: 'raise', points: [[40, 6], [40, 26]], width: 2, amount: 3 });
     await build(sim, 10);
-    sim.command({ type: 'placeGate', points: [[40, 16]], width: 1, height: 0 });
+    pond(w, 38);
+    sim.command({ type: 'placeGate', points: [[40, 16]] });
     await build(sim, 10);
     const gate = sim.structures.gates[0]!;
     expect(ground(w, 40, 16)).toBeLessThan(gate.top - 1);
@@ -325,7 +330,8 @@ describe('the Remove brush', () => {
       const sim = stocked(built ? 1 : 0);
       const w = sim.world;
       if (built) await build(sim, 20);
-      sim.command({ type: 'placeGate', points: [[20, 16]], width: 1, height: 0 });
+      pond(w, 18);
+      sim.command({ type: 'placeGate', points: [[20, 16]] });
       expect(sim.structures.gates.length).toBe(1);
       if (built) {
         await build(sim, 10);

@@ -43,7 +43,8 @@ function canalFed(q: number): World {
       w.soilType[i] = SoilType.Rock;
       w.soil[i] = 0;
       w.bedrock[i] = river ? 20.6 - 0.01 * y : canal ? 19.5 : 22.5;
-      w.water[i] = 0;
+      // (Some water already in the canal: the gate parts it from the lower canal below.)
+      w.water[i] = canal ? 0.5 : 0;
     }
   setRiver(w, q);
   for (let x = 2; x <= 8; x++) w.flags[w.idx(x, w.height - 1)] |= CellFlag.Outlet;
@@ -96,6 +97,8 @@ function valley(pool = 1.5): World {
       if (x < 19) w.water[i] = pool;
       // A dug canal: its water wets the fields beside it (CAPILLARY.canalReach).
       if (canal && x > 21) w.flags[i] |= CellFlag.Canal;
+      // The dike is heaped earth (a gate goes only into a raised bank).
+      if (x === 20) w.flags[i] |= CellFlag.Fill;
       w.revealed[i] = 255;
     }
   for (let y = 31; y <= 33; y++) w.flags[w.idx(W - 1, y)] |= CellFlag.Outlet;
@@ -134,7 +137,7 @@ async function withGate(opts: { village: boolean; pool?: number; season?: number
       ],
     });
   }
-  sim.command({ type: 'placeGate', points: [[20, 32]], width: 1, height: 0 });
+  sim.command({ type: 'placeGate', points: [[20, 32]] });
   await build(sim);
   return sim;
 }

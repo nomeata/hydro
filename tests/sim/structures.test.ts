@@ -29,6 +29,11 @@ function channel(inflow = 0): World {
   return w;
 }
 
+/** Water 1 m deep in the channel up to column `x1` (a pond behind a bank there: a gate goes only where it holds water back). */
+function pond(w: World, x1: number): void {
+  for (let y = 13; y <= 19; y++) for (let x = 1; x <= x1; x++) w.water[w.idx(x, y)] = 1;
+}
+
 /** Run until all plans and structures are built (or `maxDays` passed). */
 async function build(sim: Simulation, maxDays = 30): Promise<void> {
   for (let d = 0; d < maxDays * 10; d++) {
@@ -180,7 +185,8 @@ describe('sluice gate', () => {
     const sim = new Simulation(w, seed);
     sim.command({ type: 'shapeLine', tool: 'raise', points: [[32, 6], [32, 26]], width: 2, amount: 3 });
     await build(sim, 10);
-    sim.command({ type: 'placeGate', points: [[32, 16]], width: 1, height: 0 });
+    pond(w, 30);
+    sim.command({ type: 'placeGate', points: [[32, 16]] });
     expect(sim.structures.gates.length).toBe(1);
     await build(sim, 10);
     for (let y = 13; y <= 19; y++) for (let x = 1; x <= 31; x++) {
@@ -224,21 +230,26 @@ describe('sluice gate', () => {
     expect(g.open).toBe(false);
   }, 60_000);
 
-  it('builds a dike with a gate when drawn across a channel', async () => {
-    const w = channel(1.0);
-    const sim = new Simulation(w, 1);
-    sim.command({ type: 'placeGate', points: [[30, 8], [30, 24]], width: 3, height: 2 });
+  it('its sill follows the pond bed down when it is dug deeper beside the gate (checked daily)', async () => {
+    const sim = await reservoir();
+    const w = sim.world;
     const g = sim.structures.gates[0]!;
-    expect(g.width).toBe(3);
-    expect(g.rot).toBeCloseTo(Math.PI / 2);
-    expect(g.top - g.sill).toBeCloseTo(2, 1);
+    const sill0 = g.sill;
+    // Dredge the pond beside the gate 1 m deeper (outside the passage).
+    const own = new Set(g.passage);
+    for (let y = 13; y <= 19; y++)
+      for (let x = 20; x <= 31; x++) {
+        const i = w.idx(x, y);
+        if (!own.has(i)) w.bedrock[i]! -= 1;
+      }
+    // Below the gate the channel is lower still: the pond bed sets the sill.
+    for (let y = 13; y <= 19; y++) for (let x = 33; x <= 45; x++) w.bedrock[w.idx(x, y)]! -= 2;
+    await runDays(sim, 1);
+    expect(g.sill).toBeLessThan(sill0 - 0.5);
+    expect(g.width).toBe(1);
     await build(sim, 10);
-    expect(g.progress).toBe(1);
-    // Held closed (no flood relief): the river backs up behind the gate; nothing gets through below the top.
-    sim.command({ type: 'toggleGate', id: g.id, open: false });
-    await runDays(sim, 4);
-    expect(surf(w, 26, 16)).toBeGreaterThan(g.sill + 0.8);
-    expect(surf(w, 26, 16)).toBeLessThan(g.top + 0.3);
+    expect(w.terrain(w.idx(32, 16))).toBeCloseTo(g.sill, 1);
+    for (const c of g.passage) expect(w.terrain(c)).toBeLessThan(g.sill + 0.06);
   }, 60_000);
 
   it('is deterministic and survives save/load', async () => {
