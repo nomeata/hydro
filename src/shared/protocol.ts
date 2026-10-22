@@ -116,6 +116,11 @@ export interface WorldInfo {
  */
 export const LOOK_CHANNELS = 4;
 
+/** Bits of Snapshot.fixed. */
+export const FIXED_BRUSH = 1;
+export const FIXED_WALL = 2;
+export const FIXED_CANAL = 4;
+
 /** Bytes per cell in Snapshot.fields: LandUse, crop stage (footfall on path cells), crop stress, field crop (FieldCrop). */
 export const FIELD_BYTES = 4;
 /**
@@ -353,8 +358,10 @@ export interface Snapshot {
   /** The last sculpt command (its `seq`) applied before this snapshot. */
   sculptSeq?: number;
   /**
-   * Cells the brushes leave alone (1): houses, mills, wells, stores, ruins,
-   * footbridges, structures and their works in progress. When changed.
+   * Bits per cell: FIXED_BRUSH, cells the brushes leave alone (houses,
+   * mills, wells, stores, ruins, footbridges, structures and their works in
+   * progress); FIXED_WALL, a raised bank or weir a gate can go into;
+   * FIXED_CANAL, a dug canal. When changed.
    */
   fixed?: Uint8Array;
   /** People and animals. Not pooled (small). */
@@ -432,11 +439,12 @@ export type Command =
    */
   | { type: 'removeStructure'; kind: SelectableKind; id: number }
   /**
-   * Sluice gate. A tap (or a very short stroke) on a dike or weir puts a
-   * gate into it; a stroke across a channel builds a dike of crest `height`
-   * with a gate (`width` 1–3 cells) at its lowest point.
+   * Sluice gate: a tap on a raised bank or a weir, where it parts water
+   * from lower ground, puts a gate into it (sim/structures/gateSite.ts;
+   * one cell wide, its sill following the bed). `width` and `height` are
+   * ignored (older callers pass them).
    */
-  | { type: 'placeGate'; points: Pt[]; width: number; height: number }
+  | { type: 'placeGate'; points: Pt[]; width?: number; height?: number }
   /**
    * Water wheel: a stroke from the river onto the bank. The wheel stands in
    * the water where it starts; its trough runs to the first dry cell along

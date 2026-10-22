@@ -356,7 +356,8 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         break;
       case 'command':
         sim?.command(msg.command);
-        if (msg.command.type !== 'sculpt') fixedMaybe = true;
+        // (A brush stroke may heap a bank a gate can go into: Snapshot.fixed's FIXED_WALL.)
+        fixedMaybe = true;
         break;
       case 'ack':
         pool.push({ id: msg.poolId, depth: msg.depth, vel: msg.vel });

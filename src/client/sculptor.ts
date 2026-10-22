@@ -7,7 +7,7 @@
  * until then the predicted change is laid again over the terrain rows a
  * snapshot brings (`reconcile`). The sim's terrain is always the final word.
  */
-import type { BrushTool, Command, Snapshot } from '../shared/protocol';
+import { FIXED_BRUSH, type BrushTool, type Command, type Snapshot } from '../shared/protocol';
 import { brushSample, newStamp, type SculptGrid } from '../sim/plans/sculpt';
 import type { WorldMirror } from './mirror';
 
@@ -100,7 +100,7 @@ export class Sculptor {
     if (!this.touchedFixed) {
       for (let cy = Math.max(0, Math.floor(y - r)); cy <= Math.min(m.height - 1, Math.ceil(y + r)) && !this.touchedFixed; cy++)
         for (let cx = Math.max(0, Math.floor(x - r)); cx <= Math.min(W - 1, Math.ceil(x + r)); cx++)
-          if (m.fixed[cy * W + cx] === 1 && Math.hypot(cx - x, cy - y) < r) {
+          if ((m.fixed[cy * W + cx]! & FIXED_BRUSH) !== 0 && Math.hypot(cx - x, cy - y) < r) {
             this.touchedFixed = true;
             break;
           }

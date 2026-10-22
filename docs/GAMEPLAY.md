@@ -325,9 +325,12 @@ by itself. `toggleGate` holds a gate by hand (tests, scenes).*
   and the dike was not overtopped that day.
 - Tool hint: "Tap a dike or weir to put a sluice gate in it. Villagers
   open it to water their fields in summer; it opens by itself before the
-  water spills over." *(As built since the gate unlocks before the weir:
-  "Tap a raised bank (or a weir) to put a sluice gate in it, or draw
-  across a channel for an earth dam with a gate…".)*
+  water spills over." *(As built, October 2026, owner's decision: the
+  gate goes only into a bank the player raised or a weir, where it holds
+  water above lower ground; no dam of its own, no width or height: one
+  cell wide, its sill set by the ground and following the bed down
+  daily. "Tap a bank you raised (or a weir) where it holds water back
+  above lower ground…; the gold marks show where one fits.")*
 
 ### 2.5 Partial openings and canal-fed gates (round 2, October 2026)
 Played gates sat in canals fed from a river, not in closed ponds: a
@@ -704,7 +707,7 @@ stays for weirs, gates and wheels). Digit keys shift accordingly.
 | start | Raise (was Dike) | Freshet off the floodplain (P3), ponds and small reservoirs |
 | start | Even (was Level) | Terraces on slopes, deep basins (less evaporation), a flat site for a village |
 | start | Remove | — |
-| 15 | **Sluice gate** | Hold water back behind a raised bank (or an earth dam drawn with the gate) and let the villagers release it to dry fields in summer (§2); flood relief that opens itself |
+| 15 | **Sluice gate** | Hold water back behind a raised bank (or a weir) and let the villagers release it to dry fields in summer (§2); flood relief that opens itself |
 | 30 | **Weir** | A stone wall water spills over safely: keep the river's pool through low water (P1); raise the river so a short intake works; calm water for fish; the drop for a mill (§1.2) and later turbines |
 
 *(Swapped in October 2026, owner's decision: the gate comes first, since with the brushes the player's own raised bank is its natural host; the weir follows at 30.)*

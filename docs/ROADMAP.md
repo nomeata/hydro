@@ -250,8 +250,11 @@ The interaction rework decided with the owner (DESIGN §4).
   hover, the weir's wall while drawn and while
   built, a red wheel off its sites (no live text with any preview: the
   ghost says it); bigger, pulsing wheel-site rings
-- ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks); a
-  gate drawn across a channel builds a wall with the gate
+- ☑ Weir as a stone wall (≤ 4 m above its lower side, no earthworks)
+- ☑ Gate tool simplified: only into a raised bank or weir parting water
+  from lower ground; site marks (gold rings) and a ghost along the wall,
+  red off a site; no dam, no width/height (one cell, sill from the
+  ground, following the bed down daily)
 - ☑ Old saves' earthwork plans finished
   on load; bots, scenes and tests shape lines with `shapeLine` (earth moved
   counted for a later budget)

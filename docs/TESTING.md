@@ -89,7 +89,9 @@ unlocks), for trying late tools by hand or in a test.
     tool stays selected, the sim agrees with the prediction
     (`e2e/sculpt.spec.ts`); a structure tool's stroke places a plan;
     every tool stays selected, and its ghost (pump, weir wall, gate,
-    red wheel, with no live text) shows first; brushes tint fields and strokes
+    red wheel, with no live text) shows first; the gate tool marks its
+    sites, taps a gate into a bank and refuses flat ground with a red
+    ghost and no text (`e2e/gate.spec.ts`); brushes tint fields and strokes
     (`e2e/tools.spec.ts`); a weir is edited in place by its handles
     (`e2e/weiredit.spec.ts`);
   - touch (phone profile): one finger brushes, a second finger turns the

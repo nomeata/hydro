@@ -19,7 +19,7 @@ interface CardDef {
 export const TOOL_CARDS: Readonly<Record<string, CardDef>> = {
   gate: {
     scene: 'gate',
-    text: 'Hold water back behind a bank, and let the villagers release it to their dry fields: tap a raised bank to set a sluice gate in it, or draw across a channel for an earth dam with a gate. In autumn it closes so the pond refills; before a flood spills over, it opens by itself.',
+    text: 'Hold water back behind a bank, and let the villagers release it to their dry fields: tap a bank you raised where it holds water above lower ground (the gold marks) to set a sluice gate in it. In autumn it closes so the pond refills; before a flood spills over, it opens by itself.',
   },
   weir: {
     scene: 'weir',

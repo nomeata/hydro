@@ -8,10 +8,10 @@
  *   stone apron either side, all lined; at most 4 m above its lower side):
  *   a fixed overflow crest made of terrain, so the flow model spills water
  *   over it naturally. The crew builds it. The record is kept for rendering.
- * - A **sluice gate** is the one structure that is not just terrain: the
- *   builders dig a passage through the dike (a raised bank or a weir; a
- *   gate drawn across a channel brings its own earth dam) down to the
- *   gate's sill and line it; the gate itself is a thin wall on the passage's middle row of cells
+ * - A **sluice gate** is the one structure that is not just terrain: it
+ *   goes only into a bank the player raised or a weir, where that parts
+ *   water from lower ground (gateSite.ts). The builders dig a passage
+ *   through it down to the gate's sill and line it; the gate itself is a thin wall on the passage's middle row of cells
  *   (see `Walls` in hydro/inertial.ts). Closed, water passes only above its
  *   top; open, the passage is free down to the sill. While being built, a
  *   closed gate's wall rises from the ground it was placed on to its top, so
@@ -19,14 +19,18 @@
  *   Who opens and closes a gate is decided in gatekeeper.ts (the villagers,
  *   or the gate itself as flood relief); here the leaf only moves: `lift`
  *   follows `open` over a few game hours, lowering the wall's crest
- *   smoothly towards the sill (no flood wave).
+ *   smoothly towards the sill (no flood wave). The sill follows the bed:
+ *   once a day it is set to the lowest ground the gate could let the water
+ *   down to, so a pond dredged (or scoured) deeper beside the gate drains
+ *   deeper too (`followSills`; the crew digs the passage down after it).
  *
  * Everything here is deterministic and part of SimState.
  */
 import type { Pt, StructureInfo } from '../../shared/protocol';
 import { LINING_DONE, LINING_QUAY, LINING_WORN } from '../../shared/protocol';
 import type { Walls } from '../hydro/inertial';
-import { GATE_DAM_WIDTH, WEIR_CREST, WEIR_MAX_WALL, clearGround, keepsPlan, planBank, rasterisePath, weirCrest, weirShape } from '../plans/plans';
+import { WEIR_CREST, WEIR_MAX_WALL, clearGround, keepsPlan, rasterisePath, weirCrest, weirShape } from '../plans/plans';
+import { PASSAGE_REACH, gateSite, type GateGrid } from './gateSite';
 import { CELL_AREA, DT } from '../constants';
 import { CellFlag, type World } from '../world';
 import { WHEEL_MIN_SPEED, wheelLift, wheelSite } from './wheel';
@@ -135,10 +139,8 @@ export interface StructuresState {
   restoring?: number[];
 }
 
-/** How far across the gate line the passage may cut through a dike (cells). */
-const PASSAGE_REACH = 4;
-/** Minimum head a gate must hold (m). */
-const MIN_GATE_HEAD = 0.3;
+/** The sill follows a bed beside the gate that has deepened by this much (m). */
+const SILL_STEP = 0.1;
 /** Gate progress per unit of lining work (a gate is ~4× the work of a lined cell). */
 const GATE_WORK = 0.25;
 /** Wheel progress per unit of lining work (about three lined cells' worth of carpentry). */
@@ -151,64 +153,6 @@ const HEAD_FULL = 0.5;
 function current(w: World, i: number): number {
   const p = w.plan[i]!;
   return Number.isNaN(p) ? w.terrain(i) : p;
-}
-
-/** What the gate's tap rule needs to see of the ground (the sim's world, or the UI's mirror). */
-export interface GateGrid {
-  readonly width: number;
-  readonly height: number;
-  /** Ground height including planned earthworks (m). */
-  current(i: number): number;
-}
-
-/** Where a gate tapped at `p` onto a dike or weir would go (Structures.placeGate's tap rule; also the tool's hover ghost). */
-export interface GateSite {
-  /** Whether a gate fits (enough wall above the ground beside it). */
-  ok: boolean;
-  /** Centre cell, unit step along the wall, crest and sill (m). */
-  cx: number;
-  cy: number;
-  dx: number;
-  dy: number;
-  top: number;
-  sill: number;
-  /** As StructureInfo: the leaf's centre, direction and width (cells). */
-  x: number;
-  y: number;
-  rot: number;
-  width: number;
-}
-
-export function gateTapSite(g: GateGrid, p: Pt, width: number): GateSite | null {
-  const W = g.width;
-  const H = g.height;
-  const n = Math.max(1, Math.min(3, Math.round(width)));
-  const cx = Math.round(p[0]);
-  const cy = Math.round(p[1]);
-  if (cx < 0 || cy < 0 || cx >= W || cy >= H) return null;
-  const at = (x: number, y: number): number => g.current(Math.max(0, Math.min(H - 1, y)) * W + Math.max(0, Math.min(W - 1, x)));
-  const ridge = (ux: number, uy: number): number => {
-    let s = 0;
-    for (const k of [-2, -1, 1, 2]) s += at(cx + ux * k, cy + uy * k);
-    return s;
-  };
-  const [dx, dy] = ridge(1, 0) >= ridge(0, 1) ? [1, 0] : [0, 1];
-  const top = at(cx, cy);
-  let sill = Infinity;
-  for (const s of [-1, 1]) for (let k = 2; k <= PASSAGE_REACH; k++) sill = Math.min(sill, at(cx - dy * k * s, cy + dx * k * s));
-  const offs = n === 1 ? [0] : n === 2 ? [0, 1] : [-1, 0, 1];
-  let sx = 0;
-  let sy = 0;
-  let m = 0;
-  for (const k of offs) {
-    const x = cx + dx * k;
-    const y = cy + dy * k;
-    if (x < 0 || y < 0 || x >= W || y >= H) continue;
-    sx += x;
-    sy += y;
-    m++;
-  }
-  return { ok: top - sill >= MIN_GATE_HEAD, cx, cy, dx, dy, top, sill, x: sx / m, y: sy / m, rot: dx === 1 ? 0 : Math.PI / 2, width: m };
 }
 
 export class Structures {
@@ -558,91 +502,45 @@ export class Structures {
     return true;
   }
 
+  /** The site rule's view of the world (gateSite.ts): built ground and water; banks and weirs free of other structures and plans. */
+  gateGrid(): GateGrid {
+    const w = this.world;
+    const weir = new Set<number>();
+    for (const wr of this.weirs) for (const c of wr.cells) weir.add(c);
+    const gates = this.gateCells();
+    return {
+      width: w.width,
+      height: w.height,
+      terrain: (i) => w.terrain(i),
+      depth: (i) => w.water[i]!,
+      wall: (i) => {
+        const f = w.flags[i]!;
+        return (f & CellFlag.Fill) !== 0 && Number.isNaN(w.plan[i]!) && !gates.has(i) && ((f & CellFlag.Structure) === 0 || weir.has(i));
+      },
+      canal: (i) => (w.flags[i]! & CellFlag.Canal) !== 0,
+      allowed: this.allow ?? undefined,
+    };
+  }
+
   /**
-   * Sluice gate (see the protocol's placeGate). Returns the earthwork plan
-   * cells, or null if no gate fits here (e.g. tapping flat ground).
+   * Sluice gate (see the protocol's placeGate): tapped into a raised bank
+   * or a weir (gateSite.ts). Returns the earthwork plan cells, or null if
+   * no gate fits here (e.g. tapping flat ground).
    */
-  placeGate(points: readonly Pt[], width: number, height: number): { cells: number[]; gate: Gate } | null {
+  placeGate(points: readonly Pt[]): { cells: number[]; gate: Gate } | null {
     if (points.length === 0) return null;
     const w = this.world;
     const W = w.width;
-    const n = Math.max(1, Math.min(3, Math.round(width)));
-    const a = points[0]!;
-    const b = points[points.length - 1]!;
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (!this.allowedAlong(len < 1.5 ? [a] : [a, b], PASSAGE_REACH + 1)) return null;
+    const site = gateSite(this.gateGrid(), points[0]!);
+    if (!site?.ok) return null;
+    const { cx, cy, dx, dy, top, sill } = site;
+    if (!this.allowedAlong([[cx, cy]], PASSAGE_REACH + 1)) return null;
     const changed: number[] = [];
-    let cx: number;
-    let cy: number;
-    /** Unit step along the gate line (axis-aligned). */
-    let dx: number;
-    let dy: number;
-    let top: number;
-    let sill: number;
-
-    if (len < 1.5) {
-      // Tap on a dike or weir: the gate line follows the ridge.
-      const site = gateTapSite({ width: W, height: w.height, current: (i) => current(w, i) }, a, n);
-      if (!site) return null;
-      ({ cx, cy, dx, dy, top, sill } = site);
-    } else {
-      // Stroke across a channel: a dike along it with the gate at the lowest point.
-      const ux = (b[0] - a[0]) / len;
-      const uy = (b[1] - a[1]) / len;
-      if (Math.abs(ux) >= Math.abs(uy)) [dx, dy] = [1, 0];
-      else [dx, dy] = [0, 1];
-      let low = Infinity;
-      cx = Math.round(a[0]);
-      cy = Math.round(a[1]);
-      for (let t = 0; t <= len; t += 0.5) {
-        const x = Math.round(a[0] + ux * t);
-        const y = Math.round(a[1] + uy * t);
-        if (!w.inBounds(x, y)) continue;
-        const h = current(w, w.idx(x, y));
-        if (h < low) {
-          low = h;
-          cx = x;
-          cy = y;
-        }
-      }
-      if (!Number.isFinite(low)) return null;
-      // The sill is the lowest ground on the line, e.g. a canal's floor; an
-      // earth dam goes across with its crest `height` above it (not over a
-      // house), and the gate sits in it there. Water must not pour over the
-      // loose earth: the gate opens by itself before it would.
-      sill = low;
-      top = low + Math.max(MIN_GATE_HEAD, height);
-      for (const i of planBank(w, [a, b], GATE_DAM_WIDTH, top)) {
-        if (keepsPlan(w.landuse[i]!)) changed.push(i);
-        else w.plan[i] = NaN;
-      }
-    }
-    if (!(top - sill >= MIN_GATE_HEAD)) return null;
-
+    const n = 1;
     // Wall cells, centred on (cx, cy) along the gate line.
-    const offs = n === 1 ? [0] : n === 2 ? [0, 1] : [-1, 0, 1];
     const cells: number[] = [];
-    for (const k of offs) {
-      const x = cx + dx * k;
-      const y = cy + dy * k;
-      if (w.inBounds(x, y)) cells.push(w.idx(x, y));
-    }
-    // The passage: across the line (perpendicular (-dy, dx)) through everything above the sill.
-    const passage = new Set<number>(cells);
-    for (const c of cells) {
-      const x0 = c % W;
-      const y0 = (c / W) | 0;
-      for (const s of [-1, 1]) {
-        for (let k = 1; k <= PASSAGE_REACH; k++) {
-          const x = x0 - dy * k * s;
-          const y = y0 + dx * k * s;
-          if (!w.inBounds(x, y)) break;
-          const i = w.idx(x, y);
-          if (current(w, i) <= sill + 0.05) break;
-          passage.add(i);
-        }
-      }
-    }
+    for (let k = 0; k < n; k++) cells.push(w.idx(cx + dx * k, cy + dy * k));
+    const passage = this.passage(cells, dx, dy, sill);
     let top0 = Infinity;
     for (const c of cells) top0 = Math.min(top0, w.terrain(c));
     top0 = Math.max(sill, Math.min(top, top0));
@@ -656,18 +554,7 @@ export class Structures {
       }
       this.addLining(i);
     }
-    // Line the flanks too (the gate posts), so fast water does not scour the dike beside the gate.
-    for (const i of passage) {
-      const x = i % W;
-      const y = (i / W) | 0;
-      for (const s of [-1, 1]) {
-        const fx = x + dx * s;
-        const fy = y + dy * s;
-        if (!w.inBounds(fx, fy)) continue;
-        const f = w.idx(fx, fy);
-        if (!passage.has(f)) this.addLining(f);
-      }
-    }
+    this.linePosts(passage, dx, dy);
     let sx = 0;
     let sy = 0;
     for (const c of cells) {
@@ -699,6 +586,92 @@ export class Structures {
     this.structuresDirty = true;
     this.updateWalls();
     return { cells: changed, gate };
+  }
+
+  /** The passage through the dike for wall `cells` along (dx, dy): across the line (perpendicular (-dy, dx)) through everything above the sill. */
+  private passage(cells: readonly number[], dx: number, dy: number, sill: number): Set<number> {
+    const w = this.world;
+    const W = w.width;
+    const passage = new Set<number>(cells);
+    for (const c of cells) {
+      const x0 = c % W;
+      const y0 = (c / W) | 0;
+      for (const s of [-1, 1]) {
+        for (let k = 1; k <= PASSAGE_REACH; k++) {
+          const x = x0 - dy * k * s;
+          const y = y0 + dx * k * s;
+          if (!w.inBounds(x, y)) break;
+          const i = w.idx(x, y);
+          if (current(w, i) <= sill + 0.05) break;
+          passage.add(i);
+        }
+      }
+    }
+    return passage;
+  }
+
+  /** Line the passage's flanks too (the gate posts), so fast water does not scour the dike beside the gate. */
+  private linePosts(passage: ReadonlySet<number>, dx: number, dy: number): void {
+    const w = this.world;
+    const W = w.width;
+    for (const i of passage) {
+      const x = i % W;
+      const y = (i / W) | 0;
+      for (const s of [-1, 1]) {
+        const fx = x + dx * s;
+        const fy = y + dy * s;
+        if (!w.inBounds(fx, fy)) continue;
+        const f = w.idx(fx, fy);
+        if (!passage.has(f)) this.addLining(f);
+      }
+    }
+  }
+
+  /**
+   * The sills follow the bed (daily): a gate's sill drops to the higher of
+   * the lowest ground on either side of it (outside its passage), when
+   * that lies SILL_STEP or more below it, e.g. the pond beside it dredged
+   * or scoured deeper; the passage is then dug down after it. Returns the
+   * new plan cells.
+   */
+  followSills(): number[] {
+    const w = this.world;
+    const W = w.width;
+    const changed: number[] = [];
+    for (const g of this.gates) {
+      const [dx, dy] = Math.abs(Math.cos(g.rot)) > 0.5 ? [1, 0] : [0, 1];
+      const own = new Set(g.passage);
+      const low = [Infinity, Infinity];
+      for (const c of g.cells)
+        for (const [j, s] of [
+          [0, -1],
+          [1, 1],
+        ] as const)
+          for (let k = 1; k <= PASSAGE_REACH + 2; k++) {
+            const x = (c % W) - dy * k * s;
+            const y = ((c / W) | 0) + dx * k * s;
+            if (!w.inBounds(x, y)) break;
+            const i = w.idx(x, y);
+            if (!own.has(i)) low[j] = Math.min(low[j]!, w.terrain(i));
+          }
+      const sill = Math.max(low[0]!, low[1]!);
+      if (!Number.isFinite(sill) || sill > g.sill - SILL_STEP) continue;
+      g.sill = sill;
+      g.top0 = Math.max(sill, g.top0);
+      const passage = this.passage(g.cells, dx, dy, sill);
+      for (const i of passage) {
+        if (current(w, i) > sill + 0.01) {
+          w.plan[i] = sill;
+          changed.push(i);
+        }
+        if (!own.has(i)) this.addLining(i);
+      }
+      this.linePosts(passage, dx, dy);
+      g.passage = [...passage];
+      this.structuresDirty = true;
+    }
+    if (changed.length) this.updateWalls();
+    return changed;
   }
 
   /**

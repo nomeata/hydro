@@ -203,7 +203,9 @@ describe('waterworks', () => {
     expect(ids(sim.achievements)).toContain('weirBuilder');
     sim.command({ type: 'shapeLine', tool: 'raise', points: [[45, 5], [45, 40]], width: 2, amount: 2 });
     await build(sim);
-    sim.command({ type: 'placeGate', points: [[45, 20]], width: 1, height: 0 });
+    // (A pond behind the bank: a gate goes only where it holds water back.)
+    for (let y = 15; y <= 25; y++) for (let x = 40; x <= 43; x++) w.water[w.idx(x, y)] = 1;
+    sim.command({ type: 'placeGate', points: [[45, 20]] });
     const g = sim.structures.gates[0]!;
     await build(sim);
     // Gatekeeper is for villagers watering their fields (tests/sim/gatekeeper.test.ts): working a gate by hand does not count.

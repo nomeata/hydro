@@ -125,13 +125,10 @@ export function planDike(world: PlanGrid, points: readonly Pt[], width: number, 
   return planBank(world, points, width, lowest + height);
 }
 
-/** Width (cells) of the earth dam a gate drawn across a channel is set in. */
-export const GATE_DAM_WIDTH = 2;
-
 /**
  * Earth bank with its level crest at `crest` (m) along the path, its
- * slopes running down to the ground; cells only ever get higher (planDike,
- * and the earth dam a gate is drawn into). Returns changed cells.
+ * slopes running down to the ground; cells only ever get higher (planDike).
+ * Returns changed cells.
  */
 export function planBank(world: PlanGrid, points: readonly Pt[], width: number, crest: number): number[] {
   const half = width / 2;

@@ -11,7 +11,7 @@
  * not by the player.
  */
 import type { Command, Pt, StructureInfo } from '../shared/protocol';
-import { GATE_DAM_WIDTH, planBank, planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
+import { planWeirPreview, rasterisePath, weirLowest, type PlanGrid } from '../sim/plans/plans';
 import { BRUSH_DEFAULT_SIZE, BRUSH_SIZES } from '../sim/plans/sculpt';
 import { FIELD_MAX_SLOPE } from '../sim/plans/brushwork';
 import { CELL } from '../sim/constants';
@@ -22,7 +22,7 @@ import { ICONS } from './icons';
 import { isUnlocked, unlockPopulation } from '../shared/unlocks';
 import { wheelSite, wheelSites, type WheelGrid, type WheelSite } from '../sim/structures/wheel';
 import { pumpSite, turbineSite, type PowerGrid2D, type PumpSite, type TurbineSite } from '../sim/power/power';
-import { gateTapSite, type GateSite } from '../sim/structures/structures';
+import { gateSite, gateSites, type GateGrid, type GateSite } from '../sim/structures/gateSite';
 import { toolName } from '../shared/progress';
 import { kw } from './powerReadout';
 
@@ -65,6 +65,16 @@ const POWER_MODES: ModeDef[] = [
   },
 ];
 
+/** A gate as the tool shows it (ghost or site mark): leaf centre, direction, width (cells), crest and sill (m). */
+export interface GateGhostInfo {
+  x: number;
+  y: number;
+  rot: number;
+  width: number;
+  top: number;
+  sill: number;
+}
+
 export interface ToolHost {
   canvas: HTMLCanvasElement;
   mirror: WorldMirror;
@@ -90,8 +100,9 @@ export interface ToolHost {
   setPowerGhost?(g: { pump: PumpGhost } | null): void;
   /** The weir tool's ghost wall as it will stand, or none. */
   setWeirGhost?(list: readonly StructureInfo[]): void;
-  /** The gate tool's ghost gate, or none. */
-  setGateGhost?(g: { x: number; y: number; rot: number; width: number; top: number; sill: number } | null): void;
+  /** The gate tool's ghost gate (good site or not), or none; and the sites it marks on the map. */
+  setGateGhost?(g: GateGhostInfo | null, ok?: boolean): void;
+  setGateSites?(sites: readonly GateGhostInfo[] | null): void;
   /** Tinted cells (fields under a brush, a stroke's raised and dug ground) per channel; null clears. */
   setCellTint?(key: string, cells: readonly { i: number; c: number; a: number }[] | null, fadeMs?: number): void;
   /** Whether single-pointer drags pan the camera. */
@@ -163,7 +174,7 @@ const TOOLS: ToolDef[] = [
     id: 'gate',
     label: toolName('gate'),
     icon: ICONS.gate,
-    hint: 'Tap a raised bank (or a weir) to put a sluice gate in it, or draw across a channel for an earth dam with a gate. The water waits behind it; villagers open it to water their fields in summer, and it opens by itself before the water spills over.',
+    hint: 'Tap a bank you raised (or a weir) where it holds water back above lower ground to put a sluice gate in it; the gold marks show where one fits. The water waits behind it; villagers open it to water their fields in summer, and it opens by itself before the water spills over.',
   },
   {
     id: 'weir',
@@ -198,7 +209,6 @@ interface ToolSettings {
 
 const SETTINGS: Partial<Record<ToolId, ToolSettings>> = {
   weir: { width: 2, amount: 1.5, maxWidth: 2, amountLabel: 'Height', noWidth: true, maxAmount: 4 },
-  gate: { width: 1, amount: 2, maxWidth: 3, amountLabel: 'Height' },
 };
 
 export class ToolPalette {
@@ -340,7 +350,7 @@ export class ToolPalette {
     c.addEventListener('pointerleave', () => {
       this.hover = null;
       if (!this.brush) this.cursor(null);
-      if (this.tool === 'gate' && !this.drawing) this.host.setGateGhost?.(null);
+      if (this.tool === 'gate' && !this.drawing && !this.gateHold) this.host.setGateGhost?.(null);
     });
     this.select('look');
     this.setPopulation(0);
@@ -527,6 +537,7 @@ export class ToolPalette {
     }
     this.showHint(id);
     this.markWheelSites(id === 'wheel');
+    this.markGateSites(id === 'gate');
     this.host.setCameraPrimaryPointer(id === 'look');
     if (id !== 'look') this.host.deselect?.();
     if (!this.awaitingPlan) this.clearPreview();
@@ -552,7 +563,7 @@ export class ToolPalette {
   private refreshOptions(): void {
     const st = this.settings[this.tool];
     const w = this.width;
-    this.sizeOut.textContent = this.tool === 'gate' ? `${w} cell${w > 1 ? 's' : ''}` : `${w * 5} m`;
+    this.sizeOut.textContent = `${w * 5} m`;
     this.amountLabel.textContent = st?.amountLabel ?? 'Depth';
     this.amountOut.textContent = `${this.amount} m`;
   }
@@ -649,14 +660,13 @@ export class ToolPalette {
         return;
       }
     }
-    if (this.tool === 'wheel' || this.tool === 'power') {
+    if (this.tool === 'wheel' || this.tool === 'power' || this.tool === 'gate') {
       // The wheel's stroke is short: count where it was let go, however close to the last point.
       const p = this.host.pick(e.clientX, e.clientY);
       if (p) d.points.push([p.x, p.y]);
     }
     const points = simplify(d.points);
     const ends: Pt[] = [points[0]!, points[points.length - 1]!];
-    const width = this.width;
     const amount = this.amount;
     let cmd: Command | null = null;
     let reason: string | null = null;
@@ -665,10 +675,13 @@ export class ToolPalette {
         if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) cmd = { type: 'planWeir', points: ends, height: amount };
         break;
       case 'gate': {
-        // A tap goes where its ghost stood (snapped to the crest).
-        const tap = Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) < 1.5;
-        const site = tap ? this.gatePreview(ends[0]!) : null;
-        cmd = { type: 'placeGate', points: site ? [[site.cx, site.cy]] : ends, width, height: amount };
+        // It goes where its ghost stood (snapped to a site), under the finger when let go; off a site, the red ghost stays a moment (no text).
+        const site = this.gatePreview(ends[1]!);
+        if (site?.ok) cmd = { type: 'placeGate', points: [[site.cx, site.cy]] };
+        else {
+          this.showGateGhost(site);
+          this.holdGateGhost(e.clientX, e.clientY);
+        }
         break;
       }
       case 'wheel': {
@@ -709,7 +722,7 @@ export class ToolPalette {
       this.host.setPreviewPlan(null);
       this.host.setPreviewLining?.(null);
     }
-    this.host.setGateGhost?.(null);
+    if (!this.gateHold) this.host.setGateGhost?.(null);
     this.host.setPowerGhost?.(null);
     // The tool stays selected (placed or not); Escape or Look goes back to looking around.
     if (reason) this.flashHint(reason);
@@ -790,8 +803,19 @@ export class ToolPalette {
   }
 
   private gatePending: { x: number; y: number } | null = null;
+  /** A refused gate stays shown in red for a moment (as the wheel's). */
+  private gateHold: { x: number; y: number; until: number } | null = null;
+  private holdGateGhost(x: number, y: number): void {
+    this.gateHold = { x, y, until: performance.now() + 1800 };
+    setTimeout(() => {
+      if (this.gateHold && performance.now() >= this.gateHold.until) {
+        this.gateHold = null;
+        if (!this.drawing && this.tool === 'gate') this.host.setGateGhost?.(null);
+      }
+    }, 1850);
+  }
 
-  /** The mouse over the map with the gate tool: the ghost of a gate tapped there (only where one fits). */
+  /** The mouse over the map with the gate tool: the ghost of a gate tapped there (red off the sites). */
   private hoverGate(clientX: number, clientY: number): void {
     const first = !this.gatePending;
     this.gatePending = { x: clientX, y: clientY };
@@ -800,31 +824,72 @@ export class ToolPalette {
       const h = this.gatePending;
       this.gatePending = null;
       if (!h || this.drawing || this.tool !== 'gate') return;
+      const hold = this.gateHold;
+      if (hold && performance.now() < hold.until && Math.hypot(h.x - hold.x, h.y - hold.y) < 24) return;
+      this.gateHold = null;
       const p = this.host.pick(h.x, h.y);
       this.showGateGhost(p ? this.gatePreview([p.x, p.y]) : null);
     });
   }
 
+  /** The grid the gate's site rule looks at (the mirror, its banks and weirs, and the latest depths). */
+  private gateGrid(): GateGrid | null {
+    const m = this.host.mirror;
+    const depth = this.host.depth;
+    if (!depth) return null;
+    return {
+      width: m.width,
+      height: m.height,
+      terrain: (i) => m.terrain(i),
+      depth,
+      wall: (i) => m.isWall(i),
+      canal: (i) => m.isCanal(i),
+      allowed: (i) => m.isRevealed(i % m.width, (i / m.width) | 0),
+    };
+  }
+
   /**
-   * Where a gate tapped at `p` would go (the sim's rule, on the mirror's
-   * ground and plans), snapped to the crest: the highest cell right around
-   * the tap where a gate fits (the tap then places it there).
+   * Where a gate tapped at `p` would go (the sim's rule, on the mirror):
+   * snapped to the highest site right around the tap; the tapped cell
+   * itself (not a site) when there is none.
    */
   private gatePreview(p: Pt): GateSite | null {
-    const m = this.host.mirror;
-    const g = { width: m.width, height: m.height, current: (i: number) => (Number.isNaN(m.plan[i]!) ? m.terrain(i) : m.plan[i]!) };
+    const g = this.gateGrid();
+    if (!g) return null;
     let best: GateSite | null = null;
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++) {
-        const site = gateTapSite(g, [Math.round(p[0]) + dx, Math.round(p[1]) + dy], this.width);
-        if (!site?.ok || !m.isRevealed(site.cx, site.cy)) continue;
+        const site = gateSite(g, [Math.round(p[0]) + dx, Math.round(p[1]) + dy]);
+        if (!site?.ok) continue;
         if (!best || site.top > best.top + 0.01 || (Math.abs(site.top - best.top) <= 0.01 && dx === 0 && dy === 0)) best = site;
       }
-    return best;
+    return best ?? gateSite(g, p);
   }
 
   private showGateGhost(site: GateSite | null): void {
-    this.host.setGateGhost?.(site ? { x: site.x, y: site.y, rot: site.rot, width: site.width, top: site.top, sill: site.sill } : null);
+    // (A refused one stands a little above the ground, in red.)
+    const ghost = site ? gateGhost(site) : null;
+    if (ghost && !site!.ok) ghost.top = Math.max(ghost.top, ghost.sill + 1);
+    this.host.setGateGhost?.(ghost, site?.ok ?? false);
+  }
+
+  private gateTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** While the gate tool is held, mark the sites on the map (refreshed as the banks and the water change). */
+  private markGateSites(on: boolean): void {
+    if (this.gateTimer) clearInterval(this.gateTimer);
+    this.gateTimer = null;
+    if (!on) {
+      this.gateHold = null;
+      this.host.setGateSites?.(null);
+      return;
+    }
+    const mark = () => {
+      const g = this.gateGrid();
+      this.host.setGateSites?.(g ? gateSites(g).map(gateGhost) : null);
+    };
+    mark();
+    this.gateTimer = setInterval(mark, 2000);
   }
 
   private sitesTimer: ReturnType<typeof setInterval> | null = null;
@@ -1041,12 +1106,9 @@ export class ToolPalette {
         }
         this.host.setWeirGhost?.(weir ? [weir] : []);
       } else if (this.tool === 'gate') {
-        if (Math.hypot(ends[1]![0] - ends[0]![0], ends[1]![1] - ends[0]![1]) >= 1.5) {
-          // Drawn across a channel: an earth dam with the gate at its lowest point.
-          this.showGateGhost(null);
-          const low = weirLowest(grid, ends[0]!, ends[1]!);
-          if (Number.isFinite(low)) planBank(grid, [ends[0]!, ends[1]!], GATE_DAM_WIDTH, low + amount);
-        } else this.showGateGhost(this.gatePreview(ends[0]!));
+        // The ghost under the finger (a gate goes in by a tap; no dam of its own).
+        this.gateHold = null;
+        this.showGateGhost(this.gatePreview(ends[1]!));
       } else if (this.tool === 'wheel') {
         // The ghost wheel and its trough, pointing where the water goes: as built when the site is good, red when not.
         this.showWheelGhost(this.wheelPreview(ends), ends);
@@ -1118,4 +1180,9 @@ export function unlockProgress(
   if (!best) return null;
   const fraction = population <= 0 ? 0 : Math.min(1, population / best.need);
   return { id: best.id, fraction };
+}
+
+/** The ghost (or site mark) of a gate site. */
+function gateGhost(s: GateSite): GateGhostInfo {
+  return { x: s.x, y: s.y, rot: s.rot, width: s.width, top: s.top, sill: s.sill };
 }
