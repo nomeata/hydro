@@ -157,6 +157,11 @@ export class WheelPreview {
     this.ghost.flowAt = f;
   }
 
+  /** Animating on wall time (pulsing site marks, a turning ghost). */
+  get busy(): boolean {
+    return this.rings.count > 0 || (this.shown !== null && this.shownOk);
+  }
+
   /** The ghost turns; the marks glow softly. */
   update(dt: number): void {
     this.t += dt;

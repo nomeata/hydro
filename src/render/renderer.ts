@@ -172,6 +172,20 @@ export class GameRenderer {
   private readonly onRestored: () => void;
   private readonly tmpV = new THREE.Vector3();
   private readonly tmpV2 = new THREE.Vector2();
+  /**
+   * Render on demand (wantsFrame): something changed that the next frame
+   * must show. Set by snapshots that change anything, invalidate() (input,
+   * tools), and the layers' own checks; cleared when a frame is drawn.
+   */
+  private dirty = true;
+  private lastDrawMs = -Infinity;
+  /** The camera's view-projection and drawing-buffer size at the last drawn frame. */
+  private readonly drawnView = new Float64Array(34);
+  private readonly busyChecks: (() => boolean)[] = [];
+  /** The velocities of the last snapshot (an unchanged paused snapshot uploads nothing). */
+  private lastVel: Int8Array | null = null;
+  /** Frames drawn since start (stats). */
+  framesDrawn = 0;
 
   constructor(canvas: HTMLCanvasElement, data: InitialData, opts: GameRendererOptions = {}) {
     this.canvas = canvas;
@@ -335,11 +349,33 @@ export class GameRenderer {
     uploadFloatRows(this.gl, this.tex.terrain, y0, y1);
   }
 
+  /**
+   * Whether a snapshot shows nothing new: the game paused, the same water and
+   * flow as the last one, and none of the occasional fields. (A paused sim
+   * keeps sending snapshots; they need no upload and no redraw.)
+   */
+  private unchangedSnapshot(s: Snapshot, n: number): boolean {
+    if (s.stats.speedRequested > 0 || this.flow.gameSpeed > 0 || !this.lastVel) return false;
+    if (s.terrain || s.look || s.snowPiles || s.plan || s.buildings || s.fields || s.structures || s.lining || s.revealed || s.fish || s.power) return false;
+    const d = s.depth;
+    const cur = this.depthBuf(false);
+    if (d.length < n || s.vel.length !== this.lastVel.length) return false;
+    for (let i = 0; i < n; i++) if (d[i] !== cur[i]) return false;
+    const v = s.vel;
+    const lv = this.lastVel;
+    for (let i = 0; i < v.length; i++) if (v[i] !== lv[i]) return false;
+    return true;
+  }
+
   /** Upload a snapshot: depth/vel always, terrain rows / look / plan when present. */
   applySnapshot(s: Snapshot): void {
     const W = this.info.width;
     const H = this.info.height;
     const n = W * H;
+    if (this.unchangedSnapshot(s, n)) return;
+    this.dirty = true;
+    if (!this.lastVel || this.lastVel.length !== s.vel.length) this.lastVel = new Int8Array(s.vel.length);
+    this.lastVel.set(s.vel);
     // Swap: the old "current" becomes "previous", new data goes into the other buffer.
     this.depthPrevIsA = !this.depthPrevIsA;
     const cur = this.depthBuf(false);
@@ -598,10 +634,77 @@ export class GameRenderer {
     };
   }
 
+  /** The next frame must be drawn (render on demand, see wantsFrame). */
+  invalidate(): void {
+    this.dirty = true;
+  }
+
+  /** A check run by wantsFrame: true while some layer animates on its own (wall time). */
+  addBusyCheck(fn: () => boolean): void {
+    this.busyChecks.push(fn);
+  }
+
+  /**
+   * Whether a frame drawn now would differ from the last one: the game runs
+   * (everything animates), the camera moves, a changed snapshot's water is
+   * still blending in, something was invalidated, or a layer animates on
+   * wall time (tool site marks, fading tints, flecks renewing after a camera
+   * move). Paused and still, nothing needs drawing; a frame every 2 s is
+   * drawn anyway (models that finished loading, rebuilt vegetation).
+   */
+  wantsFrame(nowMs: number): boolean {
+    this.frameReason = this.whyFrame(nowMs);
+    return this.frameReason !== '';
+  }
+
+  /** Why the last wantsFrame drew ('' = it did not), for ?stats=1 and tests. */
+  frameReason = '';
+
+  private whyFrame(nowMs: number): string {
+    if (this.dirty) return 'changed';
+    if (this.snapPending) return 'snapshot';
+    if (this.clock.gameSpeed > 0) return 'playing';
+    if (!this.camera.isSettled() || this.viewChanged()) return 'camera';
+    // The water still blends from the previous snapshot to the latest.
+    if (nowMs - this.snapAtMs < this.snapIntervalMs + 20) return 'water';
+    if (this.flow.renewing(nowMs)) return 'flecks';
+    if (this.wheelPreview.busy || this.gateSites.busy || this.cellTint.busy) return 'tools';
+    for (const f of this.busyChecks) if (f()) return 'layers';
+    if (nowMs - this.lastDrawMs > 2000) return 'keepalive';
+    return '';
+  }
+
+  /** Whether the camera's view or the drawing buffer changed since the last drawn frame. */
+  private viewChanged(): boolean {
+    const cam = this.camera.camera;
+    const a = cam.matrixWorldInverse.elements;
+    const b = cam.projectionMatrix.elements;
+    const v = this.drawnView;
+    for (let i = 0; i < 16; i++) if (v[i] !== a[i] || v[16 + i] !== b[i]) return true;
+    return v[32] !== this.canvas.width || v[33] !== this.canvas.height;
+  }
+
+  /** The loop skipped this frame (nothing to draw): the next frame's step starts from now, not from the last drawn frame. */
+  idle(nowMs: number): void {
+    this.lastFrameMs = nowMs;
+  }
+
+  private rememberView(): void {
+    const cam = this.camera.camera;
+    const a = cam.matrixWorldInverse.elements;
+    const b = cam.projectionMatrix.elements;
+    const v = this.drawnView;
+    v.set(a);
+    v.set(b, 16);
+    v[32] = this.canvas.width;
+    v[33] = this.canvas.height;
+  }
+
   /** Render one frame. `nowMs` should be a performance.now()/rAF timestamp. */
   frame(nowMs: number): void {
     const dt = this.lastFrameMs === null ? 0 : Math.min(0.1, Math.max(0, (nowMs - this.lastFrameMs) / 1000));
     this.lastFrameMs = nowMs;
+    this.dirty = false;
 
     // Known land fades into exactly the sky behind it.
     const fu = this.fog.uniforms;
@@ -657,6 +760,9 @@ export class GameRenderer {
     for (const fn of this.listeners) fn(dt, clock);
     if (this.contextLost) return;
     this.gl.render(this.scene, this.camera.camera);
+    this.lastDrawMs = nowMs;
+    this.framesDrawn++;
+    this.rememberView();
   }
 
   resize(): void {

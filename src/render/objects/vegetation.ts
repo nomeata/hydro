@@ -380,6 +380,7 @@ export class VegetationLayer {
   private readonly sliceMs: number;
   private disposed = false;
   private visibleKey = '';
+  private refilled = false;
   private dataDirty = true;
   private lastCamera: THREE.Camera | null = null;
   private readonly frustum = new THREE.Frustum();
@@ -590,6 +591,7 @@ export class VegetationLayer {
     if (key === this.visibleKey && !this.dataDirty) return;
     this.visibleKey = key;
     this.dataDirty = false;
+    this.refilled = true;
     for (const b of this.batches.values()) {
       let n = 0;
       for (const c of vis) n += c.data.get(b.name)?.count ?? 0;
@@ -627,6 +629,18 @@ export class VegetationLayer {
       mesh.instanceColor!.needsUpdate = true;
       mesh.visible = KIND_DETAIL[b.kind]! <= this.detail;
     }
+  }
+
+  /** Chunks still waiting to be re-scattered. */
+  get busy(): boolean {
+    return this.loaded && this.pending.size > 0;
+  }
+
+  /** Whether the instances changed since the last call (they need drawing). */
+  takeChange(): boolean {
+    const c = this.refilled;
+    this.refilled = false;
+    return c;
   }
 
   /** Number of InstancedMeshes that will be drawn (≈ vegetation draw calls). */
