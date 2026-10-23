@@ -16,7 +16,8 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { FIELD_BYTES, VEL_SCALE } from '../src/shared/protocol';
+import { FIELD_BYTES } from '../src/shared/protocol';
+import { WaterPacker, type WaterBuffers } from '../src/sim/pack';
 import { STEPS_PER_DAY, STEPS_PER_SECOND_1X } from '../src/sim/constants';
 import { newGame } from '../src/sim/newgame';
 import { loadGame, saveGame } from '../src/sim/persist';
@@ -109,18 +110,13 @@ class Timers {
   depth: number[] = [];
 }
 
+const packer = new WaterPacker();
+
 /** The worker's snapshot packing (sim/worker.ts sendSnapshot), without posting. */
-export function packSnapshot(sim: Simulation, speed: number, bufs: { depth: Float32Array; vel: Int8Array }, t: Timers): void {
+export function packSnapshot(sim: Simulation, speed: number, bufs: WaterBuffers, t: Timers): void {
   const w = sim.world;
   let t0 = clock();
-  bufs.depth.set(w.water);
-  const { velX, velY, size } = w;
-  const k = 127 / VEL_SCALE;
-  const vel = bufs.vel;
-  for (let i = 0; i < size; i++) {
-    vel[2 * i] = Math.max(-127, Math.min(127, Math.round(velX[i]! * k)));
-    vel[2 * i + 1] = Math.max(-127, Math.min(127, Math.round(velY[i]! * k)));
-  }
+  packer.pack(sim, bufs);
   sim.weather.climateState(sim.time);
   sim.surfaceVolume();
   let t1 = clock();
@@ -234,7 +230,8 @@ async function prof(file: string): Promise<void> {
   t.wrap(sim.crew, 'work', 'crew.work');
   const steps = days * STEPS_PER_DAY;
   const snapEvery = Math.max(1, Math.round((STEPS_PER_SECOND_1X * speed) / 10));
-  const bufs = { depth: new Float32Array(sim.world.size), vel: new Int8Array(sim.world.size * 2) };
+  // The worker's three pooled buffer sets, used in turn.
+  const pool = [0, 1, 2].map((id) => ({ id, depth: new Float32Array(sim.world.size), vel: new Int8Array(sim.world.size * 2) }));
   const stepMs: number[] = [];
   const snapMs: number[] = [];
   const T0 = clock();
@@ -250,7 +247,7 @@ async function prof(file: string): Promise<void> {
     stepMs.push(dt);
     if (s % snapEvery === snapEvery - 1) {
       const c = clock();
-      packSnapshot(sim, speed, bufs, t);
+      packSnapshot(sim, speed, pool[snapMs.length % 3]!, t);
       snapMs.push(clock() - c);
     }
   }

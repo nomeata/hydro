@@ -4,7 +4,7 @@
  * snapshots using a small pool of transferable buffers. When no buffer set
  * is free (the main thread hasn't acked), the snapshot is skipped.
  */
-import { FIELD_BYTES, VEL_SCALE, type FromWorker, type Snapshot, type ToWorker } from '../shared/protocol';
+import { FIELD_BYTES, type FromWorker, type Snapshot, type ToWorker } from '../shared/protocol';
 import { CELL, STEPS_PER_DAY, STEPS_PER_SECOND_1X } from './constants';
 import { loadGame, saveGame } from './persist';
 import { Simulation } from './sim';
@@ -13,10 +13,15 @@ import { SCENE_LAYOUT, buildScene, cloneScene } from './scenes';
 import type { SceneId } from '../shared/protocol';
 import { snowPiles } from './people/village';
 import { snowCoverByte } from './hydro/soilwater';
+import { WaterPacker } from './pack';
 
 declare const self: DedicatedWorkerGlobalScope;
 
 const SNAPSHOT_INTERVAL_MS = 100;
+/** While nothing changes (paused, no commands), a snapshot only this often (the HUD's speed readout). */
+const IDLE_SNAPSHOT_MS = 1000;
+/** Smoothing time of the achieved speed (s). */
+const ACHIEVED_TAU = 0.1;
 /** Max time per work slice before yielding to the message loop. */
 const SLICE_MS = 8;
 
@@ -41,6 +46,8 @@ let ticking = false;
 let fishDay = -1;
 /** Fraction of one core the sim may use (lower on phones to save battery and heat). */
 let duty = 1;
+/** Steps run, or messages that may change what the client sees received, since the last snapshot. */
+let changed = true;
 
 const channel = new MessageChannel();
 channel.port1.onmessage = () => tick();
@@ -168,18 +175,36 @@ function tick(): void {
   if (ran > 0) {
     const per = (performance.now() - sliceStart) / ran;
     msPerStep = msPerStep * 0.9 + per * 0.1;
+    changed = true;
   }
-  // Achieved speed, smoothed: steps per second relative to 1×.
-  const inst = elapsed > 0 ? ran / elapsed / STEPS_PER_SECOND_1X : 0;
-  achieved = achieved * 0.95 + inst * 0.05;
+  // Achieved speed, smoothed over ~ACHIEVED_TAU: steps per second relative to 1×.
+  if (elapsed > 0) {
+    const inst = ran / elapsed / STEPS_PER_SECOND_1X;
+    const a = 1 - Math.exp(-elapsed / ACHIEVED_TAU);
+    achieved += (inst - achieved) * a;
+  }
 
-  if (now - lastSnapshot >= SNAPSHOT_INTERVAL_MS) {
-    if (sendSnapshot()) lastSnapshot = now;
+  // Snapshots at ~10 Hz while something changes; while paused and untouched, seldom.
+  const since = now - lastSnapshot;
+  if (since >= SNAPSHOT_INTERVAL_MS && (changed || since >= IDLE_SNAPSHOT_MS)) {
+    if (sendSnapshot()) {
+      lastSnapshot = now;
+      changed = false;
+    }
   }
   // CPU cap: after working for w ms, rest for w·(1/duty − 1) ms.
   const worked = performance.now() - sliceStart;
   const rest = duty < 1 ? worked * (1 / duty - 1) : 0;
-  schedule(accumulator >= 1 ? rest : Math.max(5, rest));
+  if (accumulator >= 1) {
+    schedule(rest);
+    return;
+  }
+  // Nothing due: sleep until the next step (or snapshot) is due rather than polling,
+  // so that a phone's core can idle between steps (and while paused).
+  const rate = STEPS_PER_SECOND_1X * speed;
+  const untilStep = rate > 0 ? ((1 - accumulator) / rate) * 1000 + 1 : Infinity;
+  const untilSnap = Math.max(0, lastSnapshot + SNAPSHOT_INTERVAL_MS - performance.now());
+  schedule(Math.max(rest, 1, Math.min(untilStep, Math.max(untilSnap, 1), SNAPSHOT_INTERVAL_MS)));
 }
 
 /** The brushes' fixed cells as last sent (Snapshot.fixed). */
@@ -187,19 +212,15 @@ let lastFixed: Uint8Array | null = null;
 /** Something that may change the fixed cells happened since the last snapshot. */
 let fixedMaybe = true;
 
+/** Depth and velocity packing (only the active rows while the frozen land's are in the buffer). */
+const water = new WaterPacker();
+
 function sendSnapshot(): boolean {
   if (!sim) return false;
   const set = pool.pop();
   if (!set) return false;
   const w = sim.world;
-  set.depth.set(w.water);
-  const { velX, velY, size } = w;
-  const vel = set.vel;
-  const k = 127 / VEL_SCALE;
-  for (let i = 0; i < size; i++) {
-    vel[2 * i] = Math.max(-127, Math.min(127, Math.round(velX[i]! * k)));
-    vel[2 * i + 1] = Math.max(-127, Math.min(127, Math.round(velY[i]! * k)));
-  }
+  water.pack(sim, set);
   const transfer: Transferable[] = [set.depth.buffer, set.vel.buffer];
   const snap: Snapshot = {
     time: sim.time,
@@ -338,6 +359,8 @@ function sendSnapshot(): boolean {
 
 self.onmessage = (ev: MessageEvent<ToWorker>) => {
   const msg = ev.data;
+  // Anything but a returned buffer set may change what the next snapshot shows.
+  if (msg.type !== 'ack') changed = true;
   try {
     switch (msg.type) {
       case 'init':
@@ -355,6 +378,8 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         accumulator = 0;
         break;
       case 'command':
+        // (Debug water may land on frozen cells: pack everything again.)
+        if (msg.command.type === 'debugWater') water.reset();
         sim?.command(msg.command);
         // (A brush stroke may heap a bank a gate can go into: Snapshot.fixed's FIXED_WALL.)
         fixedMaybe = true;

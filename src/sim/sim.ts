@@ -741,12 +741,27 @@ export class Simulation {
     }
   }
 
+  /** Surface water on the map (m³): the active rows summed, the frozen land's sum kept (it does not change). */
   surfaceVolume(): number {
+    const { water, size, width: W } = this.world;
+    const act = this.active;
+    if (act.all) {
+      let s = 0;
+      for (let i = 0; i < size; i++) s += water[i]!;
+      return s * CELL_AREA;
+    }
+    const rows = act.rows;
     let s = 0;
-    const { water, size } = this.world;
-    for (let i = 0; i < size; i++) s += water[i]!;
-    return s * CELL_AREA;
+    for (let r = 0; r < rows.length; r += 3) for (let i = rows[r]! * W + rows[r + 1]!, e = rows[r]! * W + rows[r + 2]!; i < e; i++) s += water[i]!;
+    if (this.frozenWater?.version !== act.version) {
+      let all = 0;
+      for (let i = 0; i < size; i++) all += water[i]!;
+      this.frozenWater = { version: act.version, sum: all - s };
+    }
+    return (s + this.frozenWater.sum) * CELL_AREA;
   }
+  /** The frozen land's surface water (m, summed) for an active set version (surfaceVolume). */
+  private frozenWater: { version: number; sum: number } | null = null;
 
   /** Non-field state needed to resume exactly (see persist.ts). */
   getState(): SimState {
