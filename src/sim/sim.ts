@@ -9,7 +9,7 @@ import { Weather, type WeatherState } from './climate/weather';
 import { Climate, tileRainMap, type ClimateRunState } from './climate/climate';
 import { CELL_AREA, DT, STEPS_PER_DAY, TILE } from './constants';
 import { GroundwaterScratch, groundwaterStep } from './hydro/groundwater';
-import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, type FlowStats } from './hydro/inertial';
+import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, stableDtWave, type FlowStats } from './hydro/inertial';
 import { FrozenSnow, newLedger, snowCoverByte, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { ErosionScratch, defaultGeoParams, erosionStep, overtopStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
 import { TalusScratch, talusStep } from './hydro/talus';
@@ -473,7 +473,8 @@ export class Simulation {
 
     // Surface flow, sub-stepped for stability in deep or fast water.
     const fs = this.flowStats;
-    const n = Math.max(1, Math.ceil(DT / stableDt(fs.maxDepth, fs.maxSpeed)));
+    // (The Courant limit of the fastest wave in any one cell; saves from before it: deepest and fastest anywhere.)
+    const n = Math.max(1, Math.ceil(DT / (fs.maxWave !== undefined ? stableDtWave(fs.maxWave) : stableDt(fs.maxDepth, fs.maxSpeed))));
     let out = 0;
     let sedOut = 0;
     let edgeIn = 0;

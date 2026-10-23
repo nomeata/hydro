@@ -64,7 +64,19 @@ async function make(): Promise<void> {
   console.log(`saved ${out}`);
 }
 
-/** Wall-clock timers per phase. */
+/**
+ * The clock: process CPU time by default (less disturbed by other load in a
+ * shared container), or wall time with `--clock wall`.
+ */
+const clock: () => number =
+  opt('clock', 'cpu') === 'wall'
+    ? () => performance.now()
+    : () => {
+        const u = process.cpuUsage();
+        return (u.user + u.system) / 1000;
+      };
+
+/** Timers per phase. */
 class Timers {
   readonly ms = new Map<string, number>();
   readonly worst = new Map<string, number>();
@@ -82,13 +94,13 @@ class Timers {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     o[key] = function (this: unknown, ...a: unknown[]) {
-      const t0 = performance.now();
+      const t0 = clock();
       self.depth.push(0);
       try {
         return f.apply(this, a);
       } finally {
         const inner = self.depth.pop()!;
-        const dt = performance.now() - t0;
+        const dt = clock() - t0;
         self.add(name, dt - inner);
         if (self.depth.length) self.depth[self.depth.length - 1]! += dt;
       }
@@ -100,7 +112,7 @@ class Timers {
 /** The worker's snapshot packing (sim/worker.ts sendSnapshot), without posting. */
 export function packSnapshot(sim: Simulation, speed: number, bufs: { depth: Float32Array; vel: Int8Array }, t: Timers): void {
   const w = sim.world;
-  let t0 = performance.now();
+  let t0 = clock();
   bufs.depth.set(w.water);
   const { velX, velY, size } = w;
   const k = 127 / VEL_SCALE;
@@ -111,7 +123,7 @@ export function packSnapshot(sim: Simulation, speed: number, bufs: { depth: Floa
   }
   sim.weather.climateState(sim.time);
   sim.surfaceVolume();
-  let t1 = performance.now();
+  let t1 = clock();
   t.add('snap: depth+vel', t1 - t0);
   t0 = t1;
   const rows = sim.takeDirtyRows();
@@ -125,7 +137,7 @@ export function packSnapshot(sim: Simulation, speed: number, bufs: { depth: Floa
     sim.lookDirty = false;
     if (sim.people) snowPiles(w, sim.people.snowBanks);
   }
-  t1 = performance.now();
+  t1 = clock();
   t.add('snap: terrain+look', t1 - t0);
   t0 = t1;
   if (sim.people) {
@@ -135,14 +147,14 @@ export function packSnapshot(sim: Simulation, speed: number, bufs: { depth: Floa
       sim.people.buildingsDirty = false;
     }
     sim.people.settlements.forEach(({ state: v }) => sim.people!.fishersOf(v.id));
-    t1 = performance.now();
+    t1 = clock();
     t.add('snap: entities', t1 - t0);
     t0 = t1;
     if (sim.takeFieldsDirty()) {
       const f = new Uint8Array(w.size * FIELD_BYTES);
       sim.packFields(f);
     }
-    t1 = performance.now();
+    t1 = clock();
     t.add('snap: fields', t1 - t0);
     t0 = t1;
   }
@@ -184,7 +196,7 @@ export function packSnapshot(sim: Simulation, speed: number, bufs: { depth: Floa
   }
   if (sim.achievements.dirty) sim.achievements.take();
   if (sim.ideas.dirty) sim.ideas.take();
-  t.add('snap: other', performance.now() - t0);
+  t.add('snap: other', clock() - t0);
 }
 
 async function prof(file: string): Promise<void> {
@@ -225,24 +237,24 @@ async function prof(file: string): Promise<void> {
   const bufs = { depth: new Float32Array(sim.world.size), vel: new Int8Array(sim.world.size * 2) };
   const stepMs: number[] = [];
   const snapMs: number[] = [];
-  const T0 = performance.now();
+  const T0 = clock();
   let adv = 0;
   for (let s = 0; s < steps; s++) {
-    const a = performance.now();
+    const a = clock();
     t.depth.push(0);
     sim.advance();
     const inner = t.depth.pop()!;
-    const dt = performance.now() - a;
+    const dt = clock() - a;
     adv += dt;
     t.add('kernels (advance rest)', dt - inner);
     stepMs.push(dt);
     if (s % snapEvery === snapEvery - 1) {
-      const c = performance.now();
+      const c = clock();
       packSnapshot(sim, speed, bufs, t);
-      snapMs.push(performance.now() - c);
+      snapMs.push(clock() - c);
     }
   }
-  const total = performance.now() - T0;
+  const total = clock() - T0;
   const gameSeconds = steps / (STEPS_PER_SECOND_1X * speed);
   const perGs = (x: number) => x / gameSeconds;
   console.log(`${file}: ${sim.world.width}² year ${sim.time.year} day ${sim.time.day} pop ${p?.population} (${sim.active.stats()}), ${days} days at ${speed}×`);
