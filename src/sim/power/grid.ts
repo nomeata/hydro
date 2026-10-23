@@ -793,7 +793,33 @@ export class PowerGrid {
   // Networks
 
   /** Rebuild the connected networks and who hangs on them. */
+  /** What the networks were last built from (rebuild): equal inputs give equal networks. */
+  private netsKey: unknown[] = [];
+  private nextKey: unknown[] = [];
+
   private rebuild(): void {
+    // The inputs, cheaply: finished turbines (the objects too: the step marks idle ones),
+    // poles, wires, pumps and houses. Unchanged (nearly every step), the networks stand.
+    const key = this.nextKey;
+    key.length = 0;
+    for (const t of this.turbines) if (t.progress >= 1) key.push(t, t.id, t.x, t.y);
+    key.push(-1);
+    for (const p of this.poles) if (p.progress >= 1) key.push(p.id, p.x, p.y);
+    key.push(-1);
+    for (const v of this.wires) key.push(v);
+    key.push(-1);
+    for (const p of this.pumps) if (p.progress >= 1) key.push(p, p.hx, p.hy);
+    key.push(-1);
+    const houses = this.houses();
+    for (const h of houses) key.push(h.id, h.x, h.y, h.settlement);
+    const old = this.netsKey;
+    if (old.length === key.length) {
+      let same = true;
+      for (let k = 0; k < key.length && same; k++) if (old[k] !== key[k]) same = false;
+      if (same) return;
+    }
+    this.netsKey = key;
+    this.nextKey = old;
     const parent = new Map<number, number>();
     const find = (a: number): number => {
       let r = a;
@@ -837,7 +863,7 @@ export class PowerGrid {
       const n = nearest(p.hx, p.hy);
       if (n >= 0) net(find(n)).pumps.push(p);
     }
-    for (const h of this.houses()) {
+    for (const h of houses) {
       const n = nearest(h.x, h.y);
       if (n >= 0) net(find(n)).houses.push(h);
     }
