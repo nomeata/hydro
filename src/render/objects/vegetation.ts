@@ -302,12 +302,17 @@ function signature(ps: readonly Placement[], palette: readonly (readonly ModelNa
   return s >>> 0;
 }
 
+/** Culling cells: a chunk's instances are sorted into SUB×SUB-cell squares, each culled on its own. */
+const SUB = 16;
+
 interface ChunkModelData {
   matrices: Float32Array;
   colors: Float32Array;
   /** Per instance: snow cap, winter dulling of the leaves (snowCap.ts). */
   snow: Float32Array;
   count: number;
+  /** Instances sorted by culling square: square s holds [sub[s], sub[s + 1]). */
+  sub: Uint32Array;
 }
 
 interface Chunk {
@@ -315,6 +320,8 @@ interface Chunk {
   readonly cy: number;
   data: Map<ModelName, ChunkModelData>;
   bounds: THREE.Box3;
+  /** Bounds of each culling square (row-major within the chunk; empty: no instances). */
+  subBounds: THREE.Box3[];
   sig: number;
   forced: boolean;
 }
@@ -379,7 +386,11 @@ export class VegetationLayer {
   private season: number;
   private readonly sliceMs: number;
   private disposed = false;
-  private visibleKey = '';
+  /** Visible culling squares as (chunk index × squares per chunk + square), last refill. */
+  private visible = new Int32Array(0);
+  private visibleN = -1;
+  private visibleScratch = new Int32Array(0);
+  private readonly subsPerSide: number;
   private refilled = false;
   private dataDirty = true;
   private lastCamera: THREE.Camera | null = null;
@@ -413,8 +424,21 @@ export class VegetationLayer {
     this.sliceMs = opts.sliceMs ?? 6;
     this.nx = Math.ceil(width / this.chunkSize);
     this.ny = Math.ceil(height / this.chunkSize);
+    this.subsPerSide = Math.max(1, Math.ceil(this.chunkSize / SUB));
+    const subs = this.subsPerSide * this.subsPerSide;
     for (let cy = 0; cy < this.ny; cy++)
-      for (let cx = 0; cx < this.nx; cx++) this.chunks.push({ cx, cy, data: new Map(), bounds: new THREE.Box3(), sig: -1, forced: true });
+      for (let cx = 0; cx < this.nx; cx++)
+        this.chunks.push({
+          cx,
+          cy,
+          data: new Map(),
+          bounds: new THREE.Box3(),
+          subBounds: Array.from({ length: subs }, () => new THREE.Box3()),
+          sig: -1,
+          forced: true,
+        });
+    this.visible = new Int32Array(this.chunks.length * subs);
+    this.visibleScratch = new Int32Array(this.chunks.length * subs);
     this.group.name = 'vegetation';
     scene.add(this.group);
     if (opts.autoCull !== false && (scene as THREE.Scene).isScene) {
@@ -581,20 +605,32 @@ export class VegetationLayer {
     camera.updateMatrixWorld();
     this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projView);
-    let key = '';
-    const vis: Chunk[] = [];
-    for (const c of this.chunks) {
-      const v = !c.bounds.isEmpty() && this.frustum.intersectsBox(c.bounds);
-      key += v ? '1' : '0';
-      if (v) vis.push(c);
+    // Visible culling squares (chunk first, then the squares inside it).
+    const subs = this.subsPerSide * this.subsPerSide;
+    const vis = this.visibleScratch;
+    let nv = 0;
+    for (let ci = 0; ci < this.chunks.length; ci++) {
+      const c = this.chunks[ci]!;
+      if (c.bounds.isEmpty() || !this.frustum.intersectsBox(c.bounds)) continue;
+      for (let s = 0; s < subs; s++) {
+        const b = c.subBounds[s]!;
+        if (!b.isEmpty() && this.frustum.intersectsBox(b)) vis[nv++] = ci * subs + s;
+      }
     }
-    if (key === this.visibleKey && !this.dataDirty) return;
-    this.visibleKey = key;
+    let same = nv === this.visibleN;
+    for (let k = 0; same && k < nv; k++) same = vis[k] === this.visible[k];
+    if (same && !this.dataDirty) return;
+    this.visibleScratch = this.visible;
+    this.visible = vis;
+    this.visibleN = nv;
     this.dataDirty = false;
     this.refilled = true;
     for (const b of this.batches.values()) {
       let n = 0;
-      for (const c of vis) n += c.data.get(b.name)?.count ?? 0;
+      for (let k = 0; k < nv; k++) {
+        const d = this.chunks[Math.floor(vis[k]! / subs)]!.data.get(b.name);
+        if (d) n += d.sub[(vis[k]! % subs) + 1]! - d.sub[vis[k]! % subs]!;
+      }
       if (n === 0) {
         if (b.mesh) {
           b.mesh.count = 0;
@@ -609,13 +645,25 @@ export class VegetationLayer {
       const snowAttr = mesh.geometry.getAttribute(SNOW_ATTRIBUTE) as THREE.InstancedBufferAttribute;
       const sArr = snowAttr.array as Float32Array;
       let o = 0;
-      for (const c of vis) {
-        const d = c.data.get(b.name);
+      for (let k = 0; k < nv; ) {
+        // A run of consecutive squares of one chunk is one contiguous range.
+        const ci = Math.floor(vis[k]! / subs);
+        let s1 = vis[k]! % subs;
+        const s0 = s1;
+        k++;
+        while (k < nv && s1 + 1 < subs && vis[k] === ci * subs + s1 + 1) {
+          s1++;
+          k++;
+        }
+        const d = this.chunks[ci]!.data.get(b.name);
         if (!d) continue;
-        mArr.set(d.matrices.subarray(0, d.count * 16), o * 16);
-        cArr.set(d.colors.subarray(0, d.count * 3), o * 3);
-        sArr.set(d.snow.subarray(0, d.count * 2), o * 2);
-        o += d.count;
+        const a = d.sub[s0]!;
+        const e = d.sub[s1 + 1]!;
+        if (e === a) continue;
+        mArr.set(d.matrices.subarray(a * 16, e * 16), o * 16);
+        cArr.set(d.colors.subarray(a * 3, e * 3), o * 3);
+        sArr.set(d.snow.subarray(a * 2, e * 2), o * 2);
+        o += e - a;
       }
       snowAttr.clearUpdateRanges();
       snowAttr.addUpdateRange(0, n * 2);
@@ -764,6 +812,12 @@ export class VegetationLayer {
     c.data = new Map();
     let minY = Infinity;
     let maxY = -Infinity;
+    const sps = this.subsPerSide;
+    const subs = sps * sps;
+    const subMin = new Float64Array(subs).fill(Infinity);
+    const subMax = new Float64Array(subs).fill(-Infinity);
+    const cell = (v: number) => Math.max(0, Math.min(sps - 1, Math.floor(v / SUB)));
+    const subOf = (p: Placement) => cell(p.y - y0) * sps + cell(p.x - x0);
     for (const [name, ps] of byModel) {
       const model = this.models.get(name);
       if (!model) continue;
@@ -772,7 +826,13 @@ export class VegetationLayer {
         colors: new Float32Array(ps.length * 3),
         snow: new Float32Array(ps.length * 2),
         count: ps.length,
+        sub: new Uint32Array(subs + 1),
       };
+      // Each instance's slot: grouped by culling square, in placement order within it
+      // (k, the placement index, still decides the colour variation below).
+      for (const p of ps) d.sub[subOf(p) + 1]!++;
+      for (let q = 0; q < subs; q++) d.sub[q + 1]! += d.sub[q]!;
+      const fill = d.sub.slice(0, subs);
       const kind = ps[0]!.kind;
       // Bare-ish in winter: deciduous trees most, bushes and conifers a little.
       const dull = winter ? (kind === VegKind.Deciduous ? 1 : kind === VegKind.Bush ? 0.7 : kind === VegKind.Conifer ? 0.25 : 0) : 0;
@@ -793,8 +853,13 @@ export class VegetationLayer {
             ? heightToY(this.heights.terrainAt(p.x, p.y) + this.heights.depthAt(p.x, p.y)) + 0.02
             : heightToY(this.heights.terrainAt(p.x, p.y)) - (isTree ? 0.02 : 0.005);
         if (kind !== VegKind.Lily) ty -= bury * model.height * p.scale + Math.min(0.3, steep * (lying ? 0.05 : 0.12) * p.scale);
+        const q = subOf(p);
+        const slot = fill[q]!++;
+        const top = ty + model.height * p.scale;
         if (ty < minY) minY = ty;
-        if (ty + model.height * p.scale > maxY) maxY = ty + model.height * p.scale;
+        if (top > maxY) maxY = top;
+        if (ty < subMin[q]!) subMin[q] = ty;
+        if (top > subMax[q]!) subMax[q] = top;
         this.tmpP.set(p.x + 0.5, ty, p.y + 0.5);
         this.tmpQ.setFromAxisAngle(this.up, p.yaw);
         if (lying) {
@@ -804,7 +869,7 @@ export class VegetationLayer {
         }
         this.tmpS.setScalar(p.scale);
         this.tmpM.compose(this.tmpP, this.tmpQ, this.tmpS);
-        this.tmpM.toArray(d.matrices, k * 16);
+        this.tmpM.toArray(d.matrices, slot * 16);
         // Take on the slope's light: Lambert of the terrain normal relative to
         // flat ground (fully for things lying on the ground, half for plants).
         let light = 1;
@@ -819,14 +884,26 @@ export class VegetationLayer {
         // Gentle per-instance variation; in autumn deciduous trees get warmer.
         if (autumn && kind === VegKind.Deciduous) this.tmpC.setRGB(tint * 1.04, tint, tint * 0.92);
         else this.tmpC.setRGB(tint, tint * (0.98 + (0.04 * ((k * 7919) % 13)) / 13), tint);
-        this.tmpC.toArray(d.colors, k * 3);
-        d.snow[k * 2] = snowCap(p.snow ?? 0) * (isTree || kind === VegKind.Bush || lying ? 0.95 : 0);
-        d.snow[k * 2 + 1] = dull;
+        this.tmpC.toArray(d.colors, slot * 3);
+        d.snow[slot * 2] = snowCap(p.snow ?? 0) * (isTree || kind === VegKind.Bush || lying ? 0.95 : 0);
+        d.snow[slot * 2 + 1] = dull;
       }
       c.data.set(name, d);
     }
-    if (c.data.size) c.bounds.set(new THREE.Vector3(x0 - 1, minY, y0 - 1), new THREE.Vector3(x1 + 2, maxY, y1 + 2));
+    if (c.data.size) c.bounds.set(new THREE.Vector3(x0 - 2, minY, y0 - 2), new THREE.Vector3(x1 + 3, maxY, y1 + 3));
     else c.bounds.makeEmpty();
+    // (A model's crown reaches past its cell: a margin of 2–3 cells, like the chunk's.)
+    for (let q = 0; q < subs; q++) {
+      const b = c.subBounds[q]!;
+      if (subMin[q]! > subMax[q]!) {
+        b.makeEmpty();
+        continue;
+      }
+      const sx = x0 + (q % sps) * SUB;
+      const sy = y0 + Math.floor(q / sps) * SUB;
+      b.min.set(sx - 2, subMin[q]!, sy - 2);
+      b.max.set(Math.min(x1, sx + SUB) + 3, subMax[q]!, Math.min(y1, sy + SUB) + 3);
+    }
     this.dataDirty = true;
   }
 }

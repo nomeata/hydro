@@ -169,6 +169,20 @@ ${LINING_GLSL}
 
 const FRAGMENT_COLOUR = /* glsl */ `
   vec3 planGlow = vec3(0.0);
+  // Fog of war, first: land that is not drawn at all costs no ground colour.
+  float fogMul = 1.0;
+  bool fogEdge = false;
+  if (uFogOn > 0.5) {
+    vec2 fc = vTerrWorld.xz - 0.5;
+    float rv = revealAt(fc);
+    if (rv < 0.999) {
+      fogEdge = true;
+      float n = fogNoise(fc * 0.18) * 0.6 + fogNoise(fc * 0.55 + 4.7) * 0.4;
+      // The side wall fades with the land along its top edge.
+      fogMul = smoothstep(0.25, 0.85, rv + (n - 0.5) * 0.35);
+      if (fogMul <= 0.002) discard;
+    }
+  }
   {
     vec3 groundCol;
     if (vSkirt > 0.001) {
@@ -320,16 +334,10 @@ const FRAGMENT_COLOUR = /* glsl */ `
     }
     // Fog of war: known land fades into the background; unknown land and the
     // map's side walls (until the edge is explored) are not drawn at all.
-    if (uFogOn > 0.5) {
-      vec2 fc = vTerrWorld.xz - 0.5;
-      float rv = revealAt(fc);
-      if (rv < 0.999) {
-        float n = fogNoise(fc * 0.18) * 0.6 + fogNoise(fc * 0.55 + 4.7) * 0.4;
-        // The side wall fades with the land along its top edge.
-        fogVis *= smoothstep(0.25, 0.85, rv + (n - 0.5) * 0.35);
-        if (fogVis <= 0.002) discard;
-        planGlow *= fogVis;
-      }
+    if (fogEdge) {
+      fogVis *= fogMul;
+      if (fogVis <= 0.002) discard;
+      planGlow *= fogVis;
     }
     if (vSkirt <= 0.001) groundCol *= cloudShadow(vTerrWorld.xz);
     diffuseColor.rgb = groundCol;
@@ -407,7 +415,7 @@ export function createTerrainMaterial(u: TerrainUniforms): THREE.MeshLambertMate
   };
   const withDefines = mat as unknown as { defines: Record<string, string> };
   withDefines.defines = {};
-  mat.customProgramCacheKey = () => `hydro-terrain-v10${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}`;
+  mat.customProgramCacheKey = () => `hydro-terrain-v11${withDefines.defines.HYDRO_LINING !== undefined ? '-lined' : ''}`;
   return mat;
 }
 

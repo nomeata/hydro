@@ -216,4 +216,66 @@ describe('vegetation scatter', () => {
     expect(layer.meshCount).toBeLessThan(drawn.length);
     layer.dispose();
   });
+
+  it('VegetationLayer culls in squares inside the chunks, and draws every instance in view exactly once', async () => {
+    const big = world(256, (x, y) => ({ soil: SoilType.Loam, moist: 0.5, veg: ((x * 7 + y * 3) % 100) / 100 }));
+    const geometry = new THREE.BoxGeometry(0.2, 1, 0.2).translate(0, 0.5, 0);
+    const stub = {
+      preloadStatic: async (names: readonly ModelName[]): Promise<StaticModel[]> =>
+        names.map((name) => ({ name, geometry, material: vertexColorMaterial(), height: 1, radius: 0.1 })),
+    };
+    const layer = new VegetationLayer(new THREE.Scene(), big.heights, big.look, 256, 256, 1, { library: stub, autoCull: false });
+    await layer.ready;
+    const drawnKeys = () => {
+      const keys: string[] = [];
+      for (const m of layer.group.children as THREE.InstancedMesh[]) {
+        if (!m.visible) continue;
+        const a = m.instanceMatrix.array;
+        for (let i = 0; i < m.count; i++) keys.push(`${m.name}@${a[i * 16 + 12]!.toFixed(3)},${a[i * 16 + 14]!.toFixed(3)}`);
+      }
+      return keys;
+    };
+    const camAt = (x: number, z: number, half: number) => {
+      const cam = new THREE.OrthographicCamera(-half, half, half, -half, -500, 500);
+      cam.position.set(x + 20, 30, z + 20);
+      cam.lookAt(x, 0, z);
+      cam.updateMatrixWorld();
+      return cam;
+    };
+    // Everything: the whole map in view.
+    layer.cull(camAt(128, 128, 400));
+    const all = drawnKeys();
+    expect(all.length).toBe(layer.instanceCount);
+    expect(new Set(all).size).toBe(all.length);
+    const allSet = new Set(all);
+    // Views straddling chunk (64) and square (16) borders.
+    for (const [x, z, half] of [
+      [64, 64, 10],
+      [47, 130, 14],
+      [200, 30, 25],
+      [128, 128, 40],
+    ] as const) {
+      const cam = camAt(x, z, half);
+      layer.cull(cam);
+      const keys = drawnKeys();
+      expect(new Set(keys).size).toBe(keys.length);
+      for (const k of keys) expect(allSet.has(k)).toBe(true);
+      // Every instance whose foot is in view is drawn.
+      const drawnSet = new Set(keys);
+      const pv = new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      const v = new THREE.Vector3();
+      let inView = 0;
+      for (const k of all) {
+        const [px, pz] = k.split('@')[1]!.split(',').map(Number);
+        v.set(px!, 0, pz!).applyMatrix4(pv);
+        if (Math.abs(v.x) > 1 || Math.abs(v.y) > 1) continue;
+        inView++;
+        expect(drawnSet.has(k)).toBe(true);
+      }
+      expect(inView).toBeGreaterThan(0);
+      // Culling is finer than whole chunks: far fewer than everything.
+      expect(keys.length).toBeLessThan(all.length / 3);
+    }
+    layer.dispose();
+  });
 });

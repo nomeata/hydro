@@ -22,7 +22,7 @@ const opt = (k: string, d: string) => {
 };
 const url = opt('url', 'http://localhost:4391/');
 const views = opt('views', 'close,mid,far,winter,phone').split(',');
-const modes = opt('modes', 'active,idle').split(',');
+const modes = opt('modes', 'active,idle').split(',').filter((m) => m);
 const secs = Number(opt('secs', '8'));
 const shots = opt('shots', '');
 const days = Number(opt('days', '2'));
@@ -298,7 +298,7 @@ for (const name of views) {
   await setupView(page, v);
   await page.evaluate(instrument);
   if (shots) {
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(Number(opt('shot-wait', '1500')));
     await page.evaluate(() => ((document.getElementById('ui') as HTMLElement).style.visibility = 'hidden'));
     await page.waitForTimeout(500);
     await page.evaluate(() => ((window as any).__hydro.render.hold = true));

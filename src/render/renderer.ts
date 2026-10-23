@@ -825,14 +825,19 @@ export class GameRenderer {
 
   // -------------------------------------------------------------------------
 
-  /** Water chunks entirely in the fog are never drawn. */
+  /** Water and terrain chunks entirely in the fog are never drawn (the terrain shader would discard all of it). */
   private updateFogChunks(): void {
     const C = CHUNK;
     const w = this.water;
     let k = 0;
     w.hiddenChunks = [];
     for (let oy = 0; oy < this.info.height; oy += C)
-      for (let ox = 0; ox < this.info.width; ox += C) w.hiddenChunks[k++] = this.fog.hidden(ox, oy, ox + C, oy + C);
+      for (let ox = 0; ox < this.info.width; ox += C) {
+        w.hiddenChunks[k] = this.fog.hidden(ox, oy, ox + C, oy + C);
+        // (One more cell of margin: the reveal texture is sampled bilinearly up to the chunk's far edge.)
+        this.terrain.meshes[k]!.visible = !this.fog.hidden(ox - 1, oy - 1, ox + C + 1, oy + C + 1);
+        k++;
+      }
     w.updateVisibility(this.depthBuf(true), this.depthBuf(false));
   }
 
