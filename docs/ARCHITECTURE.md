@@ -259,9 +259,12 @@ Main → worker: `init`, `load`, `scene` (welcome scenes, §5.1), `setSpeed`,
 `command`, `ack` (returns buffers), `requestSave`. Worker → main: `ready`,
 `snapshot`, `saved`, `log`.
 
-**Snapshots** (~10 Hz), using transferable buffers from a 3-set ping-pong
+**Snapshots** (~10 Hz while the game runs or a command came in; paused and
+untouched, one a second), using transferable buffers from a 3-set ping-pong
 pool. When no set is free, the worker **skips** the snapshot and never
-queues or allocates.
+queues or allocates. Depth and velocity are packed again only on the active
+rows once a buffer holds the frozen land (`sim/pack.ts`; the main thread
+must not write into them).
 - `time`, climate, fronts, stats (achieved speed, ledger).
 - `depth`: f32 water depth (256² → 256 KB).
 - `vel`: RG8 signed velocity (±4 m/s).
@@ -270,9 +273,12 @@ queues or allocates.
   dirty bands.
 - `plan`: changed plan cells.
 
-The worker loop runs work slices of ≤ 4 ms and yields through a
+The worker loop runs work slices of ≤ 8 ms and yields through a
 MessageChannel, so commands and acks are handled promptly. It paces
-itself with its own clock.
+itself with its own clock and sleeps until the next step (or snapshot) is
+due, so a phone's core idles between steps (and while paused); on
+coarse-pointer devices it also rests after each slice to stay within ~45 %
+of a core (`duty`).
 
 ## 5. Rendering (`render/`)
 - `OrthographicCamera` at ~35° pitch with free yaw. Mouse: drag pans, wheel
