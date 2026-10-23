@@ -233,10 +233,12 @@ async function prof(file: string): Promise<void> {
   // The worker's three pooled buffer sets, used in turn.
   const pool = [0, 1, 2].map((id) => ({ id, depth: new Float32Array(sim.world.size), vel: new Int8Array(sim.world.size * 2) }));
   const stepMs: number[] = [];
+  const spikes: { step: number; ms: number; parts: string }[] = [];
   const snapMs: number[] = [];
   const T0 = clock();
   let adv = 0;
   for (let s = 0; s < steps; s++) {
+    const before = new Map(t.ms);
     const a = clock();
     t.depth.push(0);
     sim.advance();
@@ -245,6 +247,10 @@ async function prof(file: string): Promise<void> {
     adv += dt;
     t.add('kernels (advance rest)', dt - inner);
     stepMs.push(dt);
+    if (dt > 40) {
+      const parts = [...t.ms].map(([k, v]) => [k, v - (before.get(k) ?? 0)] as const).filter(([, v]) => v > 2).sort((x, y) => y[1] - x[1]);
+      spikes.push({ step: sim.step, ms: dt, parts: parts.map(([k, v]) => `${k} ${v.toFixed(0)}`).join(', ') });
+    }
     if (s % snapEvery === snapEvery - 1) {
       const c = clock();
       packSnapshot(sim, speed, pool[snapMs.length % 3]!, t);
@@ -258,6 +264,7 @@ async function prof(file: string): Promise<void> {
   console.log(`total ${perGs(total).toFixed(1)} ms per game second (advance ${perGs(adv).toFixed(1)}, snapshots ${perGs(total - adv).toFixed(1)}); mean step ${(adv / steps).toFixed(2)} ms`);
   const sorted = [...stepMs].sort((x, y) => y - x);
   console.log(`worst steps: ${sorted.slice(0, 6).map((x) => x.toFixed(1)).join(', ')} ms; p99 ${sorted[Math.floor(steps / 100)]!.toFixed(1)}; worst snapshot ${Math.max(...snapMs).toFixed(1)} ms`);
+  for (const sp of spikes.sort((x, y) => y.ms - x.ms).slice(0, 5)) console.log(`  spike at step ${sp.step} (${sp.step % STEPS_PER_DAY} of the day): ${sp.ms.toFixed(0)} ms: ${sp.parts}`);
   const rowsOut = [...t.ms.entries()].sort((x, y) => y[1] - x[1]);
   for (const [k, v] of rowsOut) console.log(`  ${k.padEnd(28)} ${perGs(v).toFixed(2).padStart(7)} ms/gs  worst ${t.worst.get(k)!.toFixed(1).padStart(6)} ms  calls ${t.calls.get(k)}`);
   const json = opt('json', '');

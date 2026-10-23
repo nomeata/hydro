@@ -185,7 +185,8 @@ function tick(): void {
   }
 
   // Snapshots at ~10 Hz while something changes; while paused and untouched, seldom.
-  const since = now - lastSnapshot;
+  // (A millisecond early is on time: the timer that woke us was aimed at it.)
+  const since = now - lastSnapshot + 1;
   if (since >= SNAPSHOT_INTERVAL_MS && (changed || since >= IDLE_SNAPSHOT_MS)) {
     if (sendSnapshot()) {
       lastSnapshot = now;
@@ -203,8 +204,9 @@ function tick(): void {
   // so that a phone's core can idle between steps (and while paused).
   const rate = STEPS_PER_SECOND_1X * speed;
   const untilStep = rate > 0 ? ((1 - accumulator) / rate) * 1000 + 1 : Infinity;
-  const untilSnap = Math.max(0, lastSnapshot + SNAPSHOT_INTERVAL_MS - performance.now());
-  schedule(Math.max(rest, 1, Math.min(untilStep, Math.max(untilSnap, 1), SNAPSHOT_INTERVAL_MS)));
+  // (A message arriving meanwhile is handled at once; its snapshot waits at most SNAPSHOT_INTERVAL_MS.)
+  const untilSnap = lastSnapshot + (changed ? SNAPSHOT_INTERVAL_MS : IDLE_SNAPSHOT_MS) - performance.now();
+  schedule(Math.max(rest, 1, Math.min(untilStep, untilSnap, SNAPSHOT_INTERVAL_MS)));
 }
 
 /** The brushes' fixed cells as last sent (Snapshot.fixed). */
