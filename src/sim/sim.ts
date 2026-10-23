@@ -9,7 +9,7 @@ import { Weather, type WeatherState } from './climate/weather';
 import { Climate, tileRainMap, type ClimateRunState } from './climate/climate';
 import { CELL_AREA, DT, STEPS_PER_DAY, TILE } from './constants';
 import { GroundwaterScratch, groundwaterStep } from './hydro/groundwater';
-import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, stableDtWave, type FlowStats } from './hydro/inertial';
+import { DEFAULT_FLOW_PARAMS, FlowScratch, flowStep, stableDt, stableDtWave, thetaForSteps, type FlowParams, type FlowStats } from './hydro/inertial';
 import { FrozenSnow, newLedger, snowCoverByte, soilWaterStep, type Ledger } from './hydro/soilwater';
 import { ErosionScratch, defaultGeoParams, erosionStep, overtopStep, newSedimentLedger, weatherStep, type GeoParams, type RowRange, type SedimentLedger } from './hydro/erosion';
 import { TalusScratch, talusStep } from './hydro/talus';
@@ -473,14 +473,19 @@ export class Simulation {
 
     // Surface flow, sub-stepped for stability in deep or fast water.
     const fs = this.flowStats;
-    // (The Courant limit of the fastest wave in any one cell; saves from before it: deepest and fastest anywhere.)
-    const n = Math.max(1, Math.ceil(DT / (fs.maxWave !== undefined ? stableDtWave(fs.maxWave) : stableDt(fs.maxDepth, fs.maxSpeed))));
+    // The Courant limit of the fastest wave in any one cell. The step used to follow the
+    // deepest water plus the fastest flow anywhere (often a thin film at the speed clamp,
+    // so most games ran three sub-steps); fewer sub-steps keep that rule's smoothing per
+    // second (thetaForSteps), so the water behaves as it did.
+    const nOld = Math.max(1, Math.ceil(DT / stableDt(fs.maxDepth, fs.maxSpeed)));
+    const n = fs.maxWave !== undefined ? Math.min(nOld, Math.max(1, Math.ceil(DT / stableDtWave(fs.maxWave)))) : nOld;
+    const params = this.flowParams(nOld, n);
     let out = 0;
     let sedOut = 0;
     let edgeIn = 0;
     let sedIn = 0;
     for (let k = 0; k < n; k++) {
-      flowStep(w, this.scratch, DEFAULT_FLOW_PARAMS, DT / n, fs, this.structures.walls, act);
+      flowStep(w, this.scratch, params, DT / n, fs, this.structures.walls, act);
       out += fs.outflow + fs.edgeOut!;
       sedOut += fs.sedimentOut! + fs.edgeSedOut!;
       edgeIn += fs.edgeIn!;
@@ -593,6 +598,19 @@ export class Simulation {
     }
     if (this.step % 30 === 0) this.lookDirty = true;
   }
+
+  /** Flow parameters for n sub-steps where the old rule ran nOld (thetaForSteps), cached. */
+  private flowParams(nOld: number, n: number): FlowParams {
+    if (nOld === n) return DEFAULT_FLOW_PARAMS;
+    const key = nOld * 64 + n;
+    let p = this.flowParamCache.get(key);
+    if (!p) {
+      p = { ...DEFAULT_FLOW_PARAMS, theta: thetaForSteps(DEFAULT_FLOW_PARAMS.theta, nOld, n) };
+      this.flowParamCache.set(key, p);
+    }
+    return p;
+  }
+  private readonly flowParamCache = new Map<number, FlowParams>();
 
   run(steps: number): void {
     for (let s = 0; s < steps; s++) this.advance();

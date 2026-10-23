@@ -85,7 +85,13 @@ Simulating an ever-growing grid is not affordable. The design is:
 
 ### 3.1 Two clocks
 - **Hydraulic time:** `DT = 0.5 s` per step, with a CFL check and sub-stepping
-  for deep water (dt ≤ 0.7·dx/(√(g·h_max)+|u|max)).
+  for deep or fast water (dt ≤ 0.7·dx/max over cells of (√(g·h)+|u|), from
+  the last step). Until the perf round of 2026-10 the bound was the deepest
+  water plus the fastest flow anywhere, often a thin film at the 5 m/s
+  clamp, so most games ran three sub-steps where two suffice. Because the θ
+  weighting smooths per step, fewer sub-steps would raise a weir's head by a
+  few per cent: the sim scales θ to keep the old rule's smoothing per second
+  (`thetaForSteps`), and where both rules agree nothing changed.
 - **Calendar time:** `STEPS_PER_DAY = 600`, so a game day is 300 hydraulic
   seconds. Compression factor `K = 86400/300 ≈ 290`.
 - **Every slow rate** (rain, evaporation, infiltration, melt, groundwater,
@@ -117,6 +123,10 @@ q    ← (q − g·h_f·dt·(η_j − η_i)/dx) / (1 + g·dt·n²·|q| / h_f^(7/
 4. Cell velocity = average face discharge / depth (used for erosion,
    rendering foam, NPCs).
 5. Outlets drain at critical flow `q = h·√(g·h)`, with their bed height pinned.
+
+The kernel runs this in two passes over the awake tiles: the faces, with each
+cell's outflow limit right behind them; then each cell scales its own two
+faces and applies continuity (bit-identical to separate passes).
 
 **Active tiles and tile sleeping** (`sim/active.ts`, ENDLESS.md §12).
 With the fog, every kernel runs only on the active 16² tiles: the revealed

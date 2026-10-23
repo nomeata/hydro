@@ -132,6 +132,17 @@ export function stableDtWave(maxWave: number, alpha = 0.7): number {
 }
 
 /**
+ * The θ weighting smooths the faces by (1 − θ) per step, so the smoothing
+ * per second, and with it the flow over a weir crest (by a few per cent of
+ * its head), depends on the number of steps. To run `steps` sub-steps where
+ * `asOf` were run before, at the same smoothing per second: this θ (≥ 0.5).
+ */
+export function thetaForSteps(theta: number, asOf: number, steps: number): number {
+  if (asOf === steps) return theta;
+  return 1 - Math.min(0.5, ((1 - theta) * asOf) / steps);
+}
+
+/**
  * Largest stable time step for the given conditions (Courant-like): the
  * deepest water's wave speed plus the fastest flow anywhere, which may be
  * different cells (a thin film over a bank), so it is stricter than
