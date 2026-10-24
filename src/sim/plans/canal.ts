@@ -292,28 +292,57 @@ export function planCanal(sim: CanalHost, starts: CanalStart[], targets: Set<num
  */
 export function coverage(w: World, path: readonly number[], targets: Set<number>): { covered: Set<number>; lost: number } {
   const W = w.width;
+  const H = w.height;
   const reach = wetReach() + 1;
   const R = Math.ceil(reach);
-  const near = new Map<number, number>();
+  // Nearest path distance per cell, in typed scratch (cells in first-visit order, as a Map would keep them).
+  const sc = coverScratch(w.size, R);
+  const { dist, seen, order, disk } = sc;
+  const mark = ++sc.mark;
+  let n = 0;
   for (const i of path) {
     const x = i % W;
     const y = (i / W) | 0;
-    for (let dy = -R; dy <= R; dy++)
-      for (let dx = -R; dx <= R; dx++) {
-        if (!w.inBounds(x + dx, y + dy)) continue;
-        const j = w.idx(x + dx, y + dy);
-        const d = Math.hypot(dx, dy);
-        if (d < (near.get(j) ?? Infinity)) near.set(j, d);
-      }
+    for (let k = 0; k < disk.length; k += 3) {
+      const nx = x + disk[k]!;
+      const ny = y + disk[k + 1]!;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx;
+      const d = disk[k + 2]!;
+      if (seen[j] !== mark) {
+        seen[j] = mark;
+        dist[j] = d;
+        order[n++] = j;
+      } else if (d < dist[j]!) dist[j] = d;
+    }
   }
   const covered = new Set<number>();
   let lost = 0;
-  for (const [j, d] of near) {
+  for (let k = 0; k < n; k++) {
+    const j = order[k]!;
+    const d = dist[j]!;
     if (d <= FOOTPRINT) {
       if (w.landuse[j] === LandUse.Field) lost++;
     } else if (d <= reach && targets.has(j)) covered.add(j);
   }
   return { covered, lost };
+}
+
+/** Scratch for coverage(): reused while the map size and reach stay. */
+let cover: { size: number; R: number; dist: Float64Array; seen: Int32Array; order: Int32Array; disk: Float64Array; mark: number } | null = null;
+
+function coverScratch(size: number, R: number): NonNullable<typeof cover> {
+  if (!cover || cover.size !== size || cover.R !== R) {
+    // The square of offsets round a path cell with their distances, in the order the scan visits them.
+    const disk: number[] = [];
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) disk.push(dx, dy, Math.hypot(dx, dy));
+    cover = { size, R, dist: new Float64Array(size), seen: new Int32Array(size), order: new Int32Array(size), disk: Float64Array.from(disk), mark: 0 };
+  }
+  if (cover.mark > 0x7ffffff0) {
+    cover.seen.fill(0);
+    cover.mark = 0;
+  }
+  return cover;
 }
 
 /** Worth of the cells a canal waters (dry fields 1, open land OPEN_LAND). */

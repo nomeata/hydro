@@ -85,7 +85,13 @@ Simulating an ever-growing grid is not affordable. The design is:
 
 ### 3.1 Two clocks
 - **Hydraulic time:** `DT = 0.5 s` per step, with a CFL check and sub-stepping
-  for deep water (dt ≤ 0.7·dx/(√(g·h_max)+|u|max)).
+  for deep or fast water (dt ≤ 0.7·dx/max over cells of (√(g·h)+|u|), from
+  the last step). Until the perf round of 2026-10 the bound was the deepest
+  water plus the fastest flow anywhere, often a thin film at the 5 m/s
+  clamp, so most games ran three sub-steps where two suffice. Because the θ
+  weighting smooths per step, fewer sub-steps would raise a weir's head by a
+  few per cent: the sim scales θ to keep the old rule's smoothing per second
+  (`thetaForSteps`), and where both rules agree nothing changed.
 - **Calendar time:** `STEPS_PER_DAY = 600`, so a game day is 300 hydraulic
   seconds. Compression factor `K = 86400/300 ≈ 290`.
 - **Every slow rate** (rain, evaporation, infiltration, melt, groundwater,
@@ -117,6 +123,10 @@ q    ← (q − g·h_f·dt·(η_j − η_i)/dx) / (1 + g·dt·n²·|q| / h_f^(7/
 4. Cell velocity = average face discharge / depth (used for erosion,
    rendering foam, NPCs).
 5. Outlets drain at critical flow `q = h·√(g·h)`, with their bed height pinned.
+
+The kernel runs this in two passes over the awake tiles: the faces, with each
+cell's outflow limit right behind them; then each cell scales its own two
+faces and applies continuity (bit-identical to separate passes).
 
 **Active tiles and tile sleeping** (`sim/active.ts`, ENDLESS.md §12).
 With the fog, every kernel runs only on the active 16² tiles: the revealed
@@ -249,9 +259,12 @@ Main → worker: `init`, `load`, `scene` (welcome scenes, §5.1), `setSpeed`,
 `command`, `ack` (returns buffers), `requestSave`. Worker → main: `ready`,
 `snapshot`, `saved`, `log`.
 
-**Snapshots** (~10 Hz), using transferable buffers from a 3-set ping-pong
+**Snapshots** (~10 Hz while the game runs or a command came in; paused and
+untouched, one a second), using transferable buffers from a 3-set ping-pong
 pool. When no set is free, the worker **skips** the snapshot and never
-queues or allocates.
+queues or allocates. Depth and velocity are packed again only on the active
+rows once a buffer holds the frozen land (`sim/pack.ts`; the main thread
+must not write into them).
 - `time`, climate, fronts, stats (achieved speed, ledger).
 - `depth`: f32 water depth (256² → 256 KB).
 - `vel`: RG8 signed velocity (±4 m/s).
@@ -260,9 +273,12 @@ queues or allocates.
   dirty bands.
 - `plan`: changed plan cells.
 
-The worker loop runs work slices of ≤ 4 ms and yields through a
+The worker loop runs work slices of ≤ 8 ms and yields through a
 MessageChannel, so commands and acks are handled promptly. It paces
-itself with its own clock.
+itself with its own clock and sleeps until the next step (or snapshot) is
+due, so a phone's core idles between steps (and while paused); on
+coarse-pointer devices it also rests after each slice to stay within ~45 %
+of a core (`duty`).
 
 ## 5. Rendering (`render/`)
 - `OrthographicCamera` at ~35° pitch with free yaw. Mouse: drag pans, wheel

@@ -109,6 +109,11 @@ export interface FlowStats {
   maxDepth: number;
   /** Max |velocity| seen (m/s). */
   maxSpeed: number;
+  /**
+   * Max over the cells of the wave speed √(g·h) + |u| (m/s; |u| as |u_x| + |u_y|): the
+   * Courant limit of the next step (`stableDtWave`). Absent in older saves (then `stableDt`).
+   */
+  maxWave?: number;
   /** Sediment volume (m³) drained through outlets during the step. */
   sedimentOut?: number;
   /** Water (m³) that came in from, or left into, the frozen land outside the active set. */
@@ -121,7 +126,28 @@ export interface FlowStats {
   awakeTiles?: number;
 }
 
-/** Largest stable time step for the given conditions (Courant-like). */
+/** Largest stable time step from the cells' wave speeds (FlowStats.maxWave; Courant number alpha). */
+export function stableDtWave(maxWave: number, alpha = 0.7): number {
+  return (alpha * CELL) / Math.max(maxWave, Math.sqrt(GRAVITY * 0.01));
+}
+
+/**
+ * The θ weighting smooths the faces by (1 − θ) per step, so the smoothing
+ * per second, and with it the flow over a weir crest (by a few per cent of
+ * its head), depends on the number of steps. To run `steps` sub-steps where
+ * `asOf` were run before, at the same smoothing per second: this θ (≥ 0.5).
+ */
+export function thetaForSteps(theta: number, asOf: number, steps: number): number {
+  if (asOf === steps) return theta;
+  return 1 - Math.min(0.5, ((1 - theta) * asOf) / steps);
+}
+
+/**
+ * Largest stable time step for the given conditions (Courant-like): the
+ * deepest water's wave speed plus the fastest flow anywhere, which may be
+ * different cells (a thin film over a bank), so it is stricter than
+ * `stableDtWave`.
+ */
 export function stableDt(maxDepth: number, maxSpeed: number, alpha = 0.7): number {
   return (alpha * CELL) / (Math.sqrt(GRAVITY * Math.max(maxDepth, 0.01)) + maxSpeed);
 }
@@ -306,7 +332,16 @@ export function flowStep(
   const maxV = p.maxVelocity;
   const invDx = 1 / CELL;
 
-  // --- 1. Face discharges ---------------------------------------------------
+  // --- 1. Face discharges, and each cell's outflow limit -------------------
+  // Two passes over the awake tiles (docs/ARCHITECTURE.md §3.2, steps 1–4):
+  // (a) the faces, and right behind them the outflow limit and sediment
+  // concentration of each cell (all four of its faces are known by then:
+  // the left and upper ones were computed earlier in the same order);
+  // (b) each cell scales the two faces it owns (right, down) by their donor's
+  // limit, then applies continuity. The faces into a run from outside it
+  // (frozen halo or a sleeping tile) are scaled in between. Every value is
+  // computed as in a plain four-pass version, so the result is the same.
+  const k = dt * CELL; // volume per unit of q
   for (let r = 0; r < nRuns; r++) {
     const ty = runs[3 * r]!;
     const tx0 = runs[3 * r + 1]!;
@@ -334,104 +369,111 @@ export function flowStep(
         const q0 = qxOld[i]!;
         qx[i] = haloFace(world, p, dt, i, i + 1, q0, cx0 - 1 > 0 ? qxOld[i - 1]! : q0, cx0 - 1 < W - 2 ? qxOld[i + 1]! : q0);
       }
+      const hasDown = y < H - 1;
+      // This cell's bed and depth, carried over from the previous cell's right neighbour.
+      let zi = bedrock[row + cx0]! + soil[row + cx0]!;
+      let hi = water[row + cx0]!;
+      // The left face's outflow from this cell (carried as well).
+      let qLeft = cx0 > 0 ? qx[row + cx0 - 1]! : 0;
       for (let x = cx0; x < cx1; x++) {
         const i = row + x;
-        const zi = bedrock[i]! + soil[i]!;
-        const hi = water[i]!;
         const ei = zi + hi;
+        let zR = 0;
+        let hR = 0;
+        let qR = 0;
 
         // x-face (i → i+1)
         if (x < W - 1) {
           const j = i + 1;
-          const zj = bedrock[j]! + soil[j]!;
-          const hj = water[j]!;
-          const ej = zj + hj;
-          const hf = Math.max(ei, ej) - Math.max(zi, zj);
-          if (hf > minH && (hi > 0 || hj > 0)) {
-            const q0 = qxOld[i]!;
-            const qa = x > 0 ? qxOld[i - 1]! : q0;
-            const qb = x < W - 2 ? qxOld[i + 1]! : q0;
-            const qt = theta * q0 + side * (qa + qb);
-            let q = qt - g * hf * dt * (ej - ei) * invDx;
-            if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
-            const qmax = hf * maxV;
-            if (q > qmax) q = qmax;
-            else if (q < -qmax) q = -qmax;
-            qx[i] = q;
-          } else {
-            qx[i] = 0;
+          hR = water[j]!;
+          zR = bedrock[j]! + soil[j]!;
+          if (hi > 0 || hR > 0) {
+            const ej = zR + hR;
+            const hf = Math.max(ei, ej) - Math.max(zi, zR);
+            if (hf > minH) {
+              const q0 = qxOld[i]!;
+              const qa = x > 0 ? qxOld[i - 1]! : q0;
+              const qb = x < W - 2 ? qxOld[i + 1]! : q0;
+              const qt = theta * q0 + side * (qa + qb);
+              let q = qt - g * hf * dt * (ej - ei) * invDx;
+              if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
+              const qmax = hf * maxV;
+              if (q > qmax) q = qmax;
+              else if (q < -qmax) q = -qmax;
+              qR = q;
+            }
           }
-        } else {
-          qx[i] = 0;
         }
+        qx[i] = qR;
 
         // y-face (i → i+W)
-        if (y < H - 1) {
+        let qD = 0;
+        if (hasDown) {
           const j = i + W;
-          const zj = bedrock[j]! + soil[j]!;
           const hj = water[j]!;
-          const ej = zj + hj;
-          const hf = Math.max(ei, ej) - Math.max(zi, zj);
-          if (hf > minH && (hi > 0 || hj > 0)) {
-            const q0 = qyOld[i]!;
-            const qa = y > 0 ? qyOld[i - W]! : q0;
-            const qb = y < H - 2 ? qyOld[i + W]! : q0;
-            const qt = theta * q0 + side * (qa + qb);
-            let q = qt - g * hf * dt * (ej - ei) * invDx;
-            if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
-            const qmax = hf * maxV;
-            if (q > qmax) q = qmax;
-            else if (q < -qmax) q = -qmax;
-            qy[i] = q;
-          } else {
-            qy[i] = 0;
+          if (hi > 0 || hj > 0) {
+            const zj = bedrock[j]! + soil[j]!;
+            const ej = zj + hj;
+            const hf = Math.max(ei, ej) - Math.max(zi, zj);
+            if (hf > minH) {
+              const q0 = qyOld[i]!;
+              const qa = y > 0 ? qyOld[i - W]! : q0;
+              const qb = y < H - 2 ? qyOld[i + W]! : q0;
+              const qt = theta * q0 + side * (qa + qb);
+              let q = qt - g * hf * dt * (ej - ei) * invDx;
+              if (q0 !== 0) q /= 1 + (g * dt * n2 * Math.abs(q0)) / (hf * hf * Math.sqrt(Math.sqrt(hf)));
+              const qmax = hf * maxV;
+              if (q > qmax) q = qmax;
+              else if (q < -qmax) q = -qmax;
+              qD = q;
+            }
           }
-        } else {
-          qy[i] = 0;
         }
-      }
-    }
-  }
+        qy[i] = qD;
 
-  if (walls && walls.count > 0) applyWalls(world, scratch, p, dt, walls);
-
-  // --- 2. Outflow limiting: no cell may lose more water than it holds -------
-  const k = dt * CELL; // volume per unit of q
-  for (let r = 0; r < nRuns; r++) {
-    const ty = runs[3 * r]!;
-    const cx0 = runs[3 * r + 1]! * TILE;
-    const cx1 = Math.min(W, runs[3 * r + 2]! * TILE);
-    const ry0 = ty * TILE;
-    const ry1 = Math.min(H, ry0 + TILE);
-    for (let y = ry0; y < ry1; y++) {
-      const row = y * W;
-      for (let x = cx0, i = row + cx0; x < cx1; x++, i++) {
+        // Outflow limit: no cell may lose more water than it holds.
+        // (Faces are read back as stored, f32, as a separate pass would.)
         let out = 0;
-        const qr = qx[i]!;
-        if (qr > 0) out += qr;
-        if (x > 0) {
-          const ql = qx[i - 1]!;
-          if (ql < 0) out -= ql;
-        }
-        const qd = qy[i]!;
-        if (qd > 0) out += qd;
+        const fr = qx[i]!;
+        if (fr > 0) out += fr;
+        if (qLeft < 0) out -= qLeft;
+        const fd = qy[i]!;
+        if (fd > 0) out += fd;
         if (y > 0) {
           const qu = qy[i - W]!;
           if (qu < 0) out -= qu;
         }
-        const vol = water[i]! * CELL_AREA;
+        const vol = hi * CELL_AREA;
         const outVol = out * k;
         limit[i] = outVol > vol ? vol / outVol : 1;
         conc[i] = vol > 0 ? sediment[i]! / vol : 0;
+
+        qLeft = fr;
+        zi = zR;
+        hi = hR;
       }
     }
   }
+
+  if (walls && walls.count > 0) {
+    applyWalls(world, scratch, p, dt, walls);
+    // Their faces changed: the limits of the cells round them again.
+    for (let n = 0; n < walls.count; n++) {
+      const c = walls.cell[n]!;
+      limitAt(world, scratch, act, c, k);
+      if (c % W > 0) limitAt(world, scratch, act, c - 1, k);
+      if (c % W < W - 1) limitAt(world, scratch, act, c + 1, k);
+      if (c >= W) limitAt(world, scratch, act, c - W, k);
+      if (c < W * (H - 1)) limitAt(world, scratch, act, c + W, k);
+    }
+  }
+
+  // --- 2. Faces into each run from outside it, scaled by their donor's limit --
   for (let r = 0; r < nRuns; r++) {
     const ty = runs[3 * r]!;
     const tx0 = runs[3 * r + 1]!;
     const tx1 = runs[3 * r + 2]!;
     const cx0 = tx0 * TILE;
-    const cx1 = Math.min(W, tx1 * TILE);
     const ry0 = ty * TILE;
     const ry1 = Math.min(H, ry0 + TILE);
     if (ry0 > 0)
@@ -440,25 +482,15 @@ export function flowStep(
         const row = (ry0 - 1) * W;
         for (let x = tx * TILE; x < Math.min(W, (tx + 1) * TILE); x++) scale(qy, limit, row + x, W);
       }
-    for (let y = ry0; y < ry1; y++) {
-      const row = y * W;
-      if (cx0 > 0) scale(qx, limit, row + cx0 - 1, 1);
-      for (let i = row + cx0; i < row + cx1; i++) {
-        const q1 = qx[i]!;
-        if (q1 > 0) qx[i] = q1 * limit[i]!;
-        else if (q1 < 0) qx[i] = q1 * limit[i + 1]!;
-        const q2 = qy[i]!;
-        if (q2 > 0) qy[i] = q2 * limit[i]!;
-        else if (q2 < 0) qy[i] = q2 * limit[i + W]!;
-      }
-    }
+    if (cx0 > 0) for (let y = ry0; y < ry1; y++) scale(qx, limit, y * W + cx0 - 1, 1);
   }
 
-  // --- 3. Continuity, sediment transport, velocity, outlets -----------------
+  // --- 3. Own faces scaled; continuity, sediment transport, velocity, outlets --
   let outflow = 0;
   let sedOut = 0;
   let maxDepth = 0;
   let maxSpeed = 0;
+  let maxWave = 0;
   for (let r = 0; r < nRuns; r++) {
     const ty = runs[3 * r]!;
     const tx0 = runs[3 * r + 1]!;
@@ -469,11 +501,17 @@ export function flowStep(
     const ry1 = Math.min(H, ry0 + TILE);
     for (let y = ry0; y < ry1; y++) {
       const row = y * W;
+      let qL = cx0 > 0 ? qx[row + cx0 - 1]! : 0;
       for (let x = cx0; x < cx1; x++) {
         const i = row + x;
-        const qR = qx[i]!;
-        const qL = x > 0 ? qx[i - 1]! : 0;
-        const qD = qy[i]!;
+        let qR = qx[i]!;
+        if (qR > 0) qx[i] = qR * limit[i]!;
+        else if (qR < 0) qx[i] = qR * limit[i + 1]!;
+        qR = qx[i]!;
+        let qD = qy[i]!;
+        if (qD > 0) qy[i] = qD * limit[i]!;
+        else if (qD < 0) qy[i] = qD * limit[i + W]!;
+        qD = qy[i]!;
         const qU = y > 0 ? qy[i - W]! : 0;
         // Net inflow volume (m³)
         const net = (qL - qR + qU - qD) * k;
@@ -521,11 +559,15 @@ export function flowStep(
           velY[i] = vy;
           const sp = Math.abs(vx) + Math.abs(vy);
           if (sp > maxSpeed) maxSpeed = sp;
+          // sp + √(g·h) > maxWave without a square root per cell.
+          const d = maxWave - sp;
+          if (d < 0 || g * h > d * d) maxWave = sp + Math.sqrt(g * h);
         } else {
           velX[i] = 0;
           velY[i] = 0;
         }
         if (h > maxDepth) maxDepth = h;
+        qL = qR;
       }
     }
   }
@@ -533,8 +575,34 @@ export function flowStep(
   stats.sedimentOut = sedOut;
   stats.maxDepth = maxDepth;
   stats.maxSpeed = maxSpeed;
+  stats.maxWave = maxWave;
   bookEdges(world, scratch, act, k, stats);
   stats.awakeTiles = scratch.awakeTiles;
+}
+
+/** Recompute the outflow limit of cell i (if its tile is awake) from its four faces. */
+function limitAt(world: World, scratch: FlowScratch, act: ActiveSet, i: number, k: number): void {
+  const { width: W, water, qx, qy } = world;
+  const x = i % W;
+  const y = (i / W) | 0;
+  const t = ((y / TILE) | 0) * act.tw + ((x / TILE) | 0);
+  if (!act.tile[t] || !scratch.awake[t]) return;
+  let out = 0;
+  const qr = qx[i]!;
+  if (qr > 0) out += qr;
+  if (x > 0) {
+    const ql = qx[i - 1]!;
+    if (ql < 0) out -= ql;
+  }
+  const qd = qy[i]!;
+  if (qd > 0) out += qd;
+  if (y > 0) {
+    const qu = qy[i - W]!;
+    if (qu < 0) out -= qu;
+  }
+  const vol = water[i]! * CELL_AREA;
+  const outVol = out * k;
+  scratch.limit[i] = outVol > vol ? vol / outVol : 1;
 }
 
 /** Scale face f's discharge by its donor's outflow limit (`step` = 1 for x faces, W for y faces). */
