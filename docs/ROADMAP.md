@@ -221,6 +221,12 @@ Proposal and staged plan: docs/ENDLESS.md.
 - ☐ Step 3 (if needed): unbounded (hierarchical macro, far-land LOD sleeping)
 - Active-region growth with macro catchment model for boundary inflows
 - Performance: tile sleeping, possibly WASM/GPU kernels
+- ☑ Worker CPU round (2026-10, `tools/perfgame.ts`, `tools/perfworker.ts`):
+  flow sub-steps from each cell's wave speed (θ keeps the old smoothing per
+  second), fused flow passes, the worker sleeps between steps and while
+  paused (one snapshot a second), depth/velocity packed on the active rows,
+  cached grid networks, quicker help planning: about −33 % worker CPU per
+  game second; ☐ local time stepping (needs θ < 0.5 on calm tiles)
 
 ## Sculpting ☑
 The interaction rework decided with the owner (DESIGN §4).

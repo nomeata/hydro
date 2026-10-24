@@ -161,6 +161,17 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
       // Snow or rain, and melt, follow each cell's own height (the snow
       // line is a contour, not the edge of a tile).
       const lapse = PARAMS.lapseRate;
+      // Precipitation reaches a cell from this tile's and its neighbours' rain (bilinear): none there, none here.
+      let rainy = false;
+      for (let dy = -1; dy <= 1 && !rainy; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = tx + dx;
+          const ny = ty + dy;
+          if (nx >= 0 && ny >= 0 && nx < tilesWide && ny < tilesHigh && tileRain[ny * tilesWide + nx]! !== 0) {
+            rainy = true;
+            break;
+          }
+        }
 
       const x0 = tx * TILE;
       const y0 = ty * TILE;
@@ -179,7 +190,7 @@ export function soilWaterStep(world: World, inp: SoilWaterInput, ledger: Ledger)
             inflowSum += add;
           }
 
-          const precip = cellPrecip(tileRain, tilesWide, tilesHigh, x, y) * steps;
+          const precip = rainy ? cellPrecip(tileRain, tilesWide, tilesHigh, x, y) * steps : 0;
           const sn0 = snow[i]!;
           const cellTemp = precip > 0 || sn0 > 0 ? seaLevelTemp - lapse * (bedrock[i]! + soil[i]!) : temp;
           const isSnow = cellTemp < 0.5;
