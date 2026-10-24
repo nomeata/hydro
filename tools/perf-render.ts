@@ -71,7 +71,7 @@ const instrument = () => {
   const h = (window as any).__hydro;
   const r = h.renderer;
   const T: Record<string, number> = {};
-  const P: any = ((window as any).__perf = { T, frames: 0, snaps: 0, why: {} });
+  const P: any = ((window as any).__perf = { T, frames: 0, snaps: 0, why: {}, keys: {} });
   const wrap = (obj: any, name: string, label: string) => {
     if (!obj || typeof obj[name] !== 'function') return;
     const f = obj[name].bind(obj);
@@ -128,8 +128,10 @@ const instrument = () => {
   void on;
   // Count snapshots via the renderer wrapper.
   const a0 = r.applySnapshot;
-  r.applySnapshot = (s: unknown) => {
+  r.applySnapshot = (s: any) => {
     P.snaps++;
+    for (const k of ['terrain', 'look', 'snowPiles', 'plan', 'fixed', 'buildings', 'fields', 'structures', 'lining', 'revealed', 'fish', 'power', 'entities'])
+      if (s[k]) P.keys[k] = (P.keys[k] ?? 0) + 1;
     return a0(s);
   };
 };
@@ -162,6 +164,7 @@ async function measure(page: Page, label: string): Promise<Record<string, unknow
     P.frames = 0;
     P.snaps = 0;
     P.why = {};
+    P.keys = {};
     P.t0 = performance.now();
   });
   const c0 = await procCpu();
@@ -176,6 +179,7 @@ async function measure(page: Page, label: string): Promise<Record<string, unknow
       frames: P.frames,
       snaps: P.snaps,
       why: { ...P.why },
+      keys: { ...P.keys },
       T: { ...P.T },
       calls: info.calls,
       triangles: info.triangles,
@@ -205,7 +209,7 @@ async function measure(page: Page, label: string): Promise<Record<string, unknow
     size: r.size.join('x'),
   };
   console.log(JSON.stringify(out));
-  console.log(`   per frame ms: ${breakdown}; drawn because: ${JSON.stringify(r.why)}`);
+  console.log(`   per frame ms: ${breakdown}; drawn because: ${JSON.stringify(r.why)}; snapshot fields: ${JSON.stringify(r.keys)}`);
   return out;
 }
 
