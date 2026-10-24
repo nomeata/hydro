@@ -31,8 +31,8 @@ test('paused and still, no frames are drawn; moving the camera or playing draws 
   // Playing draws continuously.
   await page.evaluate(() => (window as any).__hydro.client.setSpeed(1));
   await page.waitForFunction(() => (window as any).__hydro.renderer.clock.gameSpeed > 0, null, { timeout: 60_000 });
+  // Software GL on CI draws a frame every second or more: poll instead of a fixed wait.
   const p0 = await drawn();
-  await page.waitForTimeout(3000);
-  expect((await drawn()) - p0).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => (await drawn()) - p0, { timeout: 60_000 }).toBeGreaterThanOrEqual(3);
   expect(errors).toEqual([]);
 });
