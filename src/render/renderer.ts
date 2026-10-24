@@ -322,6 +322,7 @@ export class GameRenderer {
     this.onRestored = () => {
       console.info('[render] WebGL context restored');
       this.contextLost = false;
+      this.dirty = true;
       for (const t of Object.values(this.tex)) t.needsUpdate = true;
     };
     canvas.addEventListener('webglcontextlost', this.onLost);
@@ -343,6 +344,7 @@ export class GameRenderer {
    * client/sculptor.ts; snapshots go through applySnapshot).
    */
   setTerrainRows(y0: number, y1: number, data: Float32Array): void {
+    this.dirty = true;
     const W = this.info.width;
     this.heights.setRows(y0, y1, data);
     (this.tex.terrain.image.data as Float32Array).set(data.subarray(0, (y1 - y0) * W), y0 * W);
@@ -495,6 +497,7 @@ export class GameRenderer {
   /** Optimistic plan overlay (target height per cell, NaN = none), or null to clear. */
   /** Contour lines across the whole map (terrain.ts), while an earth brush is selected. */
   setContours(on: boolean): void {
+    this.dirty = true;
     this.terrain.uniforms.uContours.value = on ? 1 : 0;
   }
 
@@ -503,6 +506,7 @@ export class GameRenderer {
   }
 
   setPreviewPlan(cells: Float32Array | null): void {
+    this.dirty = true;
     const u = this.terrain.uniforms;
     if (!cells) {
       u.uPreviewOn.value = 0;
@@ -515,6 +519,7 @@ export class GameRenderer {
 
   /** The power tool's ghost pump (ui/tools.ts, a moved pump: ui/selection.ts; red when its place does not work); null hides it. */
   setPowerGhost(g: { pump: PowerInfo['pumps'][number] } | null, ok = true): void {
+    this.dirty = true;
     this.ghostMat.color.set(ok ? 0xd8f0ff : 0xff4a3a);
     this.ghostMat.emissive.set(ok ? 0x203040 : 0x400800);
     this.powerGhost.setInfo({ turbines: [], poles: [], wires: [], pumps: g ? [g.pump] : [], lit: [] });
@@ -522,6 +527,7 @@ export class GameRenderer {
 
   /** Optimistic lining overlay (cells to show as planned lining), or null to clear. */
   setPreviewLining(cells: readonly number[] | null): void {
+    this.dirty = true;
     this.liningPreview = cells;
     this.uploadLining();
   }
@@ -596,6 +602,7 @@ export class GameRenderer {
 
   /** Lighting hook: timeOfDay 0..1 (0.5 noon), season 0..3 (fractional ok). */
   setSun(timeOfDay: number, season: number): void {
+    this.dirty = true;
     this.sky.setSun(timeOfDay, season);
     if (Math.abs(season - this.season) > 1e-4) {
       this.season = season;

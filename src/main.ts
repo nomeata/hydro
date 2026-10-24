@@ -14,6 +14,7 @@ import { Sculptor } from './client/sculptor';
 import { GameRenderer } from './render/renderer';
 import { attachCameraInput } from './render/camera';
 import { WorldLayers } from './render/worldLayers';
+import { FramePacer } from './render/framePacer';
 import { Hud } from './ui/hud';
 import { StatsBar } from './ui/statsbar';
 import { HistoryPanel } from './ui/historyPanel';
@@ -255,21 +256,21 @@ async function main(): Promise<void> {
   for (const ev of ['pointerup', 'pointercancel'])
     window.addEventListener(ev, (e) => (e as PointerEvent).pointerType === 'touch' && (touching = Math.max(0, touching - 1)), { capture: true, passive: true });
   let lastDraw = performance.now();
-  let nextDue = 0;
+  const pacer = new FramePacer();
   const loop = (now: number) => {
     requestAnimationFrame(loop);
-    // The welcome panels cover the game (and render their own scenes).
-    if (intro.isOpen || cards.isOpen || render.hold) return;
     const behind = historyPanel.isOpen || achievements.panel.isOpen;
     const lively = touching > 0 || now - lastInput < 600 || !renderer.camera.isSettled();
     const cap = fpsCap > 0 ? fpsCap : behind ? 15 : coarse && !lively ? 30 : 60;
-    if (now < nextDue - 2) return;
+    if (!pacer.due(now)) return;
+    // The welcome panels cover the game (and render their own scenes).
+    if (intro.isOpen || cards.isOpen || render.hold) return;
     if (!renderer.wantsFrame(now)) {
       renderer.idle(now);
       lastDraw = now;
       return;
     }
-    nextDue = Math.max(nextDue + 1000 / cap, now + 500 / cap);
+    pacer.drawn(now, cap);
     hud.frame(Math.min(0.1, (now - lastDraw) / 1000));
     lastDraw = now;
     renderer.frame(now);

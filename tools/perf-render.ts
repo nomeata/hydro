@@ -4,7 +4,9 @@
  *
  *   npx vite preview --port 4391 &
  *   npx tsx tools/perf-render.ts [--url http://localhost:4391/] [--views close,mid,far,winter,phone]
- *     [--secs 8] [--shots out/perf] [--modes active,idle] [--days 2]
+ *     [--secs 8] [--shots out/perf] [--modes active,idle] [--days 2] [--size 640x400]
+ *     [--gpu] (GPU ms with each scene child hidden) [--calls] (draw calls of a frame)
+ *     [--sched] (no drawing: frames/s as the frame pacing chooses them)
  *
  * For each view and mode (active: 1×, idle: paused, camera still) it reports
  * frames drawn per second, ms of main-thread JS per drawn frame (split by
@@ -314,6 +316,8 @@ for (const name of views) {
     await page.waitForTimeout(1000);
     console.log(`${name} GPU ms/frame (all, and saved by hiding each):`, JSON.stringify(await page.evaluate(gpuBreakdown)));
   }
+  // Frame pacing only: drawing is stubbed out, so the frames/s show the scheduler's choice, not the GPU's speed.
+  if (args.includes('--sched')) await page.evaluate(() => ((window as any).__hydro.renderer.gl.render = () => {}));
   if (args.includes('--calls')) console.log((await page.evaluate(callList)).join('\n'));
   for (const m of modes) {
     await page.evaluate((s) => (window as any).__hydro.client.setSpeed(s), m === 'active' ? 1 : 0);
