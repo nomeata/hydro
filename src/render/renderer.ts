@@ -766,6 +766,10 @@ export class GameRenderer {
     this.power.update(adt);
     for (const fn of this.listeners) fn(dt, clock);
     if (this.contextLost) return;
+    // Empty instanced meshes (most layers keep one per part, ghosts and
+    // marks included) would still cost a draw call each: leave them out
+    // of the camera's layer while they have no instances.
+    this.scene.traverseVisible(skipEmptyInstanced);
     this.gl.render(this.scene, this.camera.camera);
     this.lastDrawMs = nowMs;
     this.framesDrawn++;
@@ -912,6 +916,12 @@ export class GameRenderer {
       pixelRatio: this.gl.getPixelRatio(),
     });
   }
+}
+
+function skipEmptyInstanced(o: THREE.Object3D): void {
+  if (!(o as THREE.InstancedMesh).isInstancedMesh) return;
+  if ((o as THREE.InstancedMesh).count > 0) o.layers.enable(0);
+  else o.layers.disable(0);
 }
 
 /** Whether any cell of a ground look (RGBA bytes) has snow. */
