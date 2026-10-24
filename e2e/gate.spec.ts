@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { findWeir, openGame, recordTexts, runDays, settleFrames, toScreen } from './helpers';
+import { findWeir, openGame, recordOnRelease, recordTexts, runDays, settleFrames, toScreen } from './helpers';
 
 /**
  * The gate tool (DESIGN.md §4): while it is held, the cells of a raised
@@ -81,8 +81,12 @@ test('the gate tool marks the sites on a bank, taps a gate in, and refuses flat 
   }, [site.x, site.y]);
   const hint = await page.locator('.tools .hint').textContent();
   const hints = await recordTexts(page, '.tools .hint');
+  const released = await recordOnRelease(page, 'h.renderer.gatePreview.ghostState?.ok');
   await tap(page, phone, await toScreen(page, flat[0], flat[1]));
-  await expect.poll(() => R(page, 'h.renderer.gatePreview.ghostState?.ok'), { timeout: 10_000 }).toBe(false);
+  // Red at once (the tap itself sets it), and a frame drawn to show it (render on demand).
+  await expect.poll(async () => (await released())?.value, { timeout: 10_000 }).toBe(false);
+  const shownBy = (await released())!.frames;
+  await expect.poll(() => R(page, 'h.renderer.framesDrawn'), { timeout: 30_000 }).toBeGreaterThan(shownBy);
   await page.waitForTimeout(800);
   expect((await hints()).every((t) => t === hint)).toBe(true);
   expect((await gates()).length).toBe(1);

@@ -159,6 +159,15 @@ async function main(): Promise<void> {
     const r = canvas.getBoundingClientRect();
     return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
   };
+  // Render on demand: what the tools and the selection show (ghosts, site
+  // marks, tints, the brush cursor) is drawn in the next frame, also when it
+  // changes from a timer or an animation frame after the input that caused it.
+  const drawn =
+    <A extends unknown[]>(f: (...a: A) => void) =>
+    (...a: A): void => {
+      f(...a);
+      renderer.invalidate();
+    };
   const selection = new Selection(uiRoot, {
     pick: (x, y) => renderer.pick(x, y),
     project: groundToClient,
@@ -168,9 +177,9 @@ async function main(): Promise<void> {
       const r = canvas.getBoundingClientRect();
       return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
     },
-    setWeirGhost: (list) => renderer.weirGhost.setStructures(list),
+    setWeirGhost: drawn((list) => renderer.weirGhost.setStructures(list)),
     setPowerGhost: (g, ok) => renderer.setPowerGhost(g, ok),
-    setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
+    setWheelGhost: drawn((site, ok) => renderer.wheelPreview.setGhost(site, ok)),
     depth: (i) => renderer.heights.depth[i] ?? 0,
     speed: (i) => renderer.flow.speed(i),
     structures: () => renderer.structures.structures,
@@ -196,20 +205,20 @@ async function main(): Promise<void> {
     setPreviewLining: (cells) => renderer.setPreviewLining(cells),
     depth: (i) => renderer.heights.depth[i] ?? 0,
     speed: (i) => renderer.flow.speed(i),
-    setWheelGhost: (site, ok) => renderer.wheelPreview.setGhost(site, ok),
-    setWheelSites: (sites) => renderer.wheelPreview.setSites(sites),
+    setWheelGhost: drawn((site, ok) => renderer.wheelPreview.setGhost(site, ok)),
+    setWheelSites: drawn((sites) => renderer.wheelPreview.setSites(sites)),
     setPowerGhost: (g) => renderer.setPowerGhost(g),
-    setGateGhost: (g, ok) => renderer.gatePreview.set(g, renderer.structures.structures, ok ?? true),
-    setGateSites: (sites) => renderer.gateSites.setSites(sites),
-    setWeirGhost: (list) => renderer.weirGhost.setStructures(list),
-    setCellTint: (key, cells, fade) => renderer.cellTint.set(key, cells, fade),
+    setGateGhost: drawn((g, ok) => renderer.gatePreview.set(g, renderer.structures.structures, ok ?? true)),
+    setGateSites: drawn((sites) => renderer.gateSites.setSites(sites)),
+    setWeirGhost: drawn((list) => renderer.weirGhost.setStructures(list)),
+    setCellTint: drawn((key, cells, fade) => renderer.cellTint.set(key, cells, fade)),
     setCameraPrimaryPointer: (on) => cameraInput.setPrimaryPointerEnabled(on),
     command: (cmd) => {
       client.command(cmd);
       sound.ui('place');
     },
     sculptor,
-    setBrushCursor: (c) => renderer.brushCursor.set(c),
+    setBrushCursor: drawn((c) => renderer.brushCursor.set(c)),
     setContours: (on) => renderer.setContours(on),
     brushed: (x, y) => sound.brush(x, y),
   });

@@ -62,6 +62,29 @@ export async function recordTexts(page: Page, selector: string): Promise<() => P
 }
 
 /**
+ * What `js` (an expression of `h` = window.__hydro) reads right after the
+ * next pointerup reaches the tools (a listener on window, after the canvas's
+ * own), and how many frames had been drawn by then. A state shown "for a
+ * moment" after letting go (a refused gate's or wheel's red ghost, held 1.8 s
+ * of wall time) can be gone before a poll gets through on CI's software GL,
+ * where one phone-sized frame takes seconds; the recording checks it without
+ * racing that timer.
+ */
+export async function recordOnRelease(page: Page, js: string): Promise<() => Promise<{ value: any; frames: number } | null>> {
+  const key = `__up_${Math.random().toString(36).slice(2)}`;
+  await page.evaluate(
+    ([s, k]) => {
+      const h = (window as any).__hydro;
+      (window as any)[k] = null;
+      const read = new Function('h', `return ${s}`);
+      window.addEventListener('pointerup', () => ((window as any)[k] = { value: read(h), frames: h.renderer.framesDrawn }), { once: true });
+    },
+    [js, key] as const,
+  );
+  return () => page.evaluate((k) => (window as any)[k], key);
+}
+
+/**
  * A spot for a weir near the start: a known river cell flowing at ≥ 0.4 m/s,
  * and the line across the flow through it, out to dry land on both sides.
  */

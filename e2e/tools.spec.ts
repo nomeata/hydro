@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { findWeir, openGame, runDays, settleFrames, toScreen } from './helpers';
+import { findWeir, openGame, recordOnRelease, runDays, settleFrames, toScreen } from './helpers';
 
 /**
  * Tools stay selected (after a placement or a tap that placed nothing,
@@ -118,10 +118,9 @@ test('tools stay selected; weirs, gates and wheels show their ghosts first', asy
   }, [site.x, site.y]);
   const d0 = await toScreen(page, dry![0], dry![1]);
   const d1 = await toScreen(page, dry![0] + 3, dry![1]);
+  const released = await recordOnRelease(page, 'h.renderer.wheelPreview.ghostState');
   await stroke(page, phone, line(d0, d1, 4));
-  const ghost = await R('h.renderer.wheelPreview.ghostState');
-  expect(ghost).not.toBeNull();
-  expect(ghost.ok).toBe(false);
+  await expect.poll(async () => (await released())?.value?.ok, { timeout: 10_000 }).toBe(false);
   await pressed(page, 'button[data-tool=wheel]');
   expect(await R('h.renderer.structures.structures.filter((s) => s.kind === "wheel").length')).toBe(0);
   expect(errors).toEqual([]);

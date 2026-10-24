@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openGame, recordTexts, settleFrames } from './helpers';
+import { openGame, recordOnRelease, recordTexts, settleFrames } from './helpers';
 
 /**
  * Find a water-wheel site near the start: a river cell (≥ 0.3 m deep,
@@ -137,9 +137,10 @@ test('a wheel drawn on dry land shows a red ghost and places nothing', async ({ 
   await page.mouse.move(a[0] + 60, a[1] + 20);
   await expect.poll(() => page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.ghostState?.ok)).toBe(false);
   const hints = await recordTexts(page, '.tools .hint');
+  const released = await recordOnRelease(page, 'h.renderer.wheelPreview.ghostState?.ok');
   await page.mouse.up();
   // The red ghost stays a moment and says "not here" by itself (no text); the tool stays, ready for another try.
-  expect(await page.evaluate(() => (window as any).__hydro.renderer.wheelPreview.ghostState?.ok)).toBe(false);
+  await expect.poll(async () => (await released())?.value).toBe(false);
   await page.waitForTimeout(600);
   expect(await hints()).not.toContainEqual(expect.stringContaining('Start in the river'));
   await expect(page.locator('.tools .hint')).toContainText('lifts the river');
