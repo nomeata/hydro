@@ -347,6 +347,11 @@ export class FlowParticles {
   }
 
   /** Advance and upload. `dt` is real seconds. */
+  /** While paused, flecks still renew for a few seconds after a camera move. */
+  renewing(nowMs: number): boolean {
+    return this.gameSpeed <= 0 && nowMs < this.renewUntil && this.n + this.target > 0;
+  }
+
   update(dt: number, camera: CameraController): void {
     const vh = shortSideCells(camera);
     this.sizeScale = Math.max(0.8, vh / 36) ** 0.75;

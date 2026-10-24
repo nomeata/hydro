@@ -158,6 +158,11 @@ export class GateSites {
     }
   }
 
+  /** Animating on wall time (pulsing site marks). */
+  get busy(): boolean {
+    return this.rings.count > 0;
+  }
+
   /** The marks glow softly. */
   update(dt: number): void {
     this.t += dt;

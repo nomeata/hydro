@@ -172,6 +172,20 @@ export class GameRenderer {
   private readonly onRestored: () => void;
   private readonly tmpV = new THREE.Vector3();
   private readonly tmpV2 = new THREE.Vector2();
+  /**
+   * Render on demand (wantsFrame): something changed that the next frame
+   * must show. Set by snapshots that change anything, invalidate() (input,
+   * tools), and the layers' own checks; cleared when a frame is drawn.
+   */
+  private dirty = true;
+  private lastDrawMs = -Infinity;
+  /** The camera's view-projection and drawing-buffer size at the last drawn frame. */
+  private readonly drawnView = new Float64Array(34);
+  private readonly busyChecks: (() => boolean)[] = [];
+  /** The velocities of the last snapshot (an unchanged paused snapshot uploads nothing). */
+  private lastVel: Int8Array | null = null;
+  /** Frames drawn since start (stats). */
+  framesDrawn = 0;
 
   constructor(canvas: HTMLCanvasElement, data: InitialData, opts: GameRendererOptions = {}) {
     this.canvas = canvas;
@@ -308,6 +322,7 @@ export class GameRenderer {
     this.onRestored = () => {
       console.info('[render] WebGL context restored');
       this.contextLost = false;
+      this.dirty = true;
       for (const t of Object.values(this.tex)) t.needsUpdate = true;
     };
     canvas.addEventListener('webglcontextlost', this.onLost);
@@ -329,10 +344,29 @@ export class GameRenderer {
    * client/sculptor.ts; snapshots go through applySnapshot).
    */
   setTerrainRows(y0: number, y1: number, data: Float32Array): void {
+    this.dirty = true;
     const W = this.info.width;
     this.heights.setRows(y0, y1, data);
     (this.tex.terrain.image.data as Float32Array).set(data.subarray(0, (y1 - y0) * W), y0 * W);
     uploadFloatRows(this.gl, this.tex.terrain, y0, y1);
+  }
+
+  /**
+   * Whether a snapshot shows nothing new: the game paused, the same water and
+   * flow as the last one, and none of the occasional fields. (A paused sim
+   * keeps sending snapshots; they need no upload and no redraw.)
+   */
+  private unchangedSnapshot(s: Snapshot, n: number): boolean {
+    if (s.stats.speedRequested > 0 || this.flow.gameSpeed > 0 || !this.lastVel) return false;
+    if (s.terrain || s.look || s.snowPiles || s.plan || s.buildings || s.fields || s.structures || s.lining || s.revealed || s.fish || s.power) return false;
+    const d = s.depth;
+    const cur = this.depthBuf(false);
+    if (d.length < n || s.vel.length !== this.lastVel.length) return false;
+    for (let i = 0; i < n; i++) if (d[i] !== cur[i]) return false;
+    const v = s.vel;
+    const lv = this.lastVel;
+    for (let i = 0; i < v.length; i++) if (v[i] !== lv[i]) return false;
+    return true;
   }
 
   /** Upload a snapshot: depth/vel always, terrain rows / look / plan when present. */
@@ -340,6 +374,10 @@ export class GameRenderer {
     const W = this.info.width;
     const H = this.info.height;
     const n = W * H;
+    if (this.unchangedSnapshot(s, n)) return;
+    this.dirty = true;
+    if (!this.lastVel || this.lastVel.length !== s.vel.length) this.lastVel = new Int8Array(s.vel.length);
+    this.lastVel.set(s.vel);
     // Swap: the old "current" becomes "previous", new data goes into the other buffer.
     this.depthPrevIsA = !this.depthPrevIsA;
     const cur = this.depthBuf(false);
@@ -459,6 +497,7 @@ export class GameRenderer {
   /** Optimistic plan overlay (target height per cell, NaN = none), or null to clear. */
   /** Contour lines across the whole map (terrain.ts), while an earth brush is selected. */
   setContours(on: boolean): void {
+    this.dirty = true;
     this.terrain.uniforms.uContours.value = on ? 1 : 0;
   }
 
@@ -467,6 +506,7 @@ export class GameRenderer {
   }
 
   setPreviewPlan(cells: Float32Array | null): void {
+    this.dirty = true;
     const u = this.terrain.uniforms;
     if (!cells) {
       u.uPreviewOn.value = 0;
@@ -479,6 +519,7 @@ export class GameRenderer {
 
   /** The power tool's ghost pump (ui/tools.ts, a moved pump: ui/selection.ts; red when its place does not work); null hides it. */
   setPowerGhost(g: { pump: PowerInfo['pumps'][number] } | null, ok = true): void {
+    this.dirty = true;
     this.ghostMat.color.set(ok ? 0xd8f0ff : 0xff4a3a);
     this.ghostMat.emissive.set(ok ? 0x203040 : 0x400800);
     this.powerGhost.setInfo({ turbines: [], poles: [], wires: [], pumps: g ? [g.pump] : [], lit: [] });
@@ -486,6 +527,7 @@ export class GameRenderer {
 
   /** Optimistic lining overlay (cells to show as planned lining), or null to clear. */
   setPreviewLining(cells: readonly number[] | null): void {
+    this.dirty = true;
     this.liningPreview = cells;
     this.uploadLining();
   }
@@ -560,6 +602,7 @@ export class GameRenderer {
 
   /** Lighting hook: timeOfDay 0..1 (0.5 noon), season 0..3 (fractional ok). */
   setSun(timeOfDay: number, season: number): void {
+    this.dirty = true;
     this.sky.setSun(timeOfDay, season);
     if (Math.abs(season - this.season) > 1e-4) {
       this.season = season;
@@ -598,10 +641,77 @@ export class GameRenderer {
     };
   }
 
+  /** The next frame must be drawn (render on demand, see wantsFrame). */
+  invalidate(): void {
+    this.dirty = true;
+  }
+
+  /** A check run by wantsFrame: true while some layer animates on its own (wall time). */
+  addBusyCheck(fn: () => boolean): void {
+    this.busyChecks.push(fn);
+  }
+
+  /**
+   * Whether a frame drawn now would differ from the last one: the game runs
+   * (everything animates), the camera moves, a changed snapshot's water is
+   * still blending in, something was invalidated, or a layer animates on
+   * wall time (tool site marks, fading tints, flecks renewing after a camera
+   * move). Paused and still, nothing needs drawing; a frame every 2 s is
+   * drawn anyway (models that finished loading, rebuilt vegetation).
+   */
+  wantsFrame(nowMs: number): boolean {
+    this.frameReason = this.whyFrame(nowMs);
+    return this.frameReason !== '';
+  }
+
+  /** Why the last wantsFrame drew ('' = it did not), for ?stats=1 and tests. */
+  frameReason = '';
+
+  private whyFrame(nowMs: number): string {
+    if (this.dirty) return 'changed';
+    if (this.snapPending) return 'snapshot';
+    if (this.clock.gameSpeed > 0) return 'playing';
+    if (!this.camera.isSettled() || this.viewChanged()) return 'camera';
+    // The water still blends from the previous snapshot to the latest.
+    if (nowMs - this.snapAtMs < this.snapIntervalMs + 20) return 'water';
+    if (this.flow.renewing(nowMs)) return 'flecks';
+    if (this.wheelPreview.busy || this.gateSites.busy || this.cellTint.busy) return 'tools';
+    for (const f of this.busyChecks) if (f()) return 'layers';
+    if (nowMs - this.lastDrawMs > 2000) return 'keepalive';
+    return '';
+  }
+
+  /** Whether the camera's view or the drawing buffer changed since the last drawn frame. */
+  private viewChanged(): boolean {
+    const cam = this.camera.camera;
+    const a = cam.matrixWorldInverse.elements;
+    const b = cam.projectionMatrix.elements;
+    const v = this.drawnView;
+    for (let i = 0; i < 16; i++) if (v[i] !== a[i] || v[16 + i] !== b[i]) return true;
+    return v[32] !== this.canvas.width || v[33] !== this.canvas.height;
+  }
+
+  /** The loop skipped this frame (nothing to draw): the next frame's step starts from now, not from the last drawn frame. */
+  idle(nowMs: number): void {
+    this.lastFrameMs = nowMs;
+  }
+
+  private rememberView(): void {
+    const cam = this.camera.camera;
+    const a = cam.matrixWorldInverse.elements;
+    const b = cam.projectionMatrix.elements;
+    const v = this.drawnView;
+    v.set(a);
+    v.set(b, 16);
+    v[32] = this.canvas.width;
+    v[33] = this.canvas.height;
+  }
+
   /** Render one frame. `nowMs` should be a performance.now()/rAF timestamp. */
   frame(nowMs: number): void {
     const dt = this.lastFrameMs === null ? 0 : Math.min(0.1, Math.max(0, (nowMs - this.lastFrameMs) / 1000));
     this.lastFrameMs = nowMs;
+    this.dirty = false;
 
     // Known land fades into exactly the sky behind it.
     const fu = this.fog.uniforms;
@@ -656,7 +766,14 @@ export class GameRenderer {
     this.power.update(adt);
     for (const fn of this.listeners) fn(dt, clock);
     if (this.contextLost) return;
+    // Empty instanced meshes (most layers keep one per part, ghosts and
+    // marks included) would still cost a draw call each: leave them out
+    // of the camera's layer while they have no instances.
+    this.scene.traverseVisible(skipEmptyInstanced);
     this.gl.render(this.scene, this.camera.camera);
+    this.lastDrawMs = nowMs;
+    this.framesDrawn++;
+    this.rememberView();
   }
 
   resize(): void {
@@ -719,14 +836,19 @@ export class GameRenderer {
 
   // -------------------------------------------------------------------------
 
-  /** Water chunks entirely in the fog are never drawn. */
+  /** Water and terrain chunks entirely in the fog are never drawn (the terrain shader would discard all of it). */
   private updateFogChunks(): void {
     const C = CHUNK;
     const w = this.water;
     let k = 0;
     w.hiddenChunks = [];
     for (let oy = 0; oy < this.info.height; oy += C)
-      for (let ox = 0; ox < this.info.width; ox += C) w.hiddenChunks[k++] = this.fog.hidden(ox, oy, ox + C, oy + C);
+      for (let ox = 0; ox < this.info.width; ox += C) {
+        w.hiddenChunks[k] = this.fog.hidden(ox, oy, ox + C, oy + C);
+        // (One more cell of margin: the reveal texture is sampled bilinearly up to the chunk's far edge.)
+        this.terrain.meshes[k]!.visible = !this.fog.hidden(ox - 1, oy - 1, ox + C + 1, oy + C + 1);
+        k++;
+      }
     w.updateVisibility(this.depthBuf(true), this.depthBuf(false));
   }
 
@@ -794,6 +916,12 @@ export class GameRenderer {
       pixelRatio: this.gl.getPixelRatio(),
     });
   }
+}
+
+function skipEmptyInstanced(o: THREE.Object3D): void {
+  if (!(o as THREE.InstancedMesh).isInstancedMesh) return;
+  if ((o as THREE.InstancedMesh).count > 0) o.layers.enable(0);
+  else o.layers.disable(0);
 }
 
 /** Whether any cell of a ground look (RGBA bytes) has snow. */

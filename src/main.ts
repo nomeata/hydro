@@ -14,6 +14,7 @@ import { Sculptor } from './client/sculptor';
 import { GameRenderer } from './render/renderer';
 import { attachCameraInput } from './render/camera';
 import { WorldLayers } from './render/worldLayers';
+import { FramePacer } from './render/framePacer';
 import { Hud } from './ui/hud';
 import { StatsBar } from './ui/statsbar';
 import { HistoryPanel } from './ui/historyPanel';
@@ -233,17 +234,46 @@ async function main(): Promise<void> {
     if (s.structures || s.power) selection.refresh();
   });
 
-  let last = performance.now();
   // Test hook: hold the last drawn frame (e2e screenshots on slow software GL,
   // where a busy render loop starves the screenshot's compositor frame).
   const render = { hold: false };
+  // Frame pacing (battery, heat): draw only when something changed
+  // (renderer.wantsFrame: paused and still, nothing is drawn), at most 60
+  // frames a second (120 Hz phones), and 30 on touch devices unless a
+  // finger is on the screen or the camera glides. Behind the dimmed,
+  // blurred history and achievement panels, 15. ?fps=N fixes the cap.
+  const fpsCap = Number(params.get('fps') ?? 0);
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  let lastInput = -Infinity;
+  let touching = 0;
+  const onInput = () => {
+    lastInput = performance.now();
+    renderer.invalidate();
+  };
+  for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'wheel', 'keydown', 'keyup'])
+    window.addEventListener(ev, onInput, { capture: true, passive: true });
+  window.addEventListener('pointerdown', (e) => e.pointerType === 'touch' && touching++, { capture: true, passive: true });
+  for (const ev of ['pointerup', 'pointercancel'])
+    window.addEventListener(ev, (e) => (e as PointerEvent).pointerType === 'touch' && (touching = Math.max(0, touching - 1)), { capture: true, passive: true });
+  let lastDraw = performance.now();
+  const pacer = new FramePacer();
   const loop = (now: number) => {
-    const dt = Math.min(0.1, (now - last) / 1000);
-    last = now;
-    hud.frame(dt);
-    // The welcome panels cover the game (and render their own scenes).
-    if (!intro.isOpen && !cards.isOpen && !render.hold) renderer.frame(now);
     requestAnimationFrame(loop);
+    const behind = historyPanel.isOpen || achievements.panel.isOpen;
+    const lively = touching > 0 || now - lastInput < 600 || !renderer.camera.isSettled();
+    const cap = fpsCap > 0 ? fpsCap : behind ? 15 : coarse && !lively ? 30 : 60;
+    if (!pacer.due(now)) return;
+    // The welcome panels cover the game (and render their own scenes).
+    if (intro.isOpen || cards.isOpen || render.hold) return;
+    if (!renderer.wantsFrame(now)) {
+      renderer.idle(now);
+      lastDraw = now;
+      return;
+    }
+    pacer.drawn(now, cap);
+    hud.frame(Math.min(0.1, (now - lastDraw) / 1000));
+    lastDraw = now;
+    renderer.frame(now);
   };
   requestAnimationFrame(loop);
   window.addEventListener('resize', () => renderer.resize());
@@ -307,7 +337,7 @@ async function main(): Promise<void> {
   if (testMode) {
     client.setSpeed(0);
     hud.setSpeed(0);
-    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, render, mirror, tools, sculptor, siteCrew: layers.siteCrew, data, autosave, crowd: layers.crowd, footprints: layers.footprints, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, IntroScenes, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
+    (window as unknown as { __hydro: unknown }).__hydro = { client, renderer, render, mirror, tools, sculptor, siteCrew: layers.siteCrew, data, autosave, crowd: layers.crowd, vegetation: layers.vegetation, footprints: layers.footprints, fakeCrowd: () => layers.fakeCrowd, showIntro, intro, IntroScenes, cards, showCard, SimClient, statsBar, historyPanel, achievements, selection, project: groundToClient, sound };
   }
   document.getElementById('loading')?.classList.add('done');
 }

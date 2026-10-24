@@ -180,11 +180,30 @@ export class CameraController {
     // Zoom damped in log space for an even feel.
     c.viewHeight = Math.exp(Math.log(c.viewHeight) + (Math.log(g.viewHeight) - Math.log(c.viewHeight)) * a);
     c.yaw += (g.yaw - c.yaw) * a;
+    // Snap once the rest is far below a pixel, so a still camera is exactly still (renderer.wantsFrame).
     if (Math.abs(g.x - c.x) < 1e-5) c.x = g.x;
     if (Math.abs(g.y - c.y) < 1e-5) c.y = g.y;
+    if (Math.abs(g.pitch - c.pitch) < 1e-6) c.pitch = g.pitch;
+    if (Math.abs(g.yaw - c.yaw) < 1e-6) c.yaw = g.yaw;
+    if (Math.abs(g.viewHeight - c.viewHeight) < 1e-6 * g.viewHeight) c.viewHeight = g.viewHeight;
     const ty = heightToY(this.heights.terrainAt(c.x, c.y));
     this.targetY += (ty - this.targetY) * (1 - Math.exp(-Math.max(0, dtSec) * 4));
+    if (Math.abs(ty - this.targetY) < 1e-5) this.targetY = ty;
     this.apply();
+  }
+
+  /** Whether the camera has come to rest (the damped state reached the goal). */
+  isSettled(): boolean {
+    const c = this.cur;
+    const g = this.goal;
+    return (
+      c.x === g.x &&
+      c.y === g.y &&
+      c.pitch === g.pitch &&
+      c.yaw === g.yaw &&
+      c.viewHeight === g.viewHeight &&
+      this.targetY === heightToY(this.heights.terrainAt(c.x, c.y))
+    );
   }
 
   /** Current look-at point in three.js world coordinates. */

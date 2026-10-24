@@ -309,6 +309,23 @@ of a core (`duty`).
   while paused; `play` time follows the game (walk cycles match movement),
   ambient `anim` time speeds up gently (×speed^0.4, at most ×2). Camera,
   cursor and tool previews keep wall time.
+- **Frame budget** (battery, heat; `renderer.wantsFrame`,
+  `framePacer.ts`, `main.ts`): frames are drawn on demand. Paused with a
+  still camera nothing changes, so nothing is drawn (a frame every 2 s at
+  most, for late model loads); a paused snapshot identical to the last one
+  uploads nothing. Input, camera moves, changed snapshots, setters
+  (`invalidate()`) and wall-time animations (tool site marks, fading
+  tints, flecks renewing, vegetation re-scatter: busy checks) draw again.
+  While playing: at most 60 fps whatever the display's refresh, 30 on
+  touch devices unless a finger is down or the camera glides, 15 behind
+  the history/achievement panels; `?fps=N` fixes the cap. Pixel ratio
+  ≤ 1.5. Terrain chunks wholly in the fog are not drawn and fogged ground
+  is discarded before its colour is computed; vegetation is culled in
+  16-cell squares inside its 64-cell palette chunks; empty instanced
+  meshes are taken off the camera layer (no draw call).
+  `tools/perf-render.ts` measures frames/s, JS ms per frame by layer,
+  draw calls, triangles and page/GPU-process CPU per view
+  (`--gpu`, `--calls`, `--sched`, `--shots` + `tools/shot-diff.ts`).
 - **Weather** (`weather.ts`): rain fronts become flat-bottomed low-poly
   puff clusters (one InstancedMesh, depth pre-pass + colour pass) that
   dissolve when zoomed in, soft ground/water shadows via front uniforms,

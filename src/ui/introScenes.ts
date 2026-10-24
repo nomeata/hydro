@@ -17,6 +17,7 @@ import { Sculptor } from '../client/sculptor';
 import { SCENE_LAYOUT as L } from '../sim/sceneLayout';
 import { ICONS } from './icons';
 import { cameraView, sound } from '../audio/bus';
+import { FramePacer } from '../render/framePacer';
 
 const DEG = Math.PI / 180;
 /**
@@ -80,6 +81,9 @@ export class IntroScenes {
 
   /** Frames drawn of the scene shown (test hook: the live scene is drawing). */
   framesShown = 0;
+  /** At most 60 frames a second, 30 on touch devices (render/framePacer.ts). */
+  private readonly pacer = new FramePacer();
+  private readonly fpsCap = globalThis.matchMedia?.('(pointer: coarse)').matches ? 30 : 60;
 
   /** Called once the first live frame is on screen (the loader can go). */
   onLive: (() => void) | null = null;
@@ -286,6 +290,8 @@ export class IntroScenes {
     }
     if (this.restartAt && now >= this.restartAt) this.restart();
     if (IntroScenes.freeze && this.live) return;
+    if (!this.pacer.due(now)) return;
+    this.pacer.drawn(now, this.fpsCap);
     this.renderer.frame(now);
     if (this.shownRun === this.wantRun) this.framesShown++;
     if (this.fadeInAfter > 0 && this.shownRun === this.wantRun && --this.fadeInAfter === 0) this.fadeIn();

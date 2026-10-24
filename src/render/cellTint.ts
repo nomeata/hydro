@@ -65,6 +65,13 @@ export class CellTint {
     if (this.channels.size) this.dirty = true;
   }
 
+  /** Something fades out (or waits to be rebuilt). */
+  get busy(): boolean {
+    if (this.dirty) return true;
+    for (const ch of this.channels.values()) if (ch.fade !== undefined) return true;
+    return false;
+  }
+
   /** Every frame. */
   update(now = performance.now()): void {
     let fading = false;

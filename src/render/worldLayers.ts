@@ -59,6 +59,8 @@ export class WorldLayers {
       (x, y) => !renderer.fog.enabled || renderer.fog.known(x, y),
       (x, y) => renderer.heights.depthAt(x, y) < 0.05,
     );
+    // Re-scattered vegetation shows at once, also while paused (render on demand).
+    renderer.addBusyCheck(() => this.vegetation.busy || this.vegetation.takeChange());
     // All of it is game activity, on the game clock (frozen while paused; render/gameClock.ts).
     this.unlisten = renderer.addFrameListener((_dt, clock) => {
       this.fakeCrowd?.advance(clock.playDt);
