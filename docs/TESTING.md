@@ -178,6 +178,15 @@ the mixing logic: `tests/audio/mix.test.ts`; e2e: `e2e/sound.spec.ts`.
   active cell) and on a half-dry world (tile sleeping).
 - `npx tsx tools/benchgame.ts [size] [seed]`: a real game step (generated
   world, village, after the worker's spin-up), with the active share.
+- `npx tsx tools/perfgame.ts make --seed 3 --size 256 --days 150` plays a
+  game with the playtest's "good" bot (canal, drain, dikes, weir) and a
+  turbine, and saves it; `perfgame.ts prof <save> --days 3 --speed 1|10`
+  runs it as the worker does (steps plus snapshot packing) and prints the
+  CPU per game second by phase and the worst steps with their phases.
+- `npx tsx tools/perfworker.ts <save> --speed 0|1` runs the real worker
+  (`sim/worker.ts`) in a Node thread and reports its busy share of a core,
+  wake-ups and snapshots per second (paused and at 1×; at 10× Node's
+  message ports starve the harness).
 - In-browser: `?stats=1` shows FPS, sim steps/sec, snapshot latency. A
   Playwright perf test asserts the frame time stays within budget on the
   default scene (desktop software GL is slow, so this guards relative
