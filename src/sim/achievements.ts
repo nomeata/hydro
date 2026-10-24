@@ -222,6 +222,20 @@ export class Achievements {
     return false;
   }
 
+  /** Blocks near(i) is true in (the worked blocks and their 8 neighbours). */
+  private nearBlocks(): Uint8Array {
+    const { bw, bh, blocks } = this;
+    const out = (this.nearScratch ??= new Uint8Array(bw * bh));
+    out.fill(0);
+    for (let by = 0; by < bh; by++)
+      for (let bx = 0; bx < bw; bx++) {
+        if (!blocks[by * bw + bx]) continue;
+        for (let y = Math.max(0, by - 1); y <= Math.min(bh - 1, by + 1); y++) for (let x = Math.max(0, bx - 1); x <= Math.min(bw - 1, bx + 1); x++) out[y * bw + x] = 1;
+      }
+    return out;
+  }
+  private nearScratch: Uint8Array | null = null;
+
   /** The player planned works on these cells: remember the ground under them as it was. */
   planned(w: World, cells: readonly number[]): void {
     for (const c of cells) if (!this.ground0.has(c)) this.ground0.set(c, w.terrain(c));
@@ -512,13 +526,17 @@ export class Achievements {
     let flooded = 0;
     const { water, landuse } = w;
     const fm = p ? w.floodMemory : null;
+    // near(i) for every cell at once: the worked blocks, grown by one block.
+    const nearBlocks = this.nearBlocks();
+    const { width: W, bw } = this;
+    const near = (i: number): boolean => nearBlocks[((i / W / BLOCK) | 0) * bw + (((i % W) / BLOCK) | 0)] === 1;
     for (let i = 0; i < w.size; i++) {
       const d = water[i]!;
       if (fm && fm[i]! >= 254 && landuse[i] !== LandUse.None) flooded++;
-      if (needForest && w.vegetation[i]! >= VEG.forestLevel && !this.forest0[i] && this.near(i)) forest++;
+      if (needForest && w.vegetation[i]! >= VEG.forestLevel && !this.forest0[i] && near(i)) forest++;
       if (!this.dry0[i]) continue;
-      if (needField && landuse[i] === LandUse.Field && this.near(i)) this.earn('newGround', day);
-      if (needGreen && d < 0.05 && moisture(h, i) >= MOIST && this.near(i)) green++;
+      if (needField && landuse[i] === LandUse.Field && near(i)) this.earn('newGround', day);
+      if (needGreen && d < 0.05 && moisture(h, i) >= MOIST && near(i)) green++;
     }
     if (!this.has.has('lakeMaker')) {
       this.c.lakeStreak = this.lakeToday(h) ? this.c.lakeStreak + 1 : 0;
